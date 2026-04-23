@@ -1,0 +1,1644 @@
+from __future__ import annotations
+
+import csv
+import json
+import shutil
+from dataclasses import asdict, is_dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from core.ec_rp.analysis import generate_reference_provenance
+from core.exports.report_exporter import write_report_snapshot
+from models.rp_models import RPRunResult, WindowRPResult
+from models.spectral_models import SpectralRunResult, WindowSpectralResult
+
+
+FULL_OUTPUT_SCHEMA = [
+    ("window_id", "diagnostics", "real"),
+    ("start_time", "diagnostics", "real"),
+    ("end_time", "diagnostics", "real"),
+    ("qc_grade", "diagnostics", "real"),
+    ("lag_seconds", "lag", "real"),
+    ("lag_confidence", "lag", "real"),
+    ("lag_strategy", "lag", "real"),
+    ("lag_fallback_reason", "lag", "estimated"),
+    ("rotation_mode", "rotation", "real"),
+    ("detrend_mode", "rotation", "real"),
+    ("raw_flux", "flux", "real"),
+    ("density_corrected_flux", "flux", "real"),
+    ("correction_factor", "flux", "real"),
+    ("corrected_flux_after", "flux", "real"),
+    ("stationarity_score", "turbulence", "real"),
+    ("turbulence_score", "turbulence", "real"),
+    ("ustar", "turbulence", "real"),
+    ("relative_uncertainty", "uncertainty", "estimated"),
+    ("uncertainty_status", "uncertainty", "estimated"),
+    ("uncertainty_provenance", "uncertainty", "estimated"),
+    ("var_u", "variances", "real"),
+    ("var_v", "variances", "real"),
+    ("var_w", "variances", "real"),
+    ("cov_uw", "covariances", "real"),
+    ("cov_vw", "covariances", "real"),
+    ("turbulence_intermediate", "turbulence", "real"),
+    ("diagnostics_flags", "diagnostics", "real"),
+    ("diagnostics_issues", "diagnostics", "real"),
+    ("screening_detail", "diagnostics", "real"),
+    ("screening_config", "diagnostics", "real"),
+    ("density_correction_mode", "flux", "real"),
+    ("density_correction_reason", "flux", "real"),
+    ("primary_flux", "flux", "real"),
+    ("primary_flux_source", "flux", "real"),
+    ("requested_rotation_mode", "rotation", "real"),
+    ("applied_rotation_impl", "rotation", "real"),
+    ("lag_fallback_reason", "lag", "real"),
+    ("screening_summary", "diagnostics", "real"),
+    ("qc_details", "diagnostics", "real"),
+    ("metadata_summary", "diagnostics", "real"),
+    ("wpl_water_vapor_term", "flux", "real"),
+    ("wpl_sensible_heat_term", "flux", "real"),
+    ("advanced_qc_contribution", "diagnostics", "real"),
+    ("advanced_test_weights", "diagnostics", "real"),
+    ("advanced_test_thresholds", "diagnostics", "real"),
+    ("wpl_benchmark_status", "diagnostics", "real"),
+    ("benchmark_status", "benchmark", "real"),
+    ("benchmark_target", "benchmark", "real"),
+    ("benchmark_deviation_summary", "benchmark", "real"),
+    ("benchmark_reference_id", "benchmark", "real"),
+    ("benchmark_thresholds", "benchmark", "real"),
+    ("continuous_dataset_enabled", "diagnostics", "real"),
+    ("footprint_peak_distance_m", "footprint", "real"),
+    ("footprint_method", "footprint", "real"),
+    ("footprint_offset_distance_m", "footprint", "real"),
+    ("footprint_contribution_distances", "footprint", "real"),
+    ("uncertainty_method", "uncertainty", "real"),
+    ("uncertainty_method_detail", "uncertainty", "real"),
+    ("spectral_correction_method", "spectral", "real"),
+    ("spectral_correction_factor", "spectral", "real"),
+    ("spectral_correction_detail", "spectral", "real"),
+    ("spectral_correction_provenance", "spectral", "real"),
+    ("spectral_correction_limitations", "spectral", "real"),
+    ("schema_target", "diagnostics", "real"),
+    ("fluxnet_timestamp_refers_to", "diagnostics", "real"),
+    ("fluxnet_timezone_offset_h", "diagnostics", "real"),
+    ("fluxnet_gap_fill_value", "diagnostics", "real"),
+]
+
+
+class ResultExporter:
+    def __init__(self, runtime_root: Path) -> None:
+        self.runtime_root = Path(runtime_root)
+        self.exports_root = self.runtime_root / "exports" / "results"
+        self.exports_root.mkdir(parents=True, exist_ok=True)
+
+    def export_minimal_bundle(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        spectral_result: SpectralRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        spectral_config_snapshot: dict[str, Any],
+        project: object,
+        site: object,
+        report_payload: dict[str, Any],
+        report_key: str,
+        full_output_mode: str = "only_available",
+    ) -> dict[str, Any]:
+        timestamp = datetime.now()
+        suffix = self._bundle_suffix(rp_result=rp_result, spectral_result=spectral_result, timestamp=timestamp)
+        export_root = self.exports_root / suffix
+        export_root.mkdir(parents=True, exist_ok=True)
+
+        rp_results_path = export_root / "rp_results.csv"
+        spectral_results_path = export_root / "spectral_qc_results.csv"
+        full_output_path = export_root / "full_output.csv"
+        summary_path = export_root / "summary.json"
+        config_path = export_root / "config_snapshot.json"
+        project_site_path = export_root / "project_site_snapshot.json"
+        manifest_path = export_root / "export_manifest.json"
+
+        self._write_csv(rp_results_path, [self._rp_row(window) for window in (rp_result.windows if rp_result else [])], self._rp_headers())
+        self._write_csv(spectral_results_path, [self._spectral_row(window) for window in (spectral_result.windows if spectral_result else [])], self._spectral_headers())
+        full_output_rows = self._full_output_rows(rp_result=rp_result, spectral_result=spectral_result, mode=full_output_mode)
+        full_output_headers = self._full_output_headers(mode=full_output_mode)
+        self._write_csv(full_output_path, full_output_rows, full_output_headers)
+        benchmark_rollup = self._benchmark_rollup(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        method_summary = self._method_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        benchmark_results = benchmark_rollup["benchmark_results"]
+        benchmark_summary_path = self.export_benchmark_summary_artifact(
+            rp_result=rp_result,
+            benchmark_results=benchmark_results,
+            export_root=export_root,
+            reference_id=benchmark_rollup["benchmark_reference_id"],
+            thresholds=benchmark_rollup["benchmark_thresholds"],
+        )
+        parity_artifact_path = self.export_parity_artifact(
+            rp_result=rp_result,
+            benchmark_results=benchmark_results,
+            export_root=export_root,
+            reference_id=benchmark_rollup["benchmark_reference_id"],
+            thresholds=benchmark_rollup["benchmark_thresholds"],
+        )
+        reference_provenance_path = self.export_reference_provenance_artifact(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+        )
+        reference_provenance = self._reference_provenance_payload(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        network_validation, network_files = self._export_network_artifacts(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+            site=site,
+        )
+
+        exported_files = [
+            "rp_results.csv",
+            "spectral_qc_results.csv",
+            "full_output.csv",
+            "summary.json",
+            "config_snapshot.json",
+            "project_site_snapshot.json",
+            "report_snapshot.json",
+            "export_manifest.json",
+        ]
+        if benchmark_summary_path is not None:
+            exported_files.append(benchmark_summary_path.name)
+        if parity_artifact_path is not None:
+            exported_files.append(parity_artifact_path.name)
+        if reference_provenance_path is not None:
+            exported_files.append(reference_provenance_path.name)
+        for path in network_files.values():
+            exported_files.append(Path(path).name)
+        exported_files = list(dict.fromkeys(exported_files))
+        self._write_json(
+            summary_path,
+            {
+                "exported_at": timestamp.isoformat(),
+                "rp_run": self._run_summary(rp_result),
+                "spectral_run": self._run_summary(spectral_result),
+                "benchmark": {
+                    "status": benchmark_rollup["benchmark_status"],
+                    "target": benchmark_rollup["benchmark_target"],
+                    "reference_id": benchmark_rollup["benchmark_reference_id"],
+                    "pass_rate": benchmark_rollup["pass_rate"],
+                    "failed_fields": benchmark_rollup["failed_fields"],
+                    "deviation_summary": benchmark_rollup["benchmark_deviation_summary"],
+                },
+                "method_summary": method_summary,
+                "reference_provenance": reference_provenance,
+                "network_validation": network_validation,
+                "exported_files": exported_files,
+            },
+        )
+        self._write_json(config_path, {"rp_config_snapshot": rp_config_snapshot, "spectral_config_snapshot": spectral_config_snapshot})
+        self._write_json(project_site_path, {"project": self._to_jsonable(project), "site": self._to_jsonable(site)})
+        report_snapshot_path = write_report_snapshot(export_root=export_root, report_payload=report_payload, report_key=report_key)
+        manifest_payload = {
+            "exported_at": timestamp.isoformat(),
+            "full_output_mode": full_output_mode,
+            "data_sources": {
+                "rp_run_id": rp_result.run_id if rp_result else None,
+                "spectral_run_id": spectral_result.run_id if spectral_result else None,
+            },
+            "screening_config": self._extract_screening_config(rp_config_snapshot),
+            "advanced_test_thresholds": self._extract_advanced_test_thresholds(rp_config_snapshot),
+            "benchmark_status": benchmark_rollup["benchmark_status"],
+            "benchmark_target": benchmark_rollup["benchmark_target"],
+            "benchmark_reference_id": benchmark_rollup["benchmark_reference_id"],
+            "benchmark_thresholds": benchmark_rollup["benchmark_thresholds"],
+            "benchmark_deviation_summary": benchmark_rollup["benchmark_deviation_summary"],
+            "pass_rate": benchmark_rollup["pass_rate"],
+            "failed_fields": benchmark_rollup["failed_fields"],
+            "reference_provenance": reference_provenance,
+            "continuous_dataset_enabled": bool(rp_config_snapshot.get("continuous_dataset", {}).get("enabled", False)),
+            "density_correction_mode": rp_config_snapshot.get("density_correction_mode", "wpl"),
+            "rotation_mode": rp_config_snapshot.get("rotation_mode", "double"),
+            "detrend_mode": rp_config_snapshot.get("detrend_mode", "block_mean"),
+            "lag_strategy": rp_config_snapshot.get("lag_phase", {}).get("strategy", ""),
+            "footprint_method": method_summary.get("footprint_method", ""),
+            "footprint_summary": method_summary.get("footprint_summary", {}),
+            "footprint_provenance": method_summary.get("footprint_summary", {}).get("provenance", ""),
+            "uncertainty_method": method_summary.get("uncertainty_method", ""),
+            "uncertainty_summary": method_summary.get("uncertainty_summary", {}),
+            "uncertainty_provenance": method_summary.get("uncertainty_summary", {}).get("provenance", ""),
+            "spectral_correction_method": method_summary.get("spectral_correction_method", ""),
+            "spectral_correction_summary": method_summary.get("spectral_correction_summary", {}),
+            "spectral_correction_provenance": method_summary.get("spectral_correction_summary", {}).get("provenance", ""),
+            "schema_target": network_validation.get("schema_target", ""),
+            "network_validation_status": network_validation.get("validation_status", ""),
+            "network_missing_fields": network_validation.get("missing_fields", []),
+            "network_validation_summary": network_validation,
+            "method_provenance_fields": [
+                "primary_flux_source",
+                "applied_rotation_impl",
+                "requested_rotation_mode",
+                "lag_strategy",
+                "lag_fallback_reason",
+                "density_correction_mode",
+                "density_correction_reason",
+                "screening_config",
+                "screening_summary",
+                "footprint_method",
+                "footprint_provenance",
+                "uncertainty_method",
+                "uncertainty_provenance",
+                "spectral_correction_method",
+                "spectral_correction_provenance",
+                "spectral_correction_limitations",
+                "method_deviation_notes",
+            ],
+            "field_schema": [
+                {"name": name, "group": group, "value_status": value_status}
+                for name, group, value_status in FULL_OUTPUT_SCHEMA
+                if full_output_mode == "standard_schema" or any(row.get(name) not in ("", None) for row in full_output_rows)
+            ],
+            "exported_files": exported_files,
+        }
+        self._write_json(
+            manifest_path,
+            manifest_payload,
+        )
+        files = {
+            "rp_results": str(rp_results_path),
+            "spectral_qc_results": str(spectral_results_path),
+            "full_output": str(full_output_path),
+            "summary": str(summary_path),
+            "config_snapshot": str(config_path),
+            "project_site_snapshot": str(project_site_path),
+            "report_snapshot": str(report_snapshot_path),
+            "export_manifest": str(manifest_path),
+        }
+        if benchmark_summary_path is not None:
+            files["benchmark_summary_artifact"] = str(benchmark_summary_path)
+        if parity_artifact_path is not None:
+            files["parity_artifact"] = str(parity_artifact_path)
+        if reference_provenance_path is not None:
+            files["reference_provenance_artifact"] = str(reference_provenance_path)
+            provenance_artifact_payload = json.loads(reference_provenance_path.read_text(encoding="utf-8"))
+            for key, file_key in (
+                ("copied_source_file", "reference_source_file"),
+                ("copied_json_source", "reference_normalized_json"),
+                ("copied_provenance_file", "reference_provenance_file"),
+            ):
+                copied = provenance_artifact_payload.get(key)
+                if copied:
+                    files[file_key] = str(copied)
+        files.update(network_files)
+        return {
+            "export_root": str(export_root),
+            "summary_text": self._summary_text(rp_result=rp_result, spectral_result=spectral_result),
+            "files": files,
+        }
+
+    def _bundle_suffix(self, *, rp_result: RPRunResult | None, spectral_result: SpectralRunResult | None, timestamp: datetime) -> str:
+        if spectral_result is not None:
+            return f"result_bundle_{spectral_result.run_id}"
+        if rp_result is not None:
+            return f"result_bundle_{rp_result.run_id}"
+        return f"result_bundle_{timestamp:%Y%m%d_%H%M%S}"
+
+    def _summary_text(self, *, rp_result: RPRunResult | None, spectral_result: SpectralRunResult | None) -> str:
+        return f"Exported RP windows={len(rp_result.windows) if rp_result else 0}, spectral/QC windows={len(spectral_result.windows) if spectral_result else 0}."
+
+    def _run_summary(self, run_result: RPRunResult | SpectralRunResult | None) -> dict[str, Any]:
+        if run_result is None:
+            return {"status": "missing", "run_id": None, "window_count": 0, "summary": {}}
+        return {"status": "ok", "run_id": run_result.run_id, "created_at": run_result.created_at.isoformat(), "window_count": len(run_result.windows), "summary": self._to_jsonable(run_result.summary)}
+
+    def _rp_row(self, window: WindowRPResult) -> dict[str, Any]:
+        return {
+            "window_id": window.window_id,
+            "start_time": window.start_time.isoformat(),
+            "end_time": window.end_time.isoformat(),
+            "sample_count": window.sample_count,
+            "valid_sample_count": window.valid_sample_count,
+            "continuity_ratio": window.continuity_ratio,
+            "missing_ratio": window.missing_ratio,
+            "rotation_mode": window.rotation_mode,
+            "detrend_mode": window.detrend_mode,
+            "lag_seconds": window.lag_seconds,
+            "lag_confidence": window.lag_confidence,
+            "lag_strategy": window.diagnostics.get("lag_strategy", "") if window.diagnostics else "",
+            "cov_w_co2": window.cov_w_co2,
+            "cov_w_h2o": window.cov_w_h2o,
+            "raw_flux": window.raw_flux,
+            "mixing_ratio_flux": window.mixing_ratio_flux,
+            "density_corrected_flux": window.density_corrected_flux,
+            "primary_flux": window.primary_flux,
+            "primary_flux_source": window.primary_flux_source,
+            "water_vapor_flux": window.water_vapor_flux,
+            "qc_grade": window.qc_grade,
+            "anomaly_type": window.anomaly_type,
+            "reason": window.reason,
+        }
+
+    def _spectral_row(self, window: WindowSpectralResult) -> dict[str, Any]:
+        return {
+            "window_id": window.window_id,
+            "start_time": window.start_time.isoformat(),
+            "end_time": window.end_time.isoformat(),
+            "qc_grade": window.qc_grade,
+            "anomaly_type": window.anomaly_type,
+            "lag_seconds": window.lag_seconds,
+            "lag_confidence": window.lag_confidence,
+            "correction_factor": window.correction_factor,
+            "high_freq_loss_risk": window.high_freq_loss_risk,
+            "reason": window.reason,
+            "corrected_flux_before": window.corrected_flux_before,
+            "corrected_flux_after": window.corrected_flux_after,
+            "sample_count": window.sample_count,
+        }
+
+    def _full_output_rows(self, *, rp_result: RPRunResult | None, spectral_result: SpectralRunResult | None, mode: str) -> list[dict[str, Any]]:
+        rp_windows = {window.window_id: window for window in (rp_result.windows if rp_result else [])}
+        spectral_windows = {window.window_id: window for window in (spectral_result.windows if spectral_result else [])}
+        ordered_ids = list(dict.fromkeys([*rp_windows.keys(), *spectral_windows.keys()]))
+        rows: list[dict[str, Any]] = []
+        for window_id in ordered_ids:
+            rp_window = rp_windows.get(window_id)
+            spectral_window = spectral_windows.get(window_id)
+            uncertainty = rp_window.uncertainty_detail if rp_window else {}
+            turbulence = rp_window.turbulence_detail if rp_window else {}
+            diagnostics = rp_window.diagnostics if rp_window else {}
+            row = {
+                "window_id": window_id,
+                "start_time": (rp_window.start_time if rp_window else spectral_window.start_time).isoformat() if (rp_window or spectral_window) else "",
+                "end_time": (rp_window.end_time if rp_window else spectral_window.end_time).isoformat() if (rp_window or spectral_window) else "",
+                "qc_grade": rp_window.qc_grade if rp_window else (spectral_window.qc_grade if spectral_window else ""),
+                "lag_seconds": rp_window.lag_seconds if rp_window else (spectral_window.lag_seconds if spectral_window else ""),
+                "lag_confidence": rp_window.lag_confidence if rp_window else (spectral_window.lag_confidence if spectral_window else ""),
+                "lag_strategy": diagnostics.get("lag_strategy", "") if diagnostics else "",
+                "lag_fallback_reason": diagnostics.get("lag_fallback_reason", "") if diagnostics else "",
+                "rotation_mode": rp_window.rotation_mode if rp_window else "",
+                "detrend_mode": rp_window.detrend_mode if rp_window else "",
+                "raw_flux": rp_window.raw_flux if rp_window else "",
+                "density_corrected_flux": rp_window.density_corrected_flux if rp_window else "",
+                "correction_factor": spectral_window.correction_factor if spectral_window else "",
+                "corrected_flux_after": spectral_window.corrected_flux_after if spectral_window else "",
+                "stationarity_score": rp_window.stationarity_score if rp_window else "",
+                "turbulence_score": rp_window.turbulence_score if rp_window else "",
+                "ustar": rp_window.ustar if rp_window else "",
+                "relative_uncertainty": uncertainty.get("relative_uncertainty", uncertainty.get("relative_error", "")) if uncertainty else "",
+                "uncertainty_status": uncertainty.get("status", "placeholder") if uncertainty else "placeholder",
+                "uncertainty_provenance": json.dumps(
+                    {
+                        "selected_method": uncertainty.get("selected_method"),
+                        "provenance": uncertainty.get("provenance"),
+                        "limitations": uncertainty.get("limitations", []),
+                        "components": uncertainty.get("components", {}),
+                        "relative_uncertainty": uncertainty.get("relative_uncertainty", uncertainty.get("relative_error")),
+                    },
+                    ensure_ascii=False,
+                )
+                if uncertainty
+                else "",
+                "var_u": turbulence.get("var_u", "") if rp_window else "",
+                "var_v": turbulence.get("var_v", "") if rp_window else "",
+                "var_w": turbulence.get("var_w", "") if rp_window else "",
+                "cov_uw": turbulence.get("cov_uw", "") if rp_window else "",
+                "cov_vw": turbulence.get("cov_vw", "") if rp_window else "",
+                "turbulence_intermediate": json.dumps(turbulence, ensure_ascii=False) if turbulence else "",
+                "diagnostics_flags": ",".join(str(item) for item in rp_window.qc_flags) if rp_window and rp_window.qc_flags else "",
+                "diagnostics_issues": ",".join(str(item) for item in diagnostics.get("issues", [])) if diagnostics else "",
+                "screening_detail": json.dumps(diagnostics.get("screening_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("screening_detail") else "",
+                "screening_config": json.dumps(diagnostics.get("screening_config", {}), ensure_ascii=False) if diagnostics and diagnostics.get("screening_config") else "",
+                "density_correction_mode": diagnostics.get("density_correction_mode", "") if diagnostics else "",
+                "density_correction_reason": diagnostics.get("density_correction_reason", "") if diagnostics else "",
+                "primary_flux": rp_window.primary_flux if rp_window else "",
+                "primary_flux_source": rp_window.primary_flux_source if rp_window else "",
+                "requested_rotation_mode": diagnostics.get("requested_rotation_mode", "") if diagnostics else "",
+                "applied_rotation_impl": diagnostics.get("applied_rotation_impl", "") if diagnostics else "",
+                "lag_fallback_reason": diagnostics.get("lag_fallback_reason", "") if diagnostics else "",
+                "screening_summary": diagnostics.get("screening_summary", "") if diagnostics else "",
+                "qc_details": json.dumps(diagnostics.get("qc_details", {}), ensure_ascii=False) if diagnostics and diagnostics.get("qc_details") else "",
+                "metadata_summary": json.dumps(diagnostics.get("metadata_summary", {}), ensure_ascii=False) if diagnostics and diagnostics.get("metadata_summary") else "",
+                "wpl_water_vapor_term": diagnostics.get("wpl_water_vapor_term", "") if diagnostics else "",
+                "wpl_sensible_heat_term": diagnostics.get("wpl_sensible_heat_term", "") if diagnostics else "",
+                "advanced_qc_contribution": json.dumps(diagnostics.get("advanced_qc_contribution", {}), ensure_ascii=False) if diagnostics and diagnostics.get("advanced_qc_contribution") else "",
+                "advanced_test_weights": json.dumps(diagnostics.get("advanced_test_weights", {}), ensure_ascii=False) if diagnostics and diagnostics.get("advanced_test_weights") else "",
+                "advanced_test_thresholds": json.dumps(diagnostics.get("advanced_test_thresholds", {}), ensure_ascii=False) if diagnostics and diagnostics.get("advanced_test_thresholds") else "",
+                "wpl_benchmark_status": json.dumps(diagnostics.get("wpl_benchmark_status", {}), ensure_ascii=False) if diagnostics and diagnostics.get("wpl_benchmark_status") else "",
+                "benchmark_status": diagnostics.get("benchmark_status", "") if diagnostics else "",
+                "benchmark_target": diagnostics.get("benchmark_target", "") if diagnostics else "",
+                "benchmark_deviation_summary": json.dumps(diagnostics.get("benchmark_deviation_summary", {}), ensure_ascii=False) if diagnostics and diagnostics.get("benchmark_deviation_summary") else "",
+                "benchmark_reference_id": diagnostics.get("benchmark_reference_id", "") if diagnostics else "",
+                "benchmark_thresholds": json.dumps(diagnostics.get("benchmark_thresholds", {}), ensure_ascii=False) if diagnostics and diagnostics.get("benchmark_thresholds") else "",
+                "continuous_dataset_enabled": diagnostics.get("continuous_dataset_enabled", False) if diagnostics else False,
+                "footprint_peak_distance_m": diagnostics.get("footprint_peak_distance_m", "") if diagnostics else "",
+                "footprint_method": diagnostics.get("footprint_method", "") if diagnostics else "",
+                "footprint_offset_distance_m": diagnostics.get("footprint_offset_distance_m", "") if diagnostics else "",
+                "footprint_contribution_distances": json.dumps(diagnostics.get("footprint_contribution_distances", {}), ensure_ascii=False) if diagnostics and diagnostics.get("footprint_contribution_distances") else "",
+                "uncertainty_method": diagnostics.get("uncertainty_method", "") if diagnostics else "",
+                "uncertainty_method_detail": json.dumps(diagnostics.get("uncertainty_method_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("uncertainty_method_detail") else "",
+                "spectral_correction_method": diagnostics.get("spectral_correction_method", "") if diagnostics else "",
+                "spectral_correction_factor": diagnostics.get("spectral_correction_factor", "") if diagnostics else "",
+                "spectral_correction_detail": json.dumps(diagnostics.get("spectral_correction_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("spectral_correction_detail") else "",
+                "spectral_correction_provenance": diagnostics.get("spectral_correction_provenance", "") if diagnostics else "",
+                "spectral_correction_limitations": json.dumps(diagnostics.get("spectral_correction_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("spectral_correction_limitations") else "",
+                "schema_target": diagnostics.get("schema_target", "") if diagnostics else "",
+                "fluxnet_timestamp_refers_to": diagnostics.get("fluxnet_timestamp_refers_to", "") if diagnostics else "",
+                "fluxnet_timezone_offset_h": diagnostics.get("fluxnet_timezone_offset_h", "") if diagnostics else "",
+                "fluxnet_gap_fill_value": diagnostics.get("fluxnet_gap_fill_value", "") if diagnostics else "",
+            }
+            if mode == "only_available":
+                row = {key: value for key, value in row.items() if value not in ("", None)}
+            rows.append(row)
+        return rows
+
+    def _full_output_headers(self, *, mode: str) -> list[str]:
+        if mode == "standard_schema":
+            return [name for name, _group, _status in FULL_OUTPUT_SCHEMA]
+        return [name for name, _group, _status in FULL_OUTPUT_SCHEMA if _status != "placeholder"]
+
+    def _rp_headers(self) -> list[str]:
+        return list(self._rp_row(self._empty_rp_window()).keys())
+
+    def _spectral_headers(self) -> list[str]:
+        return list(self._spectral_row(self._empty_spectral_window()).keys())
+
+    def _write_csv(self, path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            if rows:
+                writer.writerows(rows)
+
+    def _write_json(self, path: Path, payload: Any) -> None:
+        path.write_text(json.dumps(self._to_jsonable(payload), ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _to_jsonable(self, payload: Any) -> Any:
+        if is_dataclass(payload):
+            return self._to_jsonable(asdict(payload))
+        if isinstance(payload, dict):
+            return {key: self._to_jsonable(value) for key, value in payload.items()}
+        if isinstance(payload, list):
+            return [self._to_jsonable(item) for item in payload]
+        if isinstance(payload, datetime):
+            return payload.isoformat()
+        if isinstance(payload, Path):
+            return str(payload)
+        return payload
+
+    def _empty_rp_window(self) -> WindowRPResult:
+        now = datetime(2000, 1, 1)
+        return WindowRPResult(window_id="", start_time=now, end_time=now, sample_count=0, valid_sample_count=0, continuity_ratio=0.0, missing_ratio=0.0, rotation_mode="", detrend_mode="", lag_seconds=0.0, lag_confidence=0.0, cov_w_co2=0.0, cov_w_h2o=0.0, raw_flux=0.0, mixing_ratio_flux=0.0, density_corrected_flux=0.0, water_vapor_flux=0.0, air_molar_density=0.0, dry_air_molar_density=0.0, mean_co2_ppm=0.0, mean_h2o_mmol=0.0, mean_pressure_kpa=0.0, mean_temp_c=0.0, qc_grade="", anomaly_type="", reason="")
+
+    def _extract_screening_config(self, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        screening = rp_config_snapshot.get("screening", {})
+        return {
+            "skewness_threshold": screening.get("skewness_threshold", 2.0),
+            "kurtosis_threshold": screening.get("kurtosis_threshold", 7.0),
+            "dropout_min_run": screening.get("dropout_min_run", 10),
+            "spike_sigma": screening.get("spike_sigma", 5.0),
+            "discontinuity_sigma": screening.get("discontinuity_sigma", 8.0),
+            "absolute_limits": screening.get("absolute_limits", None),
+        }
+
+    def _extract_advanced_test_thresholds(self, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        adv = rp_config_snapshot.get("advanced_tests", {})
+        return {
+            "amplitude_resolution_ratio_threshold": adv.get("amplitude_resolution_ratio_threshold", 10.0),
+            "time_lag_max_lag_s": adv.get("time_lag_max_lag_s", 5.0),
+            "time_lag_confidence_threshold": adv.get("time_lag_confidence_threshold", 0.4),
+            "angle_of_attack_max_angle_deg": adv.get("angle_of_attack_max_angle_deg", 40.0),
+            "steadiness_cv_threshold": adv.get("steadiness_cv_threshold", 0.50),
+        }
+
+    def _extract_benchmark_thresholds(self, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        bm = rp_config_snapshot.get("benchmark", {})
+        return {
+            "flux_rel_threshold": float(bm.get("flux_rel_threshold", 0.10)),
+            "lag_abs_threshold_s": float(bm.get("lag_abs_threshold_s", 0.5)),
+            "wpl_rel_threshold": float(bm.get("wpl_rel_threshold", 0.20)),
+            "qc_grade_must_match": bool(bm.get("qc_grade_must_match", False)),
+        }
+
+    def _benchmark_results_for_run(self, rp_result: RPRunResult | None) -> list[dict[str, Any]]:
+        if not rp_result or not rp_result.windows:
+            return []
+        results: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            diagnostics = window.diagnostics or {}
+            benchmark = diagnostics.get("benchmark_deviation_summary", {})
+            if benchmark:
+                results.append(dict(benchmark))
+        return results
+
+    def _benchmark_rollup(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        benchmark_results = self._benchmark_results_for_run(rp_result)
+        benchmark_cfg = dict(rp_config_snapshot.get("benchmark", {}))
+        if rp_result and isinstance(rp_result.summary, dict):
+            benchmark_cfg.setdefault("status", rp_result.summary.get("benchmark_status", benchmark_cfg.get("status", "")))
+            benchmark_cfg.setdefault("target", rp_result.summary.get("benchmark_target", benchmark_cfg.get("target", "")))
+            benchmark_cfg.setdefault("reference_id", rp_result.summary.get("benchmark_reference_id", benchmark_cfg.get("reference_id", "")))
+        summary = self.compute_benchmark_summary(rp_result=rp_result, benchmark_results=benchmark_results)
+        if rp_result and isinstance(rp_result.summary, dict):
+            benchmark_deviation_summary = rp_result.summary.get("benchmark_deviation_summary")
+            if isinstance(benchmark_deviation_summary, dict) and benchmark_deviation_summary:
+                summary["field_summary"] = benchmark_deviation_summary.get("field_summary", summary.get("field_summary", {}))
+        return {
+            "benchmark_status": str(benchmark_cfg.get("status", "")),
+            "benchmark_target": str(benchmark_cfg.get("target", "")),
+            "benchmark_reference_id": str(benchmark_cfg.get("reference_id", "")),
+            "benchmark_thresholds": self._extract_benchmark_thresholds(rp_config_snapshot),
+            "benchmark_deviation_summary": {
+                "status": summary.get("status", "no_benchmark"),
+                "windows_compared": int(summary.get("windows_compared", 0)),
+                "windows_pass": int(summary.get("windows_pass", 0)),
+                "windows_fail": int(summary.get("windows_fail", 0)),
+                "field_summary": summary.get("field_summary", {}),
+            },
+            "pass_rate": float(summary.get("pass_rate", 0.0) or 0.0),
+            "failed_fields": sorted(
+                field_name
+                for field_name, field_summary in (summary.get("field_summary", {}) or {}).items()
+                if int(field_summary.get("failed", 0)) > 0
+            ),
+            "benchmark_results": benchmark_results,
+            "summary": summary,
+        }
+
+    def _method_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        defaults = {
+            "footprint_method": "",
+            "footprint_summary": {},
+            "uncertainty_method": "",
+            "uncertainty_summary": {},
+            "spectral_correction_method": "",
+            "spectral_correction_summary": {},
+        }
+        if rp_result is None:
+            return defaults
+        summary = dict(rp_result.summary or {})
+        method_summary = {
+            "footprint_method": str(summary.get("footprint_method", "")),
+            "footprint_summary": dict(summary.get("footprint_summary", {}) or {}),
+            "uncertainty_method": str(summary.get("uncertainty_method", "")),
+            "uncertainty_summary": dict(summary.get("uncertainty_summary", {}) or {}),
+            "spectral_correction_method": str(summary.get("spectral_correction_method", "")),
+            "spectral_correction_summary": dict(summary.get("spectral_correction_summary", {}) or {}),
+        }
+        if any(method_summary.values()):
+            return method_summary
+        if not rp_result.windows:
+            return defaults
+        first_diag = dict(rp_result.windows[0].diagnostics or {})
+        footprint_detail = dict(first_diag.get("footprint_detail", {}) or {})
+        uncertainty_detail = dict(first_diag.get("uncertainty_method_detail", {}) or rp_result.windows[0].uncertainty_detail or {})
+        spectral_detail = dict(first_diag.get("spectral_correction_detail", {}) or {})
+        return {
+            "footprint_method": str(first_diag.get("footprint_method", "")),
+            "footprint_summary": {
+                "method": str(first_diag.get("footprint_method", "")),
+                "peak_distance_m": first_diag.get("footprint_peak_distance_m"),
+                "offset_distance_m": first_diag.get("footprint_offset_distance_m"),
+                "contribution_distances": dict(first_diag.get("footprint_contribution_distances", {}) or {}),
+                "provenance": footprint_detail.get("provenance", ""),
+                "limitations": footprint_detail.get("limitations", []),
+                "detail": footprint_detail,
+            },
+            "uncertainty_method": str(first_diag.get("uncertainty_method", "")),
+            "uncertainty_summary": {
+                "method": str(first_diag.get("uncertainty_method", "")),
+                "selected_method": uncertainty_detail.get("selected_method", ""),
+                "relative_uncertainty": uncertainty_detail.get("relative_uncertainty", uncertainty_detail.get("relative_error")),
+                "components": dict(uncertainty_detail.get("components", {}) or {}),
+                "provenance": uncertainty_detail.get("provenance", ""),
+                "limitations": uncertainty_detail.get("limitations", []),
+                "detail": uncertainty_detail,
+            },
+            "spectral_correction_method": str(first_diag.get("spectral_correction_method", "")),
+            "spectral_correction_summary": {
+                "method": str(first_diag.get("spectral_correction_method", "")),
+                "correction_factor": first_diag.get("spectral_correction_factor"),
+                "provenance": first_diag.get("spectral_correction_provenance", ""),
+                "limitations": first_diag.get("spectral_correction_limitations", []),
+                "detail": spectral_detail,
+            },
+        }
+
+    def _reference_json_path(self, reference_id: str) -> Path | None:
+        if not reference_id:
+            return None
+        references_root = Path(__file__).resolve().parent.parent.parent / "references" / "eddypro"
+        matches = sorted(references_root.rglob(f"{reference_id}.json"))
+        return matches[0] if matches else None
+
+    def _reference_provenance_payload(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        artifact = {}
+        if rp_result:
+            artifact = dict(rp_result.artifacts.get("reference_provenance", {}) or {})
+            if artifact:
+                return artifact
+        reference_id = str(rp_config_snapshot.get("benchmark", {}).get("reference_id", ""))
+        if not reference_id:
+            return {}
+        json_path = self._reference_json_path(reference_id)
+        if json_path is None:
+            return {
+                "status": "reference_not_found",
+                "reference_id": reference_id,
+                "source_file": "",
+                "normalization_command": "",
+            }
+        provenance = generate_reference_provenance(json_path)
+        provenance["status"] = "ready"
+        provenance["source_file"] = provenance.get("original_file", "")
+        provenance["qc_mapping"] = provenance.get("qc_mapping_strategy", "")
+        provenance_path = json_path.parent / f"{json_path.stem}_provenance.json"
+        provenance["provenance_file"] = str(provenance_path)
+        provenance["normalization_command"] = (
+            f'python {provenance.get("normalization_script", "references/eddypro/normalize_reference.py")} '
+            f'"{provenance.get("original_file", json_path.with_suffix(".csv"))}" "{json_path}" --provenance "{provenance_path}"'
+        )
+        return provenance
+
+    def _copy_artifact_file(self, *, path: str | Path | None, export_root: Path, target_name: str | None = None) -> str:
+        if not path:
+            return ""
+        source = Path(path)
+        if not source.exists() or not source.is_file():
+            return ""
+        target = export_root / (target_name or source.name)
+        if source.resolve() != target.resolve():
+            shutil.copy2(source, target)
+        return str(target)
+
+    def export_reference_provenance_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+    ) -> Path | None:
+        provenance = self._reference_provenance_payload(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not provenance:
+            return None
+        artifact = dict(provenance)
+        source_file = self._copy_artifact_file(path=artifact.get("source_file"), export_root=export_root)
+        json_source = self._copy_artifact_file(path=artifact.get("json_source"), export_root=export_root)
+        provenance_file = self._copy_artifact_file(path=artifact.get("provenance_file"), export_root=export_root)
+        artifact["copied_source_file"] = source_file
+        artifact["copied_json_source"] = json_source
+        artifact["copied_provenance_file"] = provenance_file
+        artifact["qc_mapping"] = artifact.get("qc_mapping", artifact.get("qc_mapping_strategy", ""))
+        path = export_root / "reference_provenance_artifact.json"
+        self._write_json(path, artifact)
+        return path
+
+    def _network_output_config(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any], site: object | None = None) -> dict[str, Any]:
+        config = dict(rp_config_snapshot.get("network_output", {}) or {})
+        first_diag = {}
+        if rp_result and rp_result.windows:
+            first_diag = dict(rp_result.windows[0].diagnostics or {})
+        schema_target = str(config.get("schema_target") or first_diag.get("schema_target") or "")
+        timestamp_refers_to = str(config.get("timestamp_refers_to") or first_diag.get("fluxnet_timestamp_refers_to") or "start")
+        if "end" in timestamp_refers_to.lower():
+            timestamp_refers_to = "end"
+        else:
+            timestamp_refers_to = "start"
+        timezone_offset_hours = float(config.get("timezone_offset_hours", first_diag.get("fluxnet_timezone_offset_h", 0.0)) or 0.0)
+        gap_fill_value = float(config.get("gap_fill_value", first_diag.get("fluxnet_gap_fill_value", -9999.0)) or -9999.0)
+        site_id = getattr(site, "station_code", "") if site is not None else ""
+        return {
+            "schema_target": schema_target,
+            "timestamp_refers_to": timestamp_refers_to,
+            "timezone_offset_hours": timezone_offset_hours,
+            "gap_fill_value": gap_fill_value,
+            "site_id": str(site_id or ""),
+        }
+
+    def _network_validation_summary_from_path(self, path: Path | None, *, schema_target: str) -> dict[str, Any]:
+        if path is None or not path.exists():
+            return {
+                "schema_target": schema_target,
+                "validation_status": "not_requested" if not schema_target else "artifact_missing",
+                "missing_fields": [],
+                "artifact": "",
+            }
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        metadata = payload.get("metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        return {
+            "schema_target": str(metadata.get("schema_target", schema_target)),
+            "validation_status": str(metadata.get("validation_status", "unknown")),
+            "missing_fields": list(metadata.get("missing_fields", [])),
+            "error_count": int(metadata.get("error_count", 0) or 0),
+            "artifact": str(path),
+        }
+
+    def _export_network_artifacts(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+        site: object | None = None,
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        config = self._network_output_config(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot, site=site)
+        schema_target = config.get("schema_target", "")
+        if not schema_target:
+            return (
+                {
+                    "schema_target": "",
+                    "validation_status": "not_requested",
+                    "missing_fields": [],
+                    "error_count": 0,
+                    "artifact": "",
+                },
+                {},
+            )
+
+        files: dict[str, str] = {}
+        metadata_path: Path | None = None
+        if schema_target == "FLUXNET":
+            foundation_path = self.export_fluxnet_half_hourly_artifact(
+                rp_result=rp_result,
+                export_root=export_root,
+                timezone_offset_hours=float(config["timezone_offset_hours"]),
+                timestamp_refers_to=str(config["timestamp_refers_to"]),
+                gap_fill_value=float(config["gap_fill_value"]),
+                site_id=str(config["site_id"]),
+            )
+            submission_path = self.export_fluxnet_full_submission(
+                rp_result=rp_result,
+                export_root=export_root,
+                timezone_offset_hours=float(config["timezone_offset_hours"]),
+                timestamp_refers_to=str(config["timestamp_refers_to"]),
+                gap_fill_value=float(config["gap_fill_value"]),
+                site_id=str(config["site_id"]),
+            )
+            if foundation_path is not None:
+                files["fluxnet_half_hourly_artifact"] = str(foundation_path)
+                csv_path = foundation_path.with_suffix(".csv")
+                if csv_path.exists():
+                    files["fluxnet_half_hourly_csv"] = str(csv_path)
+                metadata_path = foundation_path
+            if submission_path is not None:
+                files["fluxnet_full_submission"] = str(submission_path)
+                csv_path = export_root / "fluxnet_full_submission_data.csv"
+                if csv_path.exists():
+                    files["fluxnet_full_submission_csv"] = str(csv_path)
+        elif schema_target == "AmeriFlux":
+            artifact_path = self.export_ameriflux_artifact(
+                rp_result=rp_result,
+                export_root=export_root,
+                timezone_offset_hours=float(config["timezone_offset_hours"]),
+                timestamp_refers_to=str(config["timestamp_refers_to"]),
+                gap_fill_value=float(config["gap_fill_value"]),
+                site_id=str(config["site_id"]),
+            )
+            if artifact_path is not None:
+                metadata_path = artifact_path
+                files["ameriflux_artifact"] = str(artifact_path)
+                csv_path = export_root / "ameriflux_artifact.csv"
+                if csv_path.exists():
+                    files["ameriflux_csv"] = str(csv_path)
+        elif schema_target == "ICOS":
+            artifact_path = self.export_icos_artifact(
+                rp_result=rp_result,
+                export_root=export_root,
+                timezone_offset_hours=float(config["timezone_offset_hours"]),
+                timestamp_refers_to=str(config["timestamp_refers_to"]),
+                gap_fill_value=float(config["gap_fill_value"]),
+                site_id=str(config["site_id"]),
+            )
+            if artifact_path is not None:
+                metadata_path = artifact_path
+                files["icos_artifact"] = str(artifact_path)
+                csv_path = export_root / "icos_artifact.csv"
+                if csv_path.exists():
+                    files["icos_csv"] = str(csv_path)
+
+        summary = self._network_validation_summary_from_path(metadata_path, schema_target=schema_target)
+        summary.update(
+            {
+                "timestamp_refers_to": config["timestamp_refers_to"],
+                "timezone_offset_hours": config["timezone_offset_hours"],
+                "gap_fill_value": config["gap_fill_value"],
+            }
+        )
+        summary_path = export_root / "network_validation_summary.json"
+        self._write_json(summary_path, summary)
+        files["network_validation_summary"] = str(summary_path)
+        return summary, files
+
+    def _empty_spectral_window(self) -> WindowSpectralResult:
+        now = datetime(2000, 1, 1)
+        return WindowSpectralResult(window_id="", start_time=now, end_time=now, qc_grade="", anomaly_type="", lag_seconds=0.0, lag_confidence=0.0, correction_factor=0.0, high_freq_loss_risk="", reason="")
+
+    def generate_continuous_dataset(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        averaging_period_minutes: float = 30.0,
+    ) -> list[dict[str, Any]]:
+        if not rp_result or not rp_result.windows:
+            return []
+        from datetime import timedelta
+        period = timedelta(minutes=averaging_period_minutes)
+        first_start = min(w.start_time for w in rp_result.windows)
+        last_end = max(w.end_time for w in rp_result.windows)
+        window_map: dict[int, WindowRPResult] = {}
+        for w in rp_result.windows:
+            offset = w.start_time - first_start
+            slot = int(offset.total_seconds() / period.total_seconds() + 0.5)
+            window_map[slot] = w
+        total_slots = int((last_end - first_start).total_seconds() / period.total_seconds() + 0.5)
+        rows: list[dict[str, Any]] = []
+        for slot in range(total_slots):
+            slot_start = first_start + slot * period
+            slot_end = slot_start + period
+            window = window_map.get(slot)
+            if window is not None:
+                rows.append(self._rp_row(window))
+            else:
+                rows.append({
+                    "window_id": f"gap_{slot_start.isoformat()}",
+                    "start_time": slot_start.isoformat(),
+                    "end_time": slot_end.isoformat(),
+                    "sample_count": 0,
+                    "valid_sample_count": 0,
+                    "continuity_ratio": 0.0,
+                    "missing_ratio": 1.0,
+                    "rotation_mode": "",
+                    "detrend_mode": "",
+                    "lag_seconds": "",
+                    "lag_confidence": "",
+                    "lag_strategy": "",
+                    "cov_w_co2": "",
+                    "cov_w_h2o": "",
+                    "raw_flux": "",
+                    "mixing_ratio_flux": "",
+                    "density_corrected_flux": "",
+                    "primary_flux": "",
+                    "primary_flux_source": "",
+                    "water_vapor_flux": "",
+                    "qc_grade": "",
+                    "anomaly_type": "gap",
+                    "reason": "no data for this averaging period",
+                })
+        return rows
+
+    def export_qc_details_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows:
+            return None
+        rows: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            qc = window.diagnostics.get("qc_details", {}) if window.diagnostics else {}
+            row = {"window_id": window.window_id, "start_time": window.start_time.isoformat()}
+            for test_key, test_result in qc.items():
+                if isinstance(test_result, dict):
+                    row[f"adv_{test_key}_status"] = test_result.get("status", "")
+                    row[f"adv_{test_key}_detail"] = json.dumps(test_result.get("detail", {}), ensure_ascii=False)
+            rows.append(row)
+        path = export_root / "qc_details.json"
+        self._write_json(path, rows)
+        return path
+
+    def export_metadata_summary_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows:
+            return None
+        rows: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            ms = window.diagnostics.get("metadata_summary", {}) if window.diagnostics else {}
+            row = {"window_id": window.window_id, "start_time": window.start_time.isoformat()}
+            row.update(ms)
+            rows.append(row)
+        path = export_root / "metadata_summary.json"
+        self._write_json(path, rows)
+        return path
+
+    def export_stats_foundation_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows:
+            return None
+        rows: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            turb = window.turbulence_detail or {}
+            stat = window.stationarity_detail or {}
+            row = {
+                "window_id": window.window_id,
+                "start_time": window.start_time.isoformat(),
+                "end_time": window.end_time.isoformat(),
+                "qc_grade": window.qc_grade,
+                "stationarity_score": window.stationarity_score,
+                "turbulence_score": window.turbulence_score,
+                "ustar": window.ustar,
+                "var_u": turb.get("var_u", ""),
+                "var_v": turb.get("var_v", ""),
+                "var_w": turb.get("var_w", ""),
+                "cov_uw": turb.get("cov_uw", ""),
+                "cov_vw": turb.get("cov_vw", ""),
+                "mean_wind_speed": turb.get("mean_wind_speed", ""),
+                "mean_wind_dir": turb.get("mean_wind_dir", ""),
+            }
+            rows.append(row)
+        path = export_root / "stats_foundation.json"
+        self._write_json(path, rows)
+        return path
+
+    def compute_benchmark_summary(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        benchmark_results: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        if not benchmark_results:
+            return {"status": "no_benchmark", "windows_compared": 0, "windows_pass": 0, "windows_fail": 0, "field_summary": {}}
+        total = len(benchmark_results)
+        passed = sum(1 for r in benchmark_results if r.get("overall_pass", False))
+        field_summary: dict[str, Any] = {}
+        for result in benchmark_results:
+            for comp in result.get("comparisons", []):
+                fname = comp.get("field_name", "")
+                if fname not in field_summary:
+                    field_summary[fname] = {"total": 0, "passed": 0, "failed": 0, "max_abs_error": 0.0, "max_rel_error": 0.0}
+                field_summary[fname]["total"] += 1
+                if comp.get("passed", True):
+                    field_summary[fname]["passed"] += 1
+                else:
+                    field_summary[fname]["failed"] += 1
+                abs_err = comp.get("absolute_error")
+                rel_err = comp.get("relative_error")
+                if abs_err is not None:
+                    field_summary[fname]["max_abs_error"] = max(field_summary[fname]["max_abs_error"], abs_err)
+                if rel_err is not None:
+                    field_summary[fname]["max_rel_error"] = max(field_summary[fname]["max_rel_error"], rel_err)
+        return {
+            "status": "pass" if passed == total else "partial" if passed > 0 else "fail",
+            "windows_compared": total,
+            "windows_pass": passed,
+            "windows_fail": total - passed,
+            "pass_rate": passed / total if total > 0 else 0.0,
+            "field_summary": field_summary,
+        }
+
+    def export_benchmark_summary_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        benchmark_results: list[dict[str, Any]],
+        export_root: Path,
+        reference_id: str = "",
+        thresholds: dict[str, Any] | None = None,
+    ) -> Path | None:
+        if not benchmark_results:
+            return None
+        window_lookup = {window.window_id: window for window in (rp_result.windows if rp_result else [])}
+        summary = self.compute_benchmark_summary(rp_result=rp_result, benchmark_results=benchmark_results)
+        summary["reference_id"] = reference_id
+        summary["thresholds"] = thresholds or {}
+        per_window: list[dict[str, Any]] = []
+        for br in benchmark_results:
+            entry: dict[str, Any] = {"window_id": br.get("window_id", ""), "overall_pass": br.get("overall_pass", True)}
+            window = window_lookup.get(str(br.get("window_id", "")))
+            diagnostics = dict(window.diagnostics or {}) if window is not None else {}
+            for comp in br.get("comparisons", []):
+                fname = comp.get("field_name", "")
+                entry[f"{fname}_abs_error"] = comp.get("absolute_error")
+                entry[f"{fname}_rel_error"] = comp.get("relative_error")
+                entry[f"{fname}_passed"] = comp.get("passed")
+                entry[f"{fname}_threshold"] = comp.get("threshold")
+                if comp.get("note"):
+                    entry[f"{fname}_note"] = comp["note"]
+            entry["footprint_method"] = br.get("footprint_method", diagnostics.get("footprint_method", ""))
+            entry["uncertainty_method"] = br.get("uncertainty_method", diagnostics.get("uncertainty_method", ""))
+            entry["spectral_correction_method"] = br.get("spectral_correction_method", diagnostics.get("spectral_correction_method", ""))
+            entry["method_deviation_notes"] = br.get("method_deviation_notes") or _build_method_deviation_notes(diagnostics, br)
+            per_window.append(entry)
+        summary["per_window"] = per_window
+        path = export_root / "benchmark_summary.json"
+        self._write_json(path, summary)
+        return path
+
+    def export_fluxnet_half_hourly_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+        timezone_offset_hours: float = 0.0,
+        timestamp_refers_to: str = "start",
+        gap_fill_value: float = -9999.0,
+        site_id: str = "",
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows:
+            return None
+        from datetime import timedelta
+        rows: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            row = self._fluxnet_half_hourly_row(
+                window=window,
+                timezone_offset_hours=timezone_offset_hours,
+                timestamp_refers_to=timestamp_refers_to,
+                gap_fill_value=gap_fill_value,
+            )
+            rows.append(row)
+        continuous = self.generate_continuous_dataset(rp_result=rp_result, averaging_period_minutes=30.0)
+        for cont_row in continuous:
+            if cont_row.get("anomaly_type") == "gap":
+                gap_row = self._fluxnet_gap_row(
+                    cont_row=cont_row,
+                    timezone_offset_hours=timezone_offset_hours,
+                    timestamp_refers_to=timestamp_refers_to,
+                    gap_fill_value=gap_fill_value,
+                )
+                rows.append(gap_row)
+        rows.sort(key=lambda r: r.get("TIMESTAMP_START", ""))
+        all_errors: list[str] = []
+        for row in rows:
+            all_errors.extend(validate_fluxnet_row(row, schema_target="FLUXNET"))
+        missing_fields = self._detect_missing_fields(rows, NETWORK_SCHEMA_REGISTRY["FLUXNET"]["field_map"])
+        metadata = {
+            "site_id": site_id,
+            "schema_target": "FLUXNET",
+            "timezone_offset_hours": timezone_offset_hours,
+            "timestamp_refers_to": timestamp_refers_to,
+            "gap_fill_value": gap_fill_value,
+            "averaging_period_minutes": 30,
+            "record_count": len(rows),
+            "data_count": sum(1 for r in rows if r.get("FC") != gap_fill_value),
+            "gap_count": sum(1 for r in rows if r.get("FC") == gap_fill_value),
+            "validation_status": "pass" if not all_errors else "errors_found",
+            "error_count": len(all_errors),
+            "missing_fields": missing_fields,
+            "exported_at": datetime.now().isoformat(),
+        }
+        artifact = {"metadata": metadata, "rows": rows}
+        path = export_root / "fluxnet_half_hourly_foundation.json"
+        self._write_json(path, artifact)
+        csv_path = export_root / "fluxnet_half_hourly_foundation.csv"
+        if rows:
+            headers = list(rows[0].keys())
+            self._write_csv(csv_path, rows, headers)
+        return path
+
+    def _fluxnet_half_hourly_row(
+        self,
+        *,
+        window: WindowRPResult,
+        timezone_offset_hours: float,
+        timestamp_refers_to: str,
+        gap_fill_value: float,
+    ) -> dict[str, Any]:
+        from datetime import timedelta
+        start_utc = window.start_time
+        end_utc = window.end_time
+        local_start = start_utc + timedelta(hours=timezone_offset_hours)
+        local_end = end_utc + timedelta(hours=timezone_offset_hours)
+        if timestamp_refers_to == "end":
+            ts_start = end_utc.strftime("%Y%m%d%H%M")
+            ts_end = (end_utc + timedelta(minutes=30)).strftime("%Y%m%d%H%M")
+        else:
+            ts_start = start_utc.strftime("%Y%m%d%H%M")
+            ts_end = end_utc.strftime("%Y%m%d%H%M")
+        doy = local_start.timetuple().tm_yday
+        hour = local_start.hour
+        minute = local_start.minute
+        fc = window.primary_flux if window.primary_flux != 0.0 or window.raw_flux != 0.0 else gap_fill_value
+        le = window.water_vapor_flux if window.water_vapor_flux != 0.0 else gap_fill_value
+        qc = window.qc_grade
+        qc_num = {"A": 0, "B": 1, "C": 2}.get(qc, 2)
+        return {
+            "TIMESTAMP_START": ts_start,
+            "TIMESTAMP_END": ts_end,
+            "DOY": doy,
+            "HOUR": hour,
+            "MINUTE": minute,
+            "FC": fc,
+            "FC_QC": qc_num,
+            "LE": le,
+            "USTAR": window.ustar if window.ustar is not None else gap_fill_value,
+            "TA": window.mean_temp_c if window.mean_temp_c != 0.0 else gap_fill_value,
+            "PA": window.mean_pressure_kpa * 10.0 if window.mean_pressure_kpa != 0.0 else gap_fill_value,
+            "CO2": window.mean_co2_ppm if window.mean_co2_ppm != 0.0 else gap_fill_value,
+            "H2O": window.mean_h2o_mmol if window.mean_h2o_mmol != 0.0 else gap_fill_value,
+            "WIND_SPEED": "",
+            "WIND_DIR": "",
+            "TIMEZONE_OFFSET_H": timezone_offset_hours,
+            "TIMESTAMP_REFERS_TO": timestamp_refers_to,
+        }
+
+    def _fluxnet_gap_row(
+        self,
+        *,
+        cont_row: dict[str, Any],
+        timezone_offset_hours: float,
+        timestamp_refers_to: str,
+        gap_fill_value: float,
+    ) -> dict[str, Any]:
+        from datetime import datetime as _dt, timedelta
+        start_iso = cont_row.get("start_time", "")
+        end_iso = cont_row.get("end_time", "")
+        try:
+            start_utc = _dt.fromisoformat(start_iso)
+            end_utc = _dt.fromisoformat(end_iso)
+        except (ValueError, TypeError):
+            start_utc = _dt(2000, 1, 1)
+            end_utc = start_utc + timedelta(minutes=30)
+        local_start = start_utc + timedelta(hours=timezone_offset_hours)
+        if timestamp_refers_to == "end":
+            ts_start = end_utc.strftime("%Y%m%d%H%M")
+            ts_end = (end_utc + timedelta(minutes=30)).strftime("%Y%m%d%H%M")
+        else:
+            ts_start = start_utc.strftime("%Y%m%d%H%M")
+            ts_end = end_utc.strftime("%Y%m%d%H%M")
+        doy = local_start.timetuple().tm_yday
+        return {
+            "TIMESTAMP_START": ts_start,
+            "TIMESTAMP_END": ts_end,
+            "DOY": doy,
+            "HOUR": local_start.hour,
+            "MINUTE": local_start.minute,
+            "FC": gap_fill_value,
+            "FC_QC": 2,
+            "LE": gap_fill_value,
+            "USTAR": gap_fill_value,
+            "TA": gap_fill_value,
+            "PA": gap_fill_value,
+            "CO2": gap_fill_value,
+            "H2O": gap_fill_value,
+            "WIND_SPEED": "",
+            "WIND_DIR": "",
+            "TIMEZONE_OFFSET_H": timezone_offset_hours,
+            "TIMESTAMP_REFERS_TO": timestamp_refers_to,
+        }
+
+    def export_fluxnet_full_submission(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+        timezone_offset_hours: float = 0.0,
+        timestamp_refers_to: str = "start",
+        gap_fill_value: float = -9999.0,
+        site_id: str = "",
+        pi_name: str = "",
+        pi_email: str = "",
+        site_description: str = "",
+        vegetation_type: str = "",
+        latitude: float = 0.0,
+        longitude: float = 0.0,
+        elevation_m: float = 0.0,
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows:
+            return None
+        half_hourly_path = self.export_fluxnet_half_hourly_artifact(
+            rp_result=rp_result, export_root=export_root,
+            timezone_offset_hours=timezone_offset_hours,
+            timestamp_refers_to=timestamp_refers_to,
+            gap_fill_value=gap_fill_value, site_id=site_id,
+        )
+        if half_hourly_path is None:
+            return None
+        half_hourly_data = json.loads(half_hourly_path.read_text(encoding="utf-8"))
+        rows = half_hourly_data.get("rows", [])
+        badm_header = {
+            "SITE_ID": site_id,
+            "SUBMITTER_NAME": pi_name,
+            "SUBMITTER_EMAIL": pi_email,
+            "SITE_NAME": site_description or site_id,
+            "VEGETATION_TYPE": vegetation_type,
+            "LATITUDE": latitude,
+            "LONGITUDE": longitude,
+            "ELEVATION_M": elevation_m,
+            "TIMEZONE_OFFSET_H": timezone_offset_hours,
+            "TIMESTAMP_REFERS_TO": timestamp_refers_to,
+            "GAP_FILL_VALUE": gap_fill_value,
+            "AVERAGING_PERIOD_MIN": 30,
+        }
+        variable_list = []
+        for field_name, fmt, description in FLUXNET_HALF_HOURLY_SCHEMA:
+            variable_list.append({"name": field_name, "format": fmt, "description": description})
+        all_errors: list[str] = []
+        for row in rows:
+            row_errors = validate_fluxnet_row(row, schema_target="FLUXNET")
+            all_errors.extend(row_errors)
+        missing_fields = self._detect_missing_fields(rows, NETWORK_SCHEMA_REGISTRY["FLUXNET"]["field_map"])
+        validation_summary = {
+            "total_rows": len(rows),
+            "data_rows": sum(1 for r in rows if r.get("FC") != gap_fill_value),
+            "gap_rows": sum(1 for r in rows if r.get("FC") == gap_fill_value),
+            "error_count": len(all_errors),
+            "unique_errors": list(dict.fromkeys(all_errors))[:20],
+            "valid": len(all_errors) == 0,
+        }
+        submission = {
+            "metadata": {
+                "schema_target": "FLUXNET",
+                "validation_status": "pass" if not all_errors else "errors_found",
+                "missing_fields": missing_fields,
+                "error_count": len(all_errors),
+                "record_count": len(rows),
+            },
+            "badm_header": badm_header,
+            "variable_list": variable_list,
+            "validation_summary": validation_summary,
+            "half_hourly_data_file": "fluxnet_half_hourly_foundation.json",
+            "half_hourly_csv_file": "fluxnet_half_hourly_foundation.csv",
+            "exported_at": datetime.now().isoformat(),
+        }
+        path = export_root / "fluxnet_full_submission.json"
+        self._write_json(path, submission)
+        csv_path = export_root / "fluxnet_full_submission_data.csv"
+        if rows:
+            headers = list(rows[0].keys())
+            self._write_csv(csv_path, rows, headers)
+        return path
+
+    def export_ameriflux_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+        timezone_offset_hours: float = 0.0,
+        timestamp_refers_to: str = "start",
+        gap_fill_value: float = -9999.0,
+        site_id: str = "",
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows:
+            return None
+        from datetime import timedelta
+        rows: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            internal_row = self._fluxnet_half_hourly_row(
+                window=window,
+                timezone_offset_hours=timezone_offset_hours,
+                timestamp_refers_to=timestamp_refers_to,
+                gap_fill_value=gap_fill_value,
+            )
+            ameriflux_row = self._remap_row(internal_row, AMERIFLUX_FIELD_MAP)
+            start_utc = window.start_time
+            local_start = start_utc + timedelta(hours=timezone_offset_hours)
+            ameriflux_row["TIMESTAMP_START"] = local_start.strftime("%Y-%m-%d %H:%M")
+            end_local = window.end_time + timedelta(hours=timezone_offset_hours)
+            ameriflux_row["TIMESTAMP_END"] = end_local.strftime("%Y-%m-%d %H:%M")
+            rows.append(ameriflux_row)
+        continuous = self.generate_continuous_dataset(rp_result=rp_result, averaging_period_minutes=30.0)
+        for cont_row in continuous:
+            if cont_row.get("anomaly_type") == "gap":
+                gap_internal = self._fluxnet_gap_row(
+                    cont_row=cont_row,
+                    timezone_offset_hours=timezone_offset_hours,
+                    timestamp_refers_to=timestamp_refers_to,
+                    gap_fill_value=gap_fill_value,
+                )
+                ameriflux_gap = self._remap_row(gap_internal, AMERIFLUX_FIELD_MAP)
+                try:
+                    from datetime import datetime as _dt
+                    ts = _dt.strptime(gap_internal["TIMESTAMP_START"], "%Y%m%d%H%M") + timedelta(hours=timezone_offset_hours)
+                    ameriflux_gap["TIMESTAMP_START"] = ts.strftime("%Y-%m-%d %H:%M")
+                    ts_end = _dt.strptime(gap_internal["TIMESTAMP_END"], "%Y%m%d%H%M") + timedelta(hours=timezone_offset_hours)
+                    ameriflux_gap["TIMESTAMP_END"] = ts_end.strftime("%Y-%m-%d %H:%M")
+                except (ValueError, TypeError):
+                    pass
+                rows.append(ameriflux_gap)
+        rows.sort(key=lambda r: r.get("TIMESTAMP_START", ""))
+        all_errors: list[str] = []
+        for row in rows:
+            row_errors = validate_fluxnet_row(row, schema_target="AmeriFlux")
+            all_errors.extend(row_errors)
+        missing_fields = self._detect_missing_fields(rows, AMERIFLUX_FIELD_MAP)
+        validation_status = "pass" if not all_errors else "errors_found"
+        metadata = {
+            "site_id": site_id,
+            "schema_target": "AmeriFlux",
+            "timezone_offset_hours": timezone_offset_hours,
+            "timestamp_refers_to": timestamp_refers_to,
+            "gap_fill_value": gap_fill_value,
+            "record_count": len(rows),
+            "validation_status": validation_status,
+            "error_count": len(all_errors),
+            "missing_fields": missing_fields,
+            "exported_at": datetime.now().isoformat(),
+        }
+        artifact = {"metadata": metadata, "rows": rows}
+        path = export_root / "ameriflux_artifact.json"
+        self._write_json(path, artifact)
+        csv_path = export_root / "ameriflux_artifact.csv"
+        if rows:
+            headers = list(rows[0].keys())
+            self._write_csv(csv_path, rows, headers)
+        return path
+
+    def export_icos_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+        timezone_offset_hours: float = 0.0,
+        timestamp_refers_to: str = "start",
+        gap_fill_value: float = -9999.0,
+        site_id: str = "",
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows:
+            return None
+        from datetime import timedelta
+        rows: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            internal_row = self._fluxnet_half_hourly_row(
+                window=window,
+                timezone_offset_hours=timezone_offset_hours,
+                timestamp_refers_to=timestamp_refers_to,
+                gap_fill_value=gap_fill_value,
+            )
+            icos_row = self._remap_row(internal_row, ICOS_FIELD_MAP)
+            icos_row["TIMESTAMP_START"] = window.start_time.isoformat()
+            icos_row["TIMESTAMP_END"] = window.end_time.isoformat()
+            rows.append(icos_row)
+        continuous = self.generate_continuous_dataset(rp_result=rp_result, averaging_period_minutes=30.0)
+        for cont_row in continuous:
+            if cont_row.get("anomaly_type") == "gap":
+                gap_internal = self._fluxnet_gap_row(
+                    cont_row=cont_row,
+                    timezone_offset_hours=timezone_offset_hours,
+                    timestamp_refers_to=timestamp_refers_to,
+                    gap_fill_value=gap_fill_value,
+                )
+                icos_gap = self._remap_row(gap_internal, ICOS_FIELD_MAP)
+                icos_gap["TIMESTAMP_START"] = cont_row.get("start_time", "")
+                icos_gap["TIMESTAMP_END"] = cont_row.get("end_time", "")
+                rows.append(icos_gap)
+        rows.sort(key=lambda r: r.get("TIMESTAMP_START", ""))
+        all_errors: list[str] = []
+        for row in rows:
+            row_errors = validate_fluxnet_row(row, schema_target="ICOS")
+            all_errors.extend(row_errors)
+        missing_fields = self._detect_missing_fields(rows, ICOS_FIELD_MAP)
+        validation_status = "pass" if not all_errors else "errors_found"
+        metadata = {
+            "site_id": site_id,
+            "schema_target": "ICOS",
+            "timezone_offset_hours": timezone_offset_hours,
+            "timestamp_refers_to": timestamp_refers_to,
+            "gap_fill_value": gap_fill_value,
+            "record_count": len(rows),
+            "validation_status": validation_status,
+            "error_count": len(all_errors),
+            "missing_fields": missing_fields,
+            "exported_at": datetime.now().isoformat(),
+        }
+        artifact = {"metadata": metadata, "rows": rows}
+        path = export_root / "icos_artifact.json"
+        self._write_json(path, artifact)
+        csv_path = export_root / "icos_artifact.csv"
+        if rows:
+            headers = list(rows[0].keys())
+            self._write_csv(csv_path, rows, headers)
+        return path
+
+    def _remap_row(self, internal_row: dict[str, Any], field_map: dict[str, str]) -> dict[str, Any]:
+        remapped: dict[str, Any] = {}
+        for internal_key, external_key in field_map.items():
+            val = internal_row.get(internal_key)
+            remapped[external_key] = val
+        return remapped
+
+    def _detect_missing_fields(self, rows: list[dict[str, Any]], field_map: dict[str, str]) -> list[str]:
+        if not rows:
+            return list(field_map.values())
+        missing: list[str] = []
+        for internal_key, external_key in field_map.items():
+            all_empty = all(
+                row.get(external_key) in (None, "", -9999, -9999.0)
+                for row in rows
+            )
+            if all_empty and internal_key not in ("WIND_SPEED", "WIND_DIR"):
+                missing.append(external_key)
+        return missing
+
+    def export_parity_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        benchmark_results: list[dict[str, Any]],
+        export_root: Path,
+        reference_id: str = "",
+        thresholds: dict[str, Any] | None = None,
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows or not benchmark_results:
+            return None
+        per_window: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            diag = window.diagnostics or {}
+            bm_dev = diag.get("benchmark_deviation_summary", {})
+            if not bm_dev or bm_dev.get("status") == "reference_not_found":
+                per_window.append({
+                    "window_id": window.window_id,
+                    "primary_flux": window.primary_flux,
+                    "source": window.primary_flux_source,
+                    "lag_seconds": window.lag_seconds,
+                    "lag_strategy": diag.get("lag_strategy", ""),
+                    "rotation_mode": window.rotation_mode,
+                    "applied_rotation_impl": diag.get("applied_rotation_impl", ""),
+                    "wpl_water_vapor_term": diag.get("wpl_water_vapor_term"),
+                    "wpl_sensible_heat_term": diag.get("wpl_sensible_heat_term"),
+                    "qc_grade": window.qc_grade,
+                "qc_mapping": "EddyPro 0/1/2 -> A/B/C",
+                "match_strategy": "none",
+                "absolute_error": None,
+                "relative_error": None,
+                "pass_rate": None,
+                "notes": "no matching reference window",
+                "footprint_method": diag.get("footprint_method", ""),
+                "uncertainty_method": diag.get("uncertainty_method", ""),
+                "spectral_correction_method": diag.get("spectral_correction_method", ""),
+                "method_deviation_notes": _build_method_deviation_notes(diag, {}),
+            })
+                continue
+            comparisons = bm_dev.get("comparisons", [])
+            overall_pass = bm_dev.get("overall_pass", True)
+            match_strategy = bm_dev.get("match_strategy", "")
+            matched_ref_id = bm_dev.get("matched_reference_window_id", "")
+            flux_comp = next((c for c in comparisons if c.get("field_name") == "primary_flux"), {})
+            per_window.append({
+                "window_id": window.window_id,
+                "primary_flux": window.primary_flux,
+                "source": window.primary_flux_source,
+                "lag_seconds": window.lag_seconds,
+                "lag_strategy": diag.get("lag_strategy", ""),
+                "rotation_mode": window.rotation_mode,
+                "applied_rotation_impl": diag.get("applied_rotation_impl", ""),
+                "wpl_water_vapor_term": diag.get("wpl_water_vapor_term"),
+                "wpl_sensible_heat_term": diag.get("wpl_sensible_heat_term"),
+                "qc_grade": window.qc_grade,
+                "qc_mapping": "EddyPro 0/1/2 -> A/B/C",
+                "match_strategy": match_strategy,
+                "matched_reference_window_id": matched_ref_id,
+                "absolute_error": flux_comp.get("absolute_error"),
+                "relative_error": flux_comp.get("relative_error"),
+                "pass_rate": 1.0 if overall_pass else 0.0,
+                "notes": "; ".join(c.get("note", "") for c in comparisons if c.get("note")),
+                "footprint_method": diag.get("footprint_method", ""),
+                "uncertainty_method": diag.get("uncertainty_method", ""),
+                "spectral_correction_method": diag.get("spectral_correction_method", ""),
+                "method_deviation_notes": _build_method_deviation_notes(diag, bm_dev),
+            })
+        total = len(per_window)
+        matched = [w for w in per_window if w.get("match_strategy") != "none"]
+        passed = sum(1 for w in matched if w.get("pass_rate") == 1.0)
+        overall_pass_rate = passed / len(matched) if matched else 0.0
+        artifact = {
+            "reference_id": reference_id,
+            "thresholds": thresholds or {},
+            "total_windows": total,
+            "matched_windows": len(matched),
+            "passed_windows": passed,
+            "overall_pass_rate": overall_pass_rate,
+            "per_window": per_window,
+            "exported_at": datetime.now().isoformat(),
+        }
+        path = export_root / "cross_software_parity_artifact.json"
+        self._write_json(path, artifact)
+        return path
+
+
+def _build_method_deviation_notes(diag: dict[str, Any], bm_dev: dict[str, Any]) -> list[str]:
+    notes: list[str] = []
+    fp_method = diag.get("footprint_method", "")
+    if fp_method:
+        fp_detail = diag.get("footprint_detail", {})
+        fp_prov = fp_detail.get("provenance", "") if isinstance(fp_detail, dict) else ""
+        notes.append(f"footprint: {fp_method}" + (f" ({fp_prov})" if fp_prov else ""))
+    unc_method = diag.get("uncertainty_method", "")
+    if unc_method:
+        unc_detail = diag.get("uncertainty_method_detail", {})
+        unc_prov = unc_detail.get("provenance", "") if isinstance(unc_detail, dict) else ""
+        notes.append(f"uncertainty: {unc_method}" + (f" ({unc_prov})" if unc_prov else ""))
+    sc_method = diag.get("spectral_correction_method", "")
+    if sc_method:
+        sc_factor = diag.get("spectral_correction_factor", 1.0)
+        sc_prov = diag.get("spectral_correction_provenance", "")
+        notes.append(f"spectral_correction: {sc_method} (factor={sc_factor})" + (f" [{sc_prov}]" if sc_prov else ""))
+    return notes
+
+
+FLUXNET_HALF_HOURLY_SCHEMA = [
+    ("TIMESTAMP_START", "YYYYMMDDHHmm", "UTC start of averaging period"),
+    ("TIMESTAMP_END", "YYYYMMDDHHmm", "UTC end of averaging period"),
+    ("DOY", "1-366", "Day of year in local time"),
+    ("HOUR", "0-23", "Hour in local time"),
+    ("MINUTE", "0-59", "Minute in local time"),
+    ("FC", "umol m-2 s-1", "CO2 flux"),
+    ("FC_QC", "0/1/2", "QC flag: 0=best, 1=moderate, 2=poor"),
+    ("LE", "W m-2", "Latent heat flux"),
+    ("USTAR", "m s-1", "Friction velocity"),
+    ("TA", "degC", "Air temperature"),
+    ("PA", "kPa*10", "Atmospheric pressure (in hPa)"),
+    ("CO2", "umol mol-1", "CO2 mixing ratio"),
+    ("H2O", "mmol m-3", "H2O concentration"),
+    ("TIMEZONE_OFFSET_H", "hours", "UTC offset for local time"),
+    ("TIMESTAMP_REFERS_TO", "start/end", "Whether timestamp refers to start or end of period"),
+]
+
+AMERIFLUX_FIELD_MAP = {
+    "TIMESTAMP_START": "TIMESTAMP_START",
+    "TIMESTAMP_END": "TIMESTAMP_END",
+    "FC": "FC",
+    "FC_QC": "QC_FLAG",
+    "LE": "LE",
+    "USTAR": "USTAR",
+    "TA": "TA",
+    "PA": "PA",
+    "CO2": "CO2",
+    "H2O": "H2O",
+    "WIND_SPEED": "WS",
+    "WIND_DIR": "WD",
+}
+
+ICOS_FIELD_MAP = {
+    "TIMESTAMP_START": "TIMESTAMP_START",
+    "TIMESTAMP_END": "TIMESTAMP_END",
+    "FC": "Fc",
+    "FC_QC": "Fc_QC",
+    "LE": "LE",
+    "USTAR": "ustar",
+    "TA": "Ta",
+    "PA": "Pa",
+    "CO2": "CO2",
+    "H2O": "H2O",
+    "WIND_SPEED": "WindSpeed",
+    "WIND_DIR": "WindDir",
+}
+
+NETWORK_SCHEMA_REGISTRY = {
+    "FLUXNET": {
+        "field_map": {k: k for k, _, _ in FLUXNET_HALF_HOURLY_SCHEMA},
+        "timestamp_format": "YYYYMMDDHHmm",
+        "gap_value": -9999,
+        "qc_scale": "0-2",
+        "averaging_period_min": 30,
+    },
+    "AmeriFlux": {
+        "field_map": AMERIFLUX_FIELD_MAP,
+        "timestamp_format": "YYYY-MM-DD HH:MM",
+        "gap_value": -9999,
+        "qc_scale": "0-2",
+        "averaging_period_min": 30,
+    },
+    "ICOS": {
+        "field_map": ICOS_FIELD_MAP,
+        "timestamp_format": "ISO8601",
+        "gap_value": -9999,
+        "qc_scale": "0-2",
+        "averaging_period_min": 30,
+    },
+}
+
+
+def validate_fluxnet_row(row: dict[str, Any], *, schema_target: str = "FLUXNET") -> list[str]:
+    errors: list[str] = []
+    schema = NETWORK_SCHEMA_REGISTRY.get(schema_target)
+    if schema is None:
+        errors.append(f"Unknown schema_target: {schema_target}")
+        return errors
+    field_map = schema["field_map"]
+    ts_start_key = field_map.get("TIMESTAMP_START", "TIMESTAMP_START")
+    fc_key = field_map.get("FC", "FC")
+    qc_key = field_map.get("FC_QC", "FC_QC")
+    doy_key = field_map.get("DOY", "DOY")
+    gap_value = schema["gap_value"]
+    ts_start = row.get(ts_start_key, "")
+    if not ts_start or ts_start == str(gap_value):
+        errors.append("TIMESTAMP_START is missing or gap-filled")
+    fc = row.get(fc_key)
+    if fc is not None and fc != gap_value:
+        try:
+            fc_val = float(fc)
+            if abs(fc_val) > 100:
+                errors.append(f"FC value {fc_val} exceeds plausible range [-100, 100] umol m-2 s-1")
+        except (ValueError, TypeError):
+            errors.append(f"FC is not numeric: {fc}")
+    qc = row.get(qc_key)
+    if qc is not None and qc != gap_value:
+        try:
+            qc_val = int(qc)
+            if qc_val not in (0, 1, 2):
+                errors.append(f"FC_QC value {qc_val} not in valid range 0-2")
+        except (ValueError, TypeError):
+            errors.append(f"FC_QC is not integer: {qc}")
+    doy = row.get(doy_key)
+    if doy is not None and doy != gap_value:
+        try:
+            doy_val = int(doy)
+            if doy_val < 1 or doy_val > 366:
+                errors.append(f"DOY value {doy_val} not in valid range 1-366")
+        except (ValueError, TypeError):
+            errors.append(f"DOY is not integer: {doy}")
+    return errors

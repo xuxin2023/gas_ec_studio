@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+runtime_data/
+.arts/
+tmp_test_*/
+
+_v3g*.txt
+test_v3e_output.txt

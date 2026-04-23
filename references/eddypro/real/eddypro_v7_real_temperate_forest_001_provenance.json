@@ -1,0 +1,46 @@
+{
+  "reference_id": "eddypro_v7_real_temperate_forest_001",
+  "original_file": "references/eddypro/real/eddypro_v7_real_temperate_forest_001.csv",
+  "original_file_name": "eddypro_v7_real_temperate_forest_001.csv",
+  "json_source": "references/eddypro/real/eddypro_v7_real_temperate_forest_001.json",
+  "normalization_time": "2026-04-21T00:00:00",
+  "normalization_script": "references/eddypro/normalize_reference.py",
+  "field_mapping": {
+    "Filename": "window_id",
+    "start_time": "start_time",
+    "end_time": "end_time",
+    "Fc": "primary_flux",
+    "Fc_QC_Flag": "qc_grade",
+    "co2_lag": "lag_seconds",
+    "H2O_lag": "h2o_lag_seconds",
+    "rotation_method": "rotation_mode",
+    "WPL_water_vapor_term": "wpl_water_vapor_term",
+    "WPL_sensible_heat_term": "wpl_sensible_heat_term",
+    "total_density_correction": "total_density_correction",
+    "co2_flux": "co2_flux",
+    "h2o_flux": "h2o_flux",
+    "LE": "latent_heat_flux",
+    "H": "sensible_heat_flux",
+    "tau": "momentum_flux",
+    "ustar": "ustar",
+    "wind_speed": "wind_speed",
+    "wind_dir": "wind_dir"
+  },
+  "raw_columns": [
+    "Filename", "Date", "Time", "start_time", "end_time", "Fc", "Fc_QC_Flag",
+    "co2_lag", "H2O_lag", "rotation_method", "WPL_water_vapor_term",
+    "WPL_sensible_heat_term", "total_density_correction", "co2_flux",
+    "h2o_flux", "LE", "H", "tau", "ustar", "wind_speed", "wind_dir"
+  ],
+  "unmapped_columns": ["Date", "Time"],
+  "qc_mapping_strategy": "EddyPro 0/1/2 -> gas_ec_studio A/B/C",
+  "known_limitations": [
+    "EddyPro QC flags are mapped approximately; original flag values are lost in normalized form",
+    "WPL terms may use different sign conventions between EddyPro and gas_ec_studio",
+    "EddyPro frequency correction (analytical) is applied before output; gas_ec_studio may apply it differently",
+    "Lag determination may differ due to different search windows and default lags",
+    "Date and Time columns are redundant with start_time/end_time and are not mapped"
+  ],
+  "window_count": 6,
+  "required_fields_present": true
+}

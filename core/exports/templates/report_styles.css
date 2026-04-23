@@ -1,0 +1,165 @@
+@page { size: A4; margin: 16mm; }
+body {
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  color: #1f2937;
+  background: #f5f7fa;
+  margin: 0;
+}
+
+.report-shell {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.cover,
+.section {
+  background: #fff;
+  border: 1px solid #d9e0e8;
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 18px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.cover h1 {
+  margin: 0 0 8px;
+  font-size: 30px;
+  color: #0f172a;
+}
+
+.cover .subtitle {
+  color: #475569;
+  font-size: 14px;
+  margin-bottom: 18px;
+}
+
+.meta-grid,
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.meta-card,
+.summary-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fbfdff;
+}
+
+.label {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.summary-card .value {
+  font-size: 22px;
+}
+
+.summary-card .note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.section h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  color: #0f172a;
+}
+
+.section h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: #334155;
+}
+
+.section-intro {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  color: #334155;
+  font-weight: 700;
+  background: #f8fafc;
+}
+
+td {
+  color: #1f2937;
+}
+
+.empty {
+  padding: 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.artifact-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.artifact-list li {
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .report-shell {
+    max-width: none;
+    padding: 0;
+  }
+
+  .cover,
+  .section {
+    box-shadow: none;
+    break-inside: avoid;
+    margin-bottom: 12px;
+  }
+}

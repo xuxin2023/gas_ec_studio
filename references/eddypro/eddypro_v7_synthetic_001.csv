@@ -1,0 +1,6 @@
+Filename,start_time,end_time,Fc,primary_flux_source,lag_seconds,lag_strategy,rotation_mode,applied_rotation_impl,wpl_water_vapor_term,wpl_sensible_heat_term,total_density_correction,qc_grade,qc_score
+ep_w001,2025-06-15T00:00:00,2025-06-15T00:30:00,-4.82,wpl,2.4,covariance_max,double,double,0.00012,0.00004,0.00016,A,
+ep_w002,2025-06-15T00:30:00,2025-06-15T01:00:00,-3.15,wpl,2.3,covariance_max,double,double,0.00009,0.00003,0.00012,A,
+ep_w003,2025-06-15T06:00:00,2025-06-15T06:30:00,2.35,wpl,2.5,covariance_max,double,double,-0.00018,-0.00006,-0.00024,B,
+ep_w004,2025-06-15T12:00:00,2025-06-15T12:30:00,5.67,wpl,2.1,covariance_max,double,double,-0.00035,-0.00012,-0.00047,A,
+ep_w005,2025-06-15T18:00:00,2025-06-15T18:30:00,1.23,wpl,2.6,covariance_max,double,double,-0.00008,-0.00003,-0.00011,C,

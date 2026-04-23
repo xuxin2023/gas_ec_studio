@@ -1,0 +1,1052 @@
+from __future__ import annotations
+
+import numpy as np
+import pyqtgraph as pg
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QStackedWidget,
+    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from app.studio import StudioController
+from app.theme import CardFrame, TOKENS, chip, section_title
+
+
+EC_STEPS = [
+    ("window_sampling", "窗口与采样", "先定义处理窗口和采样节奏，后续步骤才能对齐。"),
+    ("data_cleaning", "数据清洗", "把缺测、尖峰和异常值处理策略说清楚。"),
+    ("screening", "统计筛选", "配置偏度、峰度、dropout 等统计筛选阈值，控制 QC 诊断灵敏度。"),
+    ("lag", "lag", "让用户看到时滞搜索范围与协方差曲线，不把 lag 做成黑箱。"),
+    ("rotation", "坐标旋转", "明确使用哪种旋转方法以及适用场景。"),
+    ("detrend", "去趋势", "说明使用哪种去趋势策略，避免隐藏对结果的影响。"),
+    ("covariance", "协方差", "把核心协方差估计方式显式展示出来。"),
+    ("density_correction", "密度/混合比修正", "展示修正前后变化，避免只给最终结果。"),
+    ("steadiness", "稳态检验", "为有效性分级提供可理解的判据。"),
+    ("turbulence", "湍流检验", "把稳定度与 u* 判断放在同一语境中。"),
+    ("uncertainty", "不确定度", "保留来源拆分，降低黑箱感。"),
+    ("output", "输出", "控制最终字段、诊断摘要和结果去向。"),
+]
+
+
+class ECProcessingPage(QWidget):
+    def __init__(self, controller: StudioController, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.controller = controller
+        self.step_indexes: dict[str, int] = {}
+        self.step_items: dict[str, QTreeWidgetItem] = {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_md)
+        layout.addWidget(
+            section_title(
+                "EC 处理",
+                "把流程拆成可理解的步骤，并在关键节点保留中间结果，让操作员与工程师都能看懂当前在做什么。",
+            )
+        )
+
+        self.run_bar = self._build_run_bar()
+        layout.addWidget(self.run_bar)
+
+        body = QHBoxLayout()
+        body.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(body, 1)
+
+        self.tree_card = CardFrame(muted=True)
+        tree_layout = QVBoxLayout(self.tree_card)
+        tree_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        tree_layout.setSpacing(TOKENS.spacing_md)
+        tree_layout.addWidget(section_title("处理树", "按步骤理解配置与结果，中间结果始终和参数同屏出现。"))
+        self.step_tree = QTreeWidget()
+        self.step_tree.setHeaderHidden(True)
+        self.step_tree.setIndentation(10)
+        self.step_tree.itemSelectionChanged.connect(self._on_step_changed)
+        tree_layout.addWidget(self.step_tree, 1)
+        self.tree_card.setMinimumWidth(260)
+        self.tree_card.setMaximumWidth(320)
+        body.addWidget(self.tree_card, 0)
+
+        self.content_stack = QStackedWidget()
+        body.addWidget(self.content_stack, 1)
+
+        self._build_tree()
+        self._build_pages()
+        self._bind_preview_signals()
+
+        self.controller.processing_changed.connect(self.refresh)
+        self.controller.selection_changed.connect(self._sync_step_from_controller)
+        self.refresh()
+
+    def refresh(self) -> None:
+        run_cfg = self.controller.ec_processing["run"]
+        steps = self.controller.ec_processing["steps"]
+
+        self._set_combo_text(self.data_source_combo, str(run_cfg.get("data_source", "当前项目高频目录")))
+        self._set_combo_text(self.time_range_combo, str(run_cfg.get("time_range", "最近 24 小时")))
+
+        window_step = steps["window_sampling"]
+        self.window_minutes_spin.setValue(int(window_step.get("window_minutes", 30) or 30))
+        self.window_sample_hz_spin.setValue(int(window_step.get("sample_hz", 20) or 20))
+
+        cleaning_step = steps["data_cleaning"]
+        self.clean_spike_sigma_spin.setValue(float(cleaning_step.get("spike_sigma", 5.0) or 5.0))
+        self._set_combo_text(self.clean_missing_policy_combo, str(cleaning_step.get("missing_policy", "")))
+        self.clean_removed_ratio_label.setText(str(cleaning_step.get("removed_ratio", "--")))
+
+        screening_step = steps.get("screening", {})
+        self.screening_skewness_spin.setValue(float(screening_step.get("skewness_threshold", 2.0) or 2.0))
+        self.screening_kurtosis_spin.setValue(float(screening_step.get("kurtosis_threshold", 7.0) or 7.0))
+        self.screening_dropout_min_run_spin.setValue(int(screening_step.get("dropout_min_run", 10) or 10))
+        self.screening_spike_sigma_spin.setValue(float(screening_step.get("spike_sigma", 5.0) or 5.0))
+        self.screening_discontinuity_sigma_spin.setValue(float(screening_step.get("discontinuity_sigma", 8.0) or 8.0))
+        abs_limits_text = screening_step.get("absolute_limits_text", "")
+        if abs_limits_text:
+            self.screening_absolute_limits_edit.setText(str(abs_limits_text))
+
+        lag_step = steps["lag"]
+        self.lag_search_window_spin.setValue(float(lag_step.get("search_window_s", 8.0) or 8.0))
+        self.lag_expected_spin.setValue(float(lag_step.get("expected_lag_s", 2.4) or 2.4))
+        self._set_combo_text(self.lag_strategy_combo, str(lag_step.get("lag_strategy", "协方差最大")))
+
+        self._set_combo_text(self.rotation_mode_combo, str(steps["rotation"].get("rotation_mode", "双旋转")))
+        self._set_combo_text(self.detrend_mode_combo, str(steps["detrend"].get("detrend_mode", "块均值")))
+        self._set_combo_text(self.covariance_mode_combo, str(steps["covariance"].get("covariance_mode", "标准协方差")))
+        self._set_combo_text(self.density_correction_combo, str(steps["density_correction"].get("correction_mode", "WPL")))
+        self._set_combo_text(self.steadiness_rule_combo, str(steps["steadiness"].get("steadiness_rule", "Foken-like")))
+        self._set_combo_text(self.ustar_rule_combo, str(steps["turbulence"].get("ustar_rule", "站点阈值")))
+        self._set_combo_text(self.uncertainty_mode_combo, str(steps["uncertainty"].get("uncertainty_mode", "经验传播")))
+        self.output_fields_edit.setText(str(steps["output"].get("output_fields", "")))
+        self._set_combo_text(self.full_output_mode_combo, str(steps["output"].get("full_output_mode", "only_available")))
+
+        self._refresh_run_bar()
+        self._refresh_window_preview()
+        self._refresh_cleaning_preview()
+        self._refresh_screening_preview()
+        self._refresh_lag_preview()
+        self._refresh_covariance_preview()
+        self._refresh_density_preview()
+        self._refresh_rotation_preview()
+        self._refresh_detrend_preview()
+        self._refresh_steadiness_preview()
+        self._refresh_turbulence_preview()
+        self._refresh_uncertainty_preview()
+        self._refresh_output_preview()
+        self._sync_step_from_controller()
+
+    def _build_run_bar(self) -> CardFrame:
+        card = CardFrame()
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_md)
+
+        intro = section_title("运行条", "先选择数据来源与时间范围，再决定正式运行还是仅做预检查。")
+        layout.addWidget(intro)
+        layout.addStretch(1)
+
+        self.data_source_combo = QComboBox()
+        self.data_source_combo.setEditable(True)
+        self.data_source_combo.addItems(["当前项目高频目录", "最近归档批次", "回放文件夹"])
+        self.time_range_combo = QComboBox()
+        self.time_range_combo.setEditable(True)
+        self.time_range_combo.addItems(["最近 24 小时", "今天", "最近 7 天", "自定义时间窗"])
+        layout.addWidget(QLabel("数据来源"))
+        layout.addWidget(self.data_source_combo)
+        layout.addWidget(QLabel("时间范围"))
+        layout.addWidget(self.time_range_combo)
+
+        self.run_status_chip = chip("标准运行", "accent")
+        layout.addWidget(self.run_status_chip)
+        self.run_summary_label = QLabel("尚未生成真实 RP 结果。")
+        self.run_summary_label.setObjectName("subtitle")
+        self.run_summary_label.setWordWrap(True)
+        self.run_summary_label.setMinimumWidth(260)
+        layout.addWidget(self.run_summary_label)
+
+        run_button = QPushButton("运行处理")
+        run_button.setProperty("variant", "primary")
+        run_button.clicked.connect(lambda: self._run_processing(precheck_only=False))
+        precheck_button = QPushButton("仅预检查")
+        precheck_button.clicked.connect(lambda: self._run_processing(precheck_only=True))
+        save_template_button = QPushButton("保存模板")
+        save_template_button.clicked.connect(self._save_template)
+        restore_button = QPushButton("恢复默认")
+        restore_button.clicked.connect(self._restore_default)
+        for button in (run_button, precheck_button, save_template_button, restore_button):
+            layout.addWidget(button)
+        return card
+
+    def _build_tree(self) -> None:
+        root = QTreeWidgetItem(["处理流程"])
+        root.setFlags(root.flags() & ~Qt.ItemIsSelectable)
+        self.step_tree.addTopLevelItem(root)
+        for key, title, _subtitle in EC_STEPS:
+            item = QTreeWidgetItem([title])
+            item.setData(0, Qt.UserRole, key)
+            item.setToolTip(0, title)
+            root.addChild(item)
+            self.step_items[key] = item
+        root.setExpanded(True)
+
+    def _build_pages(self) -> None:
+        for key, title, subtitle in EC_STEPS:
+            container = QWidget()
+            page_layout = QVBoxLayout(container)
+            page_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+            page_layout.setSpacing(TOKENS.spacing_md)
+            page_layout.addWidget(section_title(title, subtitle))
+            builder = getattr(self, f"_build_{key}_page")
+            builder(page_layout)
+            page_layout.addStretch(1)
+
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(container)
+            self.step_indexes[key] = self.content_stack.addWidget(scroll)
+
+    def _build_window_sampling_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("参数设置", "窗口越清晰，后续 lag、去趋势和检验的解释越容易统一。"))
+        form = QFormLayout()
+        form.setHorizontalSpacing(TOKENS.spacing_md)
+        form.setVerticalSpacing(TOKENS.spacing_md)
+        self.window_minutes_spin = QSpinBox()
+        self.window_minutes_spin.setRange(1, 180)
+        self.window_minutes_spin.setSuffix(" 分钟")
+        self.window_sample_hz_spin = QSpinBox()
+        self.window_sample_hz_spin.setRange(1, 100)
+        self.window_sample_hz_spin.setSuffix(" Hz")
+        form.addRow("窗口长度", self.window_minutes_spin)
+        form.addRow("采样频率", self.window_sample_hz_spin)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 3)
+
+        preview_card = CardFrame(muted=True)
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.addWidget(section_title("中间结果", "先把窗口规模换算成直观采样量，便于操作员理解。"))
+        self.window_samples_label = QLabel("--")
+        self.window_samples_label.setObjectName("metricValue")
+        preview_layout.addWidget(self.window_samples_label)
+        self.window_preview_note = QLabel("--")
+        self.window_preview_note.setObjectName("subtitle")
+        self.window_preview_note.setWordWrap(True)
+        preview_layout.addWidget(self.window_preview_note)
+        row.addWidget(preview_card, 2)
+
+    def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("清洗策略", "用业务语言描述剔除强度和缺测补齐策略。"))
+        form = QFormLayout()
+        form.setHorizontalSpacing(TOKENS.spacing_md)
+        form.setVerticalSpacing(TOKENS.spacing_md)
+        self.clean_spike_sigma_spin = self._double_spin(1.0, 10.0, 1)
+        self.clean_missing_policy_combo = QComboBox()
+        self.clean_missing_policy_combo.addItems(["辅助变量线性插补", "整窗保留缺测", "严格剔除整窗"])
+        form.addRow("尖峰阈值", self.clean_spike_sigma_spin)
+        form.addRow("缺测处理", self.clean_missing_policy_combo)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 3)
+
+        stats_card = CardFrame(muted=True)
+        stats_layout = QVBoxLayout(stats_card)
+        stats_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        stats_layout.setSpacing(TOKENS.spacing_md)
+        stats_layout.addWidget(section_title("剔除统计区", "让用户看到清洗会带来多大影响，而不是只看到一个开关。"))
+        self.clean_removed_ratio_label = QLabel("--")
+        self.clean_removed_ratio_label.setObjectName("metricValue")
+        stats_layout.addWidget(self.clean_removed_ratio_label)
+        self.clean_retained_label = QLabel("--")
+        self.clean_retained_label.setObjectName("subtitle")
+        self.clean_retained_label.setWordWrap(True)
+        stats_layout.addWidget(self.clean_retained_label)
+        row.addWidget(stats_card, 2)
+
+    def _build_screening_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("统计筛选阈值", "控制偏度、峰度、dropout 等诊断灵敏度。阈值越严格，更多窗口被标记。"))
+        form = QFormLayout()
+        form.setHorizontalSpacing(TOKENS.spacing_md)
+        form.setVerticalSpacing(TOKENS.spacing_md)
+        self.screening_skewness_spin = self._double_spin(0.5, 10.0, 1, suffix="")
+        self.screening_skewness_spin.setValue(2.0)
+        self.screening_kurtosis_spin = self._double_spin(2.0, 30.0, 1, suffix="")
+        self.screening_kurtosis_spin.setValue(7.0)
+        self.screening_dropout_min_run_spin = QSpinBox()
+        self.screening_dropout_min_run_spin.setRange(2, 1000)
+        self.screening_dropout_min_run_spin.setValue(10)
+        self.screening_spike_sigma_spin = self._double_spin(1.0, 20.0, 1, suffix=" σ")
+        self.screening_spike_sigma_spin.setValue(5.0)
+        self.screening_discontinuity_sigma_spin = self._double_spin(1.0, 30.0, 1, suffix=" σ")
+        self.screening_discontinuity_sigma_spin.setValue(8.0)
+        self.screening_absolute_limits_edit = QTextEdit()
+        self.screening_absolute_limits_edit.setPlaceholderText('{"co2_ppm": [0, 1500], "h2o_mmol": [0, 50]}')
+        self.screening_absolute_limits_edit.setMaximumHeight(60)
+        form.addRow("偏度阈值", self.screening_skewness_spin)
+        form.addRow("峰度阈值", self.screening_kurtosis_spin)
+        form.addRow("dropout 最小连续点", self.screening_dropout_min_run_spin)
+        form.addRow("尖峰 σ", self.screening_spike_sigma_spin)
+        form.addRow("不连续 σ", self.screening_discontinuity_sigma_spin)
+        form.addRow("绝对值范围 (JSON)", self.screening_absolute_limits_edit)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 3)
+
+        summary_card = CardFrame(muted=True)
+        summary_layout = QVBoxLayout(summary_card)
+        summary_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        summary_layout.setSpacing(TOKENS.spacing_md)
+        summary_layout.addWidget(section_title("筛选摘要", "当前窗口的筛选结果概览。"))
+        self.screening_summary_label = QLabel("--")
+        self.screening_summary_label.setObjectName("subtitle")
+        self.screening_summary_label.setWordWrap(True)
+        summary_layout.addWidget(self.screening_summary_label)
+        row.addWidget(summary_card, 2)
+
+    def _build_lag_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("时滞搜索参数", "把搜索范围和预期 lag 明确写出来，避免误把偶然峰值当结果。"))
+        form = QFormLayout()
+        form.setHorizontalSpacing(TOKENS.spacing_md)
+        form.setVerticalSpacing(TOKENS.spacing_md)
+        self.lag_strategy_combo = QComboBox()
+        self.lag_strategy_combo.addItems(["协方差最大", "协方差最大带默认", "固定滞后", "无滞后"])
+        self.lag_search_window_spin = self._double_spin(1.0, 30.0, 1, suffix=" s")
+        self.lag_expected_spin = self._double_spin(0.0, 20.0, 1, suffix=" s")
+        form.addRow("滞后策略", self.lag_strategy_combo)
+        form.addRow("搜索窗口", self.lag_search_window_spin)
+        form.addRow("预期 lag", self.lag_expected_spin)
+        self.lag_strategy_combo.currentIndexChanged.connect(self._on_lag_strategy_changed)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 2)
+
+        plot_card = CardFrame(muted=True)
+        plot_layout = QVBoxLayout(plot_card)
+        plot_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        plot_layout.setSpacing(TOKENS.spacing_md)
+        plot_layout.addWidget(section_title("Covariance 曲线区", "预留协方差曲线区，让 lag 的峰值选择可见可解释。"))
+        self.lag_plot = pg.PlotWidget()
+        self.lag_plot.setBackground("transparent")
+        self.lag_plot.showGrid(x=True, y=True, alpha=0.15)
+        self.lag_plot.setLabel("left", "归一化协方差")
+        self.lag_plot.setLabel("bottom", "时滞 (s)")
+        self.lag_curve = self.lag_plot.plot(pen=pg.mkPen("#2563eb", width=2.0))
+        plot_layout.addWidget(self.lag_plot, 1)
+        self.lag_note_label = QLabel("--")
+        self.lag_note_label.setObjectName("subtitle")
+        self.lag_note_label.setWordWrap(True)
+        plot_layout.addWidget(self.lag_note_label)
+        row.addWidget(plot_card, 3)
+
+    def _build_rotation_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("旋转设置", "不同地形和安装方式适合不同的旋转方法。"))
+        form = QFormLayout()
+        self.rotation_mode_combo = QComboBox()
+        self.rotation_mode_combo.addItems(["双旋转", "三重旋转", "平面拟合", "不旋转"])
+        form.addRow("旋转方法", self.rotation_mode_combo)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 2)
+
+        preview_card = CardFrame(muted=True)
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.addWidget(section_title("中间结果", "这里保留方法说明，便于工程师解释为何采用当前旋转方式。"))
+        self.rotation_preview_label = QLabel("--")
+        self.rotation_preview_label.setObjectName("subtitle")
+        self.rotation_preview_label.setWordWrap(True)
+        preview_layout.addWidget(self.rotation_preview_label)
+        row.addWidget(preview_card, 3)
+
+    def _build_detrend_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("去趋势设置", "明确去趋势方法，帮助用户理解频谱和均值会被怎样影响。"))
+        form = QFormLayout()
+        self.detrend_mode_combo = QComboBox()
+        self.detrend_mode_combo.addItems(["块均值", "线性去趋势", "滑动均值", "指数滑动均值"])
+        form.addRow("去趋势方法", self.detrend_mode_combo)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 2)
+
+        preview_card = CardFrame(muted=True)
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.addWidget(section_title("中间结果", "当前仅保留说明区，后续可接入频谱与残差预览。"))
+        self.detrend_preview_label = QLabel("--")
+        self.detrend_preview_label.setObjectName("subtitle")
+        self.detrend_preview_label.setWordWrap(True)
+        preview_layout.addWidget(self.detrend_preview_label)
+        row.addWidget(preview_card, 3)
+
+    def _build_covariance_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("协方差设置", "把最终协方差的估计方式讲清楚，便于解释结果来源。"))
+        form = QFormLayout()
+        self.covariance_mode_combo = QComboBox()
+        self.covariance_mode_combo.addItems(["标准协方差", "稳健协方差", "窗口内加权协方差"])
+        form.addRow("协方差方法", self.covariance_mode_combo)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 2)
+
+        preview_card = CardFrame(muted=True)
+        preview_layout = QGridLayout(preview_card)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        preview_layout.setHorizontalSpacing(TOKENS.spacing_md)
+        preview_layout.setVerticalSpacing(TOKENS.spacing_md)
+        preview_layout.addWidget(section_title("中间结果", "预留主要协方差结果位，便于后续接入真实中间量。"), 0, 0, 1, 3)
+        self.covariance_metric_flux = QLabel("--")
+        self.covariance_metric_h2o = QLabel("--")
+        self.covariance_metric_temp = QLabel("--")
+        for col, (title, value) in enumerate(
+            (
+                ("w'c'", self.covariance_metric_flux),
+                ("w'q'", self.covariance_metric_h2o),
+                ("w'T'", self.covariance_metric_temp),
+            )
+        ):
+            preview_layout.addWidget(self._metric_box(title, value), 1, col)
+        row.addWidget(preview_card, 3)
+
+    def _build_density_correction_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("修正设置", "让用户看到当前选用的密度或混合比修正方法。"))
+        form = QFormLayout()
+        self.density_correction_combo = QComboBox()
+        self.density_correction_combo.addItems(["WPL", "混合比优先", "不修正"])
+        form.addRow("修正方法", self.density_correction_combo)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 2)
+
+        compare_card = CardFrame(muted=True)
+        compare_layout = QVBoxLayout(compare_card)
+        compare_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        compare_layout.setSpacing(TOKENS.spacing_md)
+        compare_layout.addWidget(section_title("修正前后对比区", "预留修正前后对比区，帮助用户理解修正影响。"))
+        metrics_row = QHBoxLayout()
+        self.density_before_label = QLabel("--")
+        self.density_after_label = QLabel("--")
+        metrics_row.addWidget(self._metric_box("修正前", self.density_before_label), 1)
+        metrics_row.addWidget(self._metric_box("修正后", self.density_after_label), 1)
+        compare_layout.addLayout(metrics_row)
+        self.density_plot = pg.PlotWidget()
+        self.density_plot.setBackground("transparent")
+        self.density_plot.showGrid(x=True, y=True, alpha=0.15)
+        self.density_plot.setLabel("left", "通量")
+        self.density_plot.setLabel("bottom", "窗口序号")
+        self.density_before_curve = self.density_plot.plot(pen=pg.mkPen("#94a3b8", width=1.8))
+        self.density_after_curve = self.density_plot.plot(pen=pg.mkPen("#0f766e", width=2.0))
+        compare_layout.addWidget(self.density_plot, 1)
+        self.density_note_label = QLabel("--")
+        self.density_note_label.setObjectName("subtitle")
+        self.density_note_label.setWordWrap(True)
+        compare_layout.addWidget(self.density_note_label)
+        row.addWidget(compare_card, 3)
+
+    def _build_steadiness_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("稳态检验设置", "把稳态规则写清楚，方便解释窗口质量等级。"))
+        form = QFormLayout()
+        self.steadiness_rule_combo = QComboBox()
+        self.steadiness_rule_combo.addItems(["Foken-like", "经验窗口对比", "项目自定义"])
+        form.addRow("检验规则", self.steadiness_rule_combo)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 2)
+
+        preview_card = CardFrame(muted=True)
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.addWidget(section_title("中间结果", "预留稳态等级和解释区。"))
+        self.steadiness_preview_label = QLabel("--")
+        self.steadiness_preview_label.setObjectName("subtitle")
+        self.steadiness_preview_label.setWordWrap(True)
+        preview_layout.addWidget(self.steadiness_preview_label)
+        row.addWidget(preview_card, 3)
+
+    def _build_turbulence_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("湍流检验设置", "把稳定度和 u* 判定条件显式化。"))
+        form = QFormLayout()
+        self.ustar_rule_combo = QComboBox()
+        self.ustar_rule_combo.addItems(["站点阈值", "分季节阈值", "经验默认值"])
+        form.addRow("判定规则", self.ustar_rule_combo)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 2)
+
+        preview_card = CardFrame(muted=True)
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.addWidget(section_title("中间结果", "先保留文字解释区，后续可接入稳定度散点图。"))
+        self.turbulence_preview_label = QLabel("--")
+        self.turbulence_preview_label.setObjectName("subtitle")
+        self.turbulence_preview_label.setWordWrap(True)
+        preview_layout.addWidget(self.turbulence_preview_label)
+        row.addWidget(preview_card, 3)
+
+    def _build_uncertainty_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("不确定度设置", "保留来源拆分方式，为报告和复核留接口。"))
+        form = QFormLayout()
+        self.uncertainty_mode_combo = QComboBox()
+        self.uncertainty_mode_combo.addItems(["经验传播", "分量拆分", "项目自定义"])
+        form.addRow("估计方法", self.uncertainty_mode_combo)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 2)
+
+        preview_card = CardFrame(muted=True)
+        preview_layout = QGridLayout(preview_card)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        preview_layout.setHorizontalSpacing(TOKENS.spacing_md)
+        preview_layout.setVerticalSpacing(TOKENS.spacing_md)
+        preview_layout.addWidget(section_title("中间结果", "保留主要来源拆分，让不确定度不止一个总数。"), 0, 0, 1, 3)
+        self.uncertainty_sampling_label = QLabel("--")
+        self.uncertainty_sensor_label = QLabel("--")
+        self.uncertainty_processing_label = QLabel("--")
+        for col, (title, value) in enumerate(
+            (
+                ("采样链路", self.uncertainty_sampling_label),
+                ("传感器", self.uncertainty_sensor_label),
+                ("处理配置", self.uncertainty_processing_label),
+            )
+        ):
+            preview_layout.addWidget(self._metric_box(title, value), 1, col)
+        row.addWidget(preview_card, 3)
+
+    def _build_output_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(section_title("输出设置", "把最终导出的关键字段列出来，减少交付阶段返工。"))
+        form = QFormLayout()
+        self.output_fields_edit = QLineEdit()
+        self.full_output_mode_combo = QComboBox()
+        self.full_output_mode_combo.addItems(["only_available", "standard_schema"])
+        form.addRow("输出字段", self.output_fields_edit)
+        form.addRow("Full output mode", self.full_output_mode_combo)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 2)
+
+        preview_card = CardFrame(muted=True)
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.addWidget(section_title("中间结果", "在正式运行前先预览输出重点，避免漏掉关键诊断字段。"))
+        self.output_preview_label = QLabel("--")
+        self.output_preview_label.setObjectName("subtitle")
+        self.output_preview_label.setWordWrap(True)
+        preview_layout.addWidget(self.output_preview_label)
+        row.addWidget(preview_card, 3)
+
+    def _bind_preview_signals(self) -> None:
+        self.window_minutes_spin.valueChanged.connect(self._refresh_window_preview)
+        self.window_sample_hz_spin.valueChanged.connect(self._refresh_window_preview)
+        self.clean_spike_sigma_spin.valueChanged.connect(self._refresh_cleaning_preview)
+        self.clean_missing_policy_combo.currentIndexChanged.connect(self._refresh_cleaning_preview)
+        self.screening_skewness_spin.valueChanged.connect(self._refresh_screening_preview)
+        self.screening_kurtosis_spin.valueChanged.connect(self._refresh_screening_preview)
+        self.screening_dropout_min_run_spin.valueChanged.connect(self._refresh_screening_preview)
+        self.screening_spike_sigma_spin.valueChanged.connect(self._refresh_screening_preview)
+        self.screening_discontinuity_sigma_spin.valueChanged.connect(self._refresh_screening_preview)
+        self.screening_absolute_limits_edit.textChanged.connect(self._refresh_screening_preview)
+        self.lag_search_window_spin.valueChanged.connect(self._refresh_lag_preview)
+        self.lag_expected_spin.valueChanged.connect(self._refresh_lag_preview)
+        self.lag_strategy_combo.currentIndexChanged.connect(self._refresh_lag_preview)
+        self.covariance_mode_combo.currentIndexChanged.connect(self._refresh_covariance_preview)
+        self.density_correction_combo.currentIndexChanged.connect(self._refresh_density_preview)
+        self.rotation_mode_combo.currentIndexChanged.connect(self._refresh_rotation_preview)
+        self.detrend_mode_combo.currentIndexChanged.connect(self._refresh_detrend_preview)
+        self.steadiness_rule_combo.currentIndexChanged.connect(self._refresh_steadiness_preview)
+        self.ustar_rule_combo.currentIndexChanged.connect(self._refresh_turbulence_preview)
+        self.uncertainty_mode_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
+        self.output_fields_edit.textChanged.connect(self._refresh_output_preview)
+        self.full_output_mode_combo.currentIndexChanged.connect(self._refresh_output_preview)
+
+    def _on_step_changed(self) -> None:
+        item = self.step_tree.currentItem()
+        if item is None:
+            return
+        key = item.data(0, Qt.UserRole)
+        if not key:
+            return
+        self.content_stack.setCurrentIndex(self.step_indexes[key])
+        self.controller.set_ec_nav_step(key)
+        self._refresh_run_bar()
+
+    def _sync_step_from_controller(self) -> None:
+        key = self.controller.ec_nav_step
+        item = self.step_items.get(key)
+        if item is None:
+            return
+        if self.step_tree.currentItem() is not item:
+            self.step_tree.blockSignals(True)
+            self.step_tree.setCurrentItem(item)
+            self.step_tree.blockSignals(False)
+        self.content_stack.setCurrentIndex(self.step_indexes[key])
+
+    def _collect_payload(self) -> dict:
+        return {
+            "run": {
+                "data_source": self.data_source_combo.currentText().strip(),
+                "time_range": self.time_range_combo.currentText().strip(),
+                "run_mode": self.controller.ec_processing.get("run", {}).get("run_mode", "标准运行"),
+            },
+            "steps": {
+                "window_sampling": {
+                    "title": "窗口与采样",
+                    "method": f"{self.window_minutes_spin.value()} 分钟固定窗口",
+                    "applicable": "适用于常规连续观测窗口划分。",
+                    "recommended": "优先保持与现场高频采样设置一致。",
+                    "window_minutes": self.window_minutes_spin.value(),
+                    "sample_hz": self.window_sample_hz_spin.value(),
+                    "preview": self.window_preview_note.text(),
+                },
+                "data_cleaning": {
+                    "title": "数据清洗",
+                    "method": f"{self.clean_spike_sigma_spin.value():.1f}σ 尖峰剔除",
+                    "applicable": "适用于存在偶发尖峰与短时缺测的高频数据。",
+                    "recommended": "先温和剔除，再看剔除统计是否合理。",
+                    "spike_sigma": self.clean_spike_sigma_spin.value(),
+                    "missing_policy": self.clean_missing_policy_combo.currentText().strip(),
+                    "removed_ratio": self.clean_removed_ratio_label.text().strip(),
+                },
+                "screening": {
+                    "title": "统计筛选",
+                    "method": "偏度/峰度/dropout/尖峰/不连续检测",
+                    "applicable": "适用于窗口级统计异常诊断。",
+                    "recommended": "先用默认阈值运行，再根据站点特征微调。",
+                    "skewness_threshold": self.screening_skewness_spin.value(),
+                    "kurtosis_threshold": self.screening_kurtosis_spin.value(),
+                    "dropout_min_run": self.screening_dropout_min_run_spin.value(),
+                    "spike_sigma": self.screening_spike_sigma_spin.value(),
+                    "discontinuity_sigma": self.screening_discontinuity_sigma_spin.value(),
+                    "absolute_limits_text": self.screening_absolute_limits_edit.toPlainText().strip(),
+                },
+                "lag": {
+                    "title": "lag",
+                    "method": self.lag_strategy_combo.currentText().strip(),
+                    "applicable": "适用于采样链路存在稳定时滞的闭路分析仪。",
+                    "recommended": "先用经验窗口，再结合曲线峰值复核。",
+                    "lag_strategy": self.lag_strategy_combo.currentText().strip(),
+                    "search_window_s": self.lag_search_window_spin.value(),
+                    "expected_lag_s": self.lag_expected_spin.value(),
+                },
+                "rotation": {
+                    "title": "坐标旋转",
+                    "method": self.rotation_mode_combo.currentText().strip(),
+                    "applicable": "适用于需要统一风场坐标定义的常规场景。",
+                    "recommended": "默认使用双旋转；存在明显侧向偏置时可切到三重旋转，复杂地形再考虑平面拟合。",
+                    "rotation_mode": self.rotation_mode_combo.currentText().strip(),
+                },
+                "detrend": {
+                    "title": "去趋势",
+                    "method": self.detrend_mode_combo.currentText().strip(),
+                    "applicable": "适用于窗口内均值与低频漂移处理。",
+                    "recommended": "先使用块均值，再根据频谱表现调整。",
+                    "detrend_mode": self.detrend_mode_combo.currentText().strip(),
+                },
+                "covariance": {
+                    "title": "协方差",
+                    "method": self.covariance_mode_combo.currentText().strip(),
+                    "applicable": "适用于主通量计算链路。",
+                    "recommended": "优先使用标准协方差并保持与窗口设置一致。",
+                    "covariance_mode": self.covariance_mode_combo.currentText().strip(),
+                },
+                "density_correction": {
+                    "title": "密度/混合比修正",
+                    "method": self.density_correction_combo.currentText().strip(),
+                    "applicable": "适用于从密度量恢复混合比与通量的场景。",
+                    "recommended": "确认温压和水汽来源稳定后再启用。",
+                    "correction_mode": self.density_correction_combo.currentText().strip(),
+                },
+                "steadiness": {
+                    "title": "稳态检验",
+                    "method": self.steadiness_rule_combo.currentText().strip(),
+                    "applicable": "适用于结果有效性分级。",
+                    "recommended": "建议与湍流检验结果结合解释。",
+                    "steadiness_rule": self.steadiness_rule_combo.currentText().strip(),
+                },
+                "turbulence": {
+                    "title": "湍流检验",
+                    "method": self.ustar_rule_combo.currentText().strip(),
+                    "applicable": "适用于稳定度分析与夜间筛选。",
+                    "recommended": "先按站点阈值运行，再按季节复核。",
+                    "ustar_rule": self.ustar_rule_combo.currentText().strip(),
+                },
+                "uncertainty": {
+                    "title": "不确定度",
+                    "method": self.uncertainty_mode_combo.currentText().strip(),
+                    "applicable": "适用于报告摘要与归档。",
+                    "recommended": "至少保留主要来源拆分。",
+                    "uncertainty_mode": self.uncertainty_mode_combo.currentText().strip(),
+                },
+                "output": {
+                    "title": "输出",
+                    "method": "标准结果 + 诊断摘要",
+                    "applicable": "适用于项目归档与后续 QC。",
+                    "recommended": "保留关键质量字段与诊断摘要。",
+                    "output_fields": self.output_fields_edit.text().strip(),
+                    "full_output_mode": self.full_output_mode_combo.currentText().strip(),
+                },
+            },
+        }
+
+    def _run_processing(self, *, precheck_only: bool) -> None:
+        if not self._save_processing(show_message=False):
+            return
+        try:
+            result = self.controller.run_ec_processing(precheck_only=precheck_only)
+        except Exception as exc:
+            QMessageBox.warning(self, "运行失败", str(exc))
+            return
+        title = "预检查完成" if precheck_only else "处理已启动"
+        QMessageBox.information(self, title, result["message"])
+
+    def _save_processing(self, *, show_message: bool = True) -> bool:
+        try:
+            self.controller.save_ec_processing(self._collect_payload())
+        except Exception as exc:
+            QMessageBox.warning(self, "保存失败", str(exc))
+            return False
+        if show_message:
+            QMessageBox.information(self, "保存完成", "EC 处理配置已保存，可继续运行或保存为模板。")
+        return True
+
+    def _save_template(self) -> None:
+        if not self._save_processing(show_message=False):
+            return
+        self.controller.save_ec_template()
+        QMessageBox.information(self, "模板已保存", "当前处理流程已保存为模板，可供后续项目复用。")
+
+    def _restore_default(self) -> None:
+        if (
+            QMessageBox.question(
+                self,
+                "恢复默认",
+                "将恢复默认处理流程。当前未保存的修改可能丢失，是否继续？",
+            )
+            != QMessageBox.Yes
+        ):
+            return
+        self.controller.restore_default_ec_processing()
+
+    def _refresh_run_bar(self, *_args) -> None:
+        workspace = self.controller.ec_processing_workspace
+        summary = workspace.get("summary", {})
+        step_title = dict((key, title) for key, title, _subtitle in EC_STEPS).get(self.controller.ec_nav_step, "当前步骤")
+        status = str(summary.get("status", "empty"))
+        tone = "success" if status == "ok" else ("warning" if status == "empty" else "accent")
+        self.run_status_chip.setText(f"{step_title} · {status}")
+        self.run_status_chip.setProperty("chipTone", tone)
+        self.run_status_chip.style().unpolish(self.run_status_chip)
+        self.run_status_chip.style().polish(self.run_status_chip)
+        self.run_summary_label.setText(str(summary.get("message", "尚未生成真实 RP 结果。")))
+
+    def _refresh_window_preview(self, *_args) -> None:
+        section = self._section_workspace("window_sampling")
+        current = self._current_window()
+        if current is None:
+            samples = self.window_minutes_spin.value() * self.window_sample_hz_spin.value() * 60
+            self.window_samples_label.setText(f"{samples:,} 点 / 窗口")
+            self.window_preview_note.setText("暂无真实 RP 结果，运行处理后显示窗口切分与连续性摘要。")
+            return
+        self.window_samples_label.setText(f"{current.sample_count:,} 点 / 当前窗口")
+        self.window_preview_note.setText(str(section.get("real_summary", "窗口摘要不可用。")))
+
+    def _refresh_cleaning_preview(self, *_args) -> None:
+        section = self._section_workspace("data_cleaning")
+        current = self._current_window()
+        if current is None:
+            self.clean_removed_ratio_label.setText("--")
+            self.clean_retained_label.setText("暂无真实 RP 结果，运行处理后显示缺失率和有效样本摘要。")
+            return
+        self.clean_removed_ratio_label.setText(f"{current.missing_ratio * 100:.1f}%")
+        self.clean_retained_label.setText(str(section.get("real_summary", current.reason)))
+
+    def _refresh_screening_preview(self, *_args) -> None:
+        config_summary = (
+            f"当前配置：偏度阈值={self.screening_skewness_spin.value():.1f}，"
+            f"峰度阈值={self.screening_kurtosis_spin.value():.1f}，"
+            f"dropout最小连续点={self.screening_dropout_min_run_spin.value()}，"
+            f"尖峰σ={self.screening_spike_sigma_spin.value():.1f}，"
+            f"不连续σ={self.screening_discontinuity_sigma_spin.value():.1f}。"
+        )
+        abs_text = self.screening_absolute_limits_edit.toPlainText().strip()
+        if abs_text:
+            config_summary += f" 绝对值范围：{abs_text}"
+        current = self._current_window()
+        if current is None:
+            self.screening_summary_label.setText(f"{config_summary}\n暂无真实 RP 结果，运行处理后显示筛选摘要。")
+            return
+        diagnostics = current.diagnostics or {}
+        screening_detail = diagnostics.get("screening_detail", {})
+        issues = diagnostics.get("issues", [])
+        screening_issues = [i for i in issues if not i.startswith("spike_") or "screening" in str(diagnostics.get("screening_config", {}))]
+        if screening_detail:
+            lines = []
+            for var_name, detail in screening_detail.items():
+                if isinstance(detail, dict):
+                    var_issues = detail.get("issues", [])
+                    if var_issues:
+                        lines.append(f"{var_name}: {', '.join(var_issues)}")
+            if lines:
+                self.screening_summary_label.setText(f"{config_summary}\n检测到问题: {'; '.join(lines)}")
+            else:
+                self.screening_summary_label.setText(f"{config_summary}\n所有变量通过统计筛选。")
+        else:
+            self.screening_summary_label.setText(f"{config_summary}\nissues={len(issues)}")
+
+    def _refresh_lag_preview(self, *_args) -> None:
+        section = self._section_workspace("lag")
+        current = self._current_window()
+        if current is None:
+            self.lag_curve.setData([], [])
+            self.lag_note_label.setText("暂无真实 RP 结果，运行处理后显示 lag 协方差曲线。")
+            return
+        x_values = section.get("intermediate", {}).get("lag_curve_x", [])
+        y_values = section.get("intermediate", {}).get("lag_curve_y", [])
+        self.lag_curve.setData(x_values, y_values)
+        lag_strategy = current.diagnostics.get("lag_strategy", "covariance_max") if current.diagnostics else "covariance_max"
+        screening_detail = current.diagnostics.get("screening_detail", {}) if current.diagnostics else {}
+        screening_summary = ""
+        if screening_detail:
+            issue_vars = [k for k, v in screening_detail.items() if isinstance(v, dict) and v.get("valid_count", 0) > 0]
+            screening_summary = f"；screening: {', '.join(issue_vars)}" if issue_vars else ""
+        self.lag_note_label.setText(
+            f"strategy={lag_strategy}, lag={current.lag_seconds:.3f}s, conf={current.lag_confidence:.2f}{screening_summary}。"
+        )
+
+    def _refresh_rotation_preview(self, *_args) -> None:
+        section = self._section_workspace("rotation")
+        if self._current_window() is None:
+            self.rotation_preview_label.setText("暂无真实 RP 结果，运行处理后显示旋转模式与回退原因。")
+            return
+        self.rotation_preview_label.setText(str(section.get("real_summary", "旋转摘要不可用。")))
+
+    def _refresh_detrend_preview(self, *_args) -> None:
+        section = self._section_workspace("detrend")
+        if self._current_window() is None:
+            self.detrend_preview_label.setText("暂无真实 RP 结果，运行处理后显示去趋势模式摘要。")
+            return
+        self.detrend_preview_label.setText(str(section.get("real_summary", "去趋势摘要不可用。")))
+
+    def _refresh_covariance_preview(self, *_args) -> None:
+        current = self._current_window()
+        if current is None:
+            self.covariance_metric_flux.setText("--")
+            self.covariance_metric_h2o.setText("--")
+            self.covariance_metric_temp.setText("--")
+            return
+        self.covariance_metric_flux.setText(f"{current.cov_w_co2:.6f}")
+        self.covariance_metric_h2o.setText(f"{current.cov_w_h2o:.6f}")
+        self.covariance_metric_temp.setText(f"{current.raw_flux:.6f}")
+
+    def _refresh_density_preview(self, *_args) -> None:
+        windows = self.controller.ec_processing_workspace.get("windows", [])
+        section = self._section_workspace("density_correction")
+        current = self._current_window()
+        if not windows or current is None:
+            self.density_before_curve.setData([], [])
+            self.density_after_curve.setData([], [])
+            self.density_before_label.setText("--")
+            self.density_after_label.setText("--")
+            self.density_note_label.setText("暂无真实 RP 结果，运行处理后显示密度/混合比修正摘要。")
+            return
+        xs = np.arange(1, len(windows) + 1, dtype=float)
+        before = np.array([float(window.get("raw_flux", 0.0)) for window in windows], dtype=float)
+        after = np.array([float(window.get("primary_flux", window.get("density_corrected_flux", 0.0))) for window in windows], dtype=float)
+        self.density_before_curve.setData(xs, before)
+        self.density_after_curve.setData(xs, after)
+        self.density_before_label.setText(f"{current.raw_flux:.6f}")
+        primary_flux_val = current.primary_flux if current.primary_flux != 0.0 else current.density_corrected_flux
+        primary_source = current.primary_flux_source or "wpl"
+        self.density_after_label.setText(f"{primary_flux_val:.6f} [{primary_source}]")
+        self.density_note_label.setText(str(section.get("real_summary", current.reason)))
+
+    def _refresh_steadiness_preview(self, *_args) -> None:
+        section = self._section_workspace("steadiness")
+        current = self._current_window()
+        if current is None:
+            self.steadiness_preview_label.setText("暂无真实 RP 结果，运行处理后显示窗口级 QC 与异常原因。")
+            return
+        self.steadiness_preview_label.setText(str(section.get("real_summary", current.reason)))
+
+    def _refresh_turbulence_preview(self, *_args) -> None:
+        section = self._section_workspace("turbulence")
+        current = self._current_window()
+        if current is None:
+            self.turbulence_preview_label.setText("暂无真实 RP 结果。")
+            return
+        detail = current.turbulence_detail or {}
+        self.turbulence_preview_label.setText(
+            str(
+                section.get(
+                    "real_summary",
+                    f"u*={current.ustar or 0.0:.3f} m/s, score={current.turbulence_score or 0.0:.1f}, status={detail.get('status', 'unknown')}.",
+                )
+            )
+        )
+
+    def _refresh_uncertainty_preview(self, *_args) -> None:
+        current = self._current_window()
+        if current is None:
+            values = ("--", "--", "--")
+        else:
+            detail = current.uncertainty_detail or {}
+            values = (
+                f"{detail.get('random_component', 0.0):.3f}",
+                f"{detail.get('density_component', 0.0):.3f}",
+                f"{detail.get('stationarity_component', 0.0) + detail.get('turbulence_component', 0.0) + detail.get('continuity_component', 0.0):.3f}",
+            )
+        self.uncertainty_sampling_label.setText(values[0])
+        self.uncertainty_sensor_label.setText(values[1])
+        self.uncertainty_processing_label.setText(values[2])
+
+    def _refresh_output_preview(self, *_args) -> None:
+        workspace = self.controller.ec_processing_workspace
+        current = self._current_window()
+        text = self.output_fields_edit.text().strip()
+        fields = [field.strip() for field in text.split(",") if field.strip()]
+        if current is None:
+            self.output_preview_label.setText("暂无真实 RP 结果。")
+            return
+        summary = workspace.get("summary", {})
+        field_text = "、".join(fields[:6]) if fields else "未设置输出字段"
+        self.output_preview_label.setText(
+            f"运行状态 {summary.get('status', 'empty')}，窗口数 {summary.get('window_count', 0)}，full_output={self.full_output_mode_combo.currentText().strip()}，字段：{field_text}。"
+        )
+
+    def _section_workspace(self, key: str) -> dict:
+        return dict(self.controller.ec_processing_workspace.get("sections", {}).get(key, {}))
+
+    def _current_window(self):
+        return self.controller.current_rp_window()
+
+    def _metric_box(self, title: str, widget: QWidget) -> CardFrame:
+        card = CardFrame()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
+        label = QLabel(title)
+        label.setObjectName("metricLabel")
+        layout.addWidget(label)
+        if isinstance(widget, QLabel):
+            widget.setObjectName("metricValue")
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+        layout.addWidget(widget)
+        return card
+
+    def _on_lag_strategy_changed(self) -> None:
+        strategy = self.lag_strategy_combo.currentText().strip()
+        is_constant = strategy in ("固定滞后", "constant")
+        is_none = strategy in ("无滞后", "none")
+        self.lag_expected_spin.setEnabled(is_constant)
+        self.lag_search_window_spin.setEnabled(not is_none and not is_constant)
+
+    def _double_spin(self, low: float, high: float, decimals: int, *, suffix: str = "") -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(low, high)
+        spin.setDecimals(decimals)
+        spin.setSuffix(suffix)
+        return spin
+
+    def _set_combo_text(self, combo: QComboBox, value: str) -> None:
+        text = value.strip()
+        if not text:
+            return
+        index = combo.findText(text)
+        if index < 0:
+            combo.addItem(text)
+            index = combo.findText(text)
+        combo.setCurrentIndex(index)

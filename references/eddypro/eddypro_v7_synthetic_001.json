@@ -1,0 +1,124 @@
+{
+  "reference_id": "eddypro_v7_synthetic_001",
+  "source": "EddyPro v7.0.9 (synthetic reference for benchmark parity)",
+  "description": "Synthetic EddyPro reference output for cross-software parity testing. Values represent typical half-hourly EC flux output from a temperate forest site.",
+  "created_at": "2026-04-21T00:00:00",
+  "site_info": {
+    "station_name": "US-Syn1",
+    "latitude": 45.5,
+    "longitude": -90.0,
+    "elevation_m": 400,
+    "canopy_height_m": 25,
+    "displacement_height_m": 17.5,
+    "roughness_length_m": 2.5
+  },
+  "processing_settings": {
+    "averaging_period_min": 30,
+    "rotation_mode": "double",
+    "density_correction": "WPL",
+    "lag_determination": "covariance_max",
+    "detrend_method": "block_average",
+    "frequency_correction": "analytical"
+  },
+  "qc_grade_mapping": {
+    "description": "EddyPro uses 0/1/2 QC flags. gas_ec_studio uses A/B/C grades.",
+    "mapping": {
+      "0": "A",
+      "1": "B",
+      "2": "C"
+    },
+    "notes": [
+      "EddyPro flag 0 = best quality, maps to grade A",
+      "EddyPro flag 1 = moderate quality, maps to grade B",
+      "EddyPro flag 2 = poor quality, maps to grade C",
+      "This mapping is approximate; EddyPro QC considers additional tests (spike, steadiness, integral turbulence) that gas_ec_studio may handle differently"
+    ]
+  },
+  "windows": [
+    {
+      "window_id": "ep_w001",
+      "start_time": "2025-06-15T00:00:00",
+      "end_time": "2025-06-15T00:30:00",
+      "primary_flux": -4.82,
+      "primary_flux_source": "wpl",
+      "lag_seconds": 2.4,
+      "lag_strategy": "covariance_max",
+      "rotation_mode": "double",
+      "applied_rotation_impl": "double",
+      "wpl_water_vapor_term": 0.00012,
+      "wpl_sensible_heat_term": 0.00004,
+      "total_density_correction": 0.00016,
+      "qc_grade": "A",
+      "qc_score": null,
+      "notes": "Stable nighttime conditions, low turbulence"
+    },
+    {
+      "window_id": "ep_w002",
+      "start_time": "2025-06-15T00:30:00",
+      "end_time": "2025-06-15T01:00:00",
+      "primary_flux": -3.15,
+      "primary_flux_source": "wpl",
+      "lag_seconds": 2.3,
+      "lag_strategy": "covariance_max",
+      "rotation_mode": "double",
+      "applied_rotation_impl": "double",
+      "wpl_water_vapor_term": 0.00009,
+      "wpl_sensible_heat_term": 0.00003,
+      "total_density_correction": 0.00012,
+      "qc_grade": "A",
+      "qc_score": null,
+      "notes": "Continued stable nighttime"
+    },
+    {
+      "window_id": "ep_w003",
+      "start_time": "2025-06-15T06:00:00",
+      "end_time": "2025-06-15T06:30:00",
+      "primary_flux": 2.35,
+      "primary_flux_source": "wpl",
+      "lag_seconds": 2.5,
+      "lag_strategy": "covariance_max",
+      "rotation_mode": "double",
+      "applied_rotation_impl": "double",
+      "wpl_water_vapor_term": -0.00018,
+      "wpl_sensible_heat_term": -0.00006,
+      "total_density_correction": -0.00024,
+      "qc_grade": "B",
+      "qc_score": null,
+      "notes": "Morning transition, moderate turbulence"
+    },
+    {
+      "window_id": "ep_w004",
+      "start_time": "2025-06-15T12:00:00",
+      "end_time": "2025-06-15T12:30:00",
+      "primary_flux": 5.67,
+      "primary_flux_source": "wpl",
+      "lag_seconds": 2.1,
+      "lag_strategy": "covariance_max",
+      "rotation_mode": "double",
+      "applied_rotation_impl": "double",
+      "wpl_water_vapor_term": -0.00035,
+      "wpl_sensible_heat_term": -0.00012,
+      "total_density_correction": -0.00047,
+      "qc_grade": "A",
+      "qc_score": null,
+      "notes": "Midday, strong convective conditions"
+    },
+    {
+      "window_id": "ep_w005",
+      "start_time": "2025-06-15T18:00:00",
+      "end_time": "2025-06-15T18:30:00",
+      "primary_flux": 1.23,
+      "primary_flux_source": "wpl",
+      "lag_seconds": 2.6,
+      "lag_strategy": "covariance_max",
+      "rotation_mode": "double",
+      "applied_rotation_impl": "double",
+      "wpl_water_vapor_term": -0.00008,
+      "wpl_sensible_heat_term": -0.00003,
+      "total_density_correction": -0.00011,
+      "qc_grade": "C",
+      "qc_score": null,
+      "notes": "Evening transition, low u-star, possible advection"
+    }
+  ]
+}
