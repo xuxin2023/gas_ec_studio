@@ -129,7 +129,31 @@ class ECProcessingPage(QWidget):
         self._set_combo_text(self.density_correction_combo, str(steps["density_correction"].get("correction_mode", "WPL")))
         self._set_combo_text(self.steadiness_rule_combo, str(steps["steadiness"].get("steadiness_rule", "Foken-like")))
         self._set_combo_text(self.ustar_rule_combo, str(steps["turbulence"].get("ustar_rule", "站点阈值")))
-        self._set_combo_text(self.uncertainty_mode_combo, str(steps["uncertainty"].get("uncertainty_mode", "经验传播")))
+        footprint_step = steps.get("footprint", {})
+        self._set_combo_text(self.footprint_method_combo, str(footprint_step.get("method", "kljun")))
+        self.footprint_enable_combo.setCurrentIndex(0 if footprint_step.get("enabled", True) else 1)
+        self.footprint_zm_spin.setValue(float(footprint_step.get("z_m", 3.0) or 3.0))
+        self.footprint_canopy_spin.setValue(float(footprint_step.get("canopy_height_m", 5.0) or 5.0))
+        self.footprint_z0_spin.setValue(float(footprint_step.get("z0", 0.12) or 0.12))
+        self.footprint_ol_spin.setValue(float(footprint_step.get("ol", 0.0) or 0.0))
+
+        uncertainty_step = steps.get("uncertainty", {})
+        self._set_combo_text(
+            self.uncertainty_mode_combo,
+            str(uncertainty_step.get("method") or uncertainty_step.get("uncertainty_mode", "mann_lenschow")),
+        )
+        self.uncertainty_timescale_spin.setValue(float(uncertainty_step.get("integral_timescale_s", 5.0) or 5.0))
+        self.uncertainty_confidence_spin.setValue(float(uncertainty_step.get("confidence_level", 0.95) or 0.95))
+
+        spectral_step = steps.get("spectral_correction", {})
+        self._set_combo_text(self.spectral_method_combo, str(spectral_step.get("method", "massman")))
+        self.spectral_enable_combo.setCurrentIndex(0 if spectral_step.get("enabled", True) else 1)
+        self.spectral_path_spin.setValue(float(spectral_step.get("path_length_m", 0.15) or 0.15))
+        self.spectral_sep_spin.setValue(float(spectral_step.get("sensor_sep_m", 0.20) or 0.20))
+        self.spectral_response_spin.setValue(float(spectral_step.get("response_time_s", 0.1) or 0.1))
+        self.spectral_zm_spin.setValue(float(spectral_step.get("z_m", 3.0) or 3.0))
+        self.spectral_ol_spin.setValue(float(spectral_step.get("ol", 0.0) or 0.0))
+        self.spectral_cospectrum_combo.setCurrentIndex(0 if spectral_step.get("use_fcc_measured_cospectrum", True) else 1)
         self.output_fields_edit.setText(str(steps["output"].get("output_fields", "")))
         self._set_combo_text(self.full_output_mode_combo, str(steps["output"].get("full_output_mode", "only_available")))
 
@@ -572,31 +596,110 @@ class ECProcessingPage(QWidget):
         param_layout = QVBoxLayout(param_card)
         param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         param_layout.setSpacing(TOKENS.spacing_md)
-        param_layout.addWidget(section_title("不确定度设置", "保留来源拆分方式，为报告和复核留接口。"))
-        form = QFormLayout()
+        param_layout.addWidget(section_title("方法控制", "三族方法配置共用一页，保证 UI、config snapshot 和 pipeline 参数名一致。"))
+
+        footprint_card = CardFrame(muted=True)
+        footprint_layout = QVBoxLayout(footprint_card)
+        footprint_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        footprint_layout.setSpacing(TOKENS.spacing_sm)
+        footprint_layout.addWidget(section_title("Footprint", "推荐：kljun / z_m=3.0 / canopy_height_m=5.0"))
+        footprint_form = QFormLayout()
+        self.footprint_enable_combo = QComboBox()
+        self.footprint_enable_combo.addItems(["enabled", "disabled"])
+        self.footprint_method_combo = QComboBox()
+        self.footprint_method_combo.addItems(["kljun", "kormann_meixner", "hsieh"])
+        self.footprint_zm_spin = self._double_spin(0.1, 50.0, 2, suffix=" m")
+        self.footprint_canopy_spin = self._double_spin(0.1, 60.0, 2, suffix=" m")
+        self.footprint_z0_spin = self._double_spin(0.001, 5.0, 3, suffix=" m")
+        self.footprint_ol_spin = self._double_spin(-2000.0, 2000.0, 1, suffix=" m")
+        footprint_form.addRow("开关", self.footprint_enable_combo)
+        footprint_form.addRow("method", self.footprint_method_combo)
+        footprint_form.addRow("z_m", self.footprint_zm_spin)
+        footprint_form.addRow("canopy_height_m", self.footprint_canopy_spin)
+        footprint_form.addRow("z0", self.footprint_z0_spin)
+        footprint_form.addRow("ol", self.footprint_ol_spin)
+        footprint_layout.addLayout(footprint_form)
+        self.footprint_summary_label = QLabel("--")
+        self.footprint_summary_label.setObjectName("subtitle")
+        self.footprint_summary_label.setWordWrap(True)
+        footprint_layout.addWidget(self.footprint_summary_label)
+        param_layout.addWidget(footprint_card)
+
+        uncertainty_card = CardFrame(muted=True)
+        uncertainty_layout = QVBoxLayout(uncertainty_card)
+        uncertainty_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        uncertainty_layout.setSpacing(TOKENS.spacing_sm)
+        uncertainty_layout.addWidget(section_title("Uncertainty", "推荐：mann_lenschow / integral_timescale_s=5.0 / confidence_level=0.95"))
+        uncertainty_form = QFormLayout()
         self.uncertainty_mode_combo = QComboBox()
-        self.uncertainty_mode_combo.addItems(["经验传播", "分量拆分", "项目自定义"])
-        form.addRow("估计方法", self.uncertainty_mode_combo)
-        param_layout.addLayout(form)
-        row.addWidget(param_card, 2)
+        self.uncertainty_mode_combo.addItems(["mann_lenschow", "finkelstein_sims", "composite_empirical"])
+        self.uncertainty_timescale_spin = self._double_spin(0.5, 120.0, 1, suffix=" s")
+        self.uncertainty_confidence_spin = self._double_spin(0.50, 0.99, 2)
+        uncertainty_form.addRow("method", self.uncertainty_mode_combo)
+        uncertainty_form.addRow("integral_timescale_s", self.uncertainty_timescale_spin)
+        uncertainty_form.addRow("confidence_level", self.uncertainty_confidence_spin)
+        uncertainty_layout.addLayout(uncertainty_form)
+        self.uncertainty_summary_label = QLabel("--")
+        self.uncertainty_summary_label.setObjectName("subtitle")
+        self.uncertainty_summary_label.setWordWrap(True)
+        uncertainty_layout.addWidget(self.uncertainty_summary_label)
+        param_layout.addWidget(uncertainty_card)
+
+        spectral_card = CardFrame(muted=True)
+        spectral_layout = QVBoxLayout(spectral_card)
+        spectral_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        spectral_layout.setSpacing(TOKENS.spacing_sm)
+        spectral_layout.addWidget(section_title("Spectral Correction", "推荐：massman；Fratini 默认自动尝试 FCC measured cospectrum"))
+        spectral_form = QFormLayout()
+        self.spectral_enable_combo = QComboBox()
+        self.spectral_enable_combo.addItems(["enabled", "disabled"])
+        self.spectral_method_combo = QComboBox()
+        self.spectral_method_combo.addItems(["massman", "horst", "ibrom", "fratini"])
+        self.spectral_path_spin = self._double_spin(0.01, 10.0, 3, suffix=" m")
+        self.spectral_sep_spin = self._double_spin(0.0, 10.0, 3, suffix=" m")
+        self.spectral_response_spin = self._double_spin(0.001, 10.0, 3, suffix=" s")
+        self.spectral_zm_spin = self._double_spin(0.1, 50.0, 2, suffix=" m")
+        self.spectral_ol_spin = self._double_spin(-2000.0, 2000.0, 1, suffix=" m")
+        self.spectral_cospectrum_combo = QComboBox()
+        self.spectral_cospectrum_combo.addItems(["fcc_auto", "local_only"])
+        spectral_form.addRow("开关", self.spectral_enable_combo)
+        spectral_form.addRow("method", self.spectral_method_combo)
+        spectral_form.addRow("path_length_m", self.spectral_path_spin)
+        spectral_form.addRow("sensor_sep_m", self.spectral_sep_spin)
+        spectral_form.addRow("response_time_s", self.spectral_response_spin)
+        spectral_form.addRow("z_m", self.spectral_zm_spin)
+        spectral_form.addRow("ol", self.spectral_ol_spin)
+        spectral_form.addRow("measured_cospectrum", self.spectral_cospectrum_combo)
+        spectral_layout.addLayout(spectral_form)
+        self.spectral_summary_label = QLabel("--")
+        self.spectral_summary_label.setObjectName("subtitle")
+        self.spectral_summary_label.setWordWrap(True)
+        spectral_layout.addWidget(self.spectral_summary_label)
+        param_layout.addWidget(spectral_card)
+
+        row.addWidget(param_card, 3)
 
         preview_card = CardFrame(muted=True)
         preview_layout = QGridLayout(preview_card)
         preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         preview_layout.setHorizontalSpacing(TOKENS.spacing_md)
         preview_layout.setVerticalSpacing(TOKENS.spacing_md)
-        preview_layout.addWidget(section_title("中间结果", "保留主要来源拆分，让不确定度不止一个总数。"), 0, 0, 1, 3)
+        preview_layout.addWidget(section_title("中间结果", "显示 method summary、uncertainty band 和 Fratini/FCC 路径状态。"), 0, 0, 1, 3)
         self.uncertainty_sampling_label = QLabel("--")
         self.uncertainty_sensor_label = QLabel("--")
         self.uncertainty_processing_label = QLabel("--")
         for col, (title, value) in enumerate(
             (
-                ("采样链路", self.uncertainty_sampling_label),
-                ("传感器", self.uncertainty_sensor_label),
-                ("处理配置", self.uncertainty_processing_label),
+                ("random_error", self.uncertainty_sampling_label),
+                ("relative", self.uncertainty_sensor_label),
+                ("band", self.uncertainty_processing_label),
             )
         ):
             preview_layout.addWidget(self._metric_box(title, value), 1, col)
+        self.uncertainty_preview_note = QLabel("--")
+        self.uncertainty_preview_note.setObjectName("subtitle")
+        self.uncertainty_preview_note.setWordWrap(True)
+        preview_layout.addWidget(self.uncertainty_preview_note, 2, 0, 1, 3)
         row.addWidget(preview_card, 3)
 
     def _build_output_page(self, layout: QVBoxLayout) -> None:
@@ -648,7 +751,23 @@ class ECProcessingPage(QWidget):
         self.detrend_mode_combo.currentIndexChanged.connect(self._refresh_detrend_preview)
         self.steadiness_rule_combo.currentIndexChanged.connect(self._refresh_steadiness_preview)
         self.ustar_rule_combo.currentIndexChanged.connect(self._refresh_turbulence_preview)
+        self.footprint_enable_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
+        self.footprint_method_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
+        self.footprint_zm_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.footprint_canopy_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.footprint_z0_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.footprint_ol_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.uncertainty_mode_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
+        self.uncertainty_timescale_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.uncertainty_confidence_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.spectral_enable_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
+        self.spectral_method_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
+        self.spectral_path_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.spectral_sep_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.spectral_response_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.spectral_zm_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.spectral_ol_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.spectral_cospectrum_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
         self.output_fields_edit.textChanged.connect(self._refresh_output_preview)
         self.full_output_mode_combo.currentIndexChanged.connect(self._refresh_output_preview)
 
@@ -763,12 +882,41 @@ class ECProcessingPage(QWidget):
                     "recommended": "先按站点阈值运行，再按季节复核。",
                     "ustar_rule": self.ustar_rule_combo.currentText().strip(),
                 },
+                "footprint": {
+                    "title": "Footprint",
+                    "method": self.footprint_method_combo.currentText().strip(),
+                    "applicable": "适用于源区贡献距离摘要与代表性判断。",
+                    "recommended": "默认推荐 kljun / z_m=3.0 / canopy_height_m=5.0。",
+                    "enabled": self.footprint_enable_combo.currentText().strip() == "enabled",
+                    "z_m": self.footprint_zm_spin.value(),
+                    "canopy_height_m": self.footprint_canopy_spin.value(),
+                    "z0": self.footprint_z0_spin.value(),
+                    "ol": self.footprint_ol_spin.value(),
+                    "preview": self.footprint_summary_label.text().strip(),
+                },
                 "uncertainty": {
                     "title": "不确定度",
                     "method": self.uncertainty_mode_combo.currentText().strip(),
-                    "applicable": "适用于报告摘要与归档。",
-                    "recommended": "至少保留主要来源拆分。",
+                    "applicable": "适用于随机误差传播与最终通量 band 交付。",
+                    "recommended": "默认推荐 mann_lenschow / integral_timescale_s=5.0 / confidence_level=0.95。",
                     "uncertainty_mode": self.uncertainty_mode_combo.currentText().strip(),
+                    "integral_timescale_s": self.uncertainty_timescale_spin.value(),
+                    "confidence_level": self.uncertainty_confidence_spin.value(),
+                    "preview": self.uncertainty_summary_label.text().strip(),
+                },
+                "spectral_correction": {
+                    "title": "谱修正",
+                    "method": self.spectral_method_combo.currentText().strip(),
+                    "applicable": "适用于高频损失修正与 Fratini/FCC measured cospectrum 注入。",
+                    "recommended": "默认推荐 massman；Fratini 默认启用 fcc_auto。",
+                    "enabled": self.spectral_enable_combo.currentText().strip() == "enabled",
+                    "path_length_m": self.spectral_path_spin.value(),
+                    "sensor_sep_m": self.spectral_sep_spin.value(),
+                    "response_time_s": self.spectral_response_spin.value(),
+                    "z_m": self.spectral_zm_spin.value(),
+                    "ol": self.spectral_ol_spin.value(),
+                    "use_fcc_measured_cospectrum": self.spectral_cospectrum_combo.currentText().strip() == "fcc_auto",
+                    "preview": self.spectral_summary_label.text().strip(),
                 },
                 "output": {
                     "title": "输出",
@@ -979,18 +1127,56 @@ class ECProcessingPage(QWidget):
 
     def _refresh_uncertainty_preview(self, *_args) -> None:
         current = self._current_window()
+        self.footprint_summary_label.setText(
+            " / ".join(
+                [
+                    f"enabled={self.footprint_enable_combo.currentText().strip()}",
+                    f"method={self.footprint_method_combo.currentText().strip()}",
+                    f"z_m={self.footprint_zm_spin.value():.2f}",
+                    f"canopy={self.footprint_canopy_spin.value():.2f}",
+                ]
+            )
+        )
+        self.uncertainty_summary_label.setText(
+            " / ".join(
+                [
+                    f"method={self.uncertainty_mode_combo.currentText().strip()}",
+                    f"integral_timescale_s={self.uncertainty_timescale_spin.value():.1f}",
+                    f"confidence_level={self.uncertainty_confidence_spin.value():.2f}",
+                ]
+            )
+        )
+        self.spectral_summary_label.setText(
+            " / ".join(
+                [
+                    f"enabled={self.spectral_enable_combo.currentText().strip()}",
+                    f"method={self.spectral_method_combo.currentText().strip()}",
+                    f"path_length_m={self.spectral_path_spin.value():.3f}",
+                    f"cospectrum={self.spectral_cospectrum_combo.currentText().strip()}",
+                ]
+            )
+        )
         if current is None:
             values = ("--", "--", "--")
+            note = "暂无真实 RP 结果，运行处理后显示 primary flux uncertainty band 和 Fratini/FCC 路径。"
         else:
             detail = current.uncertainty_detail or {}
+            diagnostics = current.diagnostics or {}
             values = (
-                f"{detail.get('random_component', 0.0):.3f}",
-                f"{detail.get('density_component', 0.0):.3f}",
-                f"{detail.get('stationarity_component', 0.0) + detail.get('turbulence_component', 0.0) + detail.get('continuity_component', 0.0):.3f}",
+                f"{float(diagnostics.get('primary_flux_random_error', detail.get('primary_flux_random_error', 0.0)) or 0.0):.6f}",
+                f"{float(diagnostics.get('primary_flux_relative_uncertainty', detail.get('primary_flux_relative_uncertainty', detail.get('relative_uncertainty', 0.0))) or 0.0):.3f}",
+                f"{float(diagnostics.get('primary_flux_uncertainty_band', detail.get('primary_flux_uncertainty_band', 0.0)) or 0.0):.6f}",
+            )
+            note = (
+                f"footprint={diagnostics.get('footprint_method', '--')} / "
+                f"uncertainty={diagnostics.get('uncertainty_method', detail.get('selected_method', '--'))} / "
+                f"spectral={diagnostics.get('spectral_correction_method', '--')} / "
+                f"cospectrum={diagnostics.get('spectral_correction_measured_cospectrum_source', 'disabled') or 'disabled'}"
             )
         self.uncertainty_sampling_label.setText(values[0])
         self.uncertainty_sensor_label.setText(values[1])
         self.uncertainty_processing_label.setText(values[2])
+        self.uncertainty_preview_note.setText(note)
 
     def _refresh_output_preview(self, *_args) -> None:
         workspace = self.controller.ec_processing_workspace
@@ -1002,8 +1188,12 @@ class ECProcessingPage(QWidget):
             return
         summary = workspace.get("summary", {})
         field_text = "、".join(fields[:6]) if fields else "未设置输出字段"
+        diagnostics = current.diagnostics or {}
         self.output_preview_label.setText(
-            f"运行状态 {summary.get('status', 'empty')}，窗口数 {summary.get('window_count', 0)}，full_output={self.full_output_mode_combo.currentText().strip()}，字段：{field_text}。"
+            f"运行状态 {summary.get('status', 'empty')}，窗口数 {summary.get('window_count', 0)}，"
+            f"full_output={self.full_output_mode_combo.currentText().strip()}，字段：{field_text}，"
+            f"uncertainty_band={diagnostics.get('primary_flux_uncertainty_band', '--')}，"
+            f"schema_target={diagnostics.get('schema_target', '--')}。"
         )
 
     def _section_workspace(self, key: str) -> dict:

@@ -82,6 +82,55 @@ class UncertaintyMetrics:
     detail: dict[str, Any]
 
 
+_DEFAULT_UNCERTAINTY_CONFIDENCE_LEVEL = 0.95
+_CONFIDENCE_Z_LOOKUP: tuple[tuple[float, float], ...] = (
+    (0.68, 1.0),
+    (0.80, 1.2816),
+    (0.90, 1.6449),
+    (0.95, 1.96),
+    (0.99, 2.5758),
+)
+
+
+def _confidence_multiplier(confidence_level: float) -> float:
+    level = float(np.clip(confidence_level, 0.50, 0.99))
+    nearest = min(_CONFIDENCE_Z_LOOKUP, key=lambda item: abs(item[0] - level))
+    return nearest[1]
+
+
+def build_uncertainty_band(
+    *,
+    estimate: float,
+    random_error: float | None = None,
+    relative_uncertainty: float | None = None,
+    confidence_level: float = _DEFAULT_UNCERTAINTY_CONFIDENCE_LEVEL,
+) -> dict[str, float | None]:
+    level = float(np.clip(confidence_level, 0.50, 0.99))
+    sigma_error: float | None = None
+    if isinstance(random_error, (int, float)):
+        sigma_error = abs(float(random_error))
+    elif isinstance(relative_uncertainty, (int, float)):
+        sigma_error = abs(float(estimate)) * abs(float(relative_uncertainty))
+
+    if sigma_error is None:
+        return {
+            "confidence_level": round(level, 3),
+            "random_error_sigma": None,
+            "uncertainty_band_half_width": None,
+            "interval_lower": None,
+            "interval_upper": None,
+        }
+
+    half_width = sigma_error * _confidence_multiplier(level)
+    return {
+        "confidence_level": round(level, 3),
+        "random_error_sigma": round(sigma_error, 6),
+        "uncertainty_band_half_width": round(half_width, 6),
+        "interval_lower": round(float(estimate) - half_width, 6),
+        "interval_upper": round(float(estimate) + half_width, 6),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Configuration normalization
 # ---------------------------------------------------------------------------
@@ -938,6 +987,7 @@ def compute_uncertainty_metrics(
     missing_ratio: float,
 ) -> UncertaintyMetrics:
     raw_flux = abs(flux_metrics.get("raw_flux", 0.0))
+    primary_flux = float(flux_metrics.get("primary_flux", flux_metrics.get("density_corrected_flux", 0.0)) or 0.0)
     density_corrected_flux = abs(flux_metrics.get("density_corrected_flux", 0.0))
     density_delta_ratio = abs(density_corrected_flux - raw_flux) / max(raw_flux, 1e-12)
     random_component = max(0.0, 1.0 - float(lag_confidence))
@@ -953,6 +1003,11 @@ def compute_uncertainty_metrics(
         "density_component": round(density_component, 4),
     }
     relative_uncertainty = float(np.mean(list(components.values()))) if components else 0.0
+    band = build_uncertainty_band(
+        estimate=primary_flux,
+        relative_uncertainty=relative_uncertainty,
+        confidence_level=_DEFAULT_UNCERTAINTY_CONFIDENCE_LEVEL,
+    )
     if raw_flux < 1e-12:
         return UncertaintyMetrics(
             detail={
@@ -967,6 +1022,11 @@ def compute_uncertainty_metrics(
                 "turbulence_component": components["turbulence_component"],
                 "continuity_component": components["continuity_component"],
                 "density_component": components["density_component"],
+                "confidence_level": band["confidence_level"],
+                "random_error_sigma": band["random_error_sigma"],
+                "uncertainty_band_half_width": band["uncertainty_band_half_width"],
+                "interval_lower": band["interval_lower"],
+                "interval_upper": band["interval_upper"],
                 "limitations": [
                     "Empirical fallback is designed for quick RP screening, not formal interval estimation",
                     "Systematic bias and representativeness errors are not included",
@@ -987,6 +1047,11 @@ def compute_uncertainty_metrics(
             "turbulence_component": components["turbulence_component"],
             "continuity_component": components["continuity_component"],
             "density_component": components["density_component"],
+            "confidence_level": band["confidence_level"],
+            "random_error_sigma": band["random_error_sigma"],
+            "uncertainty_band_half_width": band["uncertainty_band_half_width"],
+            "interval_lower": band["interval_lower"],
+            "interval_upper": band["interval_upper"],
             "limitations": [
                 "Empirical fallback is designed for quick RP screening, not formal interval estimation",
                 "Systematic bias and representativeness errors are not included",
@@ -1933,11 +1998,16 @@ def compute_uncertainty_mann_lenschow(
     integral_timescale_s: float | None = None,
 ) -> dict[str, Any]:
     if n_samples < 100 or abs(cov_w_scalar) < 1e-15:
+        band = build_uncertainty_band(estimate=cov_w_scalar, random_error=None)
         return {
             "method": "mann_lenschow",
             "status": "insufficient_data",
             "random_error": None,
             "relative_error": None,
+            "confidence_level": band["confidence_level"],
+            "uncertainty_band_half_width": band["uncertainty_band_half_width"],
+            "interval_lower": band["interval_lower"],
+            "interval_upper": band["interval_upper"],
             "components": {},
             "limitations": ["Insufficient data or negligible flux"],
             "provenance": "Mann & Lenschow 1994",
@@ -1957,11 +2027,21 @@ def compute_uncertainty_mann_lenschow(
     var_cov = (var_w * var_scalar + cov_w_scalar ** 2) / n_eff
     random_error = math.sqrt(max(0.0, var_cov))
     relative_error = random_error / max(abs(cov_w_scalar), 1e-15)
+    band = build_uncertainty_band(
+        estimate=cov_w_scalar,
+        random_error=random_error,
+        relative_uncertainty=relative_error,
+        confidence_level=_DEFAULT_UNCERTAINTY_CONFIDENCE_LEVEL,
+    )
     return {
         "method": "mann_lenschow",
         "status": "ok",
         "random_error": round(random_error, 6),
         "relative_error": round(relative_error, 4),
+        "confidence_level": band["confidence_level"],
+        "uncertainty_band_half_width": band["uncertainty_band_half_width"],
+        "interval_lower": band["interval_lower"],
+        "interval_upper": band["interval_upper"],
         "components": {
             "n_effective": round(n_eff, 1),
             "integral_timescale_s": round(Ti, 2),
@@ -1998,11 +2078,16 @@ def compute_uncertainty_finkelstein_sims(
 ) -> dict[str, Any]:
     n = len(w_series)
     if n < 100:
+        band = build_uncertainty_band(estimate=0.0, random_error=None)
         return {
             "method": "finkelstein_sims",
             "status": "insufficient_data",
             "random_error": None,
             "relative_error": None,
+            "confidence_level": band["confidence_level"],
+            "uncertainty_band_half_width": band["uncertainty_band_half_width"],
+            "interval_lower": band["interval_lower"],
+            "interval_upper": band["interval_upper"],
             "components": {},
             "limitations": ["Insufficient data"],
             "provenance": "Finkelstein & Sims 2001",
@@ -2030,11 +2115,21 @@ def compute_uncertainty_finkelstein_sims(
     var_cov /= n
     random_error = math.sqrt(max(0.0, var_cov))
     relative_error = random_error / max(abs(cov_ws), 1e-15)
+    band = build_uncertainty_band(
+        estimate=float(cov_ws),
+        random_error=random_error,
+        relative_uncertainty=relative_error,
+        confidence_level=_DEFAULT_UNCERTAINTY_CONFIDENCE_LEVEL,
+    )
     return {
         "method": "finkelstein_sims",
         "status": "ok",
         "random_error": round(random_error, 6),
         "relative_error": round(relative_error, 4),
+        "confidence_level": band["confidence_level"],
+        "uncertainty_band_half_width": band["uncertainty_band_half_width"],
+        "interval_lower": band["interval_lower"],
+        "interval_upper": band["interval_upper"],
         "components": {
             "cov_ws": round(cov_ws, 6),
             "var_cov": round(var_cov, 6),

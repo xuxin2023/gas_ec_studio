@@ -15,6 +15,7 @@ from core.ec_rp.analysis import (
     apply_planar_fit_no_velocity_bias,
     apply_planar_fit_rotation,
     build_window_series,
+    build_uncertainty_band,
     compute_flux_metrics,
     compute_footprint,
     compute_planar_fit_coefficients,
@@ -462,12 +463,64 @@ class ECRPPipeline:
                 uncertainty.detail["components"] = fs_result.get("components", {})
                 uncertainty.detail["limitations"] = fs_result.get("limitations", [])
                 uncertainty.detail["provenance"] = fs_result.get("provenance", "")
+        uncertainty_confidence_level = float(
+            uncertainty_method_config.get("confidence_level", uncertainty.detail.get("confidence_level", 0.95))
+            if uncertainty_method_config
+            else uncertainty.detail.get("confidence_level", 0.95)
+        )
+        propagated_uncertainty = _propagate_uncertainty_to_primary_flux(
+            primary_flux=float(flux_metrics["primary_flux"]),
+            flux_metrics=flux_metrics,
+            uncertainty_detail=uncertainty.detail,
+            confidence_level=uncertainty_confidence_level,
+        )
+        uncertainty.detail["confidence_level"] = propagated_uncertainty.get("primary_flux_ci_level")
+        uncertainty.detail["primary_flux_random_error"] = propagated_uncertainty.get("primary_flux_random_error")
+        uncertainty.detail["primary_flux_relative_uncertainty"] = propagated_uncertainty.get("primary_flux_relative_uncertainty")
+        uncertainty.detail["primary_flux_uncertainty_band"] = propagated_uncertainty.get("primary_flux_uncertainty_band")
+        uncertainty.detail["primary_flux_ci_lower"] = propagated_uncertainty.get("primary_flux_ci_lower")
+        uncertainty.detail["primary_flux_ci_upper"] = propagated_uncertainty.get("primary_flux_ci_upper")
+        method_detail = diagnostics.get("uncertainty_method_detail")
+        if isinstance(method_detail, dict):
+            method_detail["confidence_level"] = propagated_uncertainty.get("primary_flux_ci_level")
+            method_detail["primary_flux_random_error"] = propagated_uncertainty.get("primary_flux_random_error")
+            method_detail["primary_flux_relative_uncertainty"] = propagated_uncertainty.get("primary_flux_relative_uncertainty")
+            method_detail["primary_flux_uncertainty_band"] = propagated_uncertainty.get("primary_flux_uncertainty_band")
+            method_detail["primary_flux_ci_lower"] = propagated_uncertainty.get("primary_flux_ci_lower")
+            method_detail["primary_flux_ci_upper"] = propagated_uncertainty.get("primary_flux_ci_upper")
+        diagnostics.update(propagated_uncertainty)
         if spectral_correction_config and spectral_correction_config.get("enabled", False):
-            measured_cospectrum_freq, measured_cospectrum_value = _measured_cospectrum_from_series(
-                w_series=rotation.w,
-                scalar_series=lagged_co2,
-                sample_rate_hz=sample_rate_hz,
-            )
+            measured_cospectrum_freq = None
+            measured_cospectrum_value = None
+            measured_cospectrum_meta = {
+                "enabled": bool(spectral_correction_config.get("use_fcc_measured_cospectrum", False)),
+                "used": False,
+                "source": "disabled",
+                "matched_window_id": "",
+                "source_run_id": str(spectral_correction_config.get("fcc_source_run_id", "")),
+            }
+            if str(spectral_correction_config.get("method", "massman")) == "fratini":
+                measured_cospectrum_freq, measured_cospectrum_value, measured_cospectrum_meta = _resolve_fcc_measured_cospectrum(
+                    window_start=rows[0].timestamp,
+                    window_end=rows[-1].timestamp,
+                    spectral_correction_config=spectral_correction_config,
+                )
+                if measured_cospectrum_freq is None or measured_cospectrum_value is None:
+                    local_freq, local_value = _measured_cospectrum_from_series(
+                        w_series=rotation.w,
+                        scalar_series=lagged_co2,
+                        sample_rate_hz=sample_rate_hz,
+                    )
+                    if local_freq is not None and local_value is not None:
+                        measured_cospectrum_freq = local_freq
+                        measured_cospectrum_value = local_value
+                        fallback_source = "rp_local" if not measured_cospectrum_meta.get("enabled") else "rp_local_fallback"
+                        measured_cospectrum_meta = {
+                            **measured_cospectrum_meta,
+                            "used": True,
+                            "source": fallback_source,
+                            "frequency_count": int(local_freq.size),
+                        }
             sc = compute_spectral_correction(
                 method=spectral_correction_config.get("method", "massman"),
                 path_length_m=spectral_correction_config.get("path_length_m", 0.15),
@@ -482,11 +535,35 @@ class ECRPPipeline:
                 measured_cospectrum_freq=measured_cospectrum_freq,
                 measured_cospectrum_value=measured_cospectrum_value,
             )
+            if str(sc.get("method", "")) == "fratini":
+                sc = dict(sc)
+                sc["measured_cospectrum_enabled"] = bool(measured_cospectrum_meta.get("enabled", False))
+                sc["measured_cospectrum_used"] = bool(measured_cospectrum_meta.get("used", False))
+                sc["measured_cospectrum_source"] = str(measured_cospectrum_meta.get("source", "disabled"))
+                sc["measured_cospectrum_source_run_id"] = str(measured_cospectrum_meta.get("source_run_id", ""))
+                sc["measured_cospectrum_window_id"] = str(measured_cospectrum_meta.get("matched_window_id", ""))
+                sc["measured_cospectrum_frequency_count"] = int(measured_cospectrum_meta.get("frequency_count", 0) or 0)
+                sc["measured_cospectrum_notes"] = list(measured_cospectrum_meta.get("provenance_notes", []))
+                provenance_detail = dict(sc.get("provenance_detail", {}) or {})
+                provenance_detail["measured_cospectrum_source"] = sc["measured_cospectrum_source"]
+                provenance_detail["measured_cospectrum_source_run_id"] = sc["measured_cospectrum_source_run_id"]
+                provenance_detail["measured_cospectrum_window_id"] = sc["measured_cospectrum_window_id"]
+                sc["provenance_detail"] = provenance_detail
             diagnostics["spectral_correction_method"] = sc.get("method", "")
             diagnostics["spectral_correction_factor"] = sc.get("correction_factor", 1.0)
             diagnostics["spectral_correction_detail"] = sc
-            diagnostics["spectral_correction_provenance"] = sc.get("provenance", "")
+            spectral_provenance = str(sc.get("provenance", ""))
+            if str(sc.get("method", "")) == "fratini":
+                spectral_provenance = (
+                    f"{spectral_provenance}; measured_cospectrum={sc.get('measured_cospectrum_source', 'disabled')}"
+                ).strip("; ")
+            diagnostics["spectral_correction_provenance"] = spectral_provenance
             diagnostics["spectral_correction_limitations"] = sc.get("limitations", [])
+            diagnostics["spectral_correction_measured_cospectrum_enabled"] = bool(sc.get("measured_cospectrum_enabled", False))
+            diagnostics["spectral_correction_measured_cospectrum_used"] = bool(sc.get("measured_cospectrum_used", False))
+            diagnostics["spectral_correction_measured_cospectrum_source"] = str(sc.get("measured_cospectrum_source", ""))
+            diagnostics["spectral_correction_measured_cospectrum_source_run_id"] = str(sc.get("measured_cospectrum_source_run_id", ""))
+            diagnostics["spectral_correction_measured_cospectrum_window_id"] = str(sc.get("measured_cospectrum_window_id", ""))
         return WindowRPResult(
             window_id=f"{run_id}_w{window_index:03d}",
             start_time=rows[0].timestamp,
@@ -716,6 +793,7 @@ def _artifacts(
         "benchmark": benchmark_summary or {},
         "reference_provenance": reference_provenance or {},
         "network_output": network_output_config or {},
+        "method_rollup": method_summary or {},
         "method_provenance": method_summary or {},
     }
 
@@ -773,6 +851,7 @@ def _extract_uncertainty_method_config(config: dict[str, Any]) -> dict[str, Any]
     for key, default in [
         ("method", ""),
         ("integral_timescale_s", None),
+        ("confidence_level", 0.95),
     ]:
         value = _config_value(config, f"uncertainty.{key}", f"steps.uncertainty.{key}", default=default)
         uc[key] = value
@@ -789,9 +868,18 @@ def _extract_spectral_correction_config(config: dict[str, Any]) -> dict[str, Any
         ("response_time_s", 0.1),
         ("z_m", 0.0),
         ("ol", None),
+        ("use_fcc_measured_cospectrum", False),
+        ("fcc_source_run_id", ""),
     ]:
         value = _config_value(config, f"spectral_correction.{key}", f"steps.spectral_correction.{key}", default=default)
         sc[key] = value
+    measured = _config_value(
+        config,
+        "spectral_correction.fcc_measured_cospectra",
+        "steps.spectral_correction.fcc_measured_cospectra",
+        default=[],
+    )
+    sc["fcc_measured_cospectra"] = list(measured) if isinstance(measured, list) else []
     return sc
 
 
@@ -809,6 +897,112 @@ def _extract_network_output_config(config: dict[str, Any]) -> dict[str, Any]:
         "timezone_offset_hours": float(network.get("timezone_offset_hours", 0.0) or 0.0),
         "timestamp_refers_to": timestamp_refers_to,
         "gap_fill_value": float(network.get("gap_fill_value", -9999.0) or -9999.0),
+    }
+
+
+def _resolve_fcc_measured_cospectrum(
+    *,
+    window_start: datetime,
+    window_end: datetime,
+    spectral_correction_config: dict[str, Any] | None,
+) -> tuple[np.ndarray | None, np.ndarray | None, dict[str, Any]]:
+    config = spectral_correction_config or {}
+    candidates = config.get("fcc_measured_cospectra", [])
+    if not config.get("use_fcc_measured_cospectrum") or not isinstance(candidates, list):
+        return None, None, {"enabled": False, "used": False, "source": "disabled", "matched_window_id": ""}
+
+    matched: dict[str, Any] | None = None
+    tolerance_s = 2.0
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        try:
+            start = datetime.fromisoformat(str(item.get("start_time", "")))
+            end = datetime.fromisoformat(str(item.get("end_time", "")))
+        except ValueError:
+            continue
+        if abs((start - window_start).total_seconds()) <= tolerance_s and abs((end - window_end).total_seconds()) <= tolerance_s:
+            matched = item
+            break
+        latest_start = max(start, window_start)
+        earliest_end = min(end, window_end)
+        if (earliest_end - latest_start).total_seconds() > 0:
+            matched = item
+            break
+
+    if matched is None:
+        return None, None, {
+            "enabled": True,
+            "used": False,
+            "source": "fcc_auto_no_match",
+            "matched_window_id": "",
+            "source_run_id": str(config.get("fcc_source_run_id", "")),
+        }
+
+    freq = np.asarray(matched.get("cross_freq", []), dtype=float)
+    value = np.asarray(matched.get("cross_value", []), dtype=float)
+    valid = np.isfinite(freq) & np.isfinite(value) & (freq > 0.0)
+    if np.count_nonzero(valid) < 8:
+        return None, None, {
+            "enabled": True,
+            "used": False,
+            "source": "fcc_auto_insufficient",
+            "matched_window_id": str(matched.get("window_id", "")),
+            "source_run_id": str(matched.get("source_run_id", config.get("fcc_source_run_id", ""))),
+            "frequency_count": int(np.count_nonzero(valid)),
+        }
+
+    return freq[valid], value[valid], {
+        "enabled": True,
+        "used": True,
+        "source": "fcc_auto",
+        "matched_window_id": str(matched.get("window_id", "")),
+        "source_run_id": str(matched.get("source_run_id", config.get("fcc_source_run_id", ""))),
+        "frequency_count": int(np.count_nonzero(valid)),
+        "source_qc_grade": str(matched.get("source_qc_grade", "")),
+        "provenance_notes": list(matched.get("provenance_notes", [])) if isinstance(matched.get("provenance_notes"), list) else [],
+    }
+
+
+def _propagate_uncertainty_to_primary_flux(
+    *,
+    primary_flux: float,
+    flux_metrics: dict[str, float],
+    uncertainty_detail: dict[str, Any],
+    confidence_level: float,
+) -> dict[str, Any]:
+    cov_flux = float(flux_metrics.get("cov_w_co2", 0.0) or 0.0)
+    flux_scale = abs(primary_flux / cov_flux) if abs(cov_flux) > 1e-15 else 0.0
+    method_random_error = uncertainty_detail.get("random_error")
+    if isinstance(method_random_error, (int, float)) and flux_scale > 0.0:
+        primary_flux_random_error = abs(float(method_random_error)) * flux_scale
+    elif isinstance(method_random_error, (int, float)):
+        primary_flux_random_error = abs(float(method_random_error))
+    else:
+        relative_uncertainty = uncertainty_detail.get("relative_uncertainty", uncertainty_detail.get("relative_error"))
+        primary_flux_random_error = (
+            abs(primary_flux) * abs(float(relative_uncertainty))
+            if isinstance(relative_uncertainty, (int, float))
+            else None
+        )
+
+    relative_uncertainty = uncertainty_detail.get("relative_uncertainty", uncertainty_detail.get("relative_error"))
+    if not isinstance(relative_uncertainty, (int, float)) and isinstance(primary_flux_random_error, (int, float)) and abs(primary_flux) > 1e-15:
+        relative_uncertainty = primary_flux_random_error / abs(primary_flux)
+
+    band = build_uncertainty_band(
+        estimate=primary_flux,
+        random_error=primary_flux_random_error if isinstance(primary_flux_random_error, (int, float)) else None,
+        relative_uncertainty=relative_uncertainty if isinstance(relative_uncertainty, (int, float)) else None,
+        confidence_level=confidence_level,
+    )
+    return {
+        "primary_flux_random_error": round(float(primary_flux_random_error), 6) if isinstance(primary_flux_random_error, (int, float)) else None,
+        "primary_flux_relative_uncertainty": round(float(relative_uncertainty), 4) if isinstance(relative_uncertainty, (int, float)) else None,
+        "primary_flux_ci_level": band.get("confidence_level"),
+        "primary_flux_uncertainty_band": band.get("uncertainty_band_half_width"),
+        "primary_flux_ci_lower": band.get("interval_lower"),
+        "primary_flux_ci_upper": band.get("interval_upper"),
     }
 
 
@@ -1055,6 +1249,9 @@ def _with_summary_context(
             "uncertainty_method": method_summary.get("uncertainty_method", ""),
             "uncertainty_summary": uncertainty_summary,
             "uncertainty_relative_uncertainty": uncertainty_summary.get("relative_uncertainty"),
+            "uncertainty_random_error": uncertainty_summary.get("primary_flux_random_error", uncertainty_summary.get("random_error")),
+            "uncertainty_band": uncertainty_summary.get("uncertainty_band"),
+            "uncertainty_confidence_level": uncertainty_summary.get("confidence_level"),
             "uncertainty_components": uncertainty_summary.get("components", {}),
             "uncertainty_provenance": uncertainty_summary.get("provenance", ""),
             "uncertainty_limitations": uncertainty_summary.get("limitations", []),
@@ -1062,6 +1259,9 @@ def _with_summary_context(
             "spectral_correction_summary": spectral_summary,
             "spectral_correction_factor": spectral_summary.get("correction_factor"),
             "spectral_correction_provenance": spectral_summary.get("provenance", ""),
+            "spectral_correction_measured_cospectrum_enabled": spectral_summary.get("measured_cospectrum_enabled", False),
+            "spectral_correction_measured_cospectrum_used": spectral_summary.get("measured_cospectrum_used", False),
+            "spectral_correction_measured_cospectrum_source": spectral_summary.get("measured_cospectrum_source", ""),
             "spectral_correction_limitations": spectral_summary.get("limitations", []),
         }
     )
@@ -1204,12 +1404,17 @@ def _summarize_method_outputs(
         "detail": _first_non_empty_mapping(footprint_diags),
     }
 
-    uncertainty_diags = [
-        dict(window.diagnostics.get("uncertainty_method_detail", {}))
-        if window.diagnostics.get("uncertainty_method_detail")
-        else dict(window.uncertainty_detail or {})
-        for window in windows
-    ]
+    uncertainty_diags: list[dict[str, Any]] = []
+    for window in windows:
+        method_detail = window.diagnostics.get("uncertainty_method_detail", {})
+        final_detail = window.uncertainty_detail or {}
+        if method_detail or final_detail:
+            uncertainty_diags.append(
+                {
+                    **(dict(method_detail) if isinstance(method_detail, dict) else {}),
+                    **(dict(final_detail) if isinstance(final_detail, dict) else {}),
+                }
+            )
     uncertainty_diags = [detail for detail in uncertainty_diags if detail]
     uncertainty_components = [
         dict(detail.get("components", {}))
@@ -1230,6 +1435,27 @@ def _summarize_method_outputs(
         ),
         "random_error": _mean_or_none(
             [detail.get("random_error") for detail in uncertainty_diags if isinstance(detail.get("random_error"), (int, float))]
+        ),
+        "primary_flux_random_error": _mean_or_none(
+            [
+                detail.get("primary_flux_random_error")
+                for detail in uncertainty_diags
+                if isinstance(detail.get("primary_flux_random_error"), (int, float))
+            ]
+        ),
+        "uncertainty_band": _mean_or_none(
+            [
+                detail.get("primary_flux_uncertainty_band")
+                for detail in uncertainty_diags
+                if isinstance(detail.get("primary_flux_uncertainty_band"), (int, float))
+            ]
+        ),
+        "confidence_level": _mean_or_none(
+            [
+                detail.get("confidence_level")
+                for detail in uncertainty_diags
+                if isinstance(detail.get("confidence_level"), (int, float))
+            ]
         ),
         "components": _aggregate_numeric_mapping(uncertainty_components),
         "provenance": _first_non_empty_text([detail.get("provenance", "") for detail in uncertainty_diags]),
@@ -1252,6 +1478,10 @@ def _summarize_method_outputs(
         ),
         "components": _aggregate_numeric_mapping(spectral_components),
         "provenance": _first_non_empty_text([detail.get("provenance", "") for detail in spectral_diags]),
+        "measured_cospectrum_enabled": any(bool(detail.get("measured_cospectrum_enabled", False)) for detail in spectral_diags),
+        "measured_cospectrum_used": any(bool(detail.get("measured_cospectrum_used", False)) for detail in spectral_diags),
+        "measured_cospectrum_source": _first_non_empty_text([detail.get("measured_cospectrum_source", "") for detail in spectral_diags]),
+        "measured_cospectrum_source_run_id": _first_non_empty_text([detail.get("measured_cospectrum_source_run_id", "") for detail in spectral_diags]),
         "limitations": list(_first_non_empty_mapping(spectral_diags).get("limitations", [])),
         "detail": _first_non_empty_mapping(spectral_diags),
     }
@@ -1278,13 +1508,22 @@ def _build_method_deviation_notes_from_window(window: WindowRPResult) -> list[st
     if uncertainty_method:
         uncertainty_detail = diagnostics.get("uncertainty_method_detail", {}) or window.uncertainty_detail or {}
         uncertainty_provenance = uncertainty_detail.get("provenance", "") if isinstance(uncertainty_detail, dict) else ""
-        notes.append(f"uncertainty: {uncertainty_method}" + (f" ({uncertainty_provenance})" if uncertainty_provenance else ""))
+        uncertainty_band = diagnostics.get("primary_flux_uncertainty_band")
+        band_text = f"; band={float(uncertainty_band):.6f}" if isinstance(uncertainty_band, (int, float)) else ""
+        notes.append(
+            f"uncertainty: {uncertainty_method}{band_text}" + (f" ({uncertainty_provenance})" if uncertainty_provenance else "")
+        )
     spectral_method = diagnostics.get("spectral_correction_method", "")
     if spectral_method:
         spectral_provenance = diagnostics.get("spectral_correction_provenance", "")
         spectral_factor = diagnostics.get("spectral_correction_factor")
         factor_text = f" (factor={spectral_factor})" if isinstance(spectral_factor, (int, float)) else ""
-        notes.append(f"spectral_correction: {spectral_method}{factor_text}" + (f" [{spectral_provenance}]" if spectral_provenance else ""))
+        measured_source = diagnostics.get("spectral_correction_measured_cospectrum_source", "")
+        source_text = f"; cospectrum={measured_source}" if measured_source else ""
+        notes.append(
+            f"spectral_correction: {spectral_method}{factor_text}{source_text}"
+            + (f" [{spectral_provenance}]" if spectral_provenance else "")
+        )
     return notes
 
 
@@ -1293,4 +1532,10 @@ def _attach_method_context_to_benchmark(window: WindowRPResult, benchmark_payloa
     benchmark_payload["footprint_method"] = diagnostics.get("footprint_method", "")
     benchmark_payload["uncertainty_method"] = diagnostics.get("uncertainty_method", "")
     benchmark_payload["spectral_correction_method"] = diagnostics.get("spectral_correction_method", "")
+    benchmark_payload["primary_flux_random_error"] = diagnostics.get("primary_flux_random_error")
+    benchmark_payload["primary_flux_relative_uncertainty"] = diagnostics.get("primary_flux_relative_uncertainty")
+    benchmark_payload["primary_flux_uncertainty_band"] = diagnostics.get("primary_flux_uncertainty_band")
+    benchmark_payload["primary_flux_ci_lower"] = diagnostics.get("primary_flux_ci_lower")
+    benchmark_payload["primary_flux_ci_upper"] = diagnostics.get("primary_flux_ci_upper")
+    benchmark_payload["primary_flux_ci_level"] = diagnostics.get("primary_flux_ci_level")
     benchmark_payload["method_deviation_notes"] = _build_method_deviation_notes_from_window(window)

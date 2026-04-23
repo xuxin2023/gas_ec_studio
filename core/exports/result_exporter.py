@@ -33,6 +33,12 @@ FULL_OUTPUT_SCHEMA = [
     ("turbulence_score", "turbulence", "real"),
     ("ustar", "turbulence", "real"),
     ("relative_uncertainty", "uncertainty", "estimated"),
+    ("primary_flux_random_error", "uncertainty", "estimated"),
+    ("primary_flux_relative_uncertainty", "uncertainty", "estimated"),
+    ("primary_flux_uncertainty_band", "uncertainty", "estimated"),
+    ("primary_flux_ci_lower", "uncertainty", "estimated"),
+    ("primary_flux_ci_upper", "uncertainty", "estimated"),
+    ("primary_flux_ci_level", "uncertainty", "estimated"),
     ("uncertainty_status", "uncertainty", "estimated"),
     ("uncertainty_provenance", "uncertainty", "estimated"),
     ("var_u", "variances", "real"),
@@ -77,6 +83,9 @@ FULL_OUTPUT_SCHEMA = [
     ("spectral_correction_factor", "spectral", "real"),
     ("spectral_correction_detail", "spectral", "real"),
     ("spectral_correction_provenance", "spectral", "real"),
+    ("spectral_correction_measured_cospectrum_enabled", "spectral", "real"),
+    ("spectral_correction_measured_cospectrum_used", "spectral", "real"),
+    ("spectral_correction_measured_cospectrum_source", "spectral", "real"),
     ("spectral_correction_limitations", "spectral", "real"),
     ("schema_target", "diagnostics", "real"),
     ("fluxnet_timestamp_refers_to", "diagnostics", "real"),
@@ -124,6 +133,11 @@ class ResultExporter:
         self._write_csv(full_output_path, full_output_rows, full_output_headers)
         benchmark_rollup = self._benchmark_rollup(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
         method_summary = self._method_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        method_rollup_path = self.export_method_rollup_artifact(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+        )
         benchmark_results = benchmark_rollup["benchmark_results"]
         benchmark_summary_path = self.export_benchmark_summary_artifact(
             rp_result=rp_result,
@@ -164,6 +178,8 @@ class ResultExporter:
         ]
         if benchmark_summary_path is not None:
             exported_files.append(benchmark_summary_path.name)
+        if method_rollup_path is not None:
+            exported_files.append(method_rollup_path.name)
         if parity_artifact_path is not None:
             exported_files.append(parity_artifact_path.name)
         if reference_provenance_path is not None:
@@ -186,6 +202,7 @@ class ResultExporter:
                     "deviation_summary": benchmark_rollup["benchmark_deviation_summary"],
                 },
                 "method_summary": method_summary,
+                "method_rollup_artifact": str(method_rollup_path) if method_rollup_path is not None else "",
                 "reference_provenance": reference_provenance,
                 "network_validation": network_validation,
                 "exported_files": exported_files,
@@ -225,10 +242,25 @@ class ResultExporter:
             "spectral_correction_method": method_summary.get("spectral_correction_method", ""),
             "spectral_correction_summary": method_summary.get("spectral_correction_summary", {}),
             "spectral_correction_provenance": method_summary.get("spectral_correction_summary", {}).get("provenance", ""),
+            "method_rollup": method_summary,
+            "method_rollup_artifact": str(method_rollup_path) if method_rollup_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
             "network_validation_status": network_validation.get("validation_status", ""),
             "network_missing_fields": network_validation.get("missing_fields", []),
             "network_validation_summary": network_validation,
+            "network_method_fields": [
+                "FOOTPRINT_METHOD",
+                "UNCERTAINTY_METHOD",
+                "SPECTRAL_CORRECTION_METHOD",
+                "METHOD_DEVIATION_NOTES",
+            ],
+            "network_uncertainty_fields": [
+                "FC_RANDOM_ERROR",
+                "FC_REL_UNCERTAINTY",
+                "FC_CI_LOWER",
+                "FC_CI_UPPER",
+                "FC_CI_LEVEL",
+            ],
             "method_provenance_fields": [
                 "primary_flux_source",
                 "applied_rotation_impl",
@@ -271,6 +303,8 @@ class ResultExporter:
         }
         if benchmark_summary_path is not None:
             files["benchmark_summary_artifact"] = str(benchmark_summary_path)
+        if method_rollup_path is not None:
+            files["method_rollup_artifact"] = str(method_rollup_path)
         if parity_artifact_path is not None:
             files["parity_artifact"] = str(parity_artifact_path)
         if reference_provenance_path is not None:
@@ -380,6 +414,12 @@ class ResultExporter:
                 "turbulence_score": rp_window.turbulence_score if rp_window else "",
                 "ustar": rp_window.ustar if rp_window else "",
                 "relative_uncertainty": uncertainty.get("relative_uncertainty", uncertainty.get("relative_error", "")) if uncertainty else "",
+                "primary_flux_random_error": diagnostics.get("primary_flux_random_error", uncertainty.get("primary_flux_random_error", "")) if (diagnostics or uncertainty) else "",
+                "primary_flux_relative_uncertainty": diagnostics.get("primary_flux_relative_uncertainty", uncertainty.get("primary_flux_relative_uncertainty", "")) if (diagnostics or uncertainty) else "",
+                "primary_flux_uncertainty_band": diagnostics.get("primary_flux_uncertainty_band", uncertainty.get("primary_flux_uncertainty_band", "")) if (diagnostics or uncertainty) else "",
+                "primary_flux_ci_lower": diagnostics.get("primary_flux_ci_lower", uncertainty.get("primary_flux_ci_lower", "")) if (diagnostics or uncertainty) else "",
+                "primary_flux_ci_upper": diagnostics.get("primary_flux_ci_upper", uncertainty.get("primary_flux_ci_upper", "")) if (diagnostics or uncertainty) else "",
+                "primary_flux_ci_level": diagnostics.get("primary_flux_ci_level", uncertainty.get("confidence_level", "")) if (diagnostics or uncertainty) else "",
                 "uncertainty_status": uncertainty.get("status", "placeholder") if uncertainty else "placeholder",
                 "uncertainty_provenance": json.dumps(
                     {
@@ -388,6 +428,11 @@ class ResultExporter:
                         "limitations": uncertainty.get("limitations", []),
                         "components": uncertainty.get("components", {}),
                         "relative_uncertainty": uncertainty.get("relative_uncertainty", uncertainty.get("relative_error")),
+                        "primary_flux_random_error": diagnostics.get("primary_flux_random_error", uncertainty.get("primary_flux_random_error")),
+                        "primary_flux_uncertainty_band": diagnostics.get("primary_flux_uncertainty_band", uncertainty.get("primary_flux_uncertainty_band")),
+                        "primary_flux_ci_lower": diagnostics.get("primary_flux_ci_lower", uncertainty.get("primary_flux_ci_lower")),
+                        "primary_flux_ci_upper": diagnostics.get("primary_flux_ci_upper", uncertainty.get("primary_flux_ci_upper")),
+                        "primary_flux_ci_level": diagnostics.get("primary_flux_ci_level", uncertainty.get("confidence_level")),
                     },
                     ensure_ascii=False,
                 )
@@ -435,6 +480,9 @@ class ResultExporter:
                 "spectral_correction_factor": diagnostics.get("spectral_correction_factor", "") if diagnostics else "",
                 "spectral_correction_detail": json.dumps(diagnostics.get("spectral_correction_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("spectral_correction_detail") else "",
                 "spectral_correction_provenance": diagnostics.get("spectral_correction_provenance", "") if diagnostics else "",
+                "spectral_correction_measured_cospectrum_enabled": diagnostics.get("spectral_correction_measured_cospectrum_enabled", False) if diagnostics else False,
+                "spectral_correction_measured_cospectrum_used": diagnostics.get("spectral_correction_measured_cospectrum_used", False) if diagnostics else False,
+                "spectral_correction_measured_cospectrum_source": diagnostics.get("spectral_correction_measured_cospectrum_source", "") if diagnostics else "",
                 "spectral_correction_limitations": json.dumps(diagnostics.get("spectral_correction_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("spectral_correction_limitations") else "",
                 "schema_target": diagnostics.get("schema_target", "") if diagnostics else "",
                 "fluxnet_timestamp_refers_to": diagnostics.get("fluxnet_timestamp_refers_to", "") if diagnostics else "",
@@ -570,6 +618,19 @@ class ResultExporter:
         }
         if rp_result is None:
             return defaults
+        artifacts = dict(rp_result.artifacts or {})
+        method_rollup = dict(artifacts.get("method_rollup", {}) or artifacts.get("method_provenance", {}) or {})
+        if method_rollup:
+            normalized = {
+                "footprint_method": str(method_rollup.get("footprint_method", "")),
+                "footprint_summary": dict(method_rollup.get("footprint_summary", {}) or {}),
+                "uncertainty_method": str(method_rollup.get("uncertainty_method", "")),
+                "uncertainty_summary": dict(method_rollup.get("uncertainty_summary", {}) or {}),
+                "spectral_correction_method": str(method_rollup.get("spectral_correction_method", "")),
+                "spectral_correction_summary": dict(method_rollup.get("spectral_correction_summary", {}) or {}),
+            }
+            if any(normalized.values()):
+                return normalized
         summary = dict(rp_result.summary or {})
         method_summary = {
             "footprint_method": str(summary.get("footprint_method", "")),
@@ -603,6 +664,9 @@ class ResultExporter:
                 "method": str(first_diag.get("uncertainty_method", "")),
                 "selected_method": uncertainty_detail.get("selected_method", ""),
                 "relative_uncertainty": uncertainty_detail.get("relative_uncertainty", uncertainty_detail.get("relative_error")),
+                "primary_flux_random_error": uncertainty_detail.get("primary_flux_random_error"),
+                "uncertainty_band": uncertainty_detail.get("primary_flux_uncertainty_band"),
+                "confidence_level": uncertainty_detail.get("confidence_level"),
                 "components": dict(uncertainty_detail.get("components", {}) or {}),
                 "provenance": uncertainty_detail.get("provenance", ""),
                 "limitations": uncertainty_detail.get("limitations", []),
@@ -613,10 +677,27 @@ class ResultExporter:
                 "method": str(first_diag.get("spectral_correction_method", "")),
                 "correction_factor": first_diag.get("spectral_correction_factor"),
                 "provenance": first_diag.get("spectral_correction_provenance", ""),
+                "measured_cospectrum_enabled": first_diag.get("spectral_correction_measured_cospectrum_enabled", False),
+                "measured_cospectrum_used": first_diag.get("spectral_correction_measured_cospectrum_used", False),
+                "measured_cospectrum_source": first_diag.get("spectral_correction_measured_cospectrum_source", ""),
                 "limitations": first_diag.get("spectral_correction_limitations", []),
                 "detail": spectral_detail,
             },
         }
+
+    def export_method_rollup_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+    ) -> Path | None:
+        method_summary = self._method_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not any(method_summary.values()):
+            return None
+        path = export_root / "method_rollup.json"
+        self._write_json(path, method_summary)
+        return path
 
     def _reference_json_path(self, reference_id: str) -> Path | None:
         if not reference_id:
@@ -1021,6 +1102,12 @@ class ResultExporter:
             entry["footprint_method"] = br.get("footprint_method", diagnostics.get("footprint_method", ""))
             entry["uncertainty_method"] = br.get("uncertainty_method", diagnostics.get("uncertainty_method", ""))
             entry["spectral_correction_method"] = br.get("spectral_correction_method", diagnostics.get("spectral_correction_method", ""))
+            entry["primary_flux_random_error"] = br.get("primary_flux_random_error", diagnostics.get("primary_flux_random_error"))
+            entry["primary_flux_relative_uncertainty"] = br.get("primary_flux_relative_uncertainty", diagnostics.get("primary_flux_relative_uncertainty"))
+            entry["primary_flux_uncertainty_band"] = br.get("primary_flux_uncertainty_band", diagnostics.get("primary_flux_uncertainty_band"))
+            entry["primary_flux_ci_lower"] = br.get("primary_flux_ci_lower", diagnostics.get("primary_flux_ci_lower"))
+            entry["primary_flux_ci_upper"] = br.get("primary_flux_ci_upper", diagnostics.get("primary_flux_ci_upper"))
+            entry["primary_flux_ci_level"] = br.get("primary_flux_ci_level", diagnostics.get("primary_flux_ci_level"))
             entry["method_deviation_notes"] = br.get("method_deviation_notes") or _build_method_deviation_notes(diagnostics, br)
             per_window.append(entry)
         summary["per_window"] = per_window
@@ -1115,6 +1202,7 @@ class ResultExporter:
         le = window.water_vapor_flux if window.water_vapor_flux != 0.0 else gap_fill_value
         qc = window.qc_grade
         qc_num = {"A": 0, "B": 1, "C": 2}.get(qc, 2)
+        diagnostics = dict(window.diagnostics or {})
         return {
             "TIMESTAMP_START": ts_start,
             "TIMESTAMP_END": ts_end,
@@ -1129,6 +1217,15 @@ class ResultExporter:
             "PA": window.mean_pressure_kpa * 10.0 if window.mean_pressure_kpa != 0.0 else gap_fill_value,
             "CO2": window.mean_co2_ppm if window.mean_co2_ppm != 0.0 else gap_fill_value,
             "H2O": window.mean_h2o_mmol if window.mean_h2o_mmol != 0.0 else gap_fill_value,
+            "FC_RANDOM_ERROR": diagnostics.get("primary_flux_random_error", gap_fill_value),
+            "FC_REL_UNCERTAINTY": diagnostics.get("primary_flux_relative_uncertainty", gap_fill_value),
+            "FC_CI_LOWER": diagnostics.get("primary_flux_ci_lower", gap_fill_value),
+            "FC_CI_UPPER": diagnostics.get("primary_flux_ci_upper", gap_fill_value),
+            "FC_CI_LEVEL": diagnostics.get("primary_flux_ci_level", gap_fill_value),
+            "FOOTPRINT_METHOD": diagnostics.get("footprint_method", ""),
+            "UNCERTAINTY_METHOD": diagnostics.get("uncertainty_method", ""),
+            "SPECTRAL_CORRECTION_METHOD": diagnostics.get("spectral_correction_method", ""),
+            "METHOD_DEVIATION_NOTES": " | ".join(_build_method_deviation_notes(diagnostics, {})),
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -1174,6 +1271,15 @@ class ResultExporter:
             "PA": gap_fill_value,
             "CO2": gap_fill_value,
             "H2O": gap_fill_value,
+            "FC_RANDOM_ERROR": gap_fill_value,
+            "FC_REL_UNCERTAINTY": gap_fill_value,
+            "FC_CI_LOWER": gap_fill_value,
+            "FC_CI_UPPER": gap_fill_value,
+            "FC_CI_LEVEL": gap_fill_value,
+            "FOOTPRINT_METHOD": "",
+            "UNCERTAINTY_METHOD": "",
+            "SPECTRAL_CORRECTION_METHOD": "",
+            "METHOD_DEVIATION_NOTES": "",
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -1456,6 +1562,12 @@ class ResultExporter:
                 "relative_error": None,
                 "pass_rate": None,
                 "notes": "no matching reference window",
+                "primary_flux_random_error": diag.get("primary_flux_random_error"),
+                "primary_flux_relative_uncertainty": diag.get("primary_flux_relative_uncertainty"),
+                "primary_flux_uncertainty_band": diag.get("primary_flux_uncertainty_band"),
+                "primary_flux_ci_lower": diag.get("primary_flux_ci_lower"),
+                "primary_flux_ci_upper": diag.get("primary_flux_ci_upper"),
+                "primary_flux_ci_level": diag.get("primary_flux_ci_level"),
                 "footprint_method": diag.get("footprint_method", ""),
                 "uncertainty_method": diag.get("uncertainty_method", ""),
                 "spectral_correction_method": diag.get("spectral_correction_method", ""),
@@ -1485,6 +1597,12 @@ class ResultExporter:
                 "relative_error": flux_comp.get("relative_error"),
                 "pass_rate": 1.0 if overall_pass else 0.0,
                 "notes": "; ".join(c.get("note", "") for c in comparisons if c.get("note")),
+                "primary_flux_random_error": diag.get("primary_flux_random_error"),
+                "primary_flux_relative_uncertainty": diag.get("primary_flux_relative_uncertainty"),
+                "primary_flux_uncertainty_band": diag.get("primary_flux_uncertainty_band"),
+                "primary_flux_ci_lower": diag.get("primary_flux_ci_lower"),
+                "primary_flux_ci_upper": diag.get("primary_flux_ci_upper"),
+                "primary_flux_ci_level": diag.get("primary_flux_ci_level"),
                 "footprint_method": diag.get("footprint_method", ""),
                 "uncertainty_method": diag.get("uncertainty_method", ""),
                 "spectral_correction_method": diag.get("spectral_correction_method", ""),
@@ -1520,12 +1638,19 @@ def _build_method_deviation_notes(diag: dict[str, Any], bm_dev: dict[str, Any]) 
     if unc_method:
         unc_detail = diag.get("uncertainty_method_detail", {})
         unc_prov = unc_detail.get("provenance", "") if isinstance(unc_detail, dict) else ""
-        notes.append(f"uncertainty: {unc_method}" + (f" ({unc_prov})" if unc_prov else ""))
+        unc_band = diag.get("primary_flux_uncertainty_band")
+        band_text = f"; band={float(unc_band):.6f}" if isinstance(unc_band, (int, float)) else ""
+        notes.append(f"uncertainty: {unc_method}{band_text}" + (f" ({unc_prov})" if unc_prov else ""))
     sc_method = diag.get("spectral_correction_method", "")
     if sc_method:
         sc_factor = diag.get("spectral_correction_factor", 1.0)
         sc_prov = diag.get("spectral_correction_provenance", "")
-        notes.append(f"spectral_correction: {sc_method} (factor={sc_factor})" + (f" [{sc_prov}]" if sc_prov else ""))
+        cospectrum_source = diag.get("spectral_correction_measured_cospectrum_source", "")
+        source_text = f"; cospectrum={cospectrum_source}" if cospectrum_source else ""
+        notes.append(
+            f"spectral_correction: {sc_method} (factor={sc_factor}){source_text}"
+            + (f" [{sc_prov}]" if sc_prov else "")
+        )
     return notes
 
 
@@ -1543,6 +1668,15 @@ FLUXNET_HALF_HOURLY_SCHEMA = [
     ("PA", "kPa*10", "Atmospheric pressure (in hPa)"),
     ("CO2", "umol mol-1", "CO2 mixing ratio"),
     ("H2O", "mmol m-3", "H2O concentration"),
+    ("FC_RANDOM_ERROR", "umol m-2 s-1", "Random uncertainty propagated to flux space"),
+    ("FC_REL_UNCERTAINTY", "fraction", "Relative uncertainty propagated to primary flux"),
+    ("FC_CI_LOWER", "umol m-2 s-1", "Lower confidence bound for FC"),
+    ("FC_CI_UPPER", "umol m-2 s-1", "Upper confidence bound for FC"),
+    ("FC_CI_LEVEL", "0-1", "Confidence level used for FC interval"),
+    ("FOOTPRINT_METHOD", "text", "Footprint model used for the run"),
+    ("UNCERTAINTY_METHOD", "text", "Random uncertainty method used for the run"),
+    ("SPECTRAL_CORRECTION_METHOD", "text", "Spectral correction method used for the run"),
+    ("METHOD_DEVIATION_NOTES", "text", "Method provenance notes for benchmark/export review"),
     ("TIMEZONE_OFFSET_H", "hours", "UTC offset for local time"),
     ("TIMESTAMP_REFERS_TO", "start/end", "Whether timestamp refers to start or end of period"),
 ]
@@ -1558,6 +1692,15 @@ AMERIFLUX_FIELD_MAP = {
     "PA": "PA",
     "CO2": "CO2",
     "H2O": "H2O",
+    "FC_RANDOM_ERROR": "FC_RANDOM_ERROR",
+    "FC_REL_UNCERTAINTY": "FC_REL_UNCERTAINTY",
+    "FC_CI_LOWER": "FC_CI_LOWER",
+    "FC_CI_UPPER": "FC_CI_UPPER",
+    "FC_CI_LEVEL": "FC_CI_LEVEL",
+    "FOOTPRINT_METHOD": "FOOTPRINT_METHOD",
+    "UNCERTAINTY_METHOD": "UNCERTAINTY_METHOD",
+    "SPECTRAL_CORRECTION_METHOD": "SPECTRAL_CORRECTION_METHOD",
+    "METHOD_DEVIATION_NOTES": "METHOD_DEVIATION_NOTES",
     "WIND_SPEED": "WS",
     "WIND_DIR": "WD",
 }
@@ -1573,6 +1716,15 @@ ICOS_FIELD_MAP = {
     "PA": "Pa",
     "CO2": "CO2",
     "H2O": "H2O",
+    "FC_RANDOM_ERROR": "FcRandomError",
+    "FC_REL_UNCERTAINTY": "FcRelUncertainty",
+    "FC_CI_LOWER": "FcCiLower",
+    "FC_CI_UPPER": "FcCiUpper",
+    "FC_CI_LEVEL": "FcCiLevel",
+    "FOOTPRINT_METHOD": "FootprintMethod",
+    "UNCERTAINTY_METHOD": "UncertaintyMethod",
+    "SPECTRAL_CORRECTION_METHOD": "SpectralCorrectionMethod",
+    "METHOD_DEVIATION_NOTES": "MethodDeviationNotes",
     "WIND_SPEED": "WindSpeed",
     "WIND_DIR": "WindDir",
 }

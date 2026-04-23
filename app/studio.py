@@ -1361,6 +1361,32 @@ class StudioController(QObject):
             "gap_fill_value": float(gap_fill_value or defaults["gap_fill_value"]),
         }
 
+    def _fcc_measured_cospectra_snapshot(self) -> dict[str, object]:
+        spectral_run = self.current_spectral_run()
+        if spectral_run is None:
+            return {"use_fcc_measured_cospectrum": False, "fcc_source_run_id": "", "fcc_measured_cospectra": []}
+        cospectra: list[dict[str, object]] = []
+        for window in spectral_run.windows:
+            if len(window.cross_freq) < 8 or len(window.cross_value) < 8:
+                continue
+            cospectra.append(
+                {
+                    "window_id": window.window_id,
+                    "start_time": window.start_time.isoformat(),
+                    "end_time": window.end_time.isoformat(),
+                    "cross_freq": [float(value) for value in window.cross_freq],
+                    "cross_value": [float(value) for value in window.cross_value],
+                    "source_run_id": spectral_run.run_id,
+                    "source_qc_grade": window.qc_grade,
+                    "provenance_notes": list(window.provenance_notes),
+                }
+            )
+        return {
+            "use_fcc_measured_cospectrum": bool(cospectra),
+            "fcc_source_run_id": spectral_run.run_id,
+            "fcc_measured_cospectra": cospectra,
+        }
+
     def _collect_rp_rows(self) -> list[NormalizedHFFrame]:
         selected = self.selected_device()
         rows = self.realtime_rows(device_uid=selected.config.uid) if selected else self.realtime_rows()
@@ -1372,6 +1398,9 @@ class StudioController(QObject):
         config = deepcopy(self.ec_processing.get("steps", {}))
         timing = deepcopy(self.project_workspace.get("timing", {}))
         selected = self.selected_device()
+        footprint_step = dict(config.get("footprint", {}) or {})
+        uncertainty_step = dict(config.get("uncertainty", {}) or {})
+        spectral_step = dict(config.get("spectral_correction", {}) or {})
         sample_hz = config.get("window_sampling", {}).get("sample_hz") or timing.get("sample_hz")
         if not sample_hz and selected is not None:
             sample_hz = selected.runtime.ftd_hz
@@ -1399,6 +1428,42 @@ class StudioController(QObject):
                 config["screening"]["absolute_limits"] = json.loads(absolute_limits_text)
             except (json.JSONDecodeError, ValueError):
                 pass
+        footprint_method = str(footprint_step.get("method", "kljun") or "kljun").strip()
+        config["footprint"] = {
+            "enabled": bool(footprint_step.get("enabled", footprint_method not in {"", "disabled"})),
+            "method": footprint_method,
+            "z_m": float(footprint_step.get("z_m", 3.0) or 3.0),
+            "canopy_height_m": float(footprint_step.get("canopy_height_m", 5.0) or 5.0),
+            "z0": float(footprint_step.get("z0", 0.12) or 0.12),
+            "ol": float(footprint_step.get("ol", 0.0) or 0.0),
+        }
+        uncertainty_method = str(
+            uncertainty_step.get("method")
+            or uncertainty_step.get("uncertainty_mode")
+            or "mann_lenschow"
+        ).strip()
+        config["uncertainty"] = {
+            "method": uncertainty_method,
+            "integral_timescale_s": float(uncertainty_step.get("integral_timescale_s", 5.0) or 5.0),
+            "confidence_level": float(uncertainty_step.get("confidence_level", 0.95) or 0.95),
+        }
+        spectral_method = str(spectral_step.get("method", "massman") or "massman").strip()
+        fcc_cospectrum_snapshot = self._fcc_measured_cospectra_snapshot()
+        config["spectral_correction"] = {
+            "enabled": bool(spectral_step.get("enabled", spectral_method not in {"", "disabled"})),
+            "method": spectral_method,
+            "path_length_m": float(spectral_step.get("path_length_m", 0.15) or 0.15),
+            "sensor_sep_m": float(spectral_step.get("sensor_sep_m", 0.20) or 0.20),
+            "response_time_s": float(spectral_step.get("response_time_s", 0.1) or 0.1),
+            "z_m": float(spectral_step.get("z_m", 3.0) or 3.0),
+            "ol": float(spectral_step.get("ol", 0.0) or 0.0),
+            "use_fcc_measured_cospectrum": bool(
+                spectral_step.get("use_fcc_measured_cospectrum", True)
+                and fcc_cospectrum_snapshot.get("use_fcc_measured_cospectrum", False)
+            ),
+            "fcc_source_run_id": str(fcc_cospectrum_snapshot.get("fcc_source_run_id", "")),
+            "fcc_measured_cospectra": list(fcc_cospectrum_snapshot.get("fcc_measured_cospectra", [])),
+        }
         benchmark_config = self._effective_benchmark_config()
         if benchmark_config.get("reference_id"):
             benchmark_config["status"] = benchmark_config.get("status") or "active"
@@ -1602,16 +1667,50 @@ class StudioController(QObject):
         steps["turbulence"]["risks"] = [str(turbulence_detail.get("reason", current_window.reason))]
 
         uncertainty_detail = current_window.uncertainty_detail or {}
+        if "footprint" in steps:
+            footprint_detail = dict(diagnostics.get("footprint_detail", {}) or {})
+            footprint_contrib = dict(diagnostics.get("footprint_contribution_distances", {}) or {})
+            steps["footprint"]["real_summary"] = (
+                f"method={diagnostics.get('footprint_method', 'disabled')}, "
+                f"peak={diagnostics.get('footprint_peak_distance_m', 0.0) or 0.0:.1f} m, "
+                f"x50={footprint_contrib.get('x50', '--')} m."
+            )
+            steps["footprint"]["intermediate"] = {
+                "method": diagnostics.get("footprint_method", ""),
+                "peak_distance_m": diagnostics.get("footprint_peak_distance_m"),
+                "offset_distance_m": diagnostics.get("footprint_offset_distance_m"),
+                "contribution_distances": footprint_contrib,
+                "detail": footprint_detail,
+            }
+            steps["footprint"]["risks"] = list(footprint_detail.get("limitations", []))[:3] or [current_window.reason]
         steps["uncertainty"]["real_summary"] = (
-            f"relative={uncertainty_detail.get('relative_uncertainty', 0.0):.3f}, "
-            f"status={uncertainty_detail.get('status', 'unknown')}."
+            f"method={diagnostics.get('uncertainty_method', uncertainty_detail.get('selected_method', 'composite_empirical'))}, "
+            f"relative={float(uncertainty_detail.get('primary_flux_relative_uncertainty', uncertainty_detail.get('relative_uncertainty', 0.0)) or 0.0):.3f}, "
+            f"band={float(uncertainty_detail.get('primary_flux_uncertainty_band', 0.0) or 0.0):.6f}."
         )
         steps["uncertainty"]["intermediate"] = dict(uncertainty_detail)
         steps["uncertainty"]["risks"] = [
-            f"random={uncertainty_detail.get('random_component', 0.0):.3f}",
-            f"stationarity={uncertainty_detail.get('stationarity_component', 0.0):.3f}",
-            f"turbulence={uncertainty_detail.get('turbulence_component', 0.0):.3f}",
+            f"random_error={float(uncertainty_detail.get('primary_flux_random_error', 0.0) or 0.0):.6f}",
+            f"ci=({uncertainty_detail.get('primary_flux_ci_lower', '--')}, {uncertainty_detail.get('primary_flux_ci_upper', '--')})",
+            f"method={diagnostics.get('uncertainty_method', uncertainty_detail.get('selected_method', 'composite_empirical'))}",
         ]
+        if "spectral_correction" in steps:
+            spectral_detail = dict(diagnostics.get("spectral_correction_detail", {}) or {})
+            measured_source = diagnostics.get("spectral_correction_measured_cospectrum_source", "")
+            steps["spectral_correction"]["real_summary"] = (
+                f"method={diagnostics.get('spectral_correction_method', 'disabled')}, "
+                f"factor={float(diagnostics.get('spectral_correction_factor', 1.0) or 1.0):.3f}, "
+                f"cospectrum={measured_source or 'disabled'}."
+            )
+            steps["spectral_correction"]["intermediate"] = {
+                "method": diagnostics.get("spectral_correction_method", ""),
+                "correction_factor": diagnostics.get("spectral_correction_factor"),
+                "measured_cospectrum_enabled": diagnostics.get("spectral_correction_measured_cospectrum_enabled", False),
+                "measured_cospectrum_used": diagnostics.get("spectral_correction_measured_cospectrum_used", False),
+                "measured_cospectrum_source": measured_source,
+                "detail": spectral_detail,
+            }
+            steps["spectral_correction"]["risks"] = list(diagnostics.get("spectral_correction_limitations", []))[:3] or [current_window.reason]
 
         steps["output"]["real_summary"] = (
             f"当前运行 {result.run_id}，输出 {len(result.windows)} 个窗口结果，状态 {status}。"
@@ -1621,6 +1720,9 @@ class StudioController(QObject):
             "window_count": len(result.windows),
             "status": status,
             "full_output_mode": steps.get("output", {}).get("full_output_mode", "only_available"),
+            "primary_flux_random_error": diagnostics.get("primary_flux_random_error"),
+            "primary_flux_uncertainty_band": diagnostics.get("primary_flux_uncertainty_band"),
+            "schema_target": diagnostics.get("schema_target", ""),
         }
         steps["output"]["risks"] = [summary.get("message", current_window.reason)]
         return steps
@@ -1811,15 +1913,18 @@ class StudioController(QObject):
             "uncertainty_limitations": [],
             "uncertainty_components": {},
             "uncertainty_relative_uncertainty": None,
+            "uncertainty_random_error": None,
+            "uncertainty_band": None,
             "spectral_correction_method": "未启用",
             "spectral_correction_provenance": "",
             "spectral_correction_limitations": [],
             "spectral_correction_factor": None,
+            "spectral_correction_measured_cospectrum_source": "",
         }
         if rp_result is None:
             return default
         summary = dict(rp_result.summary or {})
-        artifacts = dict(rp_result.artifacts.get("method_provenance", {}) or {})
+        artifacts = dict(rp_result.artifacts.get("method_rollup", {}) or rp_result.artifacts.get("method_provenance", {}) or {})
         footprint_summary = dict(summary.get("footprint_summary", {}) or artifacts.get("footprint_summary", {}) or {})
         uncertainty_summary = dict(summary.get("uncertainty_summary", {}) or artifacts.get("uncertainty_summary", {}) or {})
         spectral_summary = dict(summary.get("spectral_correction_summary", {}) or artifacts.get("spectral_correction_summary", {}) or {})
@@ -1841,6 +1946,8 @@ class StudioController(QObject):
                 uncertainty_summary = {
                     "method": diag.get("uncertainty_method", ""),
                     "relative_uncertainty": uncertainty_detail.get("relative_uncertainty", uncertainty_detail.get("relative_error")),
+                    "primary_flux_random_error": uncertainty_detail.get("primary_flux_random_error"),
+                    "uncertainty_band": uncertainty_detail.get("primary_flux_uncertainty_band"),
                     "components": dict(uncertainty_detail.get("components", {}) or {}),
                     "provenance": uncertainty_detail.get("provenance", ""),
                     "limitations": uncertainty_detail.get("limitations", []),
@@ -1850,6 +1957,7 @@ class StudioController(QObject):
                     "method": diag.get("spectral_correction_method", ""),
                     "correction_factor": diag.get("spectral_correction_factor"),
                     "provenance": diag.get("spectral_correction_provenance", ""),
+                    "measured_cospectrum_source": diag.get("spectral_correction_measured_cospectrum_source", ""),
                     "limitations": diag.get("spectral_correction_limitations", []),
                 }
         footprint_peak = summary.get("footprint_peak_distance_m", footprint_summary.get("peak_distance_m"))
@@ -1863,6 +1971,8 @@ class StudioController(QObject):
             ).strip("; ")
 
         uncertainty_relative = summary.get("uncertainty_relative_uncertainty", uncertainty_summary.get("relative_uncertainty"))
+        uncertainty_random_error = summary.get("uncertainty_random_error", uncertainty_summary.get("primary_flux_random_error"))
+        uncertainty_band = summary.get("uncertainty_band", uncertainty_summary.get("uncertainty_band"))
         uncertainty_components = dict(summary.get("uncertainty_components") or uncertainty_summary.get("components") or {})
         uncertainty_provenance = str(summary.get("uncertainty_provenance") or uncertainty_summary.get("provenance") or "")
         if uncertainty_relative is not None:
@@ -1870,11 +1980,22 @@ class StudioController(QObject):
                 f"{uncertainty_provenance}; relative={float(uncertainty_relative):.3f}; "
                 f"components={json.dumps(uncertainty_components, ensure_ascii=False)}"
             ).strip("; ")
+        if uncertainty_random_error is not None:
+            uncertainty_provenance = f"{uncertainty_provenance}; random_error={float(uncertainty_random_error):.6f}".strip("; ")
+        if uncertainty_band is not None:
+            uncertainty_provenance = f"{uncertainty_provenance}; band={float(uncertainty_band):.6f}".strip("; ")
 
         spectral_factor = summary.get("spectral_correction_factor", spectral_summary.get("correction_factor"))
         spectral_provenance = str(summary.get("spectral_correction_provenance") or spectral_summary.get("provenance") or "")
+        spectral_measured_cospectrum_source = str(
+            summary.get("spectral_correction_measured_cospectrum_source")
+            or spectral_summary.get("measured_cospectrum_source")
+            or ""
+        )
         if spectral_factor is not None:
             spectral_provenance = f"{spectral_provenance}; factor={float(spectral_factor):.3f}".strip("; ")
+        if spectral_measured_cospectrum_source:
+            spectral_provenance = f"{spectral_provenance}; cospectrum={spectral_measured_cospectrum_source}".strip("; ")
 
         return {
             "footprint_method": str(summary.get("footprint_method") or footprint_summary.get("method") or default["footprint_method"]),
@@ -1888,10 +2009,13 @@ class StudioController(QObject):
             "uncertainty_limitations": list(summary.get("uncertainty_limitations") or uncertainty_summary.get("limitations") or []),
             "uncertainty_components": uncertainty_components,
             "uncertainty_relative_uncertainty": uncertainty_relative,
+            "uncertainty_random_error": uncertainty_random_error,
+            "uncertainty_band": uncertainty_band,
             "spectral_correction_method": str(summary.get("spectral_correction_method") or spectral_summary.get("method") or default["spectral_correction_method"]),
             "spectral_correction_provenance": spectral_provenance,
             "spectral_correction_limitations": list(summary.get("spectral_correction_limitations") or spectral_summary.get("limitations") or []),
             "spectral_correction_factor": spectral_factor,
+            "spectral_correction_measured_cospectrum_source": spectral_measured_cospectrum_source,
         }
 
     def _empty_report_payloads(self) -> dict:
@@ -1958,6 +2082,7 @@ class StudioController(QObject):
         updated_at = run_result.created_at.strftime("%Y-%m-%d %H:%M")
         report_root = self.runtime_root / "exports" / "reports"
         report_exports = run_result.artifacts.get("report_exports", {})
+        result_export_files = dict(run_result.artifacts.get("result_exports", {}).get("latest", {}).get("files", {}) or {})
         evidence = run_result.artifacts.get("evidence_bundle", {})
 
         def file_info_for(report_key: str) -> dict:
@@ -2186,14 +2311,22 @@ class StudioController(QObject):
                 ("Footprint", rp_method_summary["footprint_method"], rp_method_summary["footprint_provenance"]),
                 ("不确定度", rp_method_summary["uncertainty_method"], rp_method_summary["uncertainty_provenance"]),
                 ("谱修正", rp_method_summary["spectral_correction_method"], rp_method_summary["spectral_correction_provenance"]),
+                ("不确定度带宽", str(rp_method_summary["uncertainty_band"]), "primary flux uncertainty band"),
+                ("FCC cospectrum", rp_method_summary["spectral_correction_measured_cospectrum_source"], "Fratini/FCC 自动注入路径"),
             ],
             "conclusions": [
                 "方法溯源页集中展示当前批次使用的 Footprint、不确定度、谱修正方法来源和局限性。",
                 "建议作为正式报告附录，说明结论来自哪些方法配置。",
             ],
             "export_options": ["导出当前报告"],
-            "file_info": file_info_for("method_provenance"),
-            "versions": [f"运行 ID：{run_result.run_id}", "方法溯源来自 RP 窗口诊断字段"],
+            "file_info": {
+                **file_info_for("method_provenance"),
+                **({"Method Rollup Artifact": str(result_export_files.get("method_rollup_artifact"))} if result_export_files.get("method_rollup_artifact") else {}),
+            },
+            "versions": [
+                f"运行 ID：{run_result.run_id}",
+                "方法溯源优先来自 RP run-level method rollup artifact",
+            ],
             "usage": ["工程师查看方法来源和局限性。", "管理汇报时引用此页说明方法依据。"],
         }
 
@@ -3306,6 +3439,16 @@ class StudioController(QObject):
                     "comparisons": [],
                     "primary_flux": window.primary_flux,
                     "qc_grade": window.qc_grade,
+                    "primary_flux_random_error": diag.get("primary_flux_random_error"),
+                    "primary_flux_relative_uncertainty": diag.get("primary_flux_relative_uncertainty"),
+                    "primary_flux_uncertainty_band": diag.get("primary_flux_uncertainty_band"),
+                    "primary_flux_ci_lower": diag.get("primary_flux_ci_lower"),
+                    "primary_flux_ci_upper": diag.get("primary_flux_ci_upper"),
+                    "footprint_method": diag.get("footprint_method", ""),
+                    "uncertainty_method": diag.get("uncertainty_method", ""),
+                    "spectral_correction_method": diag.get("spectral_correction_method", ""),
+                    "spectral_correction_measured_cospectrum_source": diag.get("spectral_correction_measured_cospectrum_source", ""),
+                    "method_deviation_notes": list(dev_summary.get("method_deviation_notes", [])),
                 })
                 continue
             overall_pass = dev_summary.get("overall_pass", True)
@@ -3342,6 +3485,16 @@ class StudioController(QObject):
                 "comparisons": dev_summary.get("comparisons", []),
                 "primary_flux": window.primary_flux,
                 "qc_grade": window.qc_grade,
+                "primary_flux_random_error": diag.get("primary_flux_random_error"),
+                "primary_flux_relative_uncertainty": diag.get("primary_flux_relative_uncertainty"),
+                "primary_flux_uncertainty_band": diag.get("primary_flux_uncertainty_band"),
+                "primary_flux_ci_lower": diag.get("primary_flux_ci_lower"),
+                "primary_flux_ci_upper": diag.get("primary_flux_ci_upper"),
+                "footprint_method": diag.get("footprint_method", ""),
+                "uncertainty_method": diag.get("uncertainty_method", ""),
+                "spectral_correction_method": diag.get("spectral_correction_method", ""),
+                "spectral_correction_measured_cospectrum_source": diag.get("spectral_correction_measured_cospectrum_source", ""),
+                "method_deviation_notes": list(dev_summary.get("method_deviation_notes", [])),
             })
         pass_rate = pass_count / max(1, pass_count + fail_count) if (pass_count + fail_count) > 0 else 0.0
         active_provenance = ref_provenance_map.get(bm_ref_id, {})
@@ -3514,9 +3667,15 @@ class StudioController(QObject):
                         "comparisons": [],
                         "primary_flux": window.primary_flux,
                         "qc_grade": window.qc_grade,
+                        "primary_flux_random_error": diagnostics.get("primary_flux_random_error"),
+                        "primary_flux_relative_uncertainty": diagnostics.get("primary_flux_relative_uncertainty"),
+                        "primary_flux_uncertainty_band": diagnostics.get("primary_flux_uncertainty_band"),
+                        "primary_flux_ci_lower": diagnostics.get("primary_flux_ci_lower"),
+                        "primary_flux_ci_upper": diagnostics.get("primary_flux_ci_upper"),
                         "footprint_method": diagnostics.get("footprint_method", ""),
                         "uncertainty_method": diagnostics.get("uncertainty_method", ""),
                         "spectral_correction_method": diagnostics.get("spectral_correction_method", ""),
+                        "spectral_correction_measured_cospectrum_source": diagnostics.get("spectral_correction_measured_cospectrum_source", ""),
                         "method_deviation_notes": list(deviation.get("method_deviation_notes", [])),
                     }
                 )
@@ -3557,9 +3716,15 @@ class StudioController(QObject):
                     "comparisons": deviation.get("comparisons", []),
                     "primary_flux": window.primary_flux,
                     "qc_grade": window.qc_grade,
+                    "primary_flux_random_error": diagnostics.get("primary_flux_random_error"),
+                    "primary_flux_relative_uncertainty": diagnostics.get("primary_flux_relative_uncertainty"),
+                    "primary_flux_uncertainty_band": diagnostics.get("primary_flux_uncertainty_band"),
+                    "primary_flux_ci_lower": diagnostics.get("primary_flux_ci_lower"),
+                    "primary_flux_ci_upper": diagnostics.get("primary_flux_ci_upper"),
                     "footprint_method": deviation.get("footprint_method", diagnostics.get("footprint_method", "")),
                     "uncertainty_method": deviation.get("uncertainty_method", diagnostics.get("uncertainty_method", "")),
                     "spectral_correction_method": deviation.get("spectral_correction_method", diagnostics.get("spectral_correction_method", "")),
+                    "spectral_correction_measured_cospectrum_source": diagnostics.get("spectral_correction_measured_cospectrum_source", ""),
                     "method_deviation_notes": list(deviation.get("method_deviation_notes", [])),
                 }
             )
@@ -3636,6 +3801,7 @@ class StudioController(QObject):
         }
         for key, label in (
             ("benchmark_summary_artifact", "Benchmark Summary"),
+            ("method_rollup_artifact", "Method Rollup"),
             ("parity_artifact", "Parity Artifact"),
             ("reference_provenance_artifact", "Provenance Artifact"),
             ("network_validation_summary", "Network Validation"),
@@ -4258,12 +4424,38 @@ class StudioController(QObject):
                     "recommended": "先按默认门限运行，再结合站点季节性特征调整。",
                     "ustar_rule": "站点阈值",
                 },
+                "footprint": {
+                    "title": "Footprint",
+                    "method": "kljun",
+                    "applicable": "适用于窗口级源区距离摘要与站点代表性判断。",
+                    "recommended": "默认推荐 kljun，z_m=3.0 m，canopy_height_m=5.0 m；复杂稳定度场景再切换到其他方法。",
+                    "enabled": True,
+                    "z_m": 3.0,
+                    "canopy_height_m": 5.0,
+                    "z0": 0.12,
+                    "ol": 0.0,
+                },
                 "uncertainty": {
                     "title": "不确定度",
-                    "method": "经验传播估计",
+                    "method": "mann_lenschow",
                     "applicable": "适用于结果归档与报告摘要。",
-                    "recommended": "至少保留主要来源拆分，避免黑箱输出。",
-                    "uncertainty_mode": "经验传播",
+                    "recommended": "默认推荐 mann_lenschow，integral_timescale_s=5.0 s，confidence_level=0.95。",
+                    "uncertainty_mode": "mann_lenschow",
+                    "integral_timescale_s": 5.0,
+                    "confidence_level": 0.95,
+                },
+                "spectral_correction": {
+                    "title": "谱修正",
+                    "method": "massman",
+                    "applicable": "适用于路径平均、响应时间和传感器间距导致的高频损失修正。",
+                    "recommended": "默认推荐 massman；Fratini 路径会自动优先注入 FCC measured cospectrum。",
+                    "enabled": True,
+                    "path_length_m": 0.15,
+                    "sensor_sep_m": 0.2,
+                    "response_time_s": 0.1,
+                    "z_m": 3.0,
+                    "ol": 0.0,
+                    "use_fcc_measured_cospectrum": True,
                 },
                 "output": {
                     "title": "输出",
