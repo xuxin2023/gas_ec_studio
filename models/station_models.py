@@ -336,6 +336,14 @@ def match_dynamic_metadata(
 
 
 def load_biomet_records(source: BiometSourceMetadata) -> list[dict[str, Any]]:
+    if source.source_mode == "ghg_bundle" and source.source_path:
+        from core.storage.ghg_bundle import load_ghg_biomet_records
+
+        return load_ghg_biomet_records(
+            source.source_path,
+            time_column=source.time_column,
+            fields=source.fields,
+        )
     if source.source_mode not in {"external_file", "external_directory"} or not source.source_path:
         return []
     root = Path(source.source_path)

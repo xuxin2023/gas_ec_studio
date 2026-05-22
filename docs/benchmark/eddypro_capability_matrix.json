@@ -1,0 +1,257 @@
+{
+  "artifact_type": "eddypro_capability_matrix",
+  "updated_at": "2026-05-22",
+  "overall_status": "not_full_eddypro_parity_yet",
+  "truthfulness_note": "gas_ec_studio has surpassed EddyPro in several auditability and delivery-chain areas, but it does not yet implement every EddyPro/SmartFlux feature family.",
+  "official_sources": [
+    {
+      "label": "LI-COR Eddy Covariance Software",
+      "url": "https://home.licor.com/env/products/eddy-covariance/software",
+      "used_for": "EddyPro positioning as flux processing and collection software."
+    },
+    {
+      "label": "LI-COR SmartFlux System",
+      "url": "https://bio.licor.com/env/products/eddy-covariance/smartflux",
+      "used_for": "Real-time processed fluxes, raw data, biomet, metadata, diagnostics, GPS/PTP synchronization, transfer, footprint."
+    },
+    {
+      "label": "EddyPro .ghg file type",
+      "url": "https://www.licor.com/support/EddyPro/topics/ghg-file-format.html",
+      "used_for": ".ghg embedded metadata, dynamic site parameters, biomet, instrument settings, raw columns."
+    },
+    {
+      "label": "EddyPro spectral corrections",
+      "url": "https://www.licor.com/support/EddyPro/topics/spectral-corrections.html",
+      "used_for": "Horst, Ibrom, Fratini, binned spectra/cospectra, full w/T cospectra requirements."
+    },
+    {
+      "label": "EddyPro LI-7200/LI-7700 flux calculations",
+      "url": "https://www.licor.com/support/EddyPro/topics/calculate-flux-7200-and-7700.html",
+      "used_for": "Level 1/2/3 flux correction sequence, CH4, spectral corrections, density fluctuation corrections."
+    }
+  ],
+  "coverage_summary": {
+    "covered": 7,
+    "partial": 9,
+    "missing": 5,
+    "beyond_eddypro": 3
+  },
+  "capabilities": [
+    {
+      "id": "raw_ghg_bundle",
+      "family": "raw_ingestion",
+      "eddypro_requirement": "Read LI-COR .ghg bundles with paired raw data, metadata, and optional biomet files.",
+      "gas_ec_status": "partial",
+      "evidence": ["core/storage/ghg_bundle.py", "tests/test_ghg_bundle_import.py"],
+      "gap": "Raw high-frequency .ghg rows are inspectable but not yet converted directly into NormalizedHFFrame for full RP runs.",
+      "next_action": "Add .ghg high-frequency row mapping into headless and UI import paths."
+    },
+    {
+      "id": "raw_ascii_csv",
+      "family": "raw_ingestion",
+      "eddypro_requirement": "Process generic ASCII tabular high-frequency data with configurable columns and missing tokens.",
+      "gas_ec_status": "partial",
+      "evidence": ["models/station_models.py", "core/headless_batch_runner.py", "tests/test_ec_core_parity_v1.py"],
+      "gap": "Config metadata exists; production-grade arbitrary raw file parsing still needs broader fixtures.",
+      "next_action": "Add raw CSV to NormalizedHFFrame importer with unit conversion tests."
+    },
+    {
+      "id": "raw_binary_tob1_slt",
+      "family": "raw_ingestion",
+      "eddypro_requirement": "Support binary and TOB1/SLT family raw formats.",
+      "gas_ec_status": "missing",
+      "evidence": [],
+      "gap": "No binary/TOB1/SLT parser is present.",
+      "next_action": "Implement TOB1 adapter or documented conversion bridge first."
+    },
+    {
+      "id": "site_instrument_metadata",
+      "family": "metadata",
+      "eddypro_requirement": "Store site, instrument, gas analyzer, anemometer, raw column, and sampling-chain metadata.",
+      "gas_ec_status": "covered",
+      "evidence": ["models/station_models.py", "app/pages/project_site_page.py"],
+      "gap": "",
+      "next_action": "Expand instrument model validation fixtures."
+    },
+    {
+      "id": "dynamic_metadata",
+      "family": "metadata",
+      "eddypro_requirement": "Handle dynamic site parameters such as crop canopy height over time.",
+      "gas_ec_status": "covered",
+      "evidence": ["models/station_models.py", "tests/test_ec_core_parity_v1.py"],
+      "gap": "",
+      "next_action": "Propagate dynamic canopy height deeper into footprint defaults."
+    },
+    {
+      "id": "biomet_external_and_ghg",
+      "family": "metadata",
+      "eddypro_requirement": "Use embedded or external biomet data for flux computation and window summaries.",
+      "gas_ec_status": "partial",
+      "evidence": ["models/station_models.py", "core/storage/ghg_bundle.py", "tests/test_ghg_bundle_import.py"],
+      "gap": "External and .ghg embedded biomet can be loaded and aggregated; biomet is not yet fully used to override all ambient thermodynamic variables.",
+      "next_action": "Wire biomet aggregation into RP ambient parameter selection and diagnostics."
+    },
+    {
+      "id": "gps_ptp_sync",
+      "family": "acquisition",
+      "eddypro_requirement": "Synchronize high-speed and low-speed data by GPS/PTP in SmartFlux deployments.",
+      "gas_ec_status": "missing",
+      "evidence": [],
+      "gap": "No GPS/PTP synchronization subsystem.",
+      "next_action": "Add acquisition clock provenance and optional PTP/GPS offset model."
+    },
+    {
+      "id": "smartflux_realtime_site_processing",
+      "family": "acquisition",
+      "eddypro_requirement": "Produce fully processed real-time site fluxes on embedded/on-site hardware.",
+      "gas_ec_status": "partial",
+      "evidence": ["app/studio.py", "core/headless_batch_runner.py"],
+      "gap": "Desktop/headless real-time style flows exist; no hardened embedded SmartFlux equivalent.",
+      "next_action": "Add daemonized runtime profile and watchdog manifest."
+    },
+    {
+      "id": "despiking_screening",
+      "family": "preprocessing",
+      "eddypro_requirement": "Despike and statistically screen raw data records.",
+      "gas_ec_status": "covered",
+      "evidence": ["core/ec_rp/analysis.py", "tests/test_ec_rp_qc.py", "tests/test_ec_rp_qc_matrix.py"],
+      "gap": "",
+      "next_action": "Add more EddyPro fixture parity cases."
+    },
+    {
+      "id": "time_lag_detection",
+      "family": "preprocessing",
+      "eddypro_requirement": "Detect and compensate time lags with configurable search/default strategies.",
+      "gas_ec_status": "covered",
+      "evidence": ["core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "tests/test_rp_advanced_closure.py"],
+      "gap": "",
+      "next_action": "Add gas-specific lag defaults and diagnostics."
+    },
+    {
+      "id": "coordinate_rotation_planar_fit",
+      "family": "preprocessing",
+      "eddypro_requirement": "Support double/triple rotation, planar fit, and sector-wise planar fit variants.",
+      "gas_ec_status": "covered",
+      "evidence": ["core/ec_rp/analysis.py", "tests/test_advanced_parity_v3b.py"],
+      "gap": "",
+      "next_action": "Persist long-period planar-fit coefficient libraries."
+    },
+    {
+      "id": "head_flow_angle_corrections",
+      "family": "preprocessing",
+      "eddypro_requirement": "Support sonic head correction, flow distortion, angle-of-attack correction, and known anemometer bug corrections.",
+      "gas_ec_status": "missing",
+      "evidence": [],
+      "gap": "No instrument-specific correction library.",
+      "next_action": "Implement correction registry for supported sonic models."
+    },
+    {
+      "id": "crosswind_correction",
+      "family": "preprocessing",
+      "eddypro_requirement": "Support crosswind correction for applicable hygrometers/analyzers.",
+      "gas_ec_status": "missing",
+      "evidence": [],
+      "gap": "No crosswind correction implementation.",
+      "next_action": "Add optional crosswind correction family with provenance."
+    },
+    {
+      "id": "co2_h2o_energy_fluxes",
+      "family": "fluxes",
+      "eddypro_requirement": "Compute CO2, H2O, latent heat, sensible heat, momentum, u*, and evapotranspiration-related flux outputs.",
+      "gas_ec_status": "partial",
+      "evidence": ["core/ec_rp/pipeline.py", "core/exports/result_exporter.py"],
+      "gap": "Core CO2/H2O/energy fields exist; full EddyPro Level 0/1/2/3 sequencing still needs broader validation.",
+      "next_action": "Create level-by-level flux correction artifact and tests."
+    },
+    {
+      "id": "ch4_trace_gas_fluxes",
+      "family": "fluxes",
+      "eddypro_requirement": "Compute CH4 and other trace gas fluxes, including LI-7700 style correction pathways.",
+      "gas_ec_status": "missing",
+      "evidence": [],
+      "gap": "No methane/trace-gas normalized frame fields or LI-7700 correction pathway.",
+      "next_action": "Extend data model and pipeline for CH4 first, then generic trace gas channels."
+    },
+    {
+      "id": "density_mixing_ratio_corrections",
+      "family": "fluxes",
+      "eddypro_requirement": "Use mixing-ratio and WPL-style density fluctuation corrections when raw information availability varies.",
+      "gas_ec_status": "partial",
+      "evidence": ["core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "tests/test_truthfulness_v3a3.py"],
+      "gap": "Primary correction mode is selectable; full closed-path cell thermodynamics and level sequencing need expansion.",
+      "next_action": "Add closed-path cell pressure/temperature covariance support."
+    },
+    {
+      "id": "spectral_corrections",
+      "family": "spectral",
+      "eddypro_requirement": "Support low/high-frequency corrections including Horst, Ibrom, Fratini, measured cospectra, and attenuation assessment.",
+      "gas_ec_status": "partial",
+      "evidence": ["core/ec_rp/analysis.py", "core/ec_fcc/analysis.py", "tests/test_v3g_footprint_uncertainty_spectral.py"],
+      "gap": "Methods and provenance exist; long-period binned spectra/cospectra library management is incomplete.",
+      "next_action": "Add reusable spectral assessment dataset manager."
+    },
+    {
+      "id": "spectra_cospectra_ogives",
+      "family": "spectral",
+      "eddypro_requirement": "Calculate spectra, cospectra, ogives, ensemble averages, and QA/QC outputs.",
+      "gas_ec_status": "partial",
+      "evidence": ["core/ec_fcc/analysis.py", "tests/test_ec_fcc_pipeline.py"],
+      "gap": "FCC outputs exist; ensemble month-scale assessment and all EddyPro output families are not complete.",
+      "next_action": "Add binned/full spectra export family parity."
+    },
+    {
+      "id": "random_uncertainty",
+      "family": "uncertainty",
+      "eddypro_requirement": "Estimate random uncertainty with Mann & Lenschow and Finkelstein & Sims-style methods.",
+      "gas_ec_status": "covered",
+      "evidence": ["core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "tests/test_v3h_method_controls_propagation.py"],
+      "gap": "",
+      "next_action": "Add more reference datasets for numeric parity."
+    },
+    {
+      "id": "footprint",
+      "family": "footprint",
+      "eddypro_requirement": "Estimate flux footprint and provide georeferenced footprint outputs.",
+      "gas_ec_status": "partial",
+      "evidence": ["core/ec_rp/analysis.py", "tests/test_v3i_method_compare_footprint2d.py"],
+      "gap": "Kljun/Kormann-Meixner/Hsieh and 2D contours exist; GIS/georeferenced export is incomplete.",
+      "next_action": "Add GeoJSON/GeoTIFF-style footprint export."
+    },
+    {
+      "id": "network_exports",
+      "family": "outputs",
+      "eddypro_requirement": "Export standardized network outputs and full result tables.",
+      "gas_ec_status": "covered",
+      "evidence": ["core/exports/result_exporter.py", "tests/test_result_exports.py"],
+      "gap": "",
+      "next_action": "Add GHG-Europe legacy output if required by target users."
+    },
+    {
+      "id": "delivery_audit_benchmark",
+      "family": "beyond_eddypro",
+      "eddypro_requirement": "N/A",
+      "gas_ec_status": "beyond_eddypro",
+      "evidence": ["core/exports/delivery_exporter.py", "tests/test_delivery_package_export.py"],
+      "gap": "",
+      "next_action": "Keep audit assertions in CI."
+    },
+    {
+      "id": "method_parity_artifacts",
+      "family": "beyond_eddypro",
+      "eddypro_requirement": "N/A",
+      "gas_ec_status": "beyond_eddypro",
+      "evidence": ["core/exports/result_exporter.py", "tests/test_reference_metadata_expansion.py"],
+      "gap": "",
+      "next_action": "Use matrix to guide every future parity sprint."
+    },
+    {
+      "id": "report_center_cockpit",
+      "family": "beyond_eddypro",
+      "eddypro_requirement": "N/A",
+      "gas_ec_status": "beyond_eddypro",
+      "evidence": ["app/pages/report_center_page.py", "app/studio.py", "tests/test_report_center_real_batches.py"],
+      "gap": "",
+      "next_action": "Add cloud CI artifact screenshots later."
+    }
+  ]
+}

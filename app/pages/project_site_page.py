@@ -772,7 +772,7 @@ class ProjectSitePage(QWidget):
         biomet_layout.setHorizontalSpacing(TOKENS.spacing_md)
         biomet_layout.setVerticalSpacing(TOKENS.spacing_md)
         self.biomet_mode_combo = QComboBox()
-        self.biomet_mode_combo.addItems(["none", "external_file", "external_directory"])
+        self.biomet_mode_combo.addItems(["none", "external_file", "external_directory", "ghg_bundle"])
         self.biomet_source_path_edit = QLineEdit()
         biomet_path_row = QHBoxLayout()
         biomet_path_row.addWidget(self.biomet_source_path_edit, 1)
