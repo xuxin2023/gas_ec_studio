@@ -320,6 +320,10 @@ def attach_runtime_service_manifest(run_result: Any, service_manifest: dict[str,
         diagnostics["ptp_lock_status"] = dict(daemon.get("ptp_servo", {}) or {}).get("status", "")
         diagnostics["gps_pps_lock_status"] = dict(daemon.get("gps_pps", {}) or {}).get("status", "")
         diagnostics["hardware_watchdog_status"] = dict(daemon.get("hardware_watchdog", {}) or {}).get("status", "")
+        diagnostics["os_supervisor_status"] = dict(daemon.get("supervisor_integration", {}) or {}).get("status", "")
+        diagnostics["os_supervisor_state"] = dict(dict(daemon.get("supervisor_integration", {}) or {}).get("service_status", {}) or {}).get("state", "")
+        diagnostics["watchdog_provider_status"] = dict(dict(daemon.get("supervisor_integration", {}) or {}).get("hardware_watchdog_provider", {}) or {}).get("status", "")
+        diagnostics["supervisor_integration_detail"] = dict(daemon.get("supervisor_integration", {}) or {})
         diagnostics["daemon_telemetry_detail"] = _compact_daemon_telemetry(daemon)
 
 
@@ -357,6 +361,7 @@ def _compact_daemon_telemetry(daemon_telemetry: dict[str, Any]) -> dict[str, Any
         "ptp_servo": dict(daemon_telemetry.get("ptp_servo", {}) or {}),
         "gps_pps": dict(daemon_telemetry.get("gps_pps", {}) or {}),
         "hardware_watchdog": dict(daemon_telemetry.get("hardware_watchdog", {}) or {}),
+        "supervisor_integration": dict(daemon_telemetry.get("supervisor_integration", {}) or {}),
         "fail_count": daemon_telemetry.get("fail_count", 0),
         "warn_count": daemon_telemetry.get("warn_count", 0),
         "recommended_actions": list(daemon_telemetry.get("recommended_actions", []) or []),

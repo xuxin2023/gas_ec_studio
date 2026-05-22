@@ -152,6 +152,7 @@ def export_formal_report(
             "runtime_watchdog_summary": snapshot.get("delivery_audit", {}).get("runtime_watchdog_summary", {}),
             "runtime_service_summary": snapshot.get("delivery_audit", {}).get("runtime_service_summary", {}),
             "daemon_telemetry_summary": snapshot.get("delivery_audit", {}).get("daemon_telemetry_summary", {}),
+            "supervisor_integration_summary": snapshot.get("delivery_audit", {}).get("supervisor_integration_summary", {}),
             "clock_sync_summary": snapshot.get("delivery_audit", {}).get("clock_sync_summary", {}),
             "benchmark_summary": snapshot.get("delivery_audit", {}).get("benchmark_summary", {}),
         }
@@ -212,6 +213,7 @@ def _build_formal_report_snapshot(
     runtime_watchdog_summary = dict(result_manifest.get("runtime_watchdog_summary", {}) or {})
     runtime_service_summary = dict(result_manifest.get("runtime_service_summary", {}) or {})
     daemon_telemetry_summary = dict(result_manifest.get("daemon_telemetry_summary", {}) or {})
+    supervisor_integration_summary = dict(result_manifest.get("supervisor_integration_summary", {}) or {})
     clock_sync_summary = dict(result_manifest.get("clock_sync_summary", {}) or {})
     delivery_audit = {
         "artifact_type": "formal_report_delivery_audit",
@@ -232,6 +234,7 @@ def _build_formal_report_snapshot(
                 "runtime_watchdog_artifact",
                 "runtime_service_artifact",
                 "daemon_telemetry_artifact",
+                "supervisor_integration_artifact",
                 "clock_sync_artifact",
                 "reference_provenance_artifact",
                 "network_validation_summary",
@@ -242,6 +245,7 @@ def _build_formal_report_snapshot(
         "runtime_watchdog_summary": runtime_watchdog_summary,
         "runtime_service_summary": runtime_service_summary,
         "daemon_telemetry_summary": daemon_telemetry_summary,
+        "supervisor_integration_summary": supervisor_integration_summary,
         "clock_sync_summary": clock_sync_summary,
         "benchmark_summary": {
             "benchmark_status": result_manifest.get("benchmark_status", ""),
@@ -502,6 +506,9 @@ def _build_formal_report_snapshot(
                         ["runtime_service_quarantine_count", str(len(runtime_service_summary.get("quarantine_records", []) or []))],
                         ["daemon_telemetry_status", str(daemon_telemetry_summary.get("status", "--"))],
                         ["supervisor_state", str(dict(daemon_telemetry_summary.get("supervisor", {}) or {}).get("state", "--"))],
+                        ["supervisor_integration_status", str(supervisor_integration_summary.get("status", "--"))],
+                        ["os_supervisor_state", str(dict(supervisor_integration_summary.get("service_status", {}) or {}).get("state", "--"))],
+                        ["watchdog_provider_status", str(dict(supervisor_integration_summary.get("hardware_watchdog_provider", {}) or {}).get("status", "--"))],
                         ["ptp_lock_status", str(dict(daemon_telemetry_summary.get("ptp_servo", {}) or {}).get("status", "--"))],
                         ["hardware_watchdog_status", str(dict(daemon_telemetry_summary.get("hardware_watchdog", {}) or {}).get("status", "--"))],
                         ["clock_sync_status", str(clock_sync_summary.get("status", "--"))],
@@ -531,6 +538,7 @@ def _build_formal_report_snapshot(
                             "runtime_watchdog_artifact",
                             "runtime_service_artifact",
                             "daemon_telemetry_artifact",
+                            "supervisor_integration_artifact",
                             "clock_sync_artifact",
                             "network_validation_summary",
                         }

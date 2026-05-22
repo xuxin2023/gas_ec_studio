@@ -93,6 +93,7 @@ def export_delivery_package(
         "runtime_watchdog_summary": audit.get("runtime_watchdog_summary", {}),
         "runtime_service_summary": audit.get("runtime_service_summary", {}),
         "daemon_telemetry_summary": audit.get("daemon_telemetry_summary", {}),
+        "supervisor_integration_summary": audit.get("supervisor_integration_summary", {}),
         "clock_sync_summary": audit.get("clock_sync_summary", {}),
         "benchmark_summary": audit.get("benchmark_summary", {}),
         "method_artifact_keys": audit.get("method_artifact_keys", []),
@@ -211,6 +212,7 @@ def _build_readme(
                 f"runtime_watchdog：{result_files.get('runtime_watchdog_artifact', '--')}",
                 f"runtime_service：{result_files.get('runtime_service_artifact', '--')}",
                 f"daemon_telemetry：{result_files.get('daemon_telemetry_artifact', '--')}",
+                f"supervisor_integration：{result_files.get('supervisor_integration_artifact', '--')}",
                 f"clock_sync：{result_files.get('clock_sync_artifact', '--')}",
                 f"network_validation_summary：{result_files.get('network_validation_summary', '--')}",
             ]
@@ -237,6 +239,7 @@ def _build_delivery_audit(
     runtime_watchdog = dict(result_manifest.get("runtime_watchdog_summary", {}) or {})
     runtime_service = dict(result_manifest.get("runtime_service_summary", {}) or {})
     daemon_telemetry = dict(result_manifest.get("daemon_telemetry_summary", {}) or {})
+    supervisor_integration = dict(result_manifest.get("supervisor_integration_summary", {}) or {})
     clock_sync = dict(result_manifest.get("clock_sync_summary", {}) or {})
     benchmark_summary = {
         "benchmark_status": result_manifest.get("benchmark_status", ""),
@@ -274,6 +277,7 @@ def _build_delivery_audit(
         "runtime_watchdog_artifact",
         "runtime_service_artifact",
         "daemon_telemetry_artifact",
+        "supervisor_integration_artifact",
         "clock_sync_artifact",
         "benchmark_summary_artifact",
         "parity_artifact",
@@ -312,12 +316,14 @@ def _build_delivery_audit(
             "runtime_service_status": dict(result_manifest.get("runtime_service_summary", {}) or {}).get("status", ""),
             "runtime_service_delivery_state": dict(result_manifest.get("runtime_service_summary", {}) or {}).get("delivery_state", ""),
             "daemon_telemetry_status": dict(result_manifest.get("daemon_telemetry_summary", {}) or {}).get("status", ""),
+            "supervisor_integration_status": dict(result_manifest.get("supervisor_integration_summary", {}) or {}).get("status", ""),
             "clock_sync_status": dict(result_manifest.get("clock_sync_summary", {}) or {}).get("status", ""),
         },
         "network_validation_summary": network_validation,
         "runtime_watchdog_summary": runtime_watchdog,
         "runtime_service_summary": runtime_service,
         "daemon_telemetry_summary": daemon_telemetry,
+        "supervisor_integration_summary": supervisor_integration,
         "clock_sync_summary": clock_sync,
         "benchmark_summary": benchmark_summary,
         "method_artifact_keys": [key for key in artifact_keys if key in result_files],

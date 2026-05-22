@@ -152,9 +152,9 @@
       "family": "acquisition",
       "eddypro_requirement": "Produce fully processed real-time site fluxes on embedded/on-site hardware.",
       "gas_ec_status": "partial",
-      "evidence": ["app/studio.py", "core/acquisition/runtime_watchdog.py", "core/acquisition/runtime_service.py", "core/acquisition/daemon_telemetry.py", "core/headless_batch_runner.py", "core/exports/result_exporter.py", "tests/test_runtime_watchdog_headless.py", "tests/test_runtime_service_headless.py", "tests/test_daemon_telemetry_runtime.py"],
-      "gap": "Headless batches now emit a SmartFlux-style runtime profile/watchdog manifest, runtime_service v1 executes queued batches with heartbeats/retries/quarantine/delivery state, and daemon_telemetry v1 captures process telemetry, supervisor status, PTP/GPS logs, and hardware watchdog event logs across export/report/delivery; a true installed embedded daemon with hardware watchdog kicking and automatic system reboot is still incomplete.",
-      "next_action": "Add OS service wrapper, hardware watchdog kick/reboot integration, and broader supervisor/PTP/GPS fixture dialects."
+      "evidence": ["app/studio.py", "core/acquisition/runtime_watchdog.py", "core/acquisition/runtime_service.py", "core/acquisition/daemon_telemetry.py", "core/acquisition/supervisor_integration.py", "core/headless_batch_runner.py", "core/exports/result_exporter.py", "tests/test_runtime_watchdog_headless.py", "tests/test_runtime_service_headless.py", "tests/test_daemon_telemetry_runtime.py", "tests/test_supervisor_integration_runtime.py"],
+      "gap": "Headless batches now emit a SmartFlux-style runtime profile/watchdog manifest, runtime_service v1 executes queued batches with heartbeats/retries/quarantine/delivery state, daemon_telemetry v1 captures process/supervisor/PTP/GPS/watchdog logs, and supervisor_integration v1 normalizes systemd/Windows/manual service status plus file/manual hardware watchdog kick/reboot handoff across export/report/delivery; a true installed embedded daemon and direct hardware watchdog/reboot control are still incomplete.",
+      "next_action": "Add installable OS service wrapper, deployment-specific hardware watchdog provider, and broader supervisor/PTP/GPS fixture dialects."
     },
     {
       "id": "despiking_screening",

@@ -11,9 +11,13 @@ import threading
 import time
 from typing import Any
 
+from core.acquisition.supervisor_integration import build_supervisor_integration_artifact, has_supervisor_integration_config
+
 
 def has_daemon_telemetry_config(config: dict[str, Any]) -> bool:
     if any(isinstance(config.get(key), dict) and config.get(key) for key in ("daemon_telemetry", "hardware_telemetry")):
+        return True
+    if has_supervisor_integration_config(config):
         return True
     smartflux = config.get("smartflux_runtime", {})
     return isinstance(smartflux, dict) and isinstance(smartflux.get("daemon_telemetry"), dict) and bool(smartflux.get("daemon_telemetry"))
@@ -66,12 +70,18 @@ def build_daemon_telemetry_artifact(
     hardware_watchdog = parse_hardware_watchdog_log(
         _optional_path(telemetry_config.get("hardware_watchdog_log") or telemetry_config.get("watchdog_log"))
     )
+    supervisor_integration = (
+        build_supervisor_integration_artifact(config=config, runtime_root=root)
+        if has_supervisor_integration_config(config)
+        else {}
+    )
     checks = _build_checks(
         telemetry_config=telemetry_config,
         supervisor=supervisor,
         ptp_servo=ptp_servo,
         gps_pps=gps_pps,
         hardware_watchdog=hardware_watchdog,
+        supervisor_integration=supervisor_integration,
     )
     fail_count = sum(1 for item in checks if item["status"] == "fail")
     warn_count = sum(1 for item in checks if item["status"] == "warn")
@@ -88,17 +98,18 @@ def build_daemon_telemetry_artifact(
         "ptp_servo": ptp_servo,
         "gps_pps": gps_pps,
         "hardware_watchdog": hardware_watchdog,
+        "supervisor_integration": supervisor_integration,
         "checks": checks,
         "fail_count": fail_count,
         "warn_count": warn_count,
         "recommended_actions": _recommended_actions(checks),
         "provenance": (
-            "Daemon telemetry v1 parses configured supervisor, PTP servo, GPS PPS, and hardware watchdog logs "
-            "and samples process-level telemetry for SmartFlux-style runtime audit."
+            "Daemon telemetry v1 parses configured supervisor, PTP servo, GPS PPS, and hardware watchdog logs, "
+            "samples process-level telemetry, and incorporates OS supervisor integration provider evidence."
         ),
         "limitations": [
             "The artifact parses text/JSON telemetry supplied by the runtime host; it does not install or control an OS daemon.",
-            "Hardware watchdog kicking and system reboot control still require platform-specific supervisor integration.",
+            "Hardware watchdog kicking and reboot control use configured providers; direct platform service mutation is not invoked by telemetry collection.",
         ],
     }
 
@@ -204,6 +215,7 @@ def _build_checks(
     ptp_servo: dict[str, Any],
     gps_pps: dict[str, Any],
     hardware_watchdog: dict[str, Any],
+    supervisor_integration: dict[str, Any],
 ) -> list[dict[str, Any]]:
     max_ptp_offset = _float_first(telemetry_config.get("max_ptp_offset_ns"), default=1_000_000.0)
     max_gps_jitter = _float_first(telemetry_config.get("max_gps_jitter_ns"), default=1_000_000.0)
@@ -268,6 +280,14 @@ def _build_checks(
             threshold="active" if require_watchdog else "not fault",
             severity="fail" if require_watchdog else "warn",
             failure_message="Hardware watchdog is not active or reported a timeout/reboot fault.",
+        ),
+        _check(
+            "supervisor_integration",
+            supervisor_integration.get("status", "not_configured") not in {"fail"},
+            measured=supervisor_integration.get("status", "not_configured"),
+            threshold="not fail",
+            severity="fail",
+            failure_message="OS supervisor integration reported a blocking service/watchdog provider fault.",
         ),
     ]
     return checks

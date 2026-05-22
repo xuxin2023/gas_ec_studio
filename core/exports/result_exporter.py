@@ -91,6 +91,10 @@ FULL_OUTPUT_SCHEMA = [
     ("ptp_lock_status", "acquisition", "real"),
     ("gps_pps_lock_status", "acquisition", "real"),
     ("hardware_watchdog_status", "acquisition", "real"),
+    ("os_supervisor_status", "acquisition", "real"),
+    ("os_supervisor_state", "acquisition", "real"),
+    ("watchdog_provider_status", "acquisition", "real"),
+    ("supervisor_integration_detail", "acquisition", "real"),
     ("daemon_telemetry_detail", "acquisition", "real"),
     ("ch4_status", "trace_gas", "real"),
     ("ch4_flux_nmol_m2_s", "trace_gas", "real"),
@@ -236,6 +240,11 @@ class ResultExporter:
             rp_config_snapshot=rp_config_snapshot,
             export_root=export_root,
         )
+        supervisor_integration_path = self.export_supervisor_integration_artifact(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+        )
         clock_sync_path = self.export_clock_sync_artifact(
             rp_result=rp_result,
             rp_config_snapshot=rp_config_snapshot,
@@ -302,6 +311,8 @@ class ResultExporter:
             exported_files.append(runtime_service_path.name)
         if daemon_telemetry_path is not None:
             exported_files.append(daemon_telemetry_path.name)
+        if supervisor_integration_path is not None:
+            exported_files.append(supervisor_integration_path.name)
         if clock_sync_path is not None:
             exported_files.append(clock_sync_path.name)
         if method_parity_matrix_path is not None:
@@ -357,6 +368,8 @@ class ResultExporter:
                 "runtime_service_summary": self._runtime_service_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "daemon_telemetry_artifact": str(daemon_telemetry_path) if daemon_telemetry_path is not None else "",
                 "daemon_telemetry_summary": self._daemon_telemetry_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+                "supervisor_integration_artifact": str(supervisor_integration_path) if supervisor_integration_path is not None else "",
+                "supervisor_integration_summary": self._supervisor_integration_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
                 "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "reference_provenance": reference_provenance,
@@ -442,6 +455,8 @@ class ResultExporter:
             "runtime_service_artifact": str(runtime_service_path) if runtime_service_path is not None else "",
             "daemon_telemetry_summary": self._daemon_telemetry_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "daemon_telemetry_artifact": str(daemon_telemetry_path) if daemon_telemetry_path is not None else "",
+            "supervisor_integration_summary": self._supervisor_integration_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+            "supervisor_integration_artifact": str(supervisor_integration_path) if supervisor_integration_path is not None else "",
             "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
@@ -468,6 +483,9 @@ class ResultExporter:
                 "PTP_LOCK_STATUS",
                 "GPS_PPS_LOCK_STATUS",
                 "HARDWARE_WATCHDOG_STATUS",
+                "OS_SUPERVISOR_STATUS",
+                "OS_SUPERVISOR_STATE",
+                "WATCHDOG_PROVIDER_STATUS",
             ],
             "network_uncertainty_fields": [
                 "FC_RANDOM_ERROR",
@@ -513,6 +531,9 @@ class ResultExporter:
                 "ptp_lock_status",
                 "gps_pps_lock_status",
                 "hardware_watchdog_status",
+                "os_supervisor_status",
+                "os_supervisor_state",
+                "watchdog_provider_status",
                 "screening_config",
                 "screening_summary",
                 "footprint_method",
@@ -561,6 +582,8 @@ class ResultExporter:
             files["runtime_service_artifact"] = str(runtime_service_path)
         if daemon_telemetry_path is not None:
             files["daemon_telemetry_artifact"] = str(daemon_telemetry_path)
+        if supervisor_integration_path is not None:
+            files["supervisor_integration_artifact"] = str(supervisor_integration_path)
         if clock_sync_path is not None:
             files["clock_sync_artifact"] = str(clock_sync_path)
         if method_parity_matrix_path is not None:
@@ -671,6 +694,10 @@ class ResultExporter:
             "ptp_lock_status": diagnostics.get("ptp_lock_status", ""),
             "gps_pps_lock_status": diagnostics.get("gps_pps_lock_status", ""),
             "hardware_watchdog_status": diagnostics.get("hardware_watchdog_status", ""),
+            "os_supervisor_status": diagnostics.get("os_supervisor_status", ""),
+            "os_supervisor_state": diagnostics.get("os_supervisor_state", ""),
+            "watchdog_provider_status": diagnostics.get("watchdog_provider_status", ""),
+            "supervisor_integration_detail": json.dumps(diagnostics.get("supervisor_integration_detail", {}), ensure_ascii=False) if diagnostics.get("supervisor_integration_detail") else "",
             "daemon_telemetry_detail": json.dumps(diagnostics.get("daemon_telemetry_detail", {}), ensure_ascii=False) if diagnostics.get("daemon_telemetry_detail") else "",
             "ch4_status": diagnostics.get("ch4_status", ""),
             "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", ""),
@@ -812,6 +839,10 @@ class ResultExporter:
                 "ptp_lock_status": diagnostics.get("ptp_lock_status", "") if diagnostics else "",
                 "gps_pps_lock_status": diagnostics.get("gps_pps_lock_status", "") if diagnostics else "",
                 "hardware_watchdog_status": diagnostics.get("hardware_watchdog_status", "") if diagnostics else "",
+                "os_supervisor_status": diagnostics.get("os_supervisor_status", "") if diagnostics else "",
+                "os_supervisor_state": diagnostics.get("os_supervisor_state", "") if diagnostics else "",
+                "watchdog_provider_status": diagnostics.get("watchdog_provider_status", "") if diagnostics else "",
+                "supervisor_integration_detail": json.dumps(diagnostics.get("supervisor_integration_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("supervisor_integration_detail") else "",
                 "daemon_telemetry_detail": json.dumps(diagnostics.get("daemon_telemetry_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("daemon_telemetry_detail") else "",
                 "ch4_status": diagnostics.get("ch4_status", "") if diagnostics else "",
                 "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", "") if diagnostics else "",
@@ -1521,6 +1552,51 @@ class ResultExporter:
             "provenance": "Daemon telemetry artifact exported from the runtime service manifest.",
         }
         path = export_root / "daemon_telemetry_artifact.json"
+        self._write_json(path, payload)
+        return path
+
+    def _supervisor_integration_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        daemon = self._daemon_telemetry_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if isinstance(daemon.get("supervisor_integration"), dict) and daemon["supervisor_integration"]:
+            return dict(daemon["supervisor_integration"])
+        cfg = dict(
+            rp_config_snapshot.get("supervisor_integration", {})
+            if isinstance(rp_config_snapshot.get("supervisor_integration", {}), dict)
+            else {}
+        )
+        provider = dict(
+            rp_config_snapshot.get("hardware_watchdog_provider", {})
+            if isinstance(rp_config_snapshot.get("hardware_watchdog_provider", {}), dict)
+            else {}
+        )
+        if cfg or provider:
+            return {
+                "artifact_type": "supervisor_integration",
+                "status": "configured_not_run",
+                "profile_id": str(cfg.get("profile_id", "os_supervisor_integration_v1")),
+                "provenance": "Supervisor integration is configured in the export snapshot, but no runtime service supervisor artifact was available.",
+                "limitations": ["No OS supervisor adapter or hardware watchdog provider attempt was collected without a runtime service run."],
+            }
+        return {}
+
+    def export_supervisor_integration_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+    ) -> Path | None:
+        summary = self._supervisor_integration_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not summary:
+            return None
+        payload = {
+            "artifact_type": "supervisor_integration",
+            "run_id": rp_result.run_id if rp_result else "",
+            "created_at": rp_result.created_at.isoformat() if rp_result else "",
+            "summary": summary,
+            "provenance": "Supervisor integration artifact exported from daemon telemetry.",
+        }
+        path = export_root / "supervisor_integration_artifact.json"
         self._write_json(path, payload)
         return path
 
@@ -2435,6 +2511,9 @@ class ResultExporter:
             "PTP_LOCK_STATUS": diagnostics.get("ptp_lock_status", "not_configured"),
             "GPS_PPS_LOCK_STATUS": diagnostics.get("gps_pps_lock_status", "not_configured"),
             "HARDWARE_WATCHDOG_STATUS": diagnostics.get("hardware_watchdog_status", "not_configured"),
+            "OS_SUPERVISOR_STATUS": diagnostics.get("os_supervisor_status", "not_configured"),
+            "OS_SUPERVISOR_STATE": diagnostics.get("os_supervisor_state", "not_configured"),
+            "WATCHDOG_PROVIDER_STATUS": diagnostics.get("watchdog_provider_status", "not_configured"),
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2506,6 +2585,9 @@ class ResultExporter:
             "PTP_LOCK_STATUS": "not_configured",
             "GPS_PPS_LOCK_STATUS": "not_configured",
             "HARDWARE_WATCHDOG_STATUS": "not_configured",
+            "OS_SUPERVISOR_STATUS": "not_configured",
+            "OS_SUPERVISOR_STATE": "not_configured",
+            "WATCHDOG_PROVIDER_STATUS": "not_configured",
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -3010,6 +3092,9 @@ FLUXNET_HALF_HOURLY_SCHEMA = [
     ("PTP_LOCK_STATUS", "text", "PTP servo lock status"),
     ("GPS_PPS_LOCK_STATUS", "text", "GPS PPS lock status"),
     ("HARDWARE_WATCHDOG_STATUS", "text", "Hardware watchdog event status"),
+    ("OS_SUPERVISOR_STATUS", "text", "OS supervisor integration status"),
+    ("OS_SUPERVISOR_STATE", "text", "Normalized OS supervisor service state"),
+    ("WATCHDOG_PROVIDER_STATUS", "text", "Hardware watchdog provider handoff status"),
     ("TIMEZONE_OFFSET_H", "hours", "UTC offset for local time"),
     ("TIMESTAMP_REFERS_TO", "start/end", "Whether timestamp refers to start or end of period"),
 ]
@@ -3051,6 +3136,9 @@ AMERIFLUX_FIELD_MAP = {
     "PTP_LOCK_STATUS": "PTP_LOCK_STATUS",
     "GPS_PPS_LOCK_STATUS": "GPS_PPS_LOCK_STATUS",
     "HARDWARE_WATCHDOG_STATUS": "HARDWARE_WATCHDOG_STATUS",
+    "OS_SUPERVISOR_STATUS": "OS_SUPERVISOR_STATUS",
+    "OS_SUPERVISOR_STATE": "OS_SUPERVISOR_STATE",
+    "WATCHDOG_PROVIDER_STATUS": "WATCHDOG_PROVIDER_STATUS",
     "WIND_SPEED": "WS",
     "WIND_DIR": "WD",
 }
@@ -3092,6 +3180,9 @@ ICOS_FIELD_MAP = {
     "PTP_LOCK_STATUS": "PtpLockStatus",
     "GPS_PPS_LOCK_STATUS": "GpsPpsLockStatus",
     "HARDWARE_WATCHDOG_STATUS": "HardwareWatchdogStatus",
+    "OS_SUPERVISOR_STATUS": "OsSupervisorStatus",
+    "OS_SUPERVISOR_STATE": "OsSupervisorState",
+    "WATCHDOG_PROVIDER_STATUS": "WatchdogProviderStatus",
     "WIND_SPEED": "WindSpeed",
     "WIND_DIR": "WindDir",
 }
