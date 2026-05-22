@@ -306,6 +306,8 @@ def attach_runtime_service_manifest(run_result: Any, service_manifest: dict[str,
             supervisor_integration = dict(service_manifest["daemon_telemetry"].get("supervisor_integration", {}) or {})
             if isinstance(supervisor_integration.get("installable_runtime_profile"), dict) and supervisor_integration["installable_runtime_profile"]:
                 artifacts["installable_runtime_profile"] = dict(supervisor_integration["installable_runtime_profile"])
+            if isinstance(supervisor_integration.get("runtime_deployment_feedback"), dict) and supervisor_integration["runtime_deployment_feedback"]:
+                artifacts["runtime_deployment_feedback"] = dict(supervisor_integration["runtime_deployment_feedback"])
     for window in list(getattr(run_result, "windows", []) or []):
         diagnostics = getattr(window, "diagnostics", None)
         if not isinstance(diagnostics, dict):
@@ -332,8 +334,11 @@ def attach_runtime_service_manifest(run_result: Any, service_manifest: dict[str,
         diagnostics["installable_runtime_profile_id"] = install_profile.get("profile_id", "")
         diagnostics["installable_runtime_targets"] = list(install_profile.get("os_targets", []) or [])
         deployment_plan = dict(install_profile.get("deployment_plan", {}) or {})
+        deployment_feedback = dict(supervisor_integration.get("runtime_deployment_feedback", {}) or {})
         diagnostics["runtime_deployment_status"] = deployment_plan.get("status", "")
         diagnostics["runtime_deployment_execution_mode"] = deployment_plan.get("execution_mode", "")
+        diagnostics["runtime_deployment_feedback_status"] = deployment_feedback.get("status", "")
+        diagnostics["runtime_deployment_feedback_detail"] = deployment_feedback
         diagnostics["installable_runtime_detail"] = install_profile
         diagnostics["supervisor_integration_detail"] = supervisor_integration
         diagnostics["daemon_telemetry_detail"] = _compact_daemon_telemetry(daemon)

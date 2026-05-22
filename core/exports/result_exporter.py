@@ -12,6 +12,8 @@ from typing import Any
 from core.acquisition.runtime_install import (
     build_installable_runtime_profile,
     build_runtime_deployment_artifact,
+    build_runtime_deployment_feedback_artifact,
+    has_runtime_deployment_feedback_config,
     has_runtime_install_config,
 )
 from core.ec_rp.analysis import generate_reference_provenance
@@ -105,6 +107,8 @@ FULL_OUTPUT_SCHEMA = [
     ("installable_runtime_targets", "acquisition", "real"),
     ("runtime_deployment_status", "acquisition", "real"),
     ("runtime_deployment_execution_mode", "acquisition", "real"),
+    ("runtime_deployment_feedback_status", "acquisition", "real"),
+    ("runtime_deployment_feedback_detail", "acquisition", "real"),
     ("installable_runtime_detail", "acquisition", "real"),
     ("supervisor_integration_detail", "acquisition", "real"),
     ("daemon_telemetry_detail", "acquisition", "real"),
@@ -267,6 +271,11 @@ class ResultExporter:
             rp_config_snapshot=rp_config_snapshot,
             export_root=export_root,
         )
+        runtime_feedback_path = self.export_runtime_deployment_feedback_artifact(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+        )
         clock_sync_path = self.export_clock_sync_artifact(
             rp_result=rp_result,
             rp_config_snapshot=rp_config_snapshot,
@@ -341,6 +350,8 @@ class ResultExporter:
             exported_files.append(runtime_deployment_path.name)
         for path in runtime_deployment_files.values():
             exported_files.append(Path(path).name)
+        if runtime_feedback_path is not None:
+            exported_files.append(runtime_feedback_path.name)
         if clock_sync_path is not None:
             exported_files.append(clock_sync_path.name)
         if method_parity_matrix_path is not None:
@@ -402,6 +413,8 @@ class ResultExporter:
                 "installable_runtime_summary": self._installable_runtime_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "runtime_deployment_artifact": str(runtime_deployment_path) if runtime_deployment_path is not None else "",
                 "runtime_deployment_summary": self._runtime_deployment_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+                "runtime_deployment_feedback_artifact": str(runtime_feedback_path) if runtime_feedback_path is not None else "",
+                "runtime_deployment_feedback_summary": self._runtime_deployment_feedback_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
                 "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "reference_provenance": reference_provenance,
@@ -494,6 +507,8 @@ class ResultExporter:
             "runtime_deployment_summary": self._runtime_deployment_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "runtime_deployment_artifact": str(runtime_deployment_path) if runtime_deployment_path is not None else "",
             "runtime_deployment_scripts": runtime_deployment_files,
+            "runtime_deployment_feedback_summary": self._runtime_deployment_feedback_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+            "runtime_deployment_feedback_artifact": str(runtime_feedback_path) if runtime_feedback_path is not None else "",
             "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
@@ -526,6 +541,7 @@ class ResultExporter:
                 "INSTALLABLE_RUNTIME_STATUS",
                 "INSTALLABLE_RUNTIME_TARGETS",
                 "RUNTIME_DEPLOYMENT_STATUS",
+                "RUNTIME_DEPLOYMENT_FEEDBACK_STATUS",
             ],
             "network_uncertainty_fields": [
                 "FC_RANDOM_ERROR",
@@ -579,6 +595,7 @@ class ResultExporter:
                 "installable_runtime_targets",
                 "runtime_deployment_status",
                 "runtime_deployment_execution_mode",
+                "runtime_deployment_feedback_status",
                 "screening_config",
                 "screening_summary",
                 "footprint_method",
@@ -634,6 +651,8 @@ class ResultExporter:
         if runtime_deployment_path is not None:
             files["runtime_deployment_artifact"] = str(runtime_deployment_path)
             files.update(runtime_deployment_files)
+        if runtime_feedback_path is not None:
+            files["runtime_deployment_feedback_artifact"] = str(runtime_feedback_path)
         if clock_sync_path is not None:
             files["clock_sync_artifact"] = str(clock_sync_path)
         if method_parity_matrix_path is not None:
@@ -754,6 +773,8 @@ class ResultExporter:
             else diagnostics.get("installable_runtime_targets", ""),
             "runtime_deployment_status": diagnostics.get("runtime_deployment_status", ""),
             "runtime_deployment_execution_mode": diagnostics.get("runtime_deployment_execution_mode", ""),
+            "runtime_deployment_feedback_status": diagnostics.get("runtime_deployment_feedback_status", ""),
+            "runtime_deployment_feedback_detail": json.dumps(diagnostics.get("runtime_deployment_feedback_detail", {}), ensure_ascii=False) if diagnostics.get("runtime_deployment_feedback_detail") else "",
             "installable_runtime_detail": json.dumps(diagnostics.get("installable_runtime_detail", {}), ensure_ascii=False) if diagnostics.get("installable_runtime_detail") else "",
             "supervisor_integration_detail": json.dumps(diagnostics.get("supervisor_integration_detail", {}), ensure_ascii=False) if diagnostics.get("supervisor_integration_detail") else "",
             "daemon_telemetry_detail": json.dumps(diagnostics.get("daemon_telemetry_detail", {}), ensure_ascii=False) if diagnostics.get("daemon_telemetry_detail") else "",
@@ -907,6 +928,8 @@ class ResultExporter:
                 else (diagnostics.get("installable_runtime_targets", "") if diagnostics else ""),
                 "runtime_deployment_status": diagnostics.get("runtime_deployment_status", "") if diagnostics else "",
                 "runtime_deployment_execution_mode": diagnostics.get("runtime_deployment_execution_mode", "") if diagnostics else "",
+                "runtime_deployment_feedback_status": diagnostics.get("runtime_deployment_feedback_status", "") if diagnostics else "",
+                "runtime_deployment_feedback_detail": json.dumps(diagnostics.get("runtime_deployment_feedback_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("runtime_deployment_feedback_detail") else "",
                 "installable_runtime_detail": json.dumps(diagnostics.get("installable_runtime_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("installable_runtime_detail") else "",
                 "supervisor_integration_detail": json.dumps(diagnostics.get("supervisor_integration_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("supervisor_integration_detail") else "",
                 "daemon_telemetry_detail": json.dumps(diagnostics.get("daemon_telemetry_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("daemon_telemetry_detail") else "",
@@ -1754,6 +1777,48 @@ class ResultExporter:
         path = export_root / "runtime_deployment_artifact.json"
         self._write_json(path, payload)
         return path, companion_files
+
+    def _runtime_deployment_feedback_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        if rp_result is not None:
+            artifacts = dict(rp_result.artifacts or {})
+            if isinstance(artifacts.get("runtime_deployment_feedback"), dict) and artifacts["runtime_deployment_feedback"]:
+                return dict(artifacts["runtime_deployment_feedback"])
+        supervisor = self._supervisor_integration_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if isinstance(supervisor.get("runtime_deployment_feedback"), dict) and supervisor["runtime_deployment_feedback"]:
+            return dict(supervisor["runtime_deployment_feedback"])
+        if has_runtime_deployment_feedback_config(rp_config_snapshot):
+            installable = self._installable_runtime_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+            deployment = self._runtime_deployment_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+            service_status = dict(supervisor.get("service_status", {}) or {})
+            return build_runtime_deployment_feedback_artifact(
+                config=rp_config_snapshot,
+                runtime_root=self.runtime_root,
+                installable_runtime_profile=installable,
+                runtime_deployment=deployment,
+                service_status=service_status,
+            )
+        return {}
+
+    def export_runtime_deployment_feedback_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+    ) -> Path | None:
+        summary = self._runtime_deployment_feedback_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not summary:
+            return None
+        payload = {
+            "artifact_type": "runtime_deployment_feedback",
+            "run_id": rp_result.run_id if rp_result else "",
+            "created_at": rp_result.created_at.isoformat() if rp_result else "",
+            "summary": summary,
+            "provenance": "Runtime deployment feedback artifact exported from target-host post-install status evidence.",
+        }
+        path = export_root / "runtime_deployment_feedback_artifact.json"
+        self._write_json(path, payload)
+        return path
 
     def _clock_sync_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
         if rp_result is not None:
@@ -2674,6 +2739,7 @@ class ResultExporter:
             if isinstance(diagnostics.get("installable_runtime_targets"), list)
             else diagnostics.get("installable_runtime_targets", ""),
             "RUNTIME_DEPLOYMENT_STATUS": diagnostics.get("runtime_deployment_status", "not_configured"),
+            "RUNTIME_DEPLOYMENT_FEEDBACK_STATUS": diagnostics.get("runtime_deployment_feedback_status", "not_configured"),
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2751,6 +2817,7 @@ class ResultExporter:
             "INSTALLABLE_RUNTIME_STATUS": "not_configured",
             "INSTALLABLE_RUNTIME_TARGETS": "",
             "RUNTIME_DEPLOYMENT_STATUS": "not_configured",
+            "RUNTIME_DEPLOYMENT_FEEDBACK_STATUS": "not_configured",
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,

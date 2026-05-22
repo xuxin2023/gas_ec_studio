@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import json
 import re
 import shlex
 from typing import Any
 
 
 INSTALL_CONFIG_KEYS = ("runtime_install", "installable_runtime", "runtime_install_profile")
+FEEDBACK_CONFIG_KEYS = ("runtime_deployment_feedback", "post_install_feedback", "deployment_feedback")
 
 
 def has_runtime_install_config(config: dict[str, Any]) -> bool:
@@ -16,6 +18,18 @@ def has_runtime_install_config(config: dict[str, Any]) -> bool:
     smartflux = config.get("smartflux_runtime", {})
     return isinstance(smartflux, dict) and any(
         isinstance(smartflux.get(key), dict) and smartflux.get(key) for key in INSTALL_CONFIG_KEYS
+    )
+
+
+def has_runtime_deployment_feedback_config(config: dict[str, Any]) -> bool:
+    if any(isinstance(config.get(key), dict) and config.get(key) for key in FEEDBACK_CONFIG_KEYS):
+        return True
+    runtime_install = config.get("runtime_install", {})
+    if isinstance(runtime_install, dict) and isinstance(runtime_install.get("feedback"), dict) and runtime_install.get("feedback"):
+        return True
+    smartflux = config.get("smartflux_runtime", {})
+    return isinstance(smartflux, dict) and any(
+        isinstance(smartflux.get(key), dict) and smartflux.get(key) for key in FEEDBACK_CONFIG_KEYS
     )
 
 
@@ -66,6 +80,28 @@ def extract_runtime_install_config(config: dict[str, Any]) -> dict[str, Any]:
     merged.setdefault("restart_sec", 10)
     merged.setdefault("dry_run", True)
     merged.setdefault("require_explicit_command", True)
+    return merged
+
+
+def extract_runtime_deployment_feedback_config(config: dict[str, Any]) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for key in FEEDBACK_CONFIG_KEYS:
+        payload = config.get(key, {})
+        if isinstance(payload, dict):
+            merged.update(payload)
+    runtime_install = config.get("runtime_install", {})
+    if isinstance(runtime_install, dict) and isinstance(runtime_install.get("feedback"), dict):
+        merged.update(runtime_install["feedback"])
+    smartflux = config.get("smartflux_runtime", {})
+    if isinstance(smartflux, dict):
+        for key in FEEDBACK_CONFIG_KEYS:
+            payload = smartflux.get(key, {})
+            if isinstance(payload, dict):
+                merged.update(payload)
+    merged.setdefault("enabled", True)
+    merged.setdefault("require_install_record", True)
+    merged.setdefault("require_running", True)
+    merged.setdefault("require_rollback_success", False)
     return merged
 
 
@@ -182,6 +218,76 @@ def build_installable_runtime_profile(
             "This artifact is a deployment plan only; a privileged deployment operator or CI job must perform the install.",
             "Windows Service command execution semantics depend on the host service wrapper when the command is not a direct executable.",
             "Hardware watchdog and reboot controls remain delegated to supervisor_integration providers.",
+        ],
+    }
+
+
+def build_runtime_deployment_feedback_artifact(
+    *,
+    config: dict[str, Any],
+    runtime_root: Path | str | None = None,
+    installable_runtime_profile: dict[str, Any] | None = None,
+    runtime_deployment: dict[str, Any] | None = None,
+    service_status: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    feedback_config = extract_runtime_deployment_feedback_config(config)
+    if not has_runtime_deployment_feedback_config(config):
+        return {}
+    profile = dict(installable_runtime_profile or {})
+    deployment = dict(runtime_deployment or profile.get("deployment_plan", {}) or {})
+    if not _truthy(feedback_config.get("enabled", True)):
+        return {
+            "artifact_type": "runtime_deployment_feedback",
+            "status": "disabled",
+            "profile_id": str(profile.get("profile_id", "")),
+            "checks": [],
+            "provenance": "Runtime deployment feedback disabled by configuration.",
+        }
+    root = Path(runtime_root or profile.get("runtime_root") or Path.cwd())
+    expected_service = str(feedback_config.get("service_name") or profile.get("service_name") or "")
+    observed_status = _deployment_service_status(
+        config=feedback_config,
+        runtime_root=root,
+        fallback_status=dict(service_status or {}),
+    )
+    install_log = _deployment_log_summary(_feedback_path(feedback_config.get("install_log_file") or feedback_config.get("install_record_file"), runtime_root=root))
+    rollback_log = _deployment_log_summary(_feedback_path(feedback_config.get("rollback_log_file") or feedback_config.get("rollback_record_file"), runtime_root=root))
+    checks = _feedback_checks(
+        feedback_config=feedback_config,
+        expected_service=expected_service,
+        service_status=observed_status,
+        install_log=install_log,
+        rollback_log=rollback_log,
+    )
+    fail_count = sum(1 for item in checks if item["status"] == "fail")
+    warn_count = sum(1 for item in checks if item["status"] == "warn")
+    status = "fail" if fail_count else ("warning" if warn_count else "pass")
+    target_apply_observed = bool(install_log.get("applied_count", 0) or observed_status.get("state") in {"running", "active", "ok"})
+    return {
+        "artifact_type": "runtime_deployment_feedback",
+        "status": status,
+        "profile_id": str(profile.get("profile_id", "")),
+        "service_name": expected_service,
+        "collected_at": datetime.now().isoformat(),
+        "runtime_root": str(root),
+        "execution_mode": str(deployment.get("execution_mode", "operator_gated_external_executor")),
+        "builder_host_mutation_performed": False,
+        "target_apply_observed": target_apply_observed,
+        "service_status": observed_status,
+        "install_log": install_log,
+        "rollback_log": rollback_log,
+        "checks": checks,
+        "fail_count": fail_count,
+        "warn_count": warn_count,
+        "recommended_actions": _feedback_recommended_actions(checks),
+        "provenance": (
+            "Runtime deployment feedback v1 normalizes post-install service status, install logs, and rollback "
+            "logs supplied by the target host. It does not execute installation, rollback, restart, or reboot commands."
+        ),
+        "limitations": [
+            "Feedback depends on target-host snapshots supplied after operator-gated deployment.",
+            "Service status parsing covers systemd show/status, Windows sc.exe output, and JSON/manual payloads.",
+            "A running service snapshot is operational evidence, not proof that every OS-level install command succeeded.",
         ],
     }
 
@@ -534,6 +640,277 @@ def _deployment_recommended_actions(checks: list[dict[str, Any]]) -> list[str]:
     return list(dict.fromkeys(actions))
 
 
+def _deployment_service_status(
+    *,
+    config: dict[str, Any],
+    runtime_root: Path,
+    fallback_status: dict[str, Any],
+) -> dict[str, Any]:
+    inline = config.get("service_status", {})
+    if isinstance(inline, dict) and inline:
+        return _normalize_feedback_service_status(inline, source="inline")
+    status_file = _feedback_path(
+        config.get("status_file")
+        or config.get("service_status_file")
+        or config.get("supervisor_status_file"),
+        runtime_root=runtime_root,
+    )
+    if status_file is not None and status_file.exists():
+        text = _read_text(status_file)
+        parsed = _parse_feedback_service_status(text=text, source_file=status_file)
+        if parsed:
+            return parsed
+    if fallback_status:
+        payload = dict(fallback_status)
+        payload.setdefault("source", "supervisor_integration")
+        return _normalize_feedback_service_status(payload, source=str(payload.get("source", "supervisor_integration")))
+    return {
+        "artifact_type": "runtime_deployment_service_status",
+        "status": "not_configured",
+        "state": "not_configured",
+        "source_file": str(status_file or ""),
+        "service_name": "",
+        "provenance": "No post-install service status snapshot was supplied.",
+    }
+
+
+def _parse_feedback_service_status(*, text: str, source_file: Path) -> dict[str, Any]:
+    if not text.strip():
+        return _normalize_feedback_service_status({"state": "missing", "source_file": str(source_file)}, source="empty_file")
+    try:
+        payload = json.loads(text)
+        if isinstance(payload, dict):
+            payload.setdefault("source_file", str(source_file))
+            return _normalize_feedback_service_status(payload, source="json")
+    except json.JSONDecodeError:
+        pass
+    fields: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            fields[key.strip()] = value.strip()
+    if fields:
+        active_state = fields.get("ActiveState", "")
+        sub_state = fields.get("SubState", "")
+        state = "running" if active_state == "active" and sub_state in {"running", "exited", ""} else (active_state or "unknown")
+        return _normalize_feedback_service_status(
+            {
+                "adapter": "systemd",
+                "source_file": str(source_file),
+                "service_name": fields.get("Id", fields.get("Names", "")),
+                "state": state,
+                "active_state": active_state,
+                "sub_state": sub_state,
+                "restart_count": _int_first(fields.get("NRestarts"), default=0),
+                "last_exit_code": fields.get("ExecMainStatus", ""),
+                "result": fields.get("Result", ""),
+            },
+            source="systemd",
+        )
+    service_name = ""
+    payload: dict[str, str] = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.upper().startswith("SERVICE_NAME"):
+            service_name = stripped.split(":", 1)[-1].strip()
+        if ":" in stripped:
+            key, value = stripped.split(":", 1)
+            payload[key.strip().upper().replace(" ", "_")] = value.strip()
+    if payload:
+        state_text = payload.get("STATE", "")
+        match = re.search(r"\b(RUNNING|STOPPED|PAUSED|START_PENDING|STOP_PENDING)\b", state_text, flags=re.IGNORECASE)
+        state = "unknown"
+        if match:
+            normalized = match.group(1).lower()
+            state = "running" if normalized == "running" else normalized
+        return _normalize_feedback_service_status(
+            {
+                "adapter": "windows_service",
+                "source_file": str(source_file),
+                "service_name": service_name or payload.get("SERVICE_NAME", ""),
+                "state": state,
+                "raw_state": state_text,
+                "last_exit_code": payload.get("WIN32_EXIT_CODE", ""),
+                "result": payload.get("SERVICE_EXIT_CODE", ""),
+            },
+            source="windows_service",
+        )
+    return _normalize_feedback_service_status(
+        {
+            "adapter": "manual",
+            "source_file": str(source_file),
+            "state": "unknown",
+            "raw_excerpt": text[:200],
+        },
+        source="text",
+    )
+
+
+def _normalize_feedback_service_status(payload: dict[str, Any], *, source: str) -> dict[str, Any]:
+    state = str(payload.get("state") or payload.get("status") or "unknown").strip().lower()
+    return {
+        "artifact_type": "runtime_deployment_service_status",
+        "status": "running" if state in {"running", "active", "ok"} else state,
+        "state": state,
+        "source": source,
+        "adapter": str(payload.get("adapter", "")),
+        "source_file": str(payload.get("source_file", "")),
+        "service_name": str(payload.get("service_name", payload.get("name", ""))),
+        "restart_count": _int_first(payload.get("restart_count"), payload.get("restarts"), default=0),
+        "last_exit_code": payload.get("last_exit_code", payload.get("exit_code", "")),
+        "result": payload.get("result", ""),
+        "raw_state": payload.get("raw_state", ""),
+        "raw_excerpt": payload.get("raw_excerpt", ""),
+        "provenance": "Normalized post-install service status feedback.",
+    }
+
+
+def _deployment_log_summary(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {
+            "artifact_type": "runtime_deployment_log",
+            "status": "not_configured",
+            "source_file": "",
+            "record_count": 0,
+            "applied_count": 0,
+            "dry_run_count": 0,
+            "error_count": 0,
+            "latest_action": "",
+            "provenance": "No deployment log file configured.",
+        }
+    text = _read_text(path)
+    if not text:
+        return {
+            "artifact_type": "runtime_deployment_log",
+            "status": "missing",
+            "source_file": str(path),
+            "record_count": 0,
+            "applied_count": 0,
+            "dry_run_count": 0,
+            "error_count": 0,
+            "latest_action": "",
+            "provenance": "Deployment log file was missing or empty.",
+        }
+    records = _parse_deployment_log_records(text)
+    error_count = sum(1 for item in records if str(item.get("status", "")).lower() in {"fail", "failed", "error"} or int(item.get("exit_code", 0) or 0) != 0)
+    applied_count = sum(1 for item in records if _truthy(item.get("applied", item.get("apply", False))))
+    dry_run_count = sum(1 for item in records if _truthy(item.get("dry_run", False)))
+    latest_action = str(records[-1].get("action", records[-1].get("kind", ""))) if records else ""
+    return {
+        "artifact_type": "runtime_deployment_log",
+        "status": "fail" if error_count else ("applied" if applied_count else "dry_run" if dry_run_count else "recorded"),
+        "source_file": str(path),
+        "record_count": len(records),
+        "applied_count": applied_count,
+        "dry_run_count": dry_run_count,
+        "error_count": error_count,
+        "latest_action": latest_action,
+        "records": records[:20],
+        "provenance": "Parsed target-host deployment feedback log.",
+    }
+
+
+def _parse_deployment_log_records(text: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    try:
+        payload = json.loads(text)
+        if isinstance(payload, dict):
+            return [payload]
+        if isinstance(payload, list):
+            return [dict(item) for item in payload if isinstance(item, dict)]
+    except json.JSONDecodeError:
+        pass
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payload = json.loads(stripped)
+            if isinstance(payload, dict):
+                records.append(payload)
+                continue
+        except json.JSONDecodeError:
+            pass
+        lowered = stripped.lower()
+        records.append(
+            {
+                "action": "rollback" if "rollback" in lowered else "install" if "install" in lowered else "status",
+                "status": "failed" if any(token in lowered for token in ("error", "failed", "exception")) else "success",
+                "applied": "apply" in lowered or "enabled" in lowered or "started" in lowered,
+                "dry_run": "dry-run" in lowered or "dry run" in lowered,
+                "raw": stripped[:300],
+            }
+        )
+    return records
+
+
+def _feedback_checks(
+    *,
+    feedback_config: dict[str, Any],
+    expected_service: str,
+    service_status: dict[str, Any],
+    install_log: dict[str, Any],
+    rollback_log: dict[str, Any],
+) -> list[dict[str, Any]]:
+    require_install = _truthy(feedback_config.get("require_install_record", True))
+    require_running = _truthy(feedback_config.get("require_running", True))
+    require_rollback = _truthy(feedback_config.get("require_rollback_success", False))
+    service_name = str(service_status.get("service_name", ""))
+    return [
+        _check(
+            "post_install_service_state",
+            service_status.get("state") in {"running", "active", "ok"} if require_running else service_status.get("state") not in {"failed", "missing"},
+            measured=service_status.get("state", ""),
+            threshold="running/active" if require_running else "not failed/missing",
+            severity="fail" if require_running else "warn",
+            failure_message="Post-install service status is not acceptable.",
+        ),
+        _check(
+            "install_record",
+            install_log.get("record_count", 0) > 0 and install_log.get("error_count", 0) == 0 if require_install else install_log.get("status") != "fail",
+            measured=install_log.get("status", ""),
+            threshold="recorded without errors" if require_install else "not fail",
+            severity="fail" if require_install else "warn",
+            failure_message="Install feedback record is missing or reports errors.",
+        ),
+        _check(
+            "rollback_record",
+            rollback_log.get("record_count", 0) > 0 and rollback_log.get("error_count", 0) == 0 if require_rollback else rollback_log.get("status") != "fail",
+            measured=rollback_log.get("status", ""),
+            threshold="rollback recorded without errors" if require_rollback else "not fail",
+            severity="fail" if require_rollback else "warn",
+            failure_message="Rollback feedback record is missing or reports errors.",
+        ),
+        _check(
+            "service_name_match",
+            not expected_service or not service_name or expected_service in service_name,
+            measured=service_name,
+            threshold=expected_service or "not constrained",
+            severity="warn",
+            failure_message="Post-install service status does not match the planned service name.",
+        ),
+    ]
+
+
+def _feedback_recommended_actions(checks: list[dict[str, Any]]) -> list[str]:
+    actions: list[str] = []
+    for item in checks:
+        if item.get("status") == "pass":
+            continue
+        check_id = str(item.get("check_id", ""))
+        if check_id == "post_install_service_state":
+            actions.append("Collect fresh systemd/Windows Service status after deployment and verify the runtime service is running.")
+        elif check_id == "install_record":
+            actions.append("Attach the target-host install log or rerun the guarded install script with deployment logging enabled.")
+        elif check_id == "rollback_record":
+            actions.append("Attach rollback verification if rollback was required for this delivery.")
+        elif check_id == "service_name_match":
+            actions.append("Verify the installed service name matches the generated installable runtime profile.")
+        else:
+            actions.append(f"Review runtime deployment feedback check {check_id}.")
+    return list(dict.fromkeys(actions))
+
+
 def _preflight_checks(
     *,
     service_name: str,
@@ -716,6 +1093,22 @@ def _ps_quote(value: str) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+def _feedback_path(value: Any, *, runtime_root: Path) -> Path | None:
+    if value in (None, ""):
+        return None
+    path = Path(str(value))
+    if not path.is_absolute():
+        path = runtime_root / path
+    return path
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
 def _truthy(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -733,3 +1126,7 @@ def _float_first(*values: Any, default: float) -> float:
         except (TypeError, ValueError):
             continue
     return float(default)
+
+
+def _int_first(*values: Any, default: int) -> int:
+    return int(_float_first(*values, default=float(default)))

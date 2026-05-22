@@ -6,13 +6,20 @@ from pathlib import Path
 import re
 from typing import Any
 
-from core.acquisition.runtime_install import build_installable_runtime_profile, has_runtime_install_config
+from core.acquisition.runtime_install import (
+    build_installable_runtime_profile,
+    build_runtime_deployment_feedback_artifact,
+    has_runtime_deployment_feedback_config,
+    has_runtime_install_config,
+)
 
 
 def has_supervisor_integration_config(config: dict[str, Any]) -> bool:
     if any(isinstance(config.get(key), dict) and config.get(key) for key in ("supervisor_integration", "os_supervisor", "hardware_watchdog_provider")):
         return True
     if has_runtime_install_config(config):
+        return True
+    if has_runtime_deployment_feedback_config(config):
         return True
     smartflux = config.get("smartflux_runtime", {})
     return isinstance(smartflux, dict) and any(
@@ -74,11 +81,22 @@ def build_supervisor_integration_artifact(
         if has_runtime_install_config(config)
         else {}
     )
+    runtime_deployment_feedback = (
+        build_runtime_deployment_feedback_artifact(
+            config=config,
+            runtime_root=root,
+            installable_runtime_profile=installable_runtime_profile,
+            service_status=service_status,
+        )
+        if has_runtime_deployment_feedback_config(config)
+        else {}
+    )
     checks = _checks(
         integration_config=integration_config,
         service_status=service_status,
         watchdog_provider=watchdog_provider,
         installable_runtime_profile=installable_runtime_profile,
+        runtime_deployment_feedback=runtime_deployment_feedback,
     )
     fail_count = sum(1 for item in checks if item["status"] == "fail")
     warn_count = sum(1 for item in checks if item["status"] == "warn")
@@ -93,6 +111,7 @@ def build_supervisor_integration_artifact(
         "service_status": service_status,
         "hardware_watchdog_provider": watchdog_provider,
         "installable_runtime_profile": installable_runtime_profile,
+        "runtime_deployment_feedback": runtime_deployment_feedback,
         "checks": checks,
         "fail_count": fail_count,
         "warn_count": warn_count,
@@ -100,11 +119,12 @@ def build_supervisor_integration_artifact(
         "provenance": (
             "Supervisor integration v1 normalizes configured systemd/Windows/manual service status and records "
             "hardware watchdog kick/reboot provider attempts, plus optional installable runtime deployment plans, "
-            "without installing or mutating an OS service."
+            "post-install feedback, without installing or mutating an OS service."
         ),
         "limitations": [
             "This artifact reads configured status snapshots and uses file/manual watchdog providers; direct systemd/Windows Service control is intentionally not invoked here.",
             "Installable runtime profiles are rendered as dry-run deployment plans and must be applied by a privileged deployment step.",
+            "Post-install feedback must be supplied by the target host after operator-gated deployment.",
             "Real hardware watchdog kick and reboot control require a platform-specific provider supplied by the deployment host.",
         ],
     }
@@ -298,6 +318,7 @@ def _checks(
     service_status: dict[str, Any],
     watchdog_provider: dict[str, Any],
     installable_runtime_profile: dict[str, Any],
+    runtime_deployment_feedback: dict[str, Any],
 ) -> list[dict[str, Any]]:
     require_running = _truthy(integration_config.get("require_running", False))
     max_restart_count = int(_float_first(integration_config.get("max_restart_count"), default=3.0))
@@ -358,6 +379,28 @@ def _checks(
                 failure_message="Installable runtime profile has deployment preflight warnings.",
             )
         )
+    if runtime_deployment_feedback:
+        feedback_status = str(runtime_deployment_feedback.get("status", "not_configured"))
+        checks.append(
+            _check(
+                "runtime_deployment_feedback",
+                feedback_status != "fail",
+                measured=feedback_status,
+                threshold="not fail",
+                severity="fail",
+                failure_message="Runtime deployment feedback reports a blocking post-install issue.",
+            )
+        )
+        checks.append(
+            _check(
+                "runtime_deployment_feedback_warnings",
+                feedback_status not in {"warning"},
+                measured=feedback_status,
+                threshold="no warning feedback checks",
+                severity="warn",
+                failure_message="Runtime deployment feedback has post-install warnings.",
+            )
+        )
     return checks
 
 
@@ -394,6 +437,8 @@ def _recommended_actions(checks: list[dict[str, Any]]) -> list[str]:
             actions.append("Review reboot policy; enable allow_reboot_request only for supervised deployments.")
         elif check_id.startswith("installable_runtime"):
             actions.append("Review installable runtime profile preflight checks before applying OS service deployment commands.")
+        elif check_id.startswith("runtime_deployment_feedback"):
+            actions.append("Review target-host install/status/rollback feedback before unattended deployment delivery.")
         else:
             actions.append(f"Review supervisor integration check {check_id}.")
     return list(dict.fromkeys(actions))

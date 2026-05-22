@@ -155,6 +155,7 @@ def export_formal_report(
             "supervisor_integration_summary": snapshot.get("delivery_audit", {}).get("supervisor_integration_summary", {}),
             "installable_runtime_summary": snapshot.get("delivery_audit", {}).get("installable_runtime_summary", {}),
             "runtime_deployment_summary": snapshot.get("delivery_audit", {}).get("runtime_deployment_summary", {}),
+            "runtime_deployment_feedback_summary": snapshot.get("delivery_audit", {}).get("runtime_deployment_feedback_summary", {}),
             "clock_sync_summary": snapshot.get("delivery_audit", {}).get("clock_sync_summary", {}),
             "benchmark_summary": snapshot.get("delivery_audit", {}).get("benchmark_summary", {}),
         }
@@ -218,6 +219,7 @@ def _build_formal_report_snapshot(
     supervisor_integration_summary = dict(result_manifest.get("supervisor_integration_summary", {}) or {})
     installable_runtime_summary = dict(result_manifest.get("installable_runtime_summary", {}) or {})
     runtime_deployment_summary = dict(result_manifest.get("runtime_deployment_summary", {}) or {})
+    runtime_deployment_feedback_summary = dict(result_manifest.get("runtime_deployment_feedback_summary", {}) or {})
     clock_sync_summary = dict(result_manifest.get("clock_sync_summary", {}) or {})
     delivery_audit = {
         "artifact_type": "formal_report_delivery_audit",
@@ -245,6 +247,7 @@ def _build_formal_report_snapshot(
                 "runtime_deployment_rollback_systemd_sh",
                 "runtime_deployment_install_windows_service_ps1",
                 "runtime_deployment_rollback_windows_service_ps1",
+                "runtime_deployment_feedback_artifact",
                 "clock_sync_artifact",
                 "reference_provenance_artifact",
                 "network_validation_summary",
@@ -258,6 +261,7 @@ def _build_formal_report_snapshot(
         "supervisor_integration_summary": supervisor_integration_summary,
         "installable_runtime_summary": installable_runtime_summary,
         "runtime_deployment_summary": runtime_deployment_summary,
+        "runtime_deployment_feedback_summary": runtime_deployment_feedback_summary,
         "clock_sync_summary": clock_sync_summary,
         "benchmark_summary": {
             "benchmark_status": result_manifest.get("benchmark_status", ""),
@@ -525,6 +529,8 @@ def _build_formal_report_snapshot(
                         ["installable_runtime_targets", json.dumps(installable_runtime_summary.get("os_targets", []), ensure_ascii=False)],
                         ["runtime_deployment_status", str(runtime_deployment_summary.get("status", "--"))],
                         ["runtime_deployment_execution_mode", str(runtime_deployment_summary.get("execution_mode", "--"))],
+                        ["runtime_deployment_feedback_status", str(runtime_deployment_feedback_summary.get("status", "--"))],
+                        ["runtime_deployment_feedback_service_state", str(dict(runtime_deployment_feedback_summary.get("service_status", {}) or {}).get("state", "--"))],
                         ["ptp_lock_status", str(dict(daemon_telemetry_summary.get("ptp_servo", {}) or {}).get("status", "--"))],
                         ["hardware_watchdog_status", str(dict(daemon_telemetry_summary.get("hardware_watchdog", {}) or {}).get("status", "--"))],
                         ["clock_sync_status", str(clock_sync_summary.get("status", "--"))],
@@ -557,6 +563,7 @@ def _build_formal_report_snapshot(
                             "supervisor_integration_artifact",
                             "installable_runtime_artifact",
                             "runtime_deployment_artifact",
+                            "runtime_deployment_feedback_artifact",
                             "clock_sync_artifact",
                             "network_validation_summary",
                         }
