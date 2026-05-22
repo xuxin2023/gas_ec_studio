@@ -152,9 +152,9 @@
       "family": "acquisition",
       "eddypro_requirement": "Produce fully processed real-time site fluxes on embedded/on-site hardware.",
       "gas_ec_status": "partial",
-      "evidence": ["app/studio.py", "core/acquisition/runtime_watchdog.py", "core/headless_batch_runner.py", "core/exports/result_exporter.py", "tests/test_runtime_watchdog_headless.py"],
-      "gap": "Headless batches now emit a SmartFlux-style runtime profile/watchdog manifest with acquisition gap, clock-sync, window-generation, network-validation, and deterministic-run checks across exports, report center, formal reports, and delivery manifests; a true embedded daemon supervisor with hardware reboot, disk-pressure telemetry, and PTP servo-log ingestion is still incomplete.",
-      "next_action": "Add long-running service wrapper, host watchdog supervisor integration, and hardware telemetry/log ingestion."
+      "evidence": ["app/studio.py", "core/acquisition/runtime_watchdog.py", "core/acquisition/runtime_service.py", "core/headless_batch_runner.py", "core/exports/result_exporter.py", "tests/test_runtime_watchdog_headless.py", "tests/test_runtime_service_headless.py"],
+      "gap": "Headless batches now emit a SmartFlux-style runtime profile/watchdog manifest, and runtime_service v1 can execute queued headless batches with heartbeats, disk/queue telemetry, retry records, quarantined failures, delivery state, and export/report/delivery provenance; a true installed embedded daemon with hardware reboot, hardware watchdog kicks, CPU/process telemetry, and PTP servo-log ingestion is still incomplete.",
+      "next_action": "Add OS service wrapper, hardware watchdog supervisor integration, process telemetry, and PTP/GPS daemon log ingestion."
     },
     {
       "id": "despiking_screening",

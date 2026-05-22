@@ -79,6 +79,13 @@ FULL_OUTPUT_SCHEMA = [
     ("runtime_watchdog_fail_count", "acquisition", "real"),
     ("runtime_watchdog_warn_count", "acquisition", "real"),
     ("runtime_watchdog_detail", "acquisition", "real"),
+    ("runtime_service_status", "acquisition", "real"),
+    ("runtime_service_id", "acquisition", "real"),
+    ("runtime_service_run_id", "acquisition", "real"),
+    ("runtime_service_delivery_state", "acquisition", "real"),
+    ("runtime_service_quarantine_count", "acquisition", "real"),
+    ("runtime_service_restart_count", "acquisition", "real"),
+    ("runtime_service_detail", "acquisition", "real"),
     ("ch4_status", "trace_gas", "real"),
     ("ch4_flux_nmol_m2_s", "trace_gas", "real"),
     ("ch4_flux_level0_nmol_m2_s", "trace_gas", "real"),
@@ -213,6 +220,11 @@ class ResultExporter:
             rp_config_snapshot=rp_config_snapshot,
             export_root=export_root,
         )
+        runtime_service_path = self.export_runtime_service_artifact(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+        )
         clock_sync_path = self.export_clock_sync_artifact(
             rp_result=rp_result,
             rp_config_snapshot=rp_config_snapshot,
@@ -275,6 +287,8 @@ class ResultExporter:
             exported_files.append(performance_profile_path.name)
         if runtime_watchdog_path is not None:
             exported_files.append(runtime_watchdog_path.name)
+        if runtime_service_path is not None:
+            exported_files.append(runtime_service_path.name)
         if clock_sync_path is not None:
             exported_files.append(clock_sync_path.name)
         if method_parity_matrix_path is not None:
@@ -326,6 +340,8 @@ class ResultExporter:
                 "performance_profile_artifact": str(performance_profile_path) if performance_profile_path is not None else "",
                 "runtime_watchdog_artifact": str(runtime_watchdog_path) if runtime_watchdog_path is not None else "",
                 "runtime_watchdog_summary": self._runtime_watchdog_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+                "runtime_service_artifact": str(runtime_service_path) if runtime_service_path is not None else "",
+                "runtime_service_summary": self._runtime_service_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
                 "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "reference_provenance": reference_provenance,
@@ -407,6 +423,8 @@ class ResultExporter:
             "performance_profile_artifact": str(performance_profile_path) if performance_profile_path is not None else "",
             "runtime_watchdog_summary": self._runtime_watchdog_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "runtime_watchdog_artifact": str(runtime_watchdog_path) if runtime_watchdog_path is not None else "",
+            "runtime_service_summary": self._runtime_service_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+            "runtime_service_artifact": str(runtime_service_path) if runtime_service_path is not None else "",
             "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
@@ -425,6 +443,9 @@ class ResultExporter:
                 "RUNTIME_WATCHDOG_STATUS",
                 "RUNTIME_WATCHDOG_PROFILE",
                 "RUNTIME_WATCHDOG_FAIL_COUNT",
+                "RUNTIME_SERVICE_STATUS",
+                "RUNTIME_SERVICE_DELIVERY_STATE",
+                "RUNTIME_SERVICE_QUARANTINE_COUNT",
             ],
             "network_uncertainty_fields": [
                 "FC_RANDOM_ERROR",
@@ -460,6 +481,11 @@ class ResultExporter:
                 "runtime_watchdog_profile",
                 "runtime_watchdog_fail_count",
                 "runtime_watchdog_warn_count",
+                "runtime_service_status",
+                "runtime_service_id",
+                "runtime_service_delivery_state",
+                "runtime_service_quarantine_count",
+                "runtime_service_restart_count",
                 "screening_config",
                 "screening_summary",
                 "footprint_method",
@@ -504,6 +530,8 @@ class ResultExporter:
             files["performance_profile_artifact"] = str(performance_profile_path)
         if runtime_watchdog_path is not None:
             files["runtime_watchdog_artifact"] = str(runtime_watchdog_path)
+        if runtime_service_path is not None:
+            files["runtime_service_artifact"] = str(runtime_service_path)
         if clock_sync_path is not None:
             files["clock_sync_artifact"] = str(clock_sync_path)
         if method_parity_matrix_path is not None:
@@ -602,6 +630,13 @@ class ResultExporter:
             "runtime_watchdog_fail_count": diagnostics.get("runtime_watchdog_fail_count", ""),
             "runtime_watchdog_warn_count": diagnostics.get("runtime_watchdog_warn_count", ""),
             "runtime_watchdog_detail": json.dumps(diagnostics.get("runtime_watchdog_detail", {}), ensure_ascii=False) if diagnostics.get("runtime_watchdog_detail") else "",
+            "runtime_service_status": diagnostics.get("runtime_service_status", ""),
+            "runtime_service_id": diagnostics.get("runtime_service_id", ""),
+            "runtime_service_run_id": diagnostics.get("runtime_service_run_id", ""),
+            "runtime_service_delivery_state": diagnostics.get("runtime_service_delivery_state", ""),
+            "runtime_service_quarantine_count": diagnostics.get("runtime_service_quarantine_count", ""),
+            "runtime_service_restart_count": diagnostics.get("runtime_service_restart_count", ""),
+            "runtime_service_detail": json.dumps(diagnostics.get("runtime_service_detail", {}), ensure_ascii=False) if diagnostics.get("runtime_service_detail") else "",
             "ch4_status": diagnostics.get("ch4_status", ""),
             "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", ""),
             "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", ""),
@@ -730,6 +765,13 @@ class ResultExporter:
                 "runtime_watchdog_fail_count": diagnostics.get("runtime_watchdog_fail_count", "") if diagnostics else "",
                 "runtime_watchdog_warn_count": diagnostics.get("runtime_watchdog_warn_count", "") if diagnostics else "",
                 "runtime_watchdog_detail": json.dumps(diagnostics.get("runtime_watchdog_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("runtime_watchdog_detail") else "",
+                "runtime_service_status": diagnostics.get("runtime_service_status", "") if diagnostics else "",
+                "runtime_service_id": diagnostics.get("runtime_service_id", "") if diagnostics else "",
+                "runtime_service_run_id": diagnostics.get("runtime_service_run_id", "") if diagnostics else "",
+                "runtime_service_delivery_state": diagnostics.get("runtime_service_delivery_state", "") if diagnostics else "",
+                "runtime_service_quarantine_count": diagnostics.get("runtime_service_quarantine_count", "") if diagnostics else "",
+                "runtime_service_restart_count": diagnostics.get("runtime_service_restart_count", "") if diagnostics else "",
+                "runtime_service_detail": json.dumps(diagnostics.get("runtime_service_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("runtime_service_detail") else "",
                 "ch4_status": diagnostics.get("ch4_status", "") if diagnostics else "",
                 "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", "") if diagnostics else "",
                 "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", "") if diagnostics else "",
@@ -1349,6 +1391,49 @@ class ResultExporter:
             "provenance": "Runtime watchdog artifact exported from headless batch summary.",
         }
         path = export_root / "runtime_watchdog_artifact.json"
+        self._write_json(path, payload)
+        return path
+
+    def _runtime_service_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        if rp_result is not None:
+            artifacts = dict(rp_result.artifacts or {})
+            if isinstance(artifacts.get("runtime_service"), dict) and artifacts["runtime_service"]:
+                return dict(artifacts["runtime_service"])
+            summary = dict(rp_result.summary or {})
+            if isinstance(summary.get("runtime_service_summary"), dict) and summary["runtime_service_summary"]:
+                return dict(summary["runtime_service_summary"])
+        cfg = dict(rp_config_snapshot.get("runtime_service", {}) if isinstance(rp_config_snapshot.get("runtime_service", {}), dict) else {})
+        if cfg:
+            return {
+                "artifact_type": "runtime_service",
+                "status": "configured_not_run",
+                "service_id": str(cfg.get("service_id", "embedded_runtime_service_v1")),
+                "deployment_mode": str(cfg.get("deployment_mode", "supervised_headless")),
+                "restart_policy": str(cfg.get("restart_policy", "retry_failed_batch_once")),
+                "delivery_state": "not_run",
+                "provenance": "Runtime service is configured in the export snapshot, but no service run manifest was available.",
+                "limitations": ["No heartbeats, quarantine records, or host telemetry were available without a runtime service run."],
+            }
+        return {}
+
+    def export_runtime_service_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+    ) -> Path | None:
+        summary = self._runtime_service_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not summary:
+            return None
+        payload = {
+            "artifact_type": "runtime_service",
+            "run_id": rp_result.run_id if rp_result else "",
+            "created_at": rp_result.created_at.isoformat() if rp_result else "",
+            "summary": summary,
+            "provenance": "Runtime service artifact exported from the service-level headless manifest.",
+        }
+        path = export_root / "runtime_service_artifact.json"
         self._write_json(path, payload)
         return path
 
@@ -2255,6 +2340,9 @@ class ResultExporter:
             "RUNTIME_WATCHDOG_STATUS": diagnostics.get("runtime_watchdog_status", "not_run"),
             "RUNTIME_WATCHDOG_PROFILE": diagnostics.get("runtime_watchdog_profile", "not_configured"),
             "RUNTIME_WATCHDOG_FAIL_COUNT": diagnostics.get("runtime_watchdog_fail_count", 0),
+            "RUNTIME_SERVICE_STATUS": diagnostics.get("runtime_service_status", "not_run"),
+            "RUNTIME_SERVICE_DELIVERY_STATE": diagnostics.get("runtime_service_delivery_state", "not_run"),
+            "RUNTIME_SERVICE_QUARANTINE_COUNT": diagnostics.get("runtime_service_quarantine_count", 0),
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2318,6 +2406,9 @@ class ResultExporter:
             "RUNTIME_WATCHDOG_STATUS": "gap_fill",
             "RUNTIME_WATCHDOG_PROFILE": "not_configured",
             "RUNTIME_WATCHDOG_FAIL_COUNT": 0,
+            "RUNTIME_SERVICE_STATUS": "gap_fill",
+            "RUNTIME_SERVICE_DELIVERY_STATE": "not_run",
+            "RUNTIME_SERVICE_QUARANTINE_COUNT": 0,
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2814,6 +2905,9 @@ FLUXNET_HALF_HOURLY_SCHEMA = [
     ("RUNTIME_WATCHDOG_STATUS", "text", "Headless/SmartFlux-style runtime watchdog status"),
     ("RUNTIME_WATCHDOG_PROFILE", "text", "Runtime watchdog profile id"),
     ("RUNTIME_WATCHDOG_FAIL_COUNT", "count", "Failed runtime watchdog checks"),
+    ("RUNTIME_SERVICE_STATUS", "text", "Headless runtime service status"),
+    ("RUNTIME_SERVICE_DELIVERY_STATE", "text", "Runtime service delivery readiness state"),
+    ("RUNTIME_SERVICE_QUARANTINE_COUNT", "count", "Inputs quarantined by runtime service"),
     ("TIMEZONE_OFFSET_H", "hours", "UTC offset for local time"),
     ("TIMESTAMP_REFERS_TO", "start/end", "Whether timestamp refers to start or end of period"),
 ]
@@ -2847,6 +2941,9 @@ AMERIFLUX_FIELD_MAP = {
     "RUNTIME_WATCHDOG_STATUS": "RUNTIME_WATCHDOG_STATUS",
     "RUNTIME_WATCHDOG_PROFILE": "RUNTIME_WATCHDOG_PROFILE",
     "RUNTIME_WATCHDOG_FAIL_COUNT": "RUNTIME_WATCHDOG_FAIL_COUNT",
+    "RUNTIME_SERVICE_STATUS": "RUNTIME_SERVICE_STATUS",
+    "RUNTIME_SERVICE_DELIVERY_STATE": "RUNTIME_SERVICE_DELIVERY_STATE",
+    "RUNTIME_SERVICE_QUARANTINE_COUNT": "RUNTIME_SERVICE_QUARANTINE_COUNT",
     "WIND_SPEED": "WS",
     "WIND_DIR": "WD",
 }
@@ -2880,6 +2977,9 @@ ICOS_FIELD_MAP = {
     "RUNTIME_WATCHDOG_STATUS": "RuntimeWatchdogStatus",
     "RUNTIME_WATCHDOG_PROFILE": "RuntimeWatchdogProfile",
     "RUNTIME_WATCHDOG_FAIL_COUNT": "RuntimeWatchdogFailCount",
+    "RUNTIME_SERVICE_STATUS": "RuntimeServiceStatus",
+    "RUNTIME_SERVICE_DELIVERY_STATE": "RuntimeServiceDeliveryState",
+    "RUNTIME_SERVICE_QUARANTINE_COUNT": "RuntimeServiceQuarantineCount",
     "WIND_SPEED": "WindSpeed",
     "WIND_DIR": "WindDir",
 }

@@ -91,6 +91,7 @@ def export_delivery_package(
         "result_manifest_summary": audit.get("result_manifest_summary", {}),
         "network_validation_summary": audit.get("network_validation_summary", {}),
         "runtime_watchdog_summary": audit.get("runtime_watchdog_summary", {}),
+        "runtime_service_summary": audit.get("runtime_service_summary", {}),
         "clock_sync_summary": audit.get("clock_sync_summary", {}),
         "benchmark_summary": audit.get("benchmark_summary", {}),
         "method_artifact_keys": audit.get("method_artifact_keys", []),
@@ -207,6 +208,7 @@ def _build_readme(
                 f"footprint_2d_contour：{result_files.get('footprint_2d_contour_svg', '--')}",
                 f"performance_profile：{result_files.get('performance_profile_artifact', '--')}",
                 f"runtime_watchdog：{result_files.get('runtime_watchdog_artifact', '--')}",
+                f"runtime_service：{result_files.get('runtime_service_artifact', '--')}",
                 f"clock_sync：{result_files.get('clock_sync_artifact', '--')}",
                 f"network_validation_summary：{result_files.get('network_validation_summary', '--')}",
             ]
@@ -231,6 +233,7 @@ def _build_delivery_audit(
     method_parity = _read_json_file(result_files.get("method_parity_matrix_artifact", ""))
     network_validation = dict(result_manifest.get("network_validation_summary", {}) or {})
     runtime_watchdog = dict(result_manifest.get("runtime_watchdog_summary", {}) or {})
+    runtime_service = dict(result_manifest.get("runtime_service_summary", {}) or {})
     clock_sync = dict(result_manifest.get("clock_sync_summary", {}) or {})
     benchmark_summary = {
         "benchmark_status": result_manifest.get("benchmark_status", ""),
@@ -266,6 +269,7 @@ def _build_delivery_audit(
         "footprint_2d_grid_csv",
         "performance_profile_artifact",
         "runtime_watchdog_artifact",
+        "runtime_service_artifact",
         "clock_sync_artifact",
         "benchmark_summary_artifact",
         "parity_artifact",
@@ -301,10 +305,13 @@ def _build_delivery_audit(
             "method_parity_status_counts": dict((result_manifest.get("method_parity_matrix", {}) or {}).get("status_counts", {}) or {}),
             "method_metadata_coverage": dict((result_manifest.get("method_parity_matrix", {}) or {}).get("metadata_coverage", {}) or {}),
             "runtime_watchdog_status": dict(result_manifest.get("runtime_watchdog_summary", {}) or {}).get("status", ""),
+            "runtime_service_status": dict(result_manifest.get("runtime_service_summary", {}) or {}).get("status", ""),
+            "runtime_service_delivery_state": dict(result_manifest.get("runtime_service_summary", {}) or {}).get("delivery_state", ""),
             "clock_sync_status": dict(result_manifest.get("clock_sync_summary", {}) or {}).get("status", ""),
         },
         "network_validation_summary": network_validation,
         "runtime_watchdog_summary": runtime_watchdog,
+        "runtime_service_summary": runtime_service,
         "clock_sync_summary": clock_sync,
         "benchmark_summary": benchmark_summary,
         "method_artifact_keys": [key for key in artifact_keys if key in result_files],

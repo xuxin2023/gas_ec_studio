@@ -1977,6 +1977,13 @@ class StudioController(QObject):
             "runtime_watchdog_provenance": "",
             "runtime_watchdog_recommended_actions": [],
             "runtime_watchdog_summary": {},
+            "runtime_service_status": "not_run",
+            "runtime_service_id": "",
+            "runtime_service_delivery_state": "",
+            "runtime_service_quarantine_count": None,
+            "runtime_service_restart_count": None,
+            "runtime_service_provenance": "",
+            "runtime_service_summary": {},
         }
         if rp_result is None:
             return default
@@ -1990,6 +1997,7 @@ class StudioController(QObject):
         method_compare_recommendations = dict(summary.get("method_compare_recommendations", {}) or artifacts.get("method_compare_recommendations", {}) or method_compare_summary.get("recommendations", {}) or {})
         clock_sync_summary = dict(summary.get("clock_sync_summary", {}) or rp_result.artifacts.get("clock_sync", {}) or {})
         runtime_watchdog_summary = dict(summary.get("runtime_watchdog_summary", {}) or rp_result.artifacts.get("runtime_watchdog", {}) or {})
+        runtime_service_summary = dict(summary.get("runtime_service_summary", {}) or rp_result.artifacts.get("runtime_service", {}) or {})
         if not clock_sync_summary and rp_result.windows:
             clock_sync_summary = dict(rp_result.windows[0].diagnostics.get("clock_sync_detail", {}) if rp_result.windows[0].diagnostics else {})
         if (not footprint_summary or not uncertainty_summary or not spectral_summary) and rp_result.windows:
@@ -2096,6 +2104,18 @@ class StudioController(QObject):
                 f"{runtime_provenance}; fail={runtime_fail_count if runtime_fail_count is not None else '--'}; "
                 f"warn={runtime_warn_count if runtime_warn_count is not None else '--'}"
             ).strip("; ")
+        service_status = str(summary.get("runtime_service_status") or runtime_service_summary.get("status") or default["runtime_service_status"])
+        service_id = str(runtime_service_summary.get("service_id", ""))
+        service_delivery_state = str(summary.get("runtime_service_delivery_state") or runtime_service_summary.get("delivery_state") or "")
+        service_quarantine_count = len(runtime_service_summary.get("quarantine_records", []) or [])
+        service_restart_count = len(runtime_service_summary.get("restart_records", []) or [])
+        service_provenance = str(runtime_service_summary.get("provenance", ""))
+        if service_id:
+            service_provenance = f"{service_provenance}; service={service_id}".strip("; ")
+        if service_delivery_state:
+            service_provenance = f"{service_provenance}; delivery={service_delivery_state}".strip("; ")
+        if runtime_service_summary:
+            service_provenance = f"{service_provenance}; quarantine={service_quarantine_count}; restarts={service_restart_count}".strip("; ")
 
         return {
             "footprint_method": str(summary.get("footprint_method") or footprint_summary.get("method") or default["footprint_method"]),
@@ -2133,6 +2153,13 @@ class StudioController(QObject):
             "runtime_watchdog_provenance": runtime_provenance,
             "runtime_watchdog_recommended_actions": list(runtime_watchdog_summary.get("recommended_actions", []) or []),
             "runtime_watchdog_summary": runtime_watchdog_summary,
+            "runtime_service_status": service_status,
+            "runtime_service_id": service_id,
+            "runtime_service_delivery_state": service_delivery_state,
+            "runtime_service_quarantine_count": service_quarantine_count if runtime_service_summary else None,
+            "runtime_service_restart_count": service_restart_count if runtime_service_summary else None,
+            "runtime_service_provenance": service_provenance,
+            "runtime_service_summary": runtime_service_summary,
         }
 
     def _empty_report_payloads(self) -> dict:
@@ -2292,6 +2319,7 @@ class StudioController(QObject):
                 ("数据来源", run_result.data_source, "来自当前高频缓冲/批次"),
                 ("Clock sync", rp_method_summary["clock_sync_status"], rp_method_summary["clock_sync_provenance"]),
                 ("Runtime watchdog", rp_method_summary["runtime_watchdog_status"], rp_method_summary["runtime_watchdog_provenance"]),
+                ("Runtime service", rp_method_summary["runtime_service_status"], rp_method_summary["runtime_service_provenance"]),
                 ("窗口完整度", f"{(sum(completion_series) / max(1, len(completion_series))):.0%}" if completion_series else "--", "按窗口样本数估算"),
                 ("关注窗口", str(len(anomalous_windows)), "窗口级 QC 结果来自 core 层"),
             ],
@@ -2425,6 +2453,7 @@ class StudioController(QObject):
                 ("谱修正", rp_method_summary["spectral_correction_method"]),
                 ("Clock sync", rp_method_summary["clock_sync_status"]),
                 ("Runtime", rp_method_summary["runtime_watchdog_status"]),
+                ("Service", rp_method_summary["runtime_service_status"]),
                 ("窗口数", str(len(rp_result.windows) if rp_result else 0)),
             ],
             "plot_series": [],
@@ -2440,6 +2469,7 @@ class StudioController(QObject):
                 ("FCC cospectrum", rp_method_summary["spectral_correction_measured_cospectrum_source"], "Fratini/FCC 自动注入路径"),
                 ("Clock sync", rp_method_summary["clock_sync_method"], rp_method_summary["clock_sync_provenance"]),
                 ("Runtime watchdog", rp_method_summary["runtime_watchdog_profile"], rp_method_summary["runtime_watchdog_provenance"]),
+                ("Runtime service", rp_method_summary["runtime_service_id"], rp_method_summary["runtime_service_provenance"]),
             ],
             "conclusions": [
                 "方法溯源页集中展示当前批次使用的 Footprint、不确定度、谱修正方法来源和局限性。",
@@ -2452,6 +2482,7 @@ class StudioController(QObject):
                 **({"Footprint 2D Artifact": str(result_export_files.get("footprint_2d_artifact"))} if result_export_files.get("footprint_2d_artifact") else {}),
                 **({"Method Compare Artifact": str(result_export_files.get("method_compare_artifact"))} if result_export_files.get("method_compare_artifact") else {}),
                 **({"Runtime Watchdog Artifact": str(result_export_files.get("runtime_watchdog_artifact"))} if result_export_files.get("runtime_watchdog_artifact") else {}),
+                **({"Runtime Service Artifact": str(result_export_files.get("runtime_service_artifact"))} if result_export_files.get("runtime_service_artifact") else {}),
                 **({"Clock Sync Artifact": str(result_export_files.get("clock_sync_artifact"))} if result_export_files.get("clock_sync_artifact") else {}),
             },
             "versions": [
@@ -2490,6 +2521,8 @@ class StudioController(QObject):
         performance_sections = dict(performance_profile.get("sections_ms", {}) or {})
         runtime_watchdog_summary = dict(rp_method_summary.get("runtime_watchdog_summary", {}) or {})
         runtime_checks = list(runtime_watchdog_summary.get("checks", []) or [])
+        runtime_service_summary = dict(rp_method_summary.get("runtime_service_summary", {}) or {})
+        runtime_service_checks = list(runtime_service_summary.get("checks", []) or [])
         for section_name, section_summary in sorted(performance_sections.items()):
             payload = dict(section_summary or {})
             method_compare_rows.append(
@@ -2504,6 +2537,15 @@ class StudioController(QObject):
             method_compare_rows.append(
                 (
                     f"runtime:{payload.get('check_id', '')}",
+                    str(payload.get("status", "")),
+                    f"measured={payload.get('measured', '--')}; threshold={payload.get('threshold', '--')}",
+                )
+            )
+        for check in runtime_service_checks[:8]:
+            payload = dict(check or {})
+            method_compare_rows.append(
+                (
+                    f"service:{payload.get('check_id', '')}",
                     str(payload.get("status", "")),
                     f"measured={payload.get('measured', '--')}; threshold={payload.get('threshold', '--')}",
                 )
@@ -2538,6 +2580,7 @@ class StudioController(QObject):
             **({"Footprint 2D Grid CSV": str(result_export_files.get("footprint_2d_grid_csv"))} if result_export_files.get("footprint_2d_grid_csv") else {}),
             **({"Performance Profile": str(result_export_files.get("performance_profile_artifact"))} if result_export_files.get("performance_profile_artifact") else {}),
             **({"Runtime Watchdog": str(result_export_files.get("runtime_watchdog_artifact"))} if result_export_files.get("runtime_watchdog_artifact") else {}),
+            **({"Runtime Service": str(result_export_files.get("runtime_service_artifact"))} if result_export_files.get("runtime_service_artifact") else {}),
         }
         reports["method_compare"] = {
             "title": "Method Compare",
@@ -2549,6 +2592,7 @@ class StudioController(QObject):
                 ("reference_fields", f"{metadata_coverage.get('reported_count', 0)} / {metadata_coverage.get('total_count', 0)}"),
                 ("profiled_windows", str(performance_profile.get("profiled_window_count", 0))),
                 ("runtime_watchdog", str(runtime_watchdog_summary.get("status", "not_run"))),
+                ("runtime_service", str(runtime_service_summary.get("status", "not_run"))),
                 ("runtime_ms", str(performance_profile.get("run_elapsed_ms", "--"))),
             ],
             "plot_series": [
@@ -2566,7 +2610,7 @@ class StudioController(QObject):
             "file_info": method_compare_files,
             "versions": [
                 f"运行 ID：{run_result.run_id}",
-                "Artifacts: method_compare_artifact.json, method_parity_matrix.json, footprint_2d_contour.svg, performance_profile.json, runtime_watchdog_artifact.json",
+                "Artifacts: method_compare_artifact.json, method_parity_matrix.json, footprint_2d_contour.svg, performance_profile.json, runtime_watchdog_artifact.json, runtime_service_artifact.json",
             ],
             "usage": [
                 "工程师用此页快速检查三族方法对比、EddyPro 方法元数据覆盖情况和长窗口耗时。",
@@ -4063,6 +4107,12 @@ class StudioController(QObject):
             or rp_result.artifacts.get("runtime_watchdog", {})
             or {}
         )
+        service_summary = dict(
+            manifest_payload.get("runtime_service_summary", {})
+            or summary.get("runtime_service_summary", {})
+            or rp_result.artifacts.get("runtime_service", {})
+            or {}
+        )
 
         table_rows = [
             ("reference_id", bm_ref_id or "--", "参考数据集 ID"),
@@ -4100,6 +4150,11 @@ class StudioController(QObject):
             table_rows.append(("runtime_watchdog.fail_count", str(runtime_summary.get("fail_count", "--")), "失败检查数"))
             for action in list(runtime_summary.get("recommended_actions", []) or [])[:3]:
                 table_rows.append(("runtime_watchdog.action", str(action)[:80], "建议处理"))
+        if service_summary:
+            table_rows.append(("runtime_service.status", service_summary.get("status", "--"), "服务运行状态"))
+            table_rows.append(("runtime_service.delivery_state", service_summary.get("delivery_state", "--"), "交付就绪状态"))
+            table_rows.append(("runtime_service.quarantine_count", str(len(service_summary.get("quarantine_records", []) or [])), "隔离批次数"))
+            table_rows.append(("runtime_service.restart_count", str(len(service_summary.get("restart_records", []) or [])), "重试/重启记录数"))
         for detail in per_window_detail:
             match_strategy = detail.get("match_strategy", "")
             table_rows.append(
@@ -4120,6 +4175,7 @@ class StudioController(QObject):
             "缺失字段": " / ".join(network_summary.get("missing_fields", [])) or "无",
             "Clock sync": clock_summary.get("status", "--") if clock_summary else "--",
             "Runtime watchdog": runtime_summary.get("status", "--") if runtime_summary else "--",
+            "Runtime service": service_summary.get("status", "--") if service_summary else "--",
         }
         for key, label in (
             ("benchmark_summary_artifact", "Benchmark Summary"),
@@ -4128,6 +4184,7 @@ class StudioController(QObject):
             ("reference_provenance_artifact", "Provenance Artifact"),
             ("network_validation_summary", "Network Validation"),
             ("runtime_watchdog_artifact", "Runtime Watchdog"),
+            ("runtime_service_artifact", "Runtime Service"),
             ("clock_sync_artifact", "Clock Sync Artifact"),
         ):
             if export_files.get(key):

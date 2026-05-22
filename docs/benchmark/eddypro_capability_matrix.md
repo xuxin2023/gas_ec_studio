@@ -43,7 +43,7 @@ Primary public repositories to track:
 - Sonic coordinate/head correction now runs before rotation/lag/flux for common EddyPro-style orientation offsets, Gill WindMaster W-boost handling, bias offsets, and configured angle gain; full Nakai AoA lookup-table parity remains incomplete.
 - Crosswind sonic-temperature correction now runs before thermodynamic flux calculations for common EddyPro A/B/C coefficient families; real instrument parity fixtures and GUI controls remain incomplete.
 - GPS/PTP-style acquisition clock synchronization now applies offset/drift/event corrections before RP/FCC window slicing and carries provenance into diagnostics, exports, report center, and manifests; hardware servo-log parsing remains incomplete.
-- SmartFlux-like runtime hardening now has a headless runtime profile/watchdog manifest covering acquisition gaps, clock sync, RP/FCC window generation, network validation, deterministic run ids, report center, formal reports, delivery package, and exporter manifests; true embedded daemon supervision, reboot policy, disk-pressure telemetry, and hardware watchdog integration remain incomplete.
+- SmartFlux-like runtime hardening now has a headless runtime profile/watchdog manifest plus runtime_service v1 for queued headless batches, heartbeats, disk/queue telemetry, retry records, quarantined failures, delivery state, report center, formal reports, delivery package, and exporter manifests; true installed embedded daemon supervision, reboot policy, CPU/process telemetry, PTP servo logs, and hardware watchdog integration remain incomplete.
 - Footprint v1 exists, but georeferenced GIS outputs remain missing.
 
 ## Missing
