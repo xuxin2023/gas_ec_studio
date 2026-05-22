@@ -149,6 +149,8 @@ def export_formal_report(
             "delivery_audit": snapshot.get("delivery_audit", {}),
             "artifact_index": snapshot.get("delivery_audit", {}).get("artifact_index", {}),
             "network_validation_summary": snapshot.get("delivery_audit", {}).get("network_validation_summary", {}),
+            "runtime_watchdog_summary": snapshot.get("delivery_audit", {}).get("runtime_watchdog_summary", {}),
+            "clock_sync_summary": snapshot.get("delivery_audit", {}).get("clock_sync_summary", {}),
             "benchmark_summary": snapshot.get("delivery_audit", {}).get("benchmark_summary", {}),
         }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -205,6 +207,8 @@ def _build_formal_report_snapshot(
     artifact_index = _bundle_artifact_index(bundle_files)
     method_parity_matrix = dict(result_manifest.get("method_parity_matrix", {}) or {})
     network_validation_summary = dict(result_manifest.get("network_validation_summary", {}) or {})
+    runtime_watchdog_summary = dict(result_manifest.get("runtime_watchdog_summary", {}) or {})
+    clock_sync_summary = dict(result_manifest.get("clock_sync_summary", {}) or {})
     delivery_audit = {
         "artifact_type": "formal_report_delivery_audit",
         "result_bundle_root": str(result_bundle.get("export_root", "")),
@@ -221,12 +225,16 @@ def _build_formal_report_snapshot(
                 "footprint_2d_contour_svg",
                 "footprint_2d_grid_csv",
                 "performance_profile_artifact",
+                "runtime_watchdog_artifact",
+                "clock_sync_artifact",
                 "reference_provenance_artifact",
                 "network_validation_summary",
             ]
             if key in bundle_files
         ],
         "network_validation_summary": network_validation_summary,
+        "runtime_watchdog_summary": runtime_watchdog_summary,
+        "clock_sync_summary": clock_sync_summary,
         "benchmark_summary": {
             "benchmark_status": result_manifest.get("benchmark_status", ""),
             "benchmark_reference_id": result_manifest.get("benchmark_reference_id", ""),
@@ -478,6 +486,10 @@ def _build_formal_report_snapshot(
                         ["schema_target", str(network_validation_summary.get("schema_target", result_manifest.get("schema_target", "--")))],
                         ["network_validation_status", str(network_validation_summary.get("validation_status", result_manifest.get("network_validation_status", "--")))],
                         ["network_missing_fields", json.dumps(network_validation_summary.get("missing_fields", result_manifest.get("network_missing_fields", [])), ensure_ascii=False)],
+                        ["runtime_watchdog_status", str(runtime_watchdog_summary.get("status", "--"))],
+                        ["runtime_watchdog_profile", str(runtime_watchdog_summary.get("profile_id", "--"))],
+                        ["runtime_watchdog_fail_count", str(runtime_watchdog_summary.get("fail_count", "--"))],
+                        ["clock_sync_status", str(clock_sync_summary.get("status", "--"))],
                         ["benchmark_status", str(delivery_audit["benchmark_summary"].get("benchmark_status", ""))],
                         ["benchmark_reference_id", str(delivery_audit["benchmark_summary"].get("benchmark_reference_id", ""))],
                         ["method_metadata_coverage", json.dumps(delivery_audit["method_parity_matrix"].get("metadata_coverage", {}), ensure_ascii=False)],
@@ -501,6 +513,8 @@ def _build_formal_report_snapshot(
                             "footprint_2d_contour_svg",
                             "footprint_2d_grid_csv",
                             "performance_profile_artifact",
+                            "runtime_watchdog_artifact",
+                            "clock_sync_artifact",
                             "network_validation_summary",
                         }
                     ]

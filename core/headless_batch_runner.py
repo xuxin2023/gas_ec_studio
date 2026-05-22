@@ -8,8 +8,10 @@ import hashlib
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import time
 from typing import Any
 
+from core.acquisition.runtime_watchdog import attach_runtime_watchdog, build_runtime_watchdog_manifest
 from core.ec_fcc.pipeline import ECFCCPipeline
 from core.ec_rp.pipeline import ECRPPipeline
 from core.exports.result_exporter import ResultExporter
@@ -28,6 +30,8 @@ def run_headless_batch(
     data_source: str = "headless",
     time_range: str = "",
 ) -> dict[str, Any]:
+    batch_started_at = datetime.now()
+    batch_timer = time.perf_counter()
     metadata_bundle = metadata if isinstance(metadata, MetadataBundle) else MetadataBundle.from_dict(dict(metadata))
     base_config = deepcopy(config)
     base_config.setdefault("metadata_bundle", metadata_bundle.to_dict())
@@ -77,12 +81,16 @@ def run_headless_batch(
         rp_result=rp_result,
         spectral_result=spectral_result,
         clock_sync_summary=clock_sync_summary,
+        runtime_started_at=batch_started_at,
+        runtime_completed_at=datetime.now(),
+        runtime_elapsed_ms=round((time.perf_counter() - batch_timer) * 1000.0, 3),
     )
     return {
         "batch_id": batch_digest,
         "metadata_snapshot": metadata_bundle.to_dict(),
         "raw_import_summary": _raw_import_summary(synced_rows),
         "clock_sync_summary": clock_sync_summary,
+        "runtime_watchdog_summary": manifest.get("runtime_watchdog_summary", {}),
         "project_snapshot": asdict(metadata_bundle.project),
         "site_snapshot": asdict(metadata_bundle.site),
         "rp_result": rp_result,
@@ -109,6 +117,9 @@ def build_batch_manifest(
     rp_result,
     spectral_result,
     clock_sync_summary: dict[str, Any] | None = None,
+    runtime_started_at: datetime | None = None,
+    runtime_completed_at: datetime | None = None,
+    runtime_elapsed_ms: float | None = None,
 ) -> dict[str, Any]:
     with TemporaryDirectory() as tmpdir:
         exporter = ResultExporter(Path(tmpdir))
@@ -120,6 +131,22 @@ def build_batch_manifest(
             export_root=Path(tmpdir),
             site=metadata_bundle.site,
         )
+    raw_summary = _raw_import_summary(rows)
+    runtime_watchdog = build_runtime_watchdog_manifest(
+        batch_id=batch_id,
+        config=config,
+        rows=rows,
+        rp_result=rp_result,
+        spectral_result=spectral_result,
+        clock_sync_summary=clock_sync_summary or {},
+        raw_import_summary=raw_summary,
+        network_validation=network_validation,
+        run_started_at=runtime_started_at,
+        run_completed_at=runtime_completed_at,
+        elapsed_ms=runtime_elapsed_ms,
+    )
+    attach_runtime_watchdog(rp_result, runtime_watchdog)
+    attach_runtime_watchdog(spectral_result, runtime_watchdog)
     return {
         "batch_id": batch_id,
         "input_row_count": len(rows),
@@ -142,8 +169,9 @@ def build_batch_manifest(
             "absolute_limits": config.get("screening", {}).get("absolute_limits", None),
         },
         "metadata_snapshot": metadata_bundle.to_dict(),
-        "raw_import_summary": _raw_import_summary(rows),
+        "raw_import_summary": raw_summary,
         "clock_sync_summary": deepcopy(clock_sync_summary or {}),
+        "runtime_watchdog_summary": deepcopy(runtime_watchdog),
         "project_snapshot": asdict(metadata_bundle.project),
         "site_snapshot": asdict(metadata_bundle.site),
         "rp_run": {
@@ -275,6 +303,11 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--clock-offset-s", default="", help="Correction added to raw timestamps in seconds.")
     parser.add_argument("--clock-drift-ppm", default="", help="Linear clock drift correction in parts per million.")
     parser.add_argument("--clock-events-json", default="", help="Clock event list JSON with timestamp/time and offset_seconds fields.")
+    parser.add_argument("--runtime-profile", default="", help="Runtime profile id for the headless watchdog manifest.")
+    parser.add_argument("--watchdog-max-gap-s", default="", help="Maximum allowed acquisition timestamp gap in seconds.")
+    parser.add_argument("--watchdog-min-window-count", default="", help="Minimum RP/FCC windows required by the watchdog.")
+    parser.add_argument("--watchdog-require-clock-sync", default="", help="Require applied clock_sync in watchdog checks (true/false).")
+    parser.add_argument("--watchdog-require-network-pass", default="", help="Require network validation pass in watchdog checks (true/false).")
     args = parser.parse_args(argv)
 
     config = load_config_file(args.config)
@@ -326,6 +359,16 @@ def run_cli(argv: list[str] | None = None) -> int:
         config.setdefault("clock_sync", {})["drift_ppm"] = float(args.clock_drift_ppm)
     if args.clock_events_json:
         config.setdefault("clock_sync", {})["events"] = json.loads(args.clock_events_json)
+    if args.runtime_profile:
+        config.setdefault("runtime_profile", {})["profile_id"] = args.runtime_profile
+    if args.watchdog_max_gap_s:
+        config.setdefault("runtime_profile", {})["max_gap_seconds"] = float(args.watchdog_max_gap_s)
+    if args.watchdog_min_window_count:
+        config.setdefault("runtime_profile", {})["min_window_count"] = int(args.watchdog_min_window_count)
+    if args.watchdog_require_clock_sync:
+        config.setdefault("runtime_profile", {})["require_clock_sync"] = args.watchdog_require_clock_sync.lower() in ("true", "1", "yes")
+    if args.watchdog_require_network_pass:
+        config.setdefault("runtime_profile", {})["require_network_pass"] = args.watchdog_require_network_pass.lower() in ("true", "1", "yes")
     result = run_headless_batch(
         config=config,
         metadata=metadata,

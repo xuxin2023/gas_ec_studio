@@ -74,6 +74,11 @@ FULL_OUTPUT_SCHEMA = [
     ("clock_sync_max_offset_s", "acquisition", "real"),
     ("clock_sync_provenance", "acquisition", "real"),
     ("clock_sync_detail", "acquisition", "real"),
+    ("runtime_watchdog_status", "acquisition", "real"),
+    ("runtime_watchdog_profile", "acquisition", "real"),
+    ("runtime_watchdog_fail_count", "acquisition", "real"),
+    ("runtime_watchdog_warn_count", "acquisition", "real"),
+    ("runtime_watchdog_detail", "acquisition", "real"),
     ("ch4_status", "trace_gas", "real"),
     ("ch4_flux_nmol_m2_s", "trace_gas", "real"),
     ("ch4_flux_level0_nmol_m2_s", "trace_gas", "real"),
@@ -203,6 +208,11 @@ class ResultExporter:
             rp_result=rp_result,
             export_root=export_root,
         )
+        runtime_watchdog_path = self.export_runtime_watchdog_artifact(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+        )
         clock_sync_path = self.export_clock_sync_artifact(
             rp_result=rp_result,
             rp_config_snapshot=rp_config_snapshot,
@@ -263,6 +273,8 @@ class ResultExporter:
             exported_files.append(method_compare_path.name)
         if performance_profile_path is not None:
             exported_files.append(performance_profile_path.name)
+        if runtime_watchdog_path is not None:
+            exported_files.append(runtime_watchdog_path.name)
         if clock_sync_path is not None:
             exported_files.append(clock_sync_path.name)
         if method_parity_matrix_path is not None:
@@ -312,6 +324,8 @@ class ResultExporter:
                 "method_compare_artifact": str(method_compare_path) if method_compare_path is not None else "",
                 "method_parity_matrix_artifact": str(method_parity_matrix_path) if method_parity_matrix_path is not None else "",
                 "performance_profile_artifact": str(performance_profile_path) if performance_profile_path is not None else "",
+                "runtime_watchdog_artifact": str(runtime_watchdog_path) if runtime_watchdog_path is not None else "",
+                "runtime_watchdog_summary": self._runtime_watchdog_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
                 "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "reference_provenance": reference_provenance,
@@ -391,6 +405,8 @@ class ResultExporter:
             "method_parity_matrix_csv": str(method_parity_companion_files.get("csv", "")),
             "performance_profile": self._performance_profile_payload(rp_result=rp_result),
             "performance_profile_artifact": str(performance_profile_path) if performance_profile_path is not None else "",
+            "runtime_watchdog_summary": self._runtime_watchdog_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+            "runtime_watchdog_artifact": str(runtime_watchdog_path) if runtime_watchdog_path is not None else "",
             "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
@@ -406,6 +422,9 @@ class ResultExporter:
                 "CLOCK_SYNC_METHOD",
                 "CLOCK_SYNC_SOURCE",
                 "CLOCK_SYNC_MEAN_OFFSET_S",
+                "RUNTIME_WATCHDOG_STATUS",
+                "RUNTIME_WATCHDOG_PROFILE",
+                "RUNTIME_WATCHDOG_FAIL_COUNT",
             ],
             "network_uncertainty_fields": [
                 "FC_RANDOM_ERROR",
@@ -437,6 +456,10 @@ class ResultExporter:
                 "clock_sync_source",
                 "clock_sync_mean_offset_s",
                 "clock_sync_provenance",
+                "runtime_watchdog_status",
+                "runtime_watchdog_profile",
+                "runtime_watchdog_fail_count",
+                "runtime_watchdog_warn_count",
                 "screening_config",
                 "screening_summary",
                 "footprint_method",
@@ -479,6 +502,8 @@ class ResultExporter:
             files["method_compare_artifact"] = str(method_compare_path)
         if performance_profile_path is not None:
             files["performance_profile_artifact"] = str(performance_profile_path)
+        if runtime_watchdog_path is not None:
+            files["runtime_watchdog_artifact"] = str(runtime_watchdog_path)
         if clock_sync_path is not None:
             files["clock_sync_artifact"] = str(clock_sync_path)
         if method_parity_matrix_path is not None:
@@ -572,6 +597,11 @@ class ResultExporter:
             "clock_sync_source": diagnostics.get("clock_sync_source", ""),
             "clock_sync_mean_offset_s": diagnostics.get("clock_sync_mean_offset_s", ""),
             "clock_sync_provenance": diagnostics.get("clock_sync_provenance", ""),
+            "runtime_watchdog_status": diagnostics.get("runtime_watchdog_status", ""),
+            "runtime_watchdog_profile": diagnostics.get("runtime_watchdog_profile", ""),
+            "runtime_watchdog_fail_count": diagnostics.get("runtime_watchdog_fail_count", ""),
+            "runtime_watchdog_warn_count": diagnostics.get("runtime_watchdog_warn_count", ""),
+            "runtime_watchdog_detail": json.dumps(diagnostics.get("runtime_watchdog_detail", {}), ensure_ascii=False) if diagnostics.get("runtime_watchdog_detail") else "",
             "ch4_status": diagnostics.get("ch4_status", ""),
             "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", ""),
             "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", ""),
@@ -695,6 +725,11 @@ class ResultExporter:
                 "clock_sync_max_offset_s": diagnostics.get("clock_sync_max_offset_s", "") if diagnostics else "",
                 "clock_sync_provenance": diagnostics.get("clock_sync_provenance", "") if diagnostics else "",
                 "clock_sync_detail": json.dumps(diagnostics.get("clock_sync_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("clock_sync_detail") else "",
+                "runtime_watchdog_status": diagnostics.get("runtime_watchdog_status", "") if diagnostics else "",
+                "runtime_watchdog_profile": diagnostics.get("runtime_watchdog_profile", "") if diagnostics else "",
+                "runtime_watchdog_fail_count": diagnostics.get("runtime_watchdog_fail_count", "") if diagnostics else "",
+                "runtime_watchdog_warn_count": diagnostics.get("runtime_watchdog_warn_count", "") if diagnostics else "",
+                "runtime_watchdog_detail": json.dumps(diagnostics.get("runtime_watchdog_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("runtime_watchdog_detail") else "",
                 "ch4_status": diagnostics.get("ch4_status", "") if diagnostics else "",
                 "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", "") if diagnostics else "",
                 "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", "") if diagnostics else "",
@@ -1272,6 +1307,48 @@ class ResultExporter:
         if payload.get("status") in {"missing", "no_profiles"}:
             return None
         path = export_root / "performance_profile.json"
+        self._write_json(path, payload)
+        return path
+
+    def _runtime_watchdog_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        if rp_result is not None:
+            artifacts = dict(rp_result.artifacts or {})
+            if isinstance(artifacts.get("runtime_watchdog"), dict) and artifacts["runtime_watchdog"]:
+                return dict(artifacts["runtime_watchdog"])
+            summary = dict(rp_result.summary or {})
+            if isinstance(summary.get("runtime_watchdog_summary"), dict) and summary["runtime_watchdog_summary"]:
+                return dict(summary["runtime_watchdog_summary"])
+        cfg = dict(rp_config_snapshot.get("runtime_profile", {}) if isinstance(rp_config_snapshot.get("runtime_profile", {}), dict) else {})
+        if cfg:
+            return {
+                "artifact_type": "runtime_watchdog",
+                "status": "configured_not_run",
+                "profile_id": str(cfg.get("profile_id", "headless_watchdog_v1")),
+                "deployment_mode": str(cfg.get("deployment_mode", "headless_batch")),
+                "restart_policy": str(cfg.get("restart_policy", "manual_review")),
+                "provenance": "Runtime watchdog is configured in the export snapshot, but no headless watchdog summary was available.",
+                "limitations": ["No per-run watchdog checks were available without a headless batch manifest."],
+            }
+        return {}
+
+    def export_runtime_watchdog_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+    ) -> Path | None:
+        summary = self._runtime_watchdog_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not summary:
+            return None
+        payload = {
+            "artifact_type": "runtime_watchdog",
+            "run_id": rp_result.run_id if rp_result else "",
+            "created_at": rp_result.created_at.isoformat() if rp_result else "",
+            "summary": summary,
+            "provenance": "Runtime watchdog artifact exported from headless batch summary.",
+        }
+        path = export_root / "runtime_watchdog_artifact.json"
         self._write_json(path, payload)
         return path
 
@@ -2175,6 +2252,9 @@ class ResultExporter:
             "CLOCK_SYNC_METHOD": diagnostics.get("clock_sync_method", ""),
             "CLOCK_SYNC_SOURCE": diagnostics.get("clock_sync_source", ""),
             "CLOCK_SYNC_MEAN_OFFSET_S": diagnostics.get("clock_sync_mean_offset_s", ""),
+            "RUNTIME_WATCHDOG_STATUS": diagnostics.get("runtime_watchdog_status", "not_run"),
+            "RUNTIME_WATCHDOG_PROFILE": diagnostics.get("runtime_watchdog_profile", "not_configured"),
+            "RUNTIME_WATCHDOG_FAIL_COUNT": diagnostics.get("runtime_watchdog_fail_count", 0),
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2235,6 +2315,9 @@ class ResultExporter:
             "CLOCK_SYNC_METHOD": "",
             "CLOCK_SYNC_SOURCE": "",
             "CLOCK_SYNC_MEAN_OFFSET_S": "",
+            "RUNTIME_WATCHDOG_STATUS": "gap_fill",
+            "RUNTIME_WATCHDOG_PROFILE": "not_configured",
+            "RUNTIME_WATCHDOG_FAIL_COUNT": 0,
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2728,6 +2811,9 @@ FLUXNET_HALF_HOURLY_SCHEMA = [
     ("CLOCK_SYNC_METHOD", "text", "Clock synchronization method"),
     ("CLOCK_SYNC_SOURCE", "text", "GPS/PTP/manual clock source label"),
     ("CLOCK_SYNC_MEAN_OFFSET_S", "seconds", "Mean timestamp correction applied before windowing"),
+    ("RUNTIME_WATCHDOG_STATUS", "text", "Headless/SmartFlux-style runtime watchdog status"),
+    ("RUNTIME_WATCHDOG_PROFILE", "text", "Runtime watchdog profile id"),
+    ("RUNTIME_WATCHDOG_FAIL_COUNT", "count", "Failed runtime watchdog checks"),
     ("TIMEZONE_OFFSET_H", "hours", "UTC offset for local time"),
     ("TIMESTAMP_REFERS_TO", "start/end", "Whether timestamp refers to start or end of period"),
 ]
@@ -2758,6 +2844,9 @@ AMERIFLUX_FIELD_MAP = {
     "CLOCK_SYNC_METHOD": "CLOCK_SYNC_METHOD",
     "CLOCK_SYNC_SOURCE": "CLOCK_SYNC_SOURCE",
     "CLOCK_SYNC_MEAN_OFFSET_S": "CLOCK_SYNC_MEAN_OFFSET_S",
+    "RUNTIME_WATCHDOG_STATUS": "RUNTIME_WATCHDOG_STATUS",
+    "RUNTIME_WATCHDOG_PROFILE": "RUNTIME_WATCHDOG_PROFILE",
+    "RUNTIME_WATCHDOG_FAIL_COUNT": "RUNTIME_WATCHDOG_FAIL_COUNT",
     "WIND_SPEED": "WS",
     "WIND_DIR": "WD",
 }
@@ -2788,6 +2877,9 @@ ICOS_FIELD_MAP = {
     "CLOCK_SYNC_METHOD": "ClockSyncMethod",
     "CLOCK_SYNC_SOURCE": "ClockSyncSource",
     "CLOCK_SYNC_MEAN_OFFSET_S": "ClockSyncMeanOffsetS",
+    "RUNTIME_WATCHDOG_STATUS": "RuntimeWatchdogStatus",
+    "RUNTIME_WATCHDOG_PROFILE": "RuntimeWatchdogProfile",
+    "RUNTIME_WATCHDOG_FAIL_COUNT": "RuntimeWatchdogFailCount",
     "WIND_SPEED": "WindSpeed",
     "WIND_DIR": "WindDir",
 }
