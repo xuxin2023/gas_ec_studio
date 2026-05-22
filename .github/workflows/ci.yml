@@ -49,6 +49,7 @@ jobs:
             tests/test_eddypro_capability_matrix.py \
             tests/test_ghg_bundle_import.py \
             tests/test_ghg_headless_pipeline.py \
+            tests/test_raw_importer_biomet_injection.py \
             tests/test_ec_core_parity_v1.py \
             tests/test_hf_data_store_parquet.py \
             tests/test_ec_processing_page_real_data.py \

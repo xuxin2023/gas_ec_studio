@@ -11,6 +11,7 @@ The machine-readable source of truth is `docs/benchmark/eddypro_capability_matri
 ## Covered Or Strong
 
 - Metadata model, dynamic metadata, external biomet, and now `.ghg` embedded biomet inspection/loading.
+- Generic ASCII raw text import now maps configurable columns into `NormalizedHFFrame`, including unit conversion and TOB1/SLT-like text header skipping.
 - RP pipeline basics: lag detection, detrending, coordinate rotation, planar-fit variants, QC matrix, random uncertainty, footprint families, and spectral-correction method provenance.
 - Export and delivery chain: full output, FLUXNET/AmeriFlux/ICOS validation summaries, formal report, package manifest, delivery audit.
 - Beyond-EddyPro auditability: method parity matrix, benchmark artifacts, reference provenance, report center/cockpit integration.

@@ -14,6 +14,7 @@ from core.ec_fcc.pipeline import ECFCCPipeline
 from core.ec_rp.pipeline import ECRPPipeline
 from core.exports.result_exporter import ResultExporter
 from core.storage.ghg_bundle import load_ghg_normalized_frames
+from core.storage.raw_importer import can_load_raw_text, load_raw_text_frames
 from models.hf_models import FrameQuality, NormalizedHFFrame
 from models.station_models import MetadataBundle
 
@@ -36,6 +37,7 @@ def run_headless_batch(
     rp_pipeline = ECRPPipeline()
     spectral_pipeline = ECFCCPipeline()
     base_config = deepcopy(config)
+    base_config.setdefault("metadata_bundle", metadata_bundle.to_dict())
     rp_result = rp_pipeline.run(
         rows=rows,
         project=metadata_bundle.project,
@@ -157,10 +159,12 @@ def load_metadata_file(path: str | Path) -> MetadataBundle:
     return MetadataBundle.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
-def load_input_rows(path: str | Path) -> list[NormalizedHFFrame]:
+def load_input_rows(path: str | Path, metadata: MetadataBundle | dict[str, Any] | None = None) -> list[NormalizedHFFrame]:
     input_path = Path(path)
     if input_path.suffix.lower() == ".ghg":
         return load_ghg_normalized_frames(input_path)
+    if can_load_raw_text(input_path):
+        return load_raw_text_frames(input_path, metadata=metadata)
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
         raise ValueError("Input data file must contain a JSON list of row objects.")
@@ -216,7 +220,7 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     config = load_config_file(args.config)
     metadata = load_metadata_file(args.metadata)
-    rows = load_input_rows(args.input)
+    rows = load_input_rows(args.input, metadata=metadata)
     if args.lag_strategy:
         config.setdefault("lag_phase", {})["strategy"] = args.lag_strategy
     if args.expected_lag_s:

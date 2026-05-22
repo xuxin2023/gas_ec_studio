@@ -49,7 +49,7 @@ from core.ec_rp.analysis import (
 from core.ec_rp.qc import classify_window_qc
 from models.hf_models import NormalizedHFFrame
 from models.rp_models import RPRunResult, WindowRPResult
-from models.station_models import ProjectProfile, SiteProfile
+from models.station_models import BiometSourceMetadata, ProjectProfile, SiteProfile, aggregate_biomet_window, load_biomet_records
 
 
 class ECRPPipeline:
@@ -85,6 +85,7 @@ class ECRPPipeline:
         uncertainty_method_config = _extract_uncertainty_method_config(config)
         spectral_correction_config = _extract_spectral_correction_config(config)
         method_compare_config = _extract_method_compare_config(config)
+        biomet_context = _build_biomet_context(config)
         benchmark_summary = _default_benchmark_summary(benchmark_config=benchmark_config, window_count=0)
         reference_provenance = _build_reference_provenance_artifact(benchmark_config.get("reference_id", ""))
         method_summary = _summarize_method_outputs(
@@ -160,6 +161,7 @@ class ECRPPipeline:
                             uncertainty_method_config=uncertainty_method_config,
                             spectral_correction_config=spectral_correction_config,
                             method_compare_config=method_compare_config,
+                            biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                         )
                     )
                 except Exception:
@@ -199,6 +201,7 @@ class ECRPPipeline:
                         uncertainty_method_config=uncertainty_method_config,
                         spectral_correction_config=spectral_correction_config,
                         method_compare_config=method_compare_config,
+                        biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                     )
                 )
             except Exception as exc:  # pragma: no cover
@@ -284,10 +287,13 @@ class ECRPPipeline:
         uncertainty_method_config: dict[str, Any] | None = None,
         spectral_correction_config: dict[str, Any] | None = None,
         method_compare_config: dict[str, Any] | None = None,
+        biomet_override: dict[str, Any] | None = None,
     ) -> WindowRPResult:
         window_timer_start = time.perf_counter()
         performance_sections: dict[str, float] = {}
         prepared = build_window_series(rows, sample_rate_hz)
+        if biomet_override:
+            _apply_biomet_override(prepared, biomet_override)
         if rotation_mode in ("sector_wise_planar_fit", "sector_wise_planar_fit_no_velocity_bias") and planar_fit_coefficients:
             mean_u = float(np.mean(prepared.u))
             mean_v = float(np.mean(prepared.v))
@@ -805,6 +811,135 @@ def _density_correction_factor(*, raw_flux: float, density_corrected_flux: float
     if abs(raw_flux) <= 1e-12:
         return 1.0 if abs(density_corrected_flux) <= 1e-12 else 1.5
     return float(density_corrected_flux / raw_flux)
+
+
+def _build_biomet_context(config: dict[str, Any]) -> dict[str, Any]:
+    metadata_payload = config.get("metadata_bundle", {})
+    if not isinstance(metadata_payload, dict):
+        return {}
+    biomet_payload = metadata_payload.get("biomet", {})
+    if not isinstance(biomet_payload, dict):
+        return {}
+    source = BiometSourceMetadata(
+        source_mode=str(biomet_payload.get("source_mode", "none")),
+        source_path=str(biomet_payload.get("source_path", "")),
+        time_column=str(biomet_payload.get("time_column", "timestamp")),
+        aggregation_method=str(biomet_payload.get("aggregation_method", "mean")),
+        fields=_coerce_string_list(biomet_payload.get("fields", [])),
+        directory_glob=str(biomet_payload.get("directory_glob", "*.csv")),
+        notes=str(biomet_payload.get("notes", "")),
+        extra=dict(biomet_payload.get("extra", {}) if isinstance(biomet_payload.get("extra", {}), dict) else {}),
+    )
+    if source.source_mode == "none" or not source.source_path:
+        return {}
+    records = load_biomet_records(source)
+    if not records:
+        return {}
+    fields = source.fields or [
+        "ta",
+        "air_temperature",
+        "temperature",
+        "temp",
+        "chamber_temp_c",
+        "pressure_kpa",
+        "pressure",
+        "pa",
+        "air_pressure",
+    ]
+    return {"source": source, "records": records, "fields": fields}
+
+
+def _biomet_override_for_rows(rows: list[NormalizedHFFrame], context: dict[str, Any]) -> dict[str, Any]:
+    if not rows or not context:
+        return {}
+    source = context.get("source")
+    records = list(context.get("records", []) or [])
+    fields = list(context.get("fields", []) or [])
+    if not records or not fields or not isinstance(source, BiometSourceMetadata):
+        return {}
+    aggregated = aggregate_biomet_window(
+        records,
+        window_start=rows[0].timestamp,
+        window_end=rows[-1].timestamp,
+        fields=fields,
+        aggregation_method=source.aggregation_method,
+    )
+    if not aggregated:
+        return {}
+    return {
+        "source_mode": source.source_mode,
+        "source_path": source.source_path,
+        "aggregation_method": source.aggregation_method,
+        "window_start": rows[0].timestamp.isoformat(),
+        "window_end": rows[-1].timestamp.isoformat(),
+        "fields": fields,
+        "aggregated": aggregated,
+    }
+
+
+def _apply_biomet_override(prepared: Any, override: dict[str, Any]) -> None:
+    aggregated = dict(override.get("aggregated", {}) or {})
+    pressure = _pick_numeric(aggregated, ("pressure_kpa", "pressure", "pa", "air_pressure"))
+    temperature = _pick_numeric(aggregated, ("ta", "air_temperature", "temperature", "temp", "chamber_temp_c"))
+    applied_fields: list[str] = []
+    if pressure is not None and prepared.pressure_kpa.size:
+        prepared.pressure_kpa = np.full_like(prepared.pressure_kpa, _coerce_pressure_kpa(pressure), dtype=float)
+        _prune_prepared_issue(prepared, "pressure_kpa")
+        applied_fields.append("pressure_kpa")
+    if temperature is not None and prepared.temp_c.size:
+        prepared.temp_c = np.full_like(prepared.temp_c, _coerce_temperature_c(temperature), dtype=float)
+        _prune_prepared_issue(prepared, "temp_c")
+        applied_fields.append("temp_c")
+    if applied_fields:
+        prepared.diagnostics["biomet_override"] = {
+            "status": "applied",
+            "applied_fields": applied_fields,
+            "source_mode": override.get("source_mode", ""),
+            "source_path": override.get("source_path", ""),
+            "aggregation_method": override.get("aggregation_method", ""),
+            "sample_count": aggregated.get("sample_count", 0),
+            "window_start": override.get("window_start", ""),
+            "window_end": override.get("window_end", ""),
+        }
+
+
+def _pick_numeric(payload: dict[str, Any], aliases: tuple[str, ...]) -> float | None:
+    lookup = {str(key).lower(): value for key, value in payload.items()}
+    for alias in aliases:
+        value = lookup.get(alias.lower())
+        if isinstance(value, (int, float)):
+            return float(value)
+        if value not in (None, ""):
+            try:
+                return float(str(value))
+            except ValueError:
+                continue
+    return None
+
+
+def _coerce_pressure_kpa(value: float) -> float:
+    if value > 2000.0:
+        return value / 1000.0
+    if value > 200.0:
+        return value / 10.0
+    return value
+
+
+def _coerce_temperature_c(value: float) -> float:
+    return value - 273.15 if value > 150.0 else value
+
+
+def _prune_prepared_issue(prepared: Any, field_prefix: str) -> None:
+    prepared.issues = [issue for issue in prepared.issues if not str(issue).startswith(f"{field_prefix}_")]
+    prepared.qc_reasons = [reason for reason in prepared.qc_reasons if field_prefix not in str(reason)]
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
 
 
 def _failed_window_result(

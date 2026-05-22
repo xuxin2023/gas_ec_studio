@@ -31,8 +31,8 @@
     }
   ],
   "coverage_summary": {
-    "covered": 8,
-    "partial": 9,
+    "covered": 9,
+    "partial": 8,
     "missing": 5,
     "beyond_eddypro": 3
   },
@@ -59,10 +59,10 @@
       "id": "raw_ascii_csv",
       "family": "raw_ingestion",
       "eddypro_requirement": "Process generic ASCII tabular high-frequency data with configurable columns and missing tokens.",
-      "gas_ec_status": "partial",
-      "evidence": ["models/station_models.py", "core/headless_batch_runner.py", "tests/test_ec_core_parity_v1.py"],
-      "gap": "Config metadata exists; production-grade arbitrary raw file parsing still needs broader fixtures.",
-      "next_action": "Add raw CSV to NormalizedHFFrame importer with unit conversion tests."
+      "gas_ec_status": "covered",
+      "evidence": ["core/storage/raw_importer.py", "core/headless_batch_runner.py", "models/station_models.py", "tests/test_raw_importer_biomet_injection.py"],
+      "gap": "",
+      "next_action": "Add more vendor-specific raw text fixtures and field aliases."
     },
     {
       "id": "raw_binary_tob1_slt",
