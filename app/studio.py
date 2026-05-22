@@ -3673,6 +3673,7 @@ class StudioController(QObject):
             })
         pass_rate = pass_count / max(1, pass_count + fail_count) if (pass_count + fail_count) > 0 else 0.0
         active_provenance = ref_provenance_map.get(bm_ref_id, {})
+        trace_gas_summary = dict(summary.get("trace_gas_summary", {}) or {})
         table_rows = [
             ("reference_id", bm_ref_id or "--", "参考数据集 ID"),
             ("target", bm_target or "--", "对标目标软件"),
@@ -3694,6 +3695,11 @@ class StudioController(QObject):
             table_rows.append(("provenance.qc_mapping", active_provenance.get("qc_mapping_strategy", "--"), "QC 映射策略"))
             for lim in active_provenance.get("known_limitations", [])[:3]:
                 table_rows.append(("provenance.limitation", lim[:60], "已知限制"))
+        if trace_gas_summary:
+            table_rows.append(("trace_gas.ch4_status", trace_gas_summary.get("status", "--") or "--", "CH4 trace gas processing status"))
+            table_rows.append(("trace_gas.ch4_method", trace_gas_summary.get("method", "--") or "--", "CH4 LI-7700 method"))
+            table_rows.append(("trace_gas.ch4_windows", str(trace_gas_summary.get("ch4_computed_window_count", 0)), "CH4 computed windows"))
+            table_rows.append(("trace_gas.ch4_avg_flux", str(trace_gas_summary.get("average_ch4_flux_nmol_m2_s", "--")), "Average corrected CH4 flux"))
         for detail in per_window_detail:
             ms = detail.get("match_strategy", "")
             table_rows.append((
@@ -3855,6 +3861,10 @@ class StudioController(QObject):
                         "spectral_correction_method": diagnostics.get("spectral_correction_method", ""),
                         "spectral_correction_measured_cospectrum_source": diagnostics.get("spectral_correction_measured_cospectrum_source", ""),
                         "spectral_correction_cospectrum_match": diagnostics.get("spectral_correction_cospectrum_match", {}),
+                        "ch4_method": diagnostics.get("ch4_method", ""),
+                        "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s"),
+                        "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s"),
+                        "ch4_correction_sequence": diagnostics.get("ch4_correction_sequence", {}),
                         "method_compare_summary": diagnostics.get("method_compare_summary", {}),
                         "method_compare_recommendations": diagnostics.get("method_compare_recommendations", {}),
                         "method_deviation_notes": list(deviation.get("method_deviation_notes", [])),
@@ -3910,6 +3920,10 @@ class StudioController(QObject):
                     "spectral_correction_method": deviation.get("spectral_correction_method", diagnostics.get("spectral_correction_method", "")),
                     "spectral_correction_measured_cospectrum_source": diagnostics.get("spectral_correction_measured_cospectrum_source", ""),
                     "spectral_correction_cospectrum_match": deviation.get("spectral_correction_cospectrum_match", diagnostics.get("spectral_correction_cospectrum_match", {})),
+                    "ch4_method": deviation.get("ch4_method", diagnostics.get("ch4_method", "")),
+                    "ch4_flux_nmol_m2_s": deviation.get("ch4_flux_nmol_m2_s", diagnostics.get("ch4_flux_nmol_m2_s")),
+                    "ch4_flux_level0_nmol_m2_s": deviation.get("ch4_flux_level0_nmol_m2_s", diagnostics.get("ch4_flux_level0_nmol_m2_s")),
+                    "ch4_correction_sequence": deviation.get("ch4_correction_sequence", diagnostics.get("ch4_correction_sequence", {})),
                     "method_compare_summary": deviation.get("method_compare_summary", diagnostics.get("method_compare_summary", {})),
                     "method_compare_recommendations": deviation.get("method_compare_recommendations", diagnostics.get("method_compare_recommendations", {})),
                     "method_deviation_notes": list(deviation.get("method_deviation_notes", [])),
@@ -3941,6 +3955,7 @@ class StudioController(QObject):
                 "timestamp_refers_to": summary.get("fluxnet_timestamp_refers_to", first_diag.get("fluxnet_timestamp_refers_to", "start")),
                 "timezone_offset_hours": summary.get("fluxnet_timezone_offset_h", first_diag.get("fluxnet_timezone_offset_h", 0.0)),
             }
+        trace_gas_summary = dict(manifest_payload.get("trace_gas_summary", {}) or summary.get("trace_gas_summary", {}) or {})
 
         table_rows = [
             ("reference_id", bm_ref_id or "--", "参考数据集 ID"),

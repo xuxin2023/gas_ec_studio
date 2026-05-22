@@ -909,6 +909,202 @@ def compute_ch4_flux_metrics(
     }
 
 
+def compute_li7700_correction_sequence(
+    *,
+    ch4_metrics: dict[str, Any],
+    mean_h2o_mmol: float,
+    mean_pressure_kpa: float,
+    mean_temp_c: float,
+    spectral_correction_factor: float = 1.0,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    config = dict(config or {})
+    if ch4_metrics.get("status") != "computed" or not isinstance(ch4_metrics.get("ch4_flux_nmol_m2_s"), (int, float)):
+        return {
+            "status": "not_available",
+            "selected_method": "li_7700_correction_sequence_v1",
+            "reason": "CH4 Level 0 covariance flux is not available.",
+            "levels": {},
+            "provenance": "LI-7700 correction sequence was skipped because the CH4 covariance input is missing.",
+            "limitations": ["No LI-7700 correction sequence can be evaluated without a CH4 covariance flux."],
+        }
+
+    level0_flux = float(ch4_metrics["ch4_flux_nmol_m2_s"])
+    scf = _bounded_float(spectral_correction_factor, default=1.0, lower=0.2, upper=5.0)
+    level1_flux = level0_flux * scf
+
+    apply_dilution = bool(config.get("apply_water_vapor_dilution", True))
+    h2o_molfrac = min(max(float(mean_h2o_mmol) / 1000.0, 0.0), 0.12)
+    water_vapor_dilution_factor = 1.0 / max(1.0 - h2o_molfrac, 0.88) if apply_dilution else 1.0
+    level2_flux = level1_flux * water_vapor_dilution_factor
+
+    spectroscopic_config = dict(config.get("spectroscopic_correction", {}) or {})
+    spectroscopic_factor, spectroscopic_status, spectroscopic_components = _li7700_spectroscopic_factor(
+        spectroscopic_config,
+        mean_pressure_kpa=mean_pressure_kpa,
+        mean_temp_c=mean_temp_c,
+        h2o_molfrac=h2o_molfrac,
+    )
+    self_heating_config = dict(config.get("self_heating_correction", {}) or {})
+    self_heating_factor, self_heating_status, self_heating_components = _li7700_self_heating_factor(
+        self_heating_config,
+        mean_temp_c=mean_temp_c,
+    )
+    level3_flux = level2_flux * spectroscopic_factor * self_heating_factor
+
+    limitations = [
+        "Spectroscopic correction is considered already present in LI-7700 mixing-ratio input unless empirical coefficients are configured.",
+        "Self-heating correction is only applied when explicit empirical parameters are configured.",
+        "The sequence follows EddyPro ordering but still needs real LI-7700 fixture parity before claiming numeric equivalence.",
+    ]
+    if spectroscopic_status == "applied_empirical":
+        limitations[0] = "Spectroscopic correction uses configured empirical coefficients; raw WMS line-shape fitting is not reproduced."
+    if self_heating_status == "applied_empirical":
+        limitations[1] = "Self-heating correction uses configured empirical proxy parameters; instrument energy balance is not reproduced."
+
+    return {
+        "status": "computed",
+        "selected_method": "li_7700_correction_sequence_v1",
+        "final_flux_nmol_m2_s": level3_flux,
+        "level0_flux_nmol_m2_s": level0_flux,
+        "level1_spectral_flux_nmol_m2_s": level1_flux,
+        "level2_density_flux_nmol_m2_s": level2_flux,
+        "level3_corrected_flux_nmol_m2_s": level3_flux,
+        "spectral_correction_factor": scf,
+        "water_vapor_dilution_factor": water_vapor_dilution_factor,
+        "spectroscopic_correction_factor": spectroscopic_factor,
+        "self_heating_correction_factor": self_heating_factor,
+        "mean_h2o_molfrac": h2o_molfrac,
+        "levels": {
+            "level0": {
+                "name": "raw_covariance",
+                "flux_nmol_m2_s": level0_flux,
+                "source_method": ch4_metrics.get("selected_method", "li_7700_level0_covariance"),
+            },
+            "level1": {
+                "name": "spectral_attenuation",
+                "factor": scf,
+                "flux_nmol_m2_s": level1_flux,
+            },
+            "level2": {
+                "name": "water_vapor_dilution_density",
+                "factor": water_vapor_dilution_factor,
+                "mean_h2o_molfrac": h2o_molfrac,
+                "flux_nmol_m2_s": level2_flux,
+            },
+            "level3": {
+                "name": "spectroscopic_self_heating",
+                "spectroscopic_status": spectroscopic_status,
+                "spectroscopic_factor": spectroscopic_factor,
+                "self_heating_status": self_heating_status,
+                "self_heating_factor": self_heating_factor,
+                "flux_nmol_m2_s": level3_flux,
+            },
+        },
+        "components": {
+            "spectroscopic": spectroscopic_components,
+            "self_heating": self_heating_components,
+            "density": {
+                "apply_water_vapor_dilution": apply_dilution,
+                "mean_h2o_mmol": float(mean_h2o_mmol),
+                "mean_h2o_molfrac": h2o_molfrac,
+            },
+        },
+        "provenance": (
+            "LI-7700 correction sequence v1: Level 0 covariance; Level 1 spectral attenuation; "
+            "Level 2 water-vapor dilution/density step; Level 3 spectroscopic/self-heating hooks. "
+            "Ordering follows LI-COR EddyPro guidance for LI-7200/LI-7700 systems."
+        ),
+        "limitations": limitations,
+    }
+
+
+def _bounded_float(value: Any, *, default: float, lower: float, upper: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = default
+    if not math.isfinite(number):
+        number = default
+    return min(max(number, lower), upper)
+
+
+def _li7700_spectroscopic_factor(
+    config: dict[str, Any],
+    *,
+    mean_pressure_kpa: float,
+    mean_temp_c: float,
+    h2o_molfrac: float,
+) -> tuple[float, str, dict[str, Any]]:
+    mode = str(config.get("mode", "input_corrected")).strip().lower()
+    if mode not in {"empirical", "configured"}:
+        return (
+            1.0,
+            "input_assumed_corrected",
+            {
+                "mode": "input_corrected",
+                "reason": "LI-7700 CH4 mixing-ratio inputs are assumed to include instrument spectroscopic compensation.",
+            },
+        )
+    pressure_coeff = float(config.get("pressure_sensitivity_per_kpa", 0.0) or 0.0)
+    temp_coeff = float(config.get("temperature_sensitivity_per_c", 0.0) or 0.0)
+    h2o_coeff = float(config.get("h2o_sensitivity_per_molfrac", 0.0) or 0.0)
+    pressure_delta = float(mean_pressure_kpa) - float(config.get("reference_pressure_kpa", 101.325) or 101.325)
+    temp_delta = float(mean_temp_c) - float(config.get("reference_temp_c", 20.0) or 20.0)
+    h2o_delta = h2o_molfrac - float(config.get("reference_h2o_molfrac", 0.0) or 0.0)
+    factor = 1.0 + pressure_coeff * pressure_delta + temp_coeff * temp_delta + h2o_coeff * h2o_delta
+    factor = _bounded_float(factor, default=1.0, lower=0.5, upper=1.5)
+    return (
+        factor,
+        "applied_empirical",
+        {
+            "mode": "empirical",
+            "factor": factor,
+            "pressure_delta_kpa": pressure_delta,
+            "temperature_delta_c": temp_delta,
+            "h2o_delta_molfrac": h2o_delta,
+            "coefficients": {
+                "pressure_sensitivity_per_kpa": pressure_coeff,
+                "temperature_sensitivity_per_c": temp_coeff,
+                "h2o_sensitivity_per_molfrac": h2o_coeff,
+            },
+        },
+    )
+
+
+def _li7700_self_heating_factor(
+    config: dict[str, Any],
+    *,
+    mean_temp_c: float,
+) -> tuple[float, str, dict[str, Any]]:
+    mode = str(config.get("mode", "not_configured")).strip().lower()
+    if mode not in {"empirical", "configured", "proxy"}:
+        return (
+            1.0,
+            "not_configured",
+            {
+                "mode": "not_configured",
+                "reason": "No LI-7700 self-heating empirical parameters were configured.",
+            },
+        )
+    temp_excess = config.get("temperature_excess_c")
+    if temp_excess is None and config.get("sensor_body_temp_c") is not None:
+        temp_excess = float(config.get("sensor_body_temp_c")) - float(mean_temp_c)
+    temp_excess = float(temp_excess or 0.0)
+    coefficient = float(config.get("flux_sensitivity_per_c", 0.0) or 0.0)
+    factor = _bounded_float(1.0 + coefficient * temp_excess, default=1.0, lower=0.7, upper=1.3)
+    return (
+        factor,
+        "applied_empirical",
+        {
+            "mode": "empirical",
+            "factor": factor,
+            "temperature_excess_c": temp_excess,
+            "flux_sensitivity_per_c": coefficient,
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Stationarity metrics
 # ---------------------------------------------------------------------------

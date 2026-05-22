@@ -19,6 +19,7 @@ from core.ec_rp.analysis import (
     build_uncertainty_band,
     compute_ch4_flux_metrics,
     compute_flux_metrics,
+    compute_li7700_correction_sequence,
     compute_footprint,
     compute_footprint_2d_grid,
     compute_planar_fit_coefficients,
@@ -85,6 +86,7 @@ class ECRPPipeline:
         footprint_config = _extract_footprint_config(config)
         uncertainty_method_config = _extract_uncertainty_method_config(config)
         spectral_correction_config = _extract_spectral_correction_config(config)
+        trace_gas_config = _extract_trace_gas_config(config)
         method_compare_config = _extract_method_compare_config(config)
         biomet_context = _build_biomet_context(config)
         benchmark_summary = _default_benchmark_summary(benchmark_config=benchmark_config, window_count=0)
@@ -161,6 +163,7 @@ class ECRPPipeline:
                             footprint_config=footprint_config,
                             uncertainty_method_config=uncertainty_method_config,
                             spectral_correction_config=spectral_correction_config,
+                            trace_gas_config=trace_gas_config,
                             method_compare_config=method_compare_config,
                             biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                         )
@@ -201,6 +204,7 @@ class ECRPPipeline:
                         footprint_config=footprint_config,
                         uncertainty_method_config=uncertainty_method_config,
                         spectral_correction_config=spectral_correction_config,
+                        trace_gas_config=trace_gas_config,
                         method_compare_config=method_compare_config,
                         biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                     )
@@ -287,6 +291,7 @@ class ECRPPipeline:
         footprint_config: dict[str, Any] | None = None,
         uncertainty_method_config: dict[str, Any] | None = None,
         spectral_correction_config: dict[str, Any] | None = None,
+        trace_gas_config: dict[str, Any] | None = None,
         method_compare_config: dict[str, Any] | None = None,
         biomet_override: dict[str, Any] | None = None,
     ) -> WindowRPResult:
@@ -678,6 +683,45 @@ class ECRPPipeline:
             diagnostics["spectral_correction_measured_cospectrum_window_id"] = str(sc.get("measured_cospectrum_window_id", ""))
             diagnostics["spectral_correction_cospectrum_match"] = dict(sc.get("measured_cospectrum_match", {}))
             performance_sections["spectral_correction_ms"] = round((time.perf_counter() - section_start) * 1000.0, 3)
+        ch4_config = dict((trace_gas_config or {}).get("ch4", {}) or {})
+        if ch4_config.get("use_spectral_correction_factor", True):
+            ch4_spectral_factor = ch4_config.get("spectral_correction_factor", diagnostics.get("spectral_correction_factor", 1.0))
+        else:
+            ch4_spectral_factor = ch4_config.get("spectral_correction_factor", 1.0)
+        ch4_sequence = compute_li7700_correction_sequence(
+            ch4_metrics=ch4_metrics,
+            mean_h2o_mmol=float(np.mean(lagged_h2o)),
+            mean_pressure_kpa=float(np.mean(prepared.pressure_kpa)),
+            mean_temp_c=float(np.mean(prepared.temp_c)),
+            spectral_correction_factor=float(ch4_spectral_factor or 1.0),
+            config=ch4_config,
+        )
+        diagnostics["ch4_correction_sequence"] = ch4_sequence
+        diagnostics["ch4_detail"] = {**ch4_metrics, "li7700_correction_sequence": ch4_sequence}
+        if ch4_sequence.get("status") == "computed":
+            diagnostics["ch4_status"] = "computed"
+            diagnostics["ch4_method"] = ch4_sequence.get("selected_method", "li_7700_correction_sequence_v1")
+            diagnostics["ch4_flux_level0_nmol_m2_s"] = ch4_sequence.get("level0_flux_nmol_m2_s")
+            diagnostics["ch4_flux_level1_spectral_nmol_m2_s"] = ch4_sequence.get("level1_spectral_flux_nmol_m2_s")
+            diagnostics["ch4_flux_level2_density_nmol_m2_s"] = ch4_sequence.get("level2_density_flux_nmol_m2_s")
+            diagnostics["ch4_flux_corrected_nmol_m2_s"] = ch4_sequence.get("level3_corrected_flux_nmol_m2_s")
+            diagnostics["ch4_flux_nmol_m2_s"] = ch4_sequence.get("final_flux_nmol_m2_s")
+            diagnostics["ch4_spectral_correction_factor"] = ch4_sequence.get("spectral_correction_factor")
+            diagnostics["ch4_water_vapor_dilution_factor"] = ch4_sequence.get("water_vapor_dilution_factor")
+            diagnostics["ch4_spectroscopic_correction_factor"] = ch4_sequence.get("spectroscopic_correction_factor")
+            diagnostics["ch4_self_heating_correction_factor"] = ch4_sequence.get("self_heating_correction_factor")
+            diagnostics["ch4_provenance"] = ch4_sequence.get("provenance", "")
+            diagnostics["ch4_limitations"] = ch4_sequence.get("limitations", [])
+            diagnostics["trace_gas_family"]["ch4"].update(
+                {
+                    "method": diagnostics["ch4_method"],
+                    "flux_nmol_m2_s": diagnostics["ch4_flux_nmol_m2_s"],
+                    "level0_flux_nmol_m2_s": diagnostics["ch4_flux_level0_nmol_m2_s"],
+                    "correction_sequence_status": ch4_sequence.get("status", ""),
+                    "provenance": diagnostics["ch4_provenance"],
+                    "limitations": diagnostics["ch4_limitations"],
+                }
+            )
         if method_compare_config and method_compare_config.get("enabled", False):
             section_start = time.perf_counter()
             compare_payload: dict[str, Any] = {}
@@ -1032,6 +1076,7 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
             "ch4_window_count": 0,
             "ch4_computed_window_count": 0,
             "average_ch4_flux_nmol_m2_s": None,
+            "average_ch4_level0_flux_nmol_m2_s": None,
             "method": "not_available",
             "provenance": "",
             "limitations": [],
@@ -1041,6 +1086,11 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
         diag
         for diag in diagnostics
         if diag.get("ch4_status") == "computed" and isinstance(diag.get("ch4_flux_nmol_m2_s"), (int, float))
+    ]
+    level0 = [
+        diag
+        for diag in diagnostics
+        if isinstance(diag.get("ch4_flux_level0_nmol_m2_s"), (int, float))
     ]
     first = next((diag for diag in diagnostics if diag.get("ch4_method")), diagnostics[0])
     return {
@@ -1052,7 +1102,13 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
             if computed
             else None
         ),
+        "average_ch4_level0_flux_nmol_m2_s": (
+            sum(float(diag["ch4_flux_level0_nmol_m2_s"]) for diag in level0) / len(level0)
+            if level0
+            else None
+        ),
         "method": first.get("ch4_method", "not_available"),
+        "correction_sequence": first.get("ch4_correction_sequence", {}),
         "provenance": first.get("ch4_provenance", ""),
         "limitations": list(first.get("ch4_limitations", []) or []),
     }
@@ -1088,6 +1144,7 @@ def _empty_summary(
             "ch4_window_count": 0,
             "ch4_computed_window_count": 0,
             "average_ch4_flux_nmol_m2_s": None,
+            "average_ch4_level0_flux_nmol_m2_s": None,
             "method": "not_available",
         },
         "project_code": project.code,
@@ -1305,6 +1362,25 @@ def _extract_spectral_correction_config(config: dict[str, Any]) -> dict[str, Any
     )
     sc["fcc_measured_cospectra"] = list(measured) if isinstance(measured, list) else []
     return sc
+
+
+def _extract_trace_gas_config(config: dict[str, Any]) -> dict[str, Any]:
+    trace = dict(config.get("trace_gas", {}) or {}) if isinstance(config.get("trace_gas", {}), dict) else {}
+    steps_trace = config.get("steps", {}).get("trace_gas", {}) if isinstance(config.get("steps"), dict) else {}
+    if isinstance(steps_trace, dict):
+        trace = {**steps_trace, **trace}
+    ch4 = dict(trace.get("ch4", {}) or {}) if isinstance(trace.get("ch4", {}), dict) else {}
+    li7700 = dict(trace.get("li7700", {}) or {}) if isinstance(trace.get("li7700", {}), dict) else {}
+    ch4 = {**li7700, **ch4}
+    ch4.setdefault("enabled", True)
+    ch4.setdefault("method", "li_7700_correction_sequence_v1")
+    ch4.setdefault("apply_water_vapor_dilution", True)
+    ch4.setdefault("use_spectral_correction_factor", True)
+    if "spectroscopic_correction" not in ch4:
+        ch4["spectroscopic_correction"] = {"mode": "input_corrected"}
+    if "self_heating_correction" not in ch4:
+        ch4["self_heating_correction"] = {"mode": "not_configured"}
+    return {"ch4": ch4}
 
 
 def _extract_network_output_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -2232,6 +2308,13 @@ def _build_method_deviation_notes_from_window(window: WindowRPResult) -> list[st
             f"spectral_correction: {spectral_method}{factor_text}{source_text}"
             + (f" [{spectral_provenance}]" if spectral_provenance else "")
         )
+    ch4_method = diagnostics.get("ch4_method", "")
+    if ch4_method:
+        ch4_flux = diagnostics.get("ch4_flux_nmol_m2_s")
+        ch4_level0 = diagnostics.get("ch4_flux_level0_nmol_m2_s")
+        final_text = f"; final={float(ch4_flux):.6f} nmol m-2 s-1" if isinstance(ch4_flux, (int, float)) else ""
+        level0_text = f"; level0={float(ch4_level0):.6f}" if isinstance(ch4_level0, (int, float)) else ""
+        notes.append(f"trace_gas_ch4: {ch4_method}{level0_text}{final_text}")
     method_compare = diagnostics.get("method_compare_recommendations", {})
     if isinstance(method_compare, dict) and method_compare:
         notes.append(
@@ -2249,6 +2332,10 @@ def _attach_method_context_to_benchmark(window: WindowRPResult, benchmark_payloa
     benchmark_payload["footprint_2d_peak_crosswind_m"] = diagnostics.get("footprint_2d_peak_crosswind_m")
     benchmark_payload["uncertainty_method"] = diagnostics.get("uncertainty_method", "")
     benchmark_payload["spectral_correction_method"] = diagnostics.get("spectral_correction_method", "")
+    benchmark_payload["ch4_method"] = diagnostics.get("ch4_method", "")
+    benchmark_payload["ch4_correction_sequence"] = diagnostics.get("ch4_correction_sequence", {})
+    benchmark_payload["ch4_flux_nmol_m2_s"] = diagnostics.get("ch4_flux_nmol_m2_s")
+    benchmark_payload["ch4_flux_level0_nmol_m2_s"] = diagnostics.get("ch4_flux_level0_nmol_m2_s")
     benchmark_payload["spectral_correction_cospectrum_match"] = diagnostics.get("spectral_correction_cospectrum_match", {})
     benchmark_payload["primary_flux_random_error"] = diagnostics.get("primary_flux_random_error")
     benchmark_payload["primary_flux_relative_uncertainty"] = diagnostics.get("primary_flux_relative_uncertainty")

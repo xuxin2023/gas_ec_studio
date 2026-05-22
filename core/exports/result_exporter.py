@@ -57,10 +57,19 @@ FULL_OUTPUT_SCHEMA = [
     ("primary_flux_source", "flux", "real"),
     ("ch4_status", "trace_gas", "real"),
     ("ch4_flux_nmol_m2_s", "trace_gas", "real"),
+    ("ch4_flux_level0_nmol_m2_s", "trace_gas", "real"),
+    ("ch4_flux_level1_spectral_nmol_m2_s", "trace_gas", "real"),
+    ("ch4_flux_level2_density_nmol_m2_s", "trace_gas", "real"),
+    ("ch4_flux_corrected_nmol_m2_s", "trace_gas", "real"),
     ("cov_w_ch4_ppb", "trace_gas", "real"),
     ("mean_ch4_ppb", "trace_gas", "real"),
     ("ch4_valid_ratio", "trace_gas", "real"),
     ("ch4_method", "trace_gas", "real"),
+    ("ch4_spectral_correction_factor", "trace_gas", "real"),
+    ("ch4_water_vapor_dilution_factor", "trace_gas", "real"),
+    ("ch4_spectroscopic_correction_factor", "trace_gas", "real"),
+    ("ch4_self_heating_correction_factor", "trace_gas", "real"),
+    ("ch4_correction_sequence", "trace_gas", "real"),
     ("ch4_provenance", "trace_gas", "real"),
     ("ch4_limitations", "trace_gas", "real"),
     ("ch4_detail", "trace_gas", "real"),
@@ -317,10 +326,19 @@ class ResultExporter:
             "trace_gas_fields": [
                 "ch4_status",
                 "ch4_flux_nmol_m2_s",
+                "ch4_flux_level0_nmol_m2_s",
+                "ch4_flux_level1_spectral_nmol_m2_s",
+                "ch4_flux_level2_density_nmol_m2_s",
+                "ch4_flux_corrected_nmol_m2_s",
                 "cov_w_ch4_ppb",
                 "mean_ch4_ppb",
                 "ch4_valid_ratio",
                 "ch4_method",
+                "ch4_spectral_correction_factor",
+                "ch4_water_vapor_dilution_factor",
+                "ch4_spectroscopic_correction_factor",
+                "ch4_self_heating_correction_factor",
+                "ch4_correction_sequence",
                 "ch4_provenance",
                 "ch4_limitations",
             ],
@@ -353,6 +371,10 @@ class ResultExporter:
                 "FC_CI_LOWER",
                 "FC_CI_UPPER",
                 "FC_CI_LEVEL",
+            ],
+            "network_trace_gas_fields": [
+                "FCH4",
+                "FCH4_QC",
             ],
             "method_provenance_fields": [
                 "primary_flux_source",
@@ -483,10 +505,14 @@ class ResultExporter:
             "water_vapor_flux": window.water_vapor_flux,
             "ch4_status": diagnostics.get("ch4_status", ""),
             "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", ""),
+            "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", ""),
+            "ch4_flux_corrected_nmol_m2_s": diagnostics.get("ch4_flux_corrected_nmol_m2_s", ""),
             "cov_w_ch4_ppb": diagnostics.get("cov_w_ch4_ppb", ""),
             "mean_ch4_ppb": diagnostics.get("mean_ch4_ppb", ""),
             "ch4_valid_ratio": diagnostics.get("ch4_valid_ratio", ""),
             "ch4_method": diagnostics.get("ch4_method", ""),
+            "ch4_spectral_correction_factor": diagnostics.get("ch4_spectral_correction_factor", ""),
+            "ch4_water_vapor_dilution_factor": diagnostics.get("ch4_water_vapor_dilution_factor", ""),
             "qc_grade": window.qc_grade,
             "anomaly_type": window.anomaly_type,
             "reason": window.reason,
@@ -579,10 +605,19 @@ class ResultExporter:
                 "primary_flux_source": rp_window.primary_flux_source if rp_window else "",
                 "ch4_status": diagnostics.get("ch4_status", "") if diagnostics else "",
                 "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", "") if diagnostics else "",
+                "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", "") if diagnostics else "",
+                "ch4_flux_level1_spectral_nmol_m2_s": diagnostics.get("ch4_flux_level1_spectral_nmol_m2_s", "") if diagnostics else "",
+                "ch4_flux_level2_density_nmol_m2_s": diagnostics.get("ch4_flux_level2_density_nmol_m2_s", "") if diagnostics else "",
+                "ch4_flux_corrected_nmol_m2_s": diagnostics.get("ch4_flux_corrected_nmol_m2_s", "") if diagnostics else "",
                 "cov_w_ch4_ppb": diagnostics.get("cov_w_ch4_ppb", "") if diagnostics else "",
                 "mean_ch4_ppb": diagnostics.get("mean_ch4_ppb", "") if diagnostics else "",
                 "ch4_valid_ratio": diagnostics.get("ch4_valid_ratio", "") if diagnostics else "",
                 "ch4_method": diagnostics.get("ch4_method", "") if diagnostics else "",
+                "ch4_spectral_correction_factor": diagnostics.get("ch4_spectral_correction_factor", "") if diagnostics else "",
+                "ch4_water_vapor_dilution_factor": diagnostics.get("ch4_water_vapor_dilution_factor", "") if diagnostics else "",
+                "ch4_spectroscopic_correction_factor": diagnostics.get("ch4_spectroscopic_correction_factor", "") if diagnostics else "",
+                "ch4_self_heating_correction_factor": diagnostics.get("ch4_self_heating_correction_factor", "") if diagnostics else "",
+                "ch4_correction_sequence": json.dumps(diagnostics.get("ch4_correction_sequence", {}), ensure_ascii=False) if diagnostics and diagnostics.get("ch4_correction_sequence") else "",
                 "ch4_provenance": diagnostics.get("ch4_provenance", "") if diagnostics else "",
                 "ch4_limitations": json.dumps(diagnostics.get("ch4_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("ch4_limitations") else "",
                 "ch4_detail": json.dumps(diagnostics.get("ch4_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("ch4_detail") else "",
@@ -725,6 +760,7 @@ class ResultExporter:
                 "ch4_window_count": 0,
                 "ch4_computed_window_count": 0,
                 "average_ch4_flux_nmol_m2_s": None,
+                "average_ch4_level0_flux_nmol_m2_s": None,
                 "method": "not_available",
                 "provenance": "",
                 "limitations": [],
@@ -734,6 +770,11 @@ class ResultExporter:
             diag
             for diag in diagnostics
             if diag.get("ch4_status") == "computed" and isinstance(diag.get("ch4_flux_nmol_m2_s"), (int, float))
+        ]
+        level0 = [
+            diag
+            for diag in diagnostics
+            if isinstance(diag.get("ch4_flux_level0_nmol_m2_s"), (int, float))
         ]
         first = next((diag for diag in diagnostics if diag.get("ch4_method")), diagnostics[0] if diagnostics else {})
         return {
@@ -745,7 +786,13 @@ class ResultExporter:
                 if computed
                 else None
             ),
+            "average_ch4_level0_flux_nmol_m2_s": (
+                sum(float(diag["ch4_flux_level0_nmol_m2_s"]) for diag in level0) / len(level0)
+                if level0
+                else None
+            ),
             "method": first.get("ch4_method", "not_available"),
+            "correction_sequence": first.get("ch4_correction_sequence", {}),
             "provenance": first.get("ch4_provenance", ""),
             "limitations": list(first.get("ch4_limitations", []) or []),
         }
@@ -1628,10 +1675,14 @@ class ResultExporter:
                     "water_vapor_flux": "",
                     "ch4_status": "",
                     "ch4_flux_nmol_m2_s": "",
+                    "ch4_flux_level0_nmol_m2_s": "",
+                    "ch4_flux_corrected_nmol_m2_s": "",
                     "cov_w_ch4_ppb": "",
                     "mean_ch4_ppb": "",
                     "ch4_valid_ratio": "",
                     "ch4_method": "",
+                    "ch4_spectral_correction_factor": "",
+                    "ch4_water_vapor_dilution_factor": "",
                     "qc_grade": "",
                     "anomaly_type": "gap",
                     "reason": "no data for this averaging period",
@@ -1782,6 +1833,10 @@ class ResultExporter:
             entry["uncertainty_method"] = br.get("uncertainty_method", diagnostics.get("uncertainty_method", ""))
             entry["spectral_correction_method"] = br.get("spectral_correction_method", diagnostics.get("spectral_correction_method", ""))
             entry["spectral_correction_cospectrum_match"] = br.get("spectral_correction_cospectrum_match", diagnostics.get("spectral_correction_cospectrum_match", {}))
+            entry["ch4_method"] = br.get("ch4_method", diagnostics.get("ch4_method", ""))
+            entry["ch4_flux_nmol_m2_s"] = br.get("ch4_flux_nmol_m2_s", diagnostics.get("ch4_flux_nmol_m2_s"))
+            entry["ch4_flux_level0_nmol_m2_s"] = br.get("ch4_flux_level0_nmol_m2_s", diagnostics.get("ch4_flux_level0_nmol_m2_s"))
+            entry["ch4_correction_sequence"] = br.get("ch4_correction_sequence", diagnostics.get("ch4_correction_sequence", {}))
             entry["primary_flux_random_error"] = br.get("primary_flux_random_error", diagnostics.get("primary_flux_random_error"))
             entry["primary_flux_relative_uncertainty"] = br.get("primary_flux_relative_uncertainty", diagnostics.get("primary_flux_relative_uncertainty"))
             entry["primary_flux_uncertainty_band"] = br.get("primary_flux_uncertainty_band", diagnostics.get("primary_flux_uncertainty_band"))
@@ -1885,6 +1940,8 @@ class ResultExporter:
         qc = window.qc_grade
         qc_num = {"A": 0, "B": 1, "C": 2}.get(qc, 2)
         diagnostics = dict(window.diagnostics or {})
+        ch4_flux = diagnostics.get("ch4_flux_nmol_m2_s", gap_fill_value)
+        ch4_qc = qc_num if diagnostics.get("ch4_status") == "computed" else gap_fill_value
         return {
             "TIMESTAMP_START": ts_start,
             "TIMESTAMP_END": ts_end,
@@ -1899,6 +1956,8 @@ class ResultExporter:
             "PA": window.mean_pressure_kpa * 10.0 if window.mean_pressure_kpa != 0.0 else gap_fill_value,
             "CO2": window.mean_co2_ppm if window.mean_co2_ppm != 0.0 else gap_fill_value,
             "H2O": window.mean_h2o_mmol if window.mean_h2o_mmol != 0.0 else gap_fill_value,
+            "FCH4": ch4_flux,
+            "FCH4_QC": ch4_qc,
             "FC_RANDOM_ERROR": diagnostics.get("primary_flux_random_error", gap_fill_value),
             "FC_REL_UNCERTAINTY": diagnostics.get("primary_flux_relative_uncertainty", gap_fill_value),
             "FC_CI_LOWER": diagnostics.get("primary_flux_ci_lower", gap_fill_value),
@@ -1953,6 +2012,8 @@ class ResultExporter:
             "PA": gap_fill_value,
             "CO2": gap_fill_value,
             "H2O": gap_fill_value,
+            "FCH4": gap_fill_value,
+            "FCH4_QC": 2,
             "FC_RANDOM_ERROR": gap_fill_value,
             "FC_REL_UNCERTAINTY": gap_fill_value,
             "FC_CI_LOWER": gap_fill_value,
@@ -2257,6 +2318,10 @@ class ResultExporter:
                 "uncertainty_method": diag.get("uncertainty_method", ""),
                 "spectral_correction_method": diag.get("spectral_correction_method", ""),
                 "spectral_correction_cospectrum_match": diag.get("spectral_correction_cospectrum_match", {}),
+                "ch4_method": diag.get("ch4_method", ""),
+                "ch4_flux_nmol_m2_s": diag.get("ch4_flux_nmol_m2_s"),
+                "ch4_flux_level0_nmol_m2_s": diag.get("ch4_flux_level0_nmol_m2_s"),
+                "ch4_correction_sequence": diag.get("ch4_correction_sequence", {}),
                 "method_compare_summary": diag.get("method_compare_summary", {}),
                 "method_compare_recommendations": diag.get("method_compare_recommendations", {}),
                 "method_deviation_notes": _build_method_deviation_notes(diag, {}),
@@ -2298,6 +2363,10 @@ class ResultExporter:
                 "uncertainty_method": diag.get("uncertainty_method", ""),
                 "spectral_correction_method": diag.get("spectral_correction_method", ""),
                 "spectral_correction_cospectrum_match": diag.get("spectral_correction_cospectrum_match", {}),
+                "ch4_method": diag.get("ch4_method", ""),
+                "ch4_flux_nmol_m2_s": diag.get("ch4_flux_nmol_m2_s"),
+                "ch4_flux_level0_nmol_m2_s": diag.get("ch4_flux_level0_nmol_m2_s"),
+                "ch4_correction_sequence": diag.get("ch4_correction_sequence", {}),
                 "method_compare_summary": diag.get("method_compare_summary", {}),
                 "method_compare_recommendations": diag.get("method_compare_recommendations", {}),
                 "method_deviation_notes": _build_method_deviation_notes(diag, bm_dev),
@@ -2354,6 +2423,13 @@ def _build_method_deviation_notes(diag: dict[str, Any], bm_dev: dict[str, Any]) 
             f"spectral_correction: {sc_method} (factor={sc_factor}){source_text}"
             + (f" [{sc_prov}]" if sc_prov else "")
         )
+    ch4_method = diag.get("ch4_method", "")
+    if ch4_method:
+        ch4_flux = diag.get("ch4_flux_nmol_m2_s")
+        ch4_level0 = diag.get("ch4_flux_level0_nmol_m2_s")
+        final_text = f"; final={float(ch4_flux):.6f} nmol m-2 s-1" if isinstance(ch4_flux, (int, float)) else ""
+        level0_text = f"; level0={float(ch4_level0):.6f}" if isinstance(ch4_level0, (int, float)) else ""
+        notes.append(f"trace_gas_ch4: {ch4_method}{level0_text}{final_text}")
     method_compare = diag.get("method_compare_recommendations", {})
     if isinstance(method_compare, dict) and method_compare:
         notes.append(
@@ -2377,6 +2453,8 @@ FLUXNET_HALF_HOURLY_SCHEMA = [
     ("PA", "kPa*10", "Atmospheric pressure (in hPa)"),
     ("CO2", "umol mol-1", "CO2 mixing ratio"),
     ("H2O", "mmol m-3", "H2O concentration"),
+    ("FCH4", "nmol m-2 s-1", "Methane flux"),
+    ("FCH4_QC", "0/1/2", "Methane flux QC flag"),
     ("FC_RANDOM_ERROR", "umol m-2 s-1", "Random uncertainty propagated to flux space"),
     ("FC_REL_UNCERTAINTY", "fraction", "Relative uncertainty propagated to primary flux"),
     ("FC_CI_LOWER", "umol m-2 s-1", "Lower confidence bound for FC"),
@@ -2401,6 +2479,8 @@ AMERIFLUX_FIELD_MAP = {
     "PA": "PA",
     "CO2": "CO2",
     "H2O": "H2O",
+    "FCH4": "FCH4",
+    "FCH4_QC": "FCH4_QC",
     "FC_RANDOM_ERROR": "FC_RANDOM_ERROR",
     "FC_REL_UNCERTAINTY": "FC_REL_UNCERTAINTY",
     "FC_CI_LOWER": "FC_CI_LOWER",
@@ -2425,6 +2505,8 @@ ICOS_FIELD_MAP = {
     "PA": "Pa",
     "CO2": "CO2",
     "H2O": "H2O",
+    "FCH4": "FCH4",
+    "FCH4_QC": "FCH4_QC",
     "FC_RANDOM_ERROR": "FcRandomError",
     "FC_REL_UNCERTAINTY": "FcRelUncertainty",
     "FC_CI_LOWER": "FcCiLower",

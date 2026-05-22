@@ -8,6 +8,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import numpy as np
 
+from core.ec_rp.analysis import compute_li7700_correction_sequence
 from core.exports.result_exporter import ResultExporter
 from core.headless_batch_runner import load_input_rows, run_headless_batch
 from core.storage.ghg_bundle import load_ghg_normalized_frames
@@ -122,7 +123,43 @@ def test_ghg_bundle_import_maps_ch4_aliases(tmp_path: Path) -> None:
     assert json.loads(rows[0].raw_text)["ch4_ppb"] == 1910.0
 
 
-def test_rp_pipeline_exports_ch4_level0_covariance(tmp_path: Path) -> None:
+def test_li7700_correction_sequence_applies_configured_levels() -> None:
+    sequence = compute_li7700_correction_sequence(
+        ch4_metrics={
+            "status": "computed",
+            "ch4_flux_nmol_m2_s": 10.0,
+            "selected_method": "li_7700_level0_covariance",
+        },
+        mean_h2o_mmol=20.0,
+        mean_pressure_kpa=100.0,
+        mean_temp_c=25.0,
+        spectral_correction_factor=1.05,
+        config={
+            "apply_water_vapor_dilution": True,
+            "spectroscopic_correction": {
+                "mode": "empirical",
+                "pressure_sensitivity_per_kpa": 0.001,
+                "temperature_sensitivity_per_c": 0.0005,
+                "h2o_sensitivity_per_molfrac": 0.1,
+            },
+            "self_heating_correction": {
+                "mode": "empirical",
+                "sensor_body_temp_c": 27.0,
+                "flux_sensitivity_per_c": 0.01,
+            },
+        },
+    )
+
+    assert sequence["status"] == "computed"
+    assert sequence["selected_method"] == "li_7700_correction_sequence_v1"
+    assert sequence["level1_spectral_flux_nmol_m2_s"] == 10.5
+    assert sequence["water_vapor_dilution_factor"] > 1.0
+    assert sequence["spectroscopic_correction_factor"] != 1.0
+    assert sequence["self_heating_correction_factor"] > 1.0
+    assert sequence["final_flux_nmol_m2_s"] != sequence["level0_flux_nmol_m2_s"]
+
+
+def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> None:
     rows = _make_ch4_rows()
     metadata = MetadataBundle(
         project=ProjectProfile(code="CH4-001", name="CH4 Trace Gas"),
@@ -135,6 +172,14 @@ def test_rp_pipeline_exports_ch4_level0_covariance(tmp_path: Path) -> None:
         "detrend_mode": "linear",
         "lag_phase": {"strategy": "covariance_max", "search_window_s": 1.0, "expected_lag_s": 0.4},
         "network_output": {"schema_target": "FLUXNET", "timestamp_refers_to": "start", "timezone_offset_hours": 0.0},
+        "trace_gas": {
+            "ch4": {
+                "spectral_correction_factor": 1.04,
+                "apply_water_vapor_dilution": True,
+                "spectroscopic_correction": {"mode": "input_corrected"},
+                "self_heating_correction": {"mode": "not_configured"},
+            }
+        },
     }
 
     result = run_headless_batch(config=config, metadata=metadata, rows=rows, data_source="ch4-fixture")
@@ -142,10 +187,13 @@ def test_rp_pipeline_exports_ch4_level0_covariance(tmp_path: Path) -> None:
     diagnostics = first_window.diagnostics
 
     assert diagnostics["ch4_status"] == "computed"
-    assert diagnostics["ch4_method"] == "li_7700_level0_covariance"
+    assert diagnostics["ch4_method"] == "li_7700_correction_sequence_v1"
     assert diagnostics["ch4_flux_nmol_m2_s"] != 0.0
-    assert "spectroscopic" in " ".join(diagnostics["ch4_limitations"])
+    assert diagnostics["ch4_flux_level0_nmol_m2_s"] != diagnostics["ch4_flux_nmol_m2_s"]
+    assert diagnostics["ch4_correction_sequence"]["levels"]["level1"]["factor"] == 1.04
+    assert "Spectroscopic" in " ".join(diagnostics["ch4_limitations"])
     assert result["rp_result"].summary["trace_gas_summary"]["ch4_computed_window_count"] == len(result["rp_result"].windows)
+    assert result["rp_result"].summary["trace_gas_summary"]["average_ch4_level0_flux_nmol_m2_s"] is not None
     assert result["manifest"]["trace_gas_summary"]["status"] == "computed"
 
     exporter = ResultExporter(tmp_path)
@@ -165,13 +213,19 @@ def test_rp_pipeline_exports_ch4_level0_covariance(tmp_path: Path) -> None:
         full_rows = list(csv.DictReader(handle))
     with Path(exported["files"]["rp_results"]).open("r", encoding="utf-8", newline="") as handle:
         rp_rows = list(csv.DictReader(handle))
+    fluxnet = json.loads(Path(exported["files"]["fluxnet_half_hourly_artifact"]).read_text(encoding="utf-8"))
     manifest = json.loads(Path(exported["files"]["export_manifest"]).read_text(encoding="utf-8"))
     summary = json.loads(Path(exported["files"]["summary"]).read_text(encoding="utf-8"))
 
     assert full_rows[0]["ch4_status"] == "computed"
     assert float(full_rows[0]["ch4_flux_nmol_m2_s"]) != 0.0
+    assert float(full_rows[0]["ch4_flux_level0_nmol_m2_s"]) != float(full_rows[0]["ch4_flux_nmol_m2_s"])
     assert "LI-7700" in full_rows[0]["ch4_provenance"]
-    assert rp_rows[0]["ch4_method"] == "li_7700_level0_covariance"
+    assert rp_rows[0]["ch4_method"] == "li_7700_correction_sequence_v1"
+    assert float(rp_rows[0]["ch4_flux_corrected_nmol_m2_s"]) == float(rp_rows[0]["ch4_flux_nmol_m2_s"])
+    assert "FCH4" in fluxnet["rows"][0]
+    assert fluxnet["rows"][0]["FCH4"] != -9999.0
     assert manifest["trace_gas_summary"]["status"] == "computed"
     assert "ch4_flux_nmol_m2_s" in manifest["trace_gas_fields"]
+    assert "FCH4" in manifest["network_trace_gas_fields"]
     assert summary["trace_gas_summary"]["ch4_computed_window_count"] == len(result["rp_result"].windows)
