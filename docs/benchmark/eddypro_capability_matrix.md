@@ -22,6 +22,7 @@ The machine-readable source of truth is `docs/benchmark/eddypro_capability_matri
 - Biomet aggregation exists, but it does not yet override all thermodynamic ambient variables used by the RP flux equations.
 - Spectral methods exist, but long-period binned spectra/cospectra assessment and EddyPro-equivalent output families need more work.
 - CO2/H2O/energy flux fields exist, but full EddyPro Level 0/1/2/3 closed-path correction sequencing still needs validation.
+- CH4 now has raw/GHG/headless ingestion plus Level 0 covariance flux output with LI-7700 provenance, but full LI-7700 spectroscopic, density, and self-heating corrections are still incomplete.
 - Footprint v1 exists, but georeferenced GIS outputs remain missing.
 
 ## Missing
@@ -30,7 +31,6 @@ The machine-readable source of truth is `docs/benchmark/eddypro_capability_matri
 - GPS/PTP synchronization subsystem.
 - Sonic head correction, flow distortion, angle-of-attack correction, and model-specific anemometer bug corrections.
 - Crosswind correction.
-- CH4/trace-gas pipeline, including LI-7700-style spectroscopic corrections.
 - Full SmartFlux-like embedded/on-site runtime hardening.
 
 ## Official Source Anchors

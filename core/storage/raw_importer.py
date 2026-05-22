@@ -17,6 +17,7 @@ DEFAULT_COLUMN_ALIASES = {
     "timestamp": ("timestamp", "datetime", "date_time", "time", "ts"),
     "co2_ppm": ("co2_ppm", "co2", "co2_molfrac", "co2_mixing_ratio"),
     "h2o_mmol": ("h2o_mmol", "h2o", "h2o_molfrac", "h2o_mixing_ratio"),
+    "ch4_ppb": ("ch4_ppb", "ch4_ppm", "ch4", "methane", "ch4_molfrac", "ch4_mixing_ratio"),
     "pressure_kpa": ("pressure_kpa", "pressure", "press", "pa", "p"),
     "chamber_temp_c": ("chamber_temp_c", "temperature", "temp", "ta", "sonic_temperature"),
     "case_temp_c": ("case_temp_c", "cell_temperature", "analyzer_temperature"),
@@ -110,10 +111,12 @@ def _frame_from_raw_row(
         key: _mapped_float(lookup, mappings, key, aliases=DEFAULT_COLUMN_ALIASES[key])
         for key in ("u", "v", "w")
     }
+    ch4_ppb = _mapped_float(lookup, mappings, "ch4_ppb", aliases=DEFAULT_COLUMN_ALIASES["ch4_ppb"])
     raw_payload = {
         key: value
         for key, value in {
             **wind_payload,
+            "ch4_ppb": ch4_ppb,
             "raw_source": str(source_path),
         }.items()
         if value is not None
@@ -126,6 +129,7 @@ def _frame_from_raw_row(
         frame_quality=FrameQuality.FULL,
         co2_ppm=_mapped_float(lookup, mappings, "co2_ppm", aliases=DEFAULT_COLUMN_ALIASES["co2_ppm"]),
         h2o_mmol=_mapped_float(lookup, mappings, "h2o_mmol", aliases=DEFAULT_COLUMN_ALIASES["h2o_mmol"]),
+        ch4_ppb=ch4_ppb,
         pressure_kpa=_mapped_float(lookup, mappings, "pressure_kpa", aliases=DEFAULT_COLUMN_ALIASES["pressure_kpa"]),
         chamber_temp_c=_mapped_float(lookup, mappings, "chamber_temp_c", aliases=DEFAULT_COLUMN_ALIASES["chamber_temp_c"]),
         case_temp_c=_mapped_float(lookup, mappings, "case_temp_c", aliases=DEFAULT_COLUMN_ALIASES["case_temp_c"]),
@@ -139,6 +143,9 @@ def _mapping_by_variable(mappings: list[RawColumnMapping]) -> dict[str, RawColum
     aliases = {
         "co2": "co2_ppm",
         "h2o": "h2o_mmol",
+        "ch4": "ch4_ppb",
+        "methane": "ch4_ppb",
+        "ch4_ppm": "ch4_ppb",
         "pressure": "pressure_kpa",
         "temperature": "chamber_temp_c",
         "temp": "chamber_temp_c",
@@ -161,13 +168,20 @@ def _mapped_float(
     *,
     aliases: tuple[str, ...],
 ) -> float | None:
-    value = _mapped_value(lookup, mappings, variable) or _first_lookup(lookup, aliases)
     mapping = mappings.get(variable)
+    alias = ""
+    if mapping is not None:
+        value = _mapped_value(lookup, mappings, variable)
+    else:
+        item = _first_lookup_item(lookup, aliases)
+        alias, value = item if item is not None else ("", None)
     number = _optional_float(value)
     if number is None:
         return None
     if mapping is not None and mapping.scaling is not None:
         number *= float(mapping.scaling)
+    if mapping is None and variable == "ch4_ppb":
+        return _convert_ch4_alias_value(number, alias)
     return _convert_units(number, mapping.input_unit if mapping else "", variable=variable)
 
 
@@ -186,6 +200,24 @@ def _first_lookup(lookup: dict[str, str], aliases: tuple[str, ...]) -> str | Non
     return None
 
 
+def _first_lookup_item(lookup: dict[str, str], aliases: tuple[str, ...]) -> tuple[str, str] | None:
+    for alias in aliases:
+        value = lookup.get(alias.lower())
+        if value not in (None, ""):
+            return alias.lower(), value
+    return None
+
+
+def _convert_ch4_alias_value(value: float, alias: str) -> float:
+    if alias == "ch4_ppm":
+        return value * 1000.0
+    if alias in {"ch4_molfrac", "ch4_mixing_ratio"} and abs(value) < 0.01:
+        return value * 1_000_000_000.0
+    if alias in {"ch4", "methane", "ch4_mixing_ratio"} and 0.0 < abs(value) < 10.0:
+        return value * 1000.0
+    return value
+
+
 def _convert_units(value: float, unit: str, *, variable: str) -> float:
     normalized = unit.strip().lower().replace(" ", "")
     if variable == "pressure_kpa":
@@ -199,6 +231,11 @@ def _convert_units(value: float, unit: str, *, variable: str) -> float:
         return value * 1_000_000.0
     if variable == "h2o_mmol" and normalized in {"mol/mol", "molmol-1"}:
         return value * 1000.0
+    if variable == "ch4_ppb":
+        if normalized in {"mol/mol", "molmol-1"}:
+            return value * 1_000_000_000.0
+        if normalized in {"ppm", "umol/mol", "micromol/mol"}:
+            return value * 1000.0
     return value
 
 

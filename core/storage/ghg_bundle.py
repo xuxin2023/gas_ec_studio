@@ -15,6 +15,7 @@ from models.hf_models import FrameQuality, NormalizedHFFrame
 GAS_COLUMN_ALIASES = {
     "co2_ppm": ("co2_ppm", "co2", "co2_molar_density", "co2_molfrac", "co2_mixing_ratio"),
     "h2o_mmol": ("h2o_mmol", "h2o", "h2o_molar_density", "h2o_molfrac", "h2o_mixing_ratio"),
+    "ch4_ppb": ("ch4_ppb", "ch4_ppm", "ch4", "methane", "ch4_molfrac", "ch4_mixing_ratio"),
     "pressure_kpa": ("pressure_kpa", "pressure", "press", "p", "ambient_pressure"),
     "chamber_temp_c": ("chamber_temp_c", "air_temperature", "temperature", "temp", "ta", "sonic_temperature"),
     "case_temp_c": ("case_temp_c", "cell_temperature", "analyzer_temperature", "box_temperature"),
@@ -162,6 +163,7 @@ def _normalized_frame_from_ghg_row(
     timestamp = _parse_datetime(_first_lookup_value(lookup, TIME_COLUMN_ALIASES))
     if timestamp is None:
         return None
+    ch4_ppb = _optional_ch4_ppb(lookup)
     wind_payload = {
         key: _optional_float(_first_lookup_value(lookup, aliases))
         for key, aliases in WIND_COLUMN_ALIASES.items()
@@ -170,6 +172,7 @@ def _normalized_frame_from_ghg_row(
         key: value
         for key, value in {
             **wind_payload,
+            "ch4_ppb": ch4_ppb,
             "ghg_bundle": str(bundle_path),
             "ghg_member": member_name,
         }.items()
@@ -183,6 +186,7 @@ def _normalized_frame_from_ghg_row(
         frame_quality=FrameQuality.FULL,
         co2_ppm=_optional_float(_first_lookup_value(lookup, GAS_COLUMN_ALIASES["co2_ppm"])),
         h2o_mmol=_optional_float(_first_lookup_value(lookup, GAS_COLUMN_ALIASES["h2o_mmol"])),
+        ch4_ppb=ch4_ppb,
         pressure_kpa=_optional_float(_first_lookup_value(lookup, GAS_COLUMN_ALIASES["pressure_kpa"])),
         chamber_temp_c=_optional_float(_first_lookup_value(lookup, GAS_COLUMN_ALIASES["chamber_temp_c"])),
         case_temp_c=_optional_float(_first_lookup_value(lookup, GAS_COLUMN_ALIASES["case_temp_c"])),
@@ -238,6 +242,33 @@ def _first_lookup_value(lookup: dict[str, str], aliases: tuple[str, ...]) -> str
         if value not in (None, ""):
             return value
     return None
+
+
+def _first_lookup_item(lookup: dict[str, str], aliases: tuple[str, ...]) -> tuple[str, str] | None:
+    for alias in aliases:
+        value = lookup.get(alias.lower())
+        if value not in (None, ""):
+            return alias.lower(), value
+    return None
+
+
+def _optional_ch4_ppb(lookup: dict[str, str]) -> float | None:
+    item = _first_lookup_item(lookup, GAS_COLUMN_ALIASES["ch4_ppb"])
+    if item is None:
+        return None
+    alias, raw_value = item
+    value = _optional_float(raw_value)
+    if value is None:
+        return None
+    if alias == "ch4_ppb":
+        return value
+    if alias == "ch4_ppm":
+        return value * 1000.0
+    if alias in {"ch4_molfrac", "ch4_mixing_ratio"} and abs(value) < 0.01:
+        return value * 1_000_000_000.0
+    if alias in {"ch4", "methane", "ch4_mixing_ratio"} and 0.0 < abs(value) < 10.0:
+        return value * 1000.0
+    return value
 
 
 def _optional_float(value: Any) -> float | None:

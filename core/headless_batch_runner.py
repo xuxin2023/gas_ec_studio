@@ -148,6 +148,7 @@ def build_batch_manifest(
         "network_validation_status": network_validation.get("validation_status", ""),
         "network_missing_fields": network_validation.get("missing_fields", []),
         "network_validation_summary": network_validation,
+        "trace_gas_summary": deepcopy(rp_result.summary.get("trace_gas_summary", {})) if isinstance(rp_result.summary, dict) else {},
     }
 
 
@@ -180,6 +181,7 @@ def load_input_rows(path: str | Path, metadata: MetadataBundle | dict[str, Any] 
                 frame_quality=FrameQuality(str(row.get("frame_quality", FrameQuality.FULL.value))),
                 co2_ppm=_optional_float(row.get("co2_ppm")),
                 h2o_mmol=_optional_float(row.get("h2o_mmol")),
+                ch4_ppb=_optional_float(row.get("ch4_ppb")),
                 pressure_kpa=_optional_float(row.get("pressure_kpa")),
                 chamber_temp_c=_optional_float(row.get("chamber_temp_c")),
                 case_temp_c=_optional_float(row.get("case_temp_c")),

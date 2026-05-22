@@ -32,8 +32,8 @@
   ],
   "coverage_summary": {
     "covered": 9,
-    "partial": 8,
-    "missing": 5,
+    "partial": 9,
+    "missing": 4,
     "beyond_eddypro": 3
   },
   "capabilities": [
@@ -176,10 +176,10 @@
       "id": "ch4_trace_gas_fluxes",
       "family": "fluxes",
       "eddypro_requirement": "Compute CH4 and other trace gas fluxes, including LI-7700 style correction pathways.",
-      "gas_ec_status": "missing",
-      "evidence": [],
-      "gap": "No methane/trace-gas normalized frame fields or LI-7700 correction pathway.",
-      "next_action": "Extend data model and pipeline for CH4 first, then generic trace gas channels."
+      "gas_ec_status": "partial",
+      "evidence": ["models/hf_models.py", "core/storage/raw_importer.py", "core/storage/ghg_bundle.py", "core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_ch4_trace_gas_pipeline.py"],
+      "gap": "CH4 can now be ingested from raw/GHG/headless inputs and processed as a Level 0 covariance flux with LI-7700 provenance; full LI-7700 spectroscopic, density, and self-heating correction sequencing is not complete.",
+      "next_action": "Implement full LI-7700 correction sequence and add real LI-7700 fixture parity tests."
     },
     {
       "id": "density_mixing_ratio_corrections",

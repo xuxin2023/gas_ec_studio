@@ -63,6 +63,7 @@ class NormalizedHFFrame:
     case_temp_c: float | None = None
     status_text: str | None = None
     raw_text: str = ""
+    ch4_ppb: float | None = None
 
     def to_record(self) -> dict[str, Any]:
         return {
@@ -78,4 +79,5 @@ class NormalizedHFFrame:
             "case_temp_c": self.case_temp_c,
             "status_text": self.status_text,
             "raw_text": self.raw_text,
+            "ch4_ppb": self.ch4_ppb,
         }

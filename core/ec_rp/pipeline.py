@@ -17,6 +17,7 @@ from core.ec_rp.analysis import (
     apply_planar_fit_rotation,
     build_window_series,
     build_uncertainty_band,
+    compute_ch4_flux_metrics,
     compute_flux_metrics,
     compute_footprint,
     compute_footprint_2d_grid,
@@ -317,6 +318,13 @@ class ECRPPipeline:
         lagged_co2 = apply_lag(prepared.co2_ppm, lag_result.co2_lag_seconds, sample_rate_hz)
         lagged_h2o = apply_lag(prepared.h2o_mmol, lag_result.h2o_lag_seconds, sample_rate_hz)
         flux_metrics = compute_flux_metrics(w_series=rotation.w, co2_ppm=lagged_co2, h2o_mmol=lagged_h2o, pressure_kpa=prepared.pressure_kpa, temp_c=prepared.temp_c, detrend_mode=detrend_mode, density_correction_mode=density_correction_mode)
+        ch4_metrics = compute_ch4_flux_metrics(
+            w_series=rotation.w,
+            ch4_ppb=prepared.ch4_ppb,
+            air_molar_density=float(flux_metrics["air_molar_density"]),
+            detrend_mode=detrend_mode,
+            valid_ratio=float(prepared.diagnostics.get("ch4_valid_ratio", 0.0)),
+        )
         density_correction_factor = _density_correction_factor(raw_flux=flux_metrics["raw_flux"], density_corrected_flux=flux_metrics["density_corrected_flux"])
         stationarity = compute_stationarity_metrics(w_series=rotation.w, scalar_series=lagged_co2, detrend_mode=detrend_mode)
         turbulence = compute_turbulence_metrics(
@@ -415,6 +423,25 @@ class ECRPPipeline:
             "advanced_test_weights": {k: 1.0 for k in advanced_tests},
             "advanced_test_thresholds": advanced_test_config or {},
             "wpl_benchmark_status": _wpl_benchmark_status(flux_metrics),
+            "trace_gas_family": {
+                "ch4": {
+                    "status": ch4_metrics.get("status", "not_available"),
+                    "method": ch4_metrics.get("selected_method", "not_available"),
+                    "valid_ratio": ch4_metrics.get("valid_ratio", 0.0),
+                    "flux_units": "nmol m-2 s-1",
+                    "provenance": ch4_metrics.get("provenance", ""),
+                    "limitations": ch4_metrics.get("limitations", []),
+                }
+            },
+            "ch4_detail": ch4_metrics,
+            "ch4_status": ch4_metrics.get("status", "not_available"),
+            "ch4_flux_nmol_m2_s": ch4_metrics.get("ch4_flux_nmol_m2_s"),
+            "cov_w_ch4_ppb": ch4_metrics.get("cov_w_ch4_ppb"),
+            "mean_ch4_ppb": ch4_metrics.get("mean_ch4_ppb"),
+            "ch4_valid_ratio": ch4_metrics.get("valid_ratio", prepared.diagnostics.get("ch4_valid_ratio", 0.0)),
+            "ch4_method": ch4_metrics.get("selected_method", "not_available"),
+            "ch4_provenance": ch4_metrics.get("provenance", ""),
+            "ch4_limitations": ch4_metrics.get("limitations", []),
             "metadata_summary": {
                 "sample_rate_hz": float(sample_rate_hz),
                 "sample_count": prepared.sample_count,
@@ -422,6 +449,8 @@ class ECRPPipeline:
                 "continuity_ratio": float(prepared.continuity_ratio),
                 "mean_co2_ppm": float(np.mean(lagged_co2)),
                 "mean_h2o_mmol": float(np.mean(lagged_h2o)),
+                "mean_ch4_ppb": ch4_metrics.get("mean_ch4_ppb"),
+                "ch4_status": ch4_metrics.get("status", "not_available"),
                 "mean_pressure_kpa": float(np.mean(prepared.pressure_kpa)),
                 "mean_temp_c": float(np.mean(prepared.temp_c)),
             },
@@ -996,6 +1025,39 @@ def _failed_window_result(
     )
 
 
+def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any]:
+    if not windows:
+        return {
+            "status": "not_available",
+            "ch4_window_count": 0,
+            "ch4_computed_window_count": 0,
+            "average_ch4_flux_nmol_m2_s": None,
+            "method": "not_available",
+            "provenance": "",
+            "limitations": [],
+        }
+    diagnostics = [dict(window.diagnostics or {}) for window in windows]
+    computed = [
+        diag
+        for diag in diagnostics
+        if diag.get("ch4_status") == "computed" and isinstance(diag.get("ch4_flux_nmol_m2_s"), (int, float))
+    ]
+    first = next((diag for diag in diagnostics if diag.get("ch4_method")), diagnostics[0])
+    return {
+        "status": "computed" if computed else "not_available",
+        "ch4_window_count": len(windows),
+        "ch4_computed_window_count": len(computed),
+        "average_ch4_flux_nmol_m2_s": (
+            sum(float(diag["ch4_flux_nmol_m2_s"]) for diag in computed) / len(computed)
+            if computed
+            else None
+        ),
+        "method": first.get("ch4_method", "not_available"),
+        "provenance": first.get("ch4_provenance", ""),
+        "limitations": list(first.get("ch4_limitations", []) or []),
+    }
+
+
 def _empty_summary(
     *,
     sample_rate_hz: float,
@@ -1021,6 +1083,13 @@ def _empty_summary(
         "average_stationarity_score": 0.0,
         "average_turbulence_score": 0.0,
         "average_ustar": 0.0,
+        "trace_gas_summary": {
+            "status": "not_available",
+            "ch4_window_count": 0,
+            "ch4_computed_window_count": 0,
+            "average_ch4_flux_nmol_m2_s": None,
+            "method": "not_available",
+        },
         "project_code": project.code,
         "site_code": site.station_code,
         "config_snapshot": config,
@@ -1077,6 +1146,7 @@ def _build_summary(
         "average_stationarity_score": float(np.mean([window.stationarity_score or 0.0 for window in windows])),
         "average_turbulence_score": float(np.mean([window.turbulence_score or 0.0 for window in windows])),
         "average_ustar": float(np.mean([window.ustar or 0.0 for window in windows])),
+        "trace_gas_summary": _summarize_trace_gas_windows(windows),
         "project_code": project.code,
         "site_code": site.station_code,
         "config_snapshot": config,

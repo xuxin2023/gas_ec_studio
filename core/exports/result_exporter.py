@@ -55,6 +55,16 @@ FULL_OUTPUT_SCHEMA = [
     ("density_correction_reason", "flux", "real"),
     ("primary_flux", "flux", "real"),
     ("primary_flux_source", "flux", "real"),
+    ("ch4_status", "trace_gas", "real"),
+    ("ch4_flux_nmol_m2_s", "trace_gas", "real"),
+    ("cov_w_ch4_ppb", "trace_gas", "real"),
+    ("mean_ch4_ppb", "trace_gas", "real"),
+    ("ch4_valid_ratio", "trace_gas", "real"),
+    ("ch4_method", "trace_gas", "real"),
+    ("ch4_provenance", "trace_gas", "real"),
+    ("ch4_limitations", "trace_gas", "real"),
+    ("ch4_detail", "trace_gas", "real"),
+    ("trace_gas_family", "trace_gas", "real"),
     ("requested_rotation_mode", "rotation", "real"),
     ("applied_rotation_impl", "rotation", "real"),
     ("lag_fallback_reason", "lag", "real"),
@@ -143,6 +153,7 @@ class ResultExporter:
         self._write_csv(full_output_path, full_output_rows, full_output_headers)
         benchmark_rollup = self._benchmark_rollup(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
         method_summary = self._method_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        trace_gas_summary = self._trace_gas_summary(rp_result=rp_result)
         method_rollup_path = self.export_method_rollup_artifact(
             rp_result=rp_result,
             rp_config_snapshot=rp_config_snapshot,
@@ -256,6 +267,7 @@ class ResultExporter:
                     "deviation_summary": benchmark_rollup["benchmark_deviation_summary"],
                 },
                 "method_summary": method_summary,
+                "trace_gas_summary": trace_gas_summary,
                 "method_rollup_artifact": str(method_rollup_path) if method_rollup_path is not None else "",
                 "footprint_2d_artifact": str(footprint_2d_path) if footprint_2d_path is not None else "",
                 "method_compare_artifact": str(method_compare_path) if method_compare_path is not None else "",
@@ -301,6 +313,17 @@ class ResultExporter:
             "spectral_correction_summary": method_summary.get("spectral_correction_summary", {}),
             "spectral_correction_provenance": method_summary.get("spectral_correction_summary", {}).get("provenance", ""),
             "method_rollup": method_summary,
+            "trace_gas_summary": trace_gas_summary,
+            "trace_gas_fields": [
+                "ch4_status",
+                "ch4_flux_nmol_m2_s",
+                "cov_w_ch4_ppb",
+                "mean_ch4_ppb",
+                "ch4_valid_ratio",
+                "ch4_method",
+                "ch4_provenance",
+                "ch4_limitations",
+            ],
             "method_rollup_artifact": str(method_rollup_path) if method_rollup_path is not None else "",
             "footprint_2d_summary": method_summary.get("footprint_2d_summary", {}),
             "footprint_2d_artifact": str(footprint_2d_path) if footprint_2d_path is not None else "",
@@ -436,6 +459,7 @@ class ResultExporter:
         return {"status": "ok", "run_id": run_result.run_id, "created_at": run_result.created_at.isoformat(), "window_count": len(run_result.windows), "summary": self._to_jsonable(run_result.summary)}
 
     def _rp_row(self, window: WindowRPResult) -> dict[str, Any]:
+        diagnostics = window.diagnostics or {}
         return {
             "window_id": window.window_id,
             "start_time": window.start_time.isoformat(),
@@ -457,6 +481,12 @@ class ResultExporter:
             "primary_flux": window.primary_flux,
             "primary_flux_source": window.primary_flux_source,
             "water_vapor_flux": window.water_vapor_flux,
+            "ch4_status": diagnostics.get("ch4_status", ""),
+            "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", ""),
+            "cov_w_ch4_ppb": diagnostics.get("cov_w_ch4_ppb", ""),
+            "mean_ch4_ppb": diagnostics.get("mean_ch4_ppb", ""),
+            "ch4_valid_ratio": diagnostics.get("ch4_valid_ratio", ""),
+            "ch4_method": diagnostics.get("ch4_method", ""),
             "qc_grade": window.qc_grade,
             "anomaly_type": window.anomaly_type,
             "reason": window.reason,
@@ -547,6 +577,16 @@ class ResultExporter:
                 "density_correction_reason": diagnostics.get("density_correction_reason", "") if diagnostics else "",
                 "primary_flux": rp_window.primary_flux if rp_window else "",
                 "primary_flux_source": rp_window.primary_flux_source if rp_window else "",
+                "ch4_status": diagnostics.get("ch4_status", "") if diagnostics else "",
+                "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", "") if diagnostics else "",
+                "cov_w_ch4_ppb": diagnostics.get("cov_w_ch4_ppb", "") if diagnostics else "",
+                "mean_ch4_ppb": diagnostics.get("mean_ch4_ppb", "") if diagnostics else "",
+                "ch4_valid_ratio": diagnostics.get("ch4_valid_ratio", "") if diagnostics else "",
+                "ch4_method": diagnostics.get("ch4_method", "") if diagnostics else "",
+                "ch4_provenance": diagnostics.get("ch4_provenance", "") if diagnostics else "",
+                "ch4_limitations": json.dumps(diagnostics.get("ch4_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("ch4_limitations") else "",
+                "ch4_detail": json.dumps(diagnostics.get("ch4_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("ch4_detail") else "",
+                "trace_gas_family": json.dumps(diagnostics.get("trace_gas_family", {}), ensure_ascii=False) if diagnostics and diagnostics.get("trace_gas_family") else "",
                 "requested_rotation_mode": diagnostics.get("requested_rotation_mode", "") if diagnostics else "",
                 "applied_rotation_impl": diagnostics.get("applied_rotation_impl", "") if diagnostics else "",
                 "lag_fallback_reason": diagnostics.get("lag_fallback_reason", "") if diagnostics else "",
@@ -677,6 +717,38 @@ class ResultExporter:
             if benchmark:
                 results.append(dict(benchmark))
         return results
+
+    def _trace_gas_summary(self, *, rp_result: RPRunResult | None) -> dict[str, Any]:
+        if not rp_result or not rp_result.windows:
+            return {
+                "status": "not_available",
+                "ch4_window_count": 0,
+                "ch4_computed_window_count": 0,
+                "average_ch4_flux_nmol_m2_s": None,
+                "method": "not_available",
+                "provenance": "",
+                "limitations": [],
+            }
+        diagnostics = [dict(window.diagnostics or {}) for window in rp_result.windows]
+        computed = [
+            diag
+            for diag in diagnostics
+            if diag.get("ch4_status") == "computed" and isinstance(diag.get("ch4_flux_nmol_m2_s"), (int, float))
+        ]
+        first = next((diag for diag in diagnostics if diag.get("ch4_method")), diagnostics[0] if diagnostics else {})
+        return {
+            "status": "computed" if computed else "not_available",
+            "ch4_window_count": len(diagnostics),
+            "ch4_computed_window_count": len(computed),
+            "average_ch4_flux_nmol_m2_s": (
+                sum(float(diag["ch4_flux_nmol_m2_s"]) for diag in computed) / len(computed)
+                if computed
+                else None
+            ),
+            "method": first.get("ch4_method", "not_available"),
+            "provenance": first.get("ch4_provenance", ""),
+            "limitations": list(first.get("ch4_limitations", []) or []),
+        }
 
     def _benchmark_rollup(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
         benchmark_results = self._benchmark_results_for_run(rp_result)
@@ -1554,6 +1626,12 @@ class ResultExporter:
                     "primary_flux": "",
                     "primary_flux_source": "",
                     "water_vapor_flux": "",
+                    "ch4_status": "",
+                    "ch4_flux_nmol_m2_s": "",
+                    "cov_w_ch4_ppb": "",
+                    "mean_ch4_ppb": "",
+                    "ch4_valid_ratio": "",
+                    "ch4_method": "",
                     "qc_grade": "",
                     "anomaly_type": "gap",
                     "reason": "no data for this averaging period",

@@ -40,6 +40,7 @@ class WindowPreparedResult:
     w: np.ndarray
     co2_ppm: np.ndarray
     h2o_mmol: np.ndarray
+    ch4_ppb: np.ndarray
     pressure_kpa: np.ndarray
     temp_c: np.ndarray
     sample_count: int
@@ -276,6 +277,7 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
         return WindowPreparedResult(
             u=np.array([], dtype=float), v=np.array([], dtype=float), w=np.array([], dtype=float),
             co2_ppm=np.array([], dtype=float), h2o_mmol=np.array([], dtype=float),
+            ch4_ppb=np.array([], dtype=float),
             pressure_kpa=np.array([], dtype=float), temp_c=np.array([], dtype=float),
             sample_count=0, valid_sample_count=0, continuity_ratio=0.0, missing_ratio=1.0,
             max_gap_seconds=0.0, issues=["empty_window"], qc_reasons=["window has no usable samples"],
@@ -284,6 +286,7 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
 
     co2_raw = np.array([np.nan if r.co2_ppm is None else float(r.co2_ppm) for r in rows], dtype=float)
     h2o_raw = np.array([np.nan if r.h2o_mmol is None else float(r.h2o_mmol) for r in rows], dtype=float)
+    ch4_raw = np.array([np.nan if r.ch4_ppb is None else float(r.ch4_ppb) for r in rows], dtype=float)
     pres_raw = np.array([np.nan if r.pressure_kpa is None else float(r.pressure_kpa) for r in rows], dtype=float)
     temp_raw = np.array([np.nan if r.chamber_temp_c is None else float(r.chamber_temp_c) for r in rows], dtype=float)
 
@@ -291,6 +294,7 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
 
     co2 = _fill_missing(co2_raw)
     h2o = _fill_missing(h2o_raw)
+    ch4 = _fill_missing(ch4_raw)
     pressure = _fill_missing(pres_raw)
     temp = _fill_missing(temp_raw)
     u = _fill_missing(u_raw)
@@ -315,15 +319,18 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
     u_valid_ratio = float(np.sum(~np.isnan(u_raw)) / max(1, n))
     v_valid_ratio = float(np.sum(~np.isnan(v_raw)) / max(1, n))
     w_valid_ratio = float(np.sum(~np.isnan(w_raw)) / max(1, n))
+    ch4_valid_ratio = float(np.sum(~np.isnan(ch4_raw)) / max(1, n))
 
     diagnostics: dict[str, Any] = {
         "u_valid_ratio": u_valid_ratio,
         "v_valid_ratio": v_valid_ratio,
         "w_raw_valid_ratio": w_valid_ratio,
+        "ch4_valid_ratio": ch4_valid_ratio,
     }
 
     return WindowPreparedResult(
         u=u, v=v, w=w, co2_ppm=co2, h2o_mmol=h2o,
+        ch4_ppb=ch4,
         pressure_kpa=pressure, temp_c=temp,
         sample_count=n, valid_sample_count=valid_count,
         continuity_ratio=continuity_ratio, missing_ratio=missing_ratio,
@@ -859,6 +866,46 @@ def compute_flux_metrics(
         "density_correction_reason": correction_reason,
         "wpl_water_vapor_term": wpl_water_vapor_term,
         "wpl_sensible_heat_term": wpl_sensible_heat_term,
+    }
+
+
+def compute_ch4_flux_metrics(
+    *,
+    w_series: np.ndarray,
+    ch4_ppb: np.ndarray,
+    air_molar_density: float,
+    detrend_mode: str = "block_mean",
+    valid_ratio: float = 0.0,
+) -> dict[str, Any]:
+    if ch4_ppb.size == 0 or w_series.size == 0 or valid_ratio <= 0.0:
+        return {
+            "status": "not_available",
+            "cov_w_ch4_ppb": None,
+            "ch4_flux_nmol_m2_s": None,
+            "mean_ch4_ppb": None,
+            "valid_ratio": float(valid_ratio),
+            "provenance": "ch4 channel missing from high-frequency input",
+            "limitations": ["No CH4 flux is computed when the high-frequency CH4 channel is absent."],
+        }
+    mode = normalize_detrend_mode(detrend_mode)
+    n = min(w_series.size, ch4_ppb.size)
+    w_det = _detrend(w_series[:n], mode)
+    ch4_det = _detrend(ch4_ppb[:n], mode)
+    cov_w_ch4_ppb = float(np.mean(w_det * ch4_det))
+    ch4_flux_nmol = float(air_molar_density * cov_w_ch4_ppb)
+    return {
+        "status": "computed",
+        "cov_w_ch4_ppb": cov_w_ch4_ppb,
+        "ch4_flux_nmol_m2_s": ch4_flux_nmol,
+        "mean_ch4_ppb": float(np.mean(ch4_ppb[:n])),
+        "valid_ratio": float(valid_ratio),
+        "selected_method": "li_7700_level0_covariance",
+        "provenance": "LI-7700 Level 0 CH4 covariance flux from high-frequency CH4 mixing ratio and rotated vertical wind.",
+        "limitations": [
+            "LI-7700 spectroscopic corrections are not yet applied.",
+            "CH4 density and self-heating correction sequence is not yet complete.",
+            "Flux is reported as nmol m-2 s-1 using air molar density times cov(w, CH4 ppb).",
+        ],
     }
 
 
