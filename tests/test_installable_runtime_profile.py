@@ -4,7 +4,10 @@ import csv
 import json
 from pathlib import Path
 
-from core.acquisition.runtime_install import build_installable_runtime_profile, has_runtime_install_config
+from core.acquisition.runtime_install import (
+    build_installable_runtime_profile,
+    has_runtime_install_config,
+)
 from core.acquisition.runtime_service import run_runtime_service_batches
 from core.exports.delivery_exporter import export_delivery_package
 from core.exports.result_exporter import ResultExporter
@@ -40,6 +43,7 @@ def test_installable_runtime_profile_renders_systemd_and_windows_plans(tmp_path:
     assert "Environment=GAS_EC_SITE=\"SUP\"" in artifact["systemd_unit"]["content"]
     assert artifact["windows_service"]["service_name"] == "gas-ec-runtime"
     assert "New-Service" in artifact["windows_service"]["dry_run_commands"][0]
+    assert artifact["deployment_plan"]["execution_mode"] == "operator_gated_external_executor"
     assert all(check["status"] == "pass" for check in artifact["checks"])
 
 
@@ -74,6 +78,7 @@ def test_installable_runtime_reaches_export_network_report_and_delivery(tmp_path
     assert install_profile["status"] == "pass"
     assert rp_result.windows[0].diagnostics["installable_runtime_status"] == "pass"
     assert rp_result.windows[0].diagnostics["installable_runtime_targets"] == ["systemd", "windows_service"]
+    assert rp_result.windows[0].diagnostics["runtime_deployment_status"] == "pass"
 
     exporter = ResultExporter(tmp_path)
     bundle = exporter.export_minimal_bundle(
@@ -90,17 +95,34 @@ def test_installable_runtime_reaches_export_network_report_and_delivery(tmp_path
     files = bundle["files"]
     export_manifest = json.loads(Path(files["export_manifest"]).read_text(encoding="utf-8"))
     install_artifact = json.loads(Path(files["installable_runtime_artifact"]).read_text(encoding="utf-8"))
+    deployment_artifact = json.loads(Path(files["runtime_deployment_artifact"]).read_text(encoding="utf-8"))
     network_payload = json.loads(Path(files["fluxnet_half_hourly_artifact"]).read_text(encoding="utf-8"))
     full_rows = list(csv.DictReader(Path(files["full_output"]).open(encoding="utf-8")))
+    install_systemd = Path(files["runtime_deployment_install_systemd_sh"]).read_text(encoding="utf-8")
+    install_windows = Path(files["runtime_deployment_install_windows_service_ps1"]).read_text(encoding="utf-8")
 
     assert export_manifest["installable_runtime_summary"]["status"] == "pass"
+    assert export_manifest["runtime_deployment_summary"]["status"] == "pass"
     assert export_manifest["installable_runtime_artifact"] == files["installable_runtime_artifact"]
+    assert export_manifest["runtime_deployment_artifact"] == files["runtime_deployment_artifact"]
+    assert Path(files["runtime_deployment_install_systemd_sh"]).exists()
+    assert Path(files["runtime_deployment_rollback_systemd_sh"]).exists()
+    assert Path(files["runtime_deployment_install_windows_service_ps1"]).exists()
+    assert Path(files["runtime_deployment_rollback_windows_service_ps1"]).exists()
+    assert deployment_artifact["summary"]["host_mutation_performed"] is False
+    assert deployment_artifact["summary"]["apply_gate"] == "GAS_EC_APPLY=1 for shell scripts or -Apply for PowerShell scripts"
+    assert "GAS_EC_APPLY" in install_systemd
+    assert "GAS_EC_SYSTEMD_UNIT" in install_systemd
+    assert "param([switch]$Apply)" in install_windows
     assert "INSTALLABLE_RUNTIME_STATUS" in export_manifest["network_method_fields"]
+    assert "RUNTIME_DEPLOYMENT_STATUS" in export_manifest["network_method_fields"]
     assert install_artifact["summary"]["systemd_unit"]["unit_name"] == "gas-ec-runtime.service"
     assert full_rows[0]["installable_runtime_status"] == "pass"
     assert full_rows[0]["installable_runtime_targets"] == "systemd|windows_service"
+    assert full_rows[0]["runtime_deployment_status"] == "pass"
     assert network_payload["rows"][0]["INSTALLABLE_RUNTIME_STATUS"] == "pass"
     assert network_payload["rows"][0]["INSTALLABLE_RUNTIME_TARGETS"] == "systemd|windows_service"
+    assert network_payload["rows"][0]["RUNTIME_DEPLOYMENT_STATUS"] == "pass"
 
     delivery = export_delivery_package(
         runtime_root=tmp_path,
@@ -114,5 +136,9 @@ def test_installable_runtime_reaches_export_network_report_and_delivery(tmp_path
     package_manifest = json.loads(Path(delivery["files"]["package_manifest"]).read_text(encoding="utf-8"))
 
     assert package_manifest["installable_runtime_summary"]["status"] == "pass"
+    assert package_manifest["runtime_deployment_summary"]["status"] == "pass"
     assert package_manifest["result_manifest_summary"]["installable_runtime_status"] == "pass"
+    assert package_manifest["result_manifest_summary"]["runtime_deployment_status"] == "pass"
     assert package_manifest["artifact_index"]["installable_runtime_artifact"]["packaged"] is True
+    assert package_manifest["artifact_index"]["runtime_deployment_artifact"]["packaged"] is True
+    assert package_manifest["artifact_index"]["runtime_deployment_install_systemd_sh"]["packaged"] is True

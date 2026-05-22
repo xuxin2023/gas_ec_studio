@@ -146,6 +146,7 @@ def build_installable_runtime_profile(
     fail_count = sum(1 for item in checks if item["status"] == "fail")
     warn_count = sum(1 for item in checks if item["status"] == "warn")
     status = "fail" if fail_count else ("warning" if warn_count else "pass")
+    deployment_plan = _deployment_plan_summary(profile_status=status, systemd=systemd, windows=windows, targets=targets)
     return {
         "artifact_type": "installable_runtime_profile",
         "status": status,
@@ -168,6 +169,7 @@ def build_installable_runtime_profile(
         "environment": environment,
         "systemd_unit": systemd,
         "windows_service": windows,
+        "deployment_plan": deployment_plan,
         "checks": checks,
         "fail_count": fail_count,
         "warn_count": warn_count,
@@ -180,6 +182,48 @@ def build_installable_runtime_profile(
             "This artifact is a deployment plan only; a privileged deployment operator or CI job must perform the install.",
             "Windows Service command execution semantics depend on the host service wrapper when the command is not a direct executable.",
             "Hardware watchdog and reboot controls remain delegated to supervisor_integration providers.",
+        ],
+    }
+
+
+def build_runtime_deployment_artifact(
+    *,
+    installable_runtime_profile: dict[str, Any],
+) -> dict[str, Any]:
+    if not installable_runtime_profile:
+        return {}
+    profile_status = str(installable_runtime_profile.get("status", "not_configured"))
+    scripts = _deployment_scripts(installable_runtime_profile)
+    checks = _deployment_checks(profile_status=profile_status, scripts=scripts)
+    fail_count = sum(1 for item in checks if item["status"] == "fail")
+    warn_count = sum(1 for item in checks if item["status"] == "warn")
+    status = "fail" if fail_count else ("warning" if warn_count or profile_status == "warning" else "pass")
+    return {
+        "artifact_type": "runtime_deployment",
+        "status": status,
+        "profile_id": str(installable_runtime_profile.get("profile_id", "")),
+        "service_name": str(installable_runtime_profile.get("service_name", "")),
+        "generated_at": datetime.now().isoformat(),
+        "execution_mode": "operator_gated_external_executor",
+        "host_mutation_performed": False,
+        "apply_gate": "GAS_EC_APPLY=1 for shell scripts or -Apply for PowerShell scripts",
+        "installable_runtime_status": profile_status,
+        "os_targets": list(installable_runtime_profile.get("os_targets", []) or []),
+        "script_count": len(scripts),
+        "scripts": scripts,
+        "checks": checks,
+        "fail_count": fail_count,
+        "warn_count": warn_count,
+        "recommended_actions": _deployment_recommended_actions(checks),
+        "provenance": (
+            "Runtime deployment v1 packages install, status, and rollback scripts from the installable runtime "
+            "profile. The generated scripts are guarded and perform no host mutation unless the operator "
+            "explicitly enables the apply gate after review."
+        ),
+        "limitations": [
+            "Scripts are generated from the exported plan and must be reviewed on the target host before application.",
+            "The artifact builder does not execute privileged service installation, service start, rollback, or reboot commands.",
+            "Post-install status evidence should be fed back through supervisor_integration status snapshots.",
         ],
     }
 
@@ -268,6 +312,226 @@ def _windows_service_plan(
             f"sc.exe delete {service_name}",
         ],
     }
+
+
+def _deployment_plan_summary(
+    *,
+    profile_status: str,
+    systemd: dict[str, Any],
+    windows: dict[str, Any],
+    targets: list[str],
+) -> dict[str, Any]:
+    script_names: list[str] = []
+    if systemd:
+        script_names.extend(["install_systemd.sh", "rollback_systemd.sh"])
+    if windows:
+        script_names.extend(["install_windows_service.ps1", "rollback_windows_service.ps1"])
+    return {
+        "artifact_type": "runtime_deployment_plan",
+        "status": profile_status,
+        "execution_mode": "operator_gated_external_executor",
+        "host_mutation_performed": False,
+        "os_targets": list(targets),
+        "script_names": script_names,
+        "apply_gate": "GAS_EC_APPLY=1 or PowerShell -Apply",
+        "provenance": "Deployment plan summary generated from installable runtime profile.",
+    }
+
+
+def _deployment_scripts(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    scripts: list[dict[str, Any]] = []
+    systemd = dict(profile.get("systemd_unit", {}) or {})
+    windows = dict(profile.get("windows_service", {}) or {})
+    if systemd:
+        scripts.append(
+            {
+                "filename": "install_systemd.sh",
+                "target": "systemd",
+                "kind": "install",
+                "content": _systemd_install_script(systemd),
+            }
+        )
+        scripts.append(
+            {
+                "filename": "rollback_systemd.sh",
+                "target": "systemd",
+                "kind": "rollback",
+                "content": _systemd_rollback_script(systemd),
+            }
+        )
+    if windows:
+        scripts.append(
+            {
+                "filename": "install_windows_service.ps1",
+                "target": "windows_service",
+                "kind": "install",
+                "content": _windows_install_script(windows),
+            }
+        )
+        scripts.append(
+            {
+                "filename": "rollback_windows_service.ps1",
+                "target": "windows_service",
+                "kind": "rollback",
+                "content": _windows_rollback_script(windows),
+            }
+        )
+    return scripts
+
+
+def _systemd_install_script(systemd: dict[str, Any]) -> str:
+    unit_name = str(systemd.get("unit_name", "gas-ec-runtime.service"))
+    install_path = str(systemd.get("install_path", f"/etc/systemd/system/{unit_name}"))
+    content = str(systemd.get("content", ""))
+    return "\n".join(
+        [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            'if [[ "${GAS_EC_APPLY:-}" != "1" ]]; then',
+            '  echo "Dry-run only. Review this script, then set GAS_EC_APPLY=1 to apply on the target host."',
+            "  exit 0",
+            "fi",
+            'if [[ "$(id -u)" -ne 0 ]]; then',
+            '  echo "Run as root or via sudo on the target host." >&2',
+            "  exit 1",
+            "fi",
+            f"cat > {shlex.quote(install_path)} <<'GAS_EC_SYSTEMD_UNIT'",
+            content,
+            "GAS_EC_SYSTEMD_UNIT",
+            "systemctl daemon-reload",
+            f"systemctl enable --now {shlex.quote(unit_name)}",
+            f"systemctl status {shlex.quote(unit_name)} --no-pager",
+            "",
+        ]
+    )
+
+
+def _systemd_rollback_script(systemd: dict[str, Any]) -> str:
+    unit_name = str(systemd.get("unit_name", "gas-ec-runtime.service"))
+    install_path = str(systemd.get("install_path", f"/etc/systemd/system/{unit_name}"))
+    return "\n".join(
+        [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            'if [[ "${GAS_EC_APPLY:-}" != "1" ]]; then',
+            '  echo "Dry-run only. Review this script, then set GAS_EC_APPLY=1 to rollback on the target host."',
+            "  exit 0",
+            "fi",
+            'if [[ "$(id -u)" -ne 0 ]]; then',
+            '  echo "Run as root or via sudo on the target host." >&2',
+            "  exit 1",
+            "fi",
+            f"systemctl disable --now {shlex.quote(unit_name)} || true",
+            f"rm -f {shlex.quote(install_path)}",
+            "systemctl daemon-reload",
+            f"systemctl status {shlex.quote(unit_name)} --no-pager || true",
+            "",
+        ]
+    )
+
+
+def _windows_install_script(windows: dict[str, Any]) -> str:
+    service_name = str(windows.get("service_name", "gas-ec-runtime"))
+    commands = [str(item) for item in list(windows.get("dry_run_commands", []) or []) if item]
+    return "\n".join(
+        [
+            "param([switch]$Apply)",
+            "Set-StrictMode -Version Latest",
+            "$ErrorActionPreference = 'Stop'",
+            "if (-not $Apply -and $env:GAS_EC_APPLY -ne '1') {",
+            "  Write-Host 'Dry-run only. Review this script, then pass -Apply or set GAS_EC_APPLY=1 on the target host.'",
+            "  exit 0",
+            "}",
+            "$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())",
+            "if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {",
+            "  throw 'Run this script from an elevated PowerShell session on the target host.'",
+            "}",
+            f"if (Get-Service -Name {_ps_quote(service_name)} -ErrorAction SilentlyContinue) {{",
+            f"  throw 'Service already exists: {service_name}. Run rollback or choose another service name.'",
+            "}",
+            *commands,
+            "",
+        ]
+    )
+
+
+def _windows_rollback_script(windows: dict[str, Any]) -> str:
+    commands = [str(item) for item in list(windows.get("rollback_commands", []) or []) if item]
+    return "\n".join(
+        [
+            "param([switch]$Apply)",
+            "Set-StrictMode -Version Latest",
+            "$ErrorActionPreference = 'Stop'",
+            "if (-not $Apply -and $env:GAS_EC_APPLY -ne '1') {",
+            "  Write-Host 'Dry-run only. Review this script, then pass -Apply or set GAS_EC_APPLY=1 on the target host.'",
+            "  exit 0",
+            "}",
+            "$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())",
+            "if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {",
+            "  throw 'Run this script from an elevated PowerShell session on the target host.'",
+            "}",
+            *commands,
+            "",
+        ]
+    )
+
+
+def _deployment_checks(
+    *,
+    profile_status: str,
+    scripts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    contents = [str(script.get("content", "")) for script in scripts]
+    has_apply_gate = bool(contents) and all("GAS_EC_APPLY" in content or "[switch]$Apply" in content for content in contents)
+    return [
+        _check(
+            "installable_runtime_profile_status",
+            profile_status not in {"fail", "disabled", "not_configured"},
+            measured=profile_status,
+            threshold="pass or warning",
+            severity="fail",
+            failure_message="Installable runtime profile is not deployable.",
+        ),
+        _check(
+            "deployment_script_count",
+            len(scripts) >= 2,
+            measured=len(scripts),
+            threshold="at least install and rollback scripts for one target",
+            severity="fail",
+            failure_message="Deployment package did not render install/rollback scripts.",
+        ),
+        _check(
+            "deployment_apply_gate",
+            has_apply_gate,
+            measured="present" if has_apply_gate else "missing",
+            threshold="explicit apply gate in every script",
+            severity="fail",
+            failure_message="Deployment scripts must be protected by an explicit apply gate.",
+        ),
+        _check(
+            "host_mutation_performed",
+            True,
+            measured=False,
+            threshold="false during artifact generation",
+            severity="fail",
+            failure_message="Artifact generation must not mutate host services.",
+        ),
+    ]
+
+
+def _deployment_recommended_actions(checks: list[dict[str, Any]]) -> list[str]:
+    actions: list[str] = []
+    for item in checks:
+        if item.get("status") == "pass":
+            continue
+        check_id = str(item.get("check_id", ""))
+        if check_id == "installable_runtime_profile_status":
+            actions.append("Resolve installable runtime preflight failures before using deployment scripts.")
+        elif check_id == "deployment_apply_gate":
+            actions.append("Regenerate deployment scripts and verify every script requires GAS_EC_APPLY=1 or -Apply.")
+        else:
+            actions.append(f"Review runtime deployment check {check_id}.")
+    return list(dict.fromkeys(actions))
 
 
 def _preflight_checks(

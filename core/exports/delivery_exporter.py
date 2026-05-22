@@ -95,6 +95,7 @@ def export_delivery_package(
         "daemon_telemetry_summary": audit.get("daemon_telemetry_summary", {}),
         "supervisor_integration_summary": audit.get("supervisor_integration_summary", {}),
         "installable_runtime_summary": audit.get("installable_runtime_summary", {}),
+        "runtime_deployment_summary": audit.get("runtime_deployment_summary", {}),
         "clock_sync_summary": audit.get("clock_sync_summary", {}),
         "benchmark_summary": audit.get("benchmark_summary", {}),
         "method_artifact_keys": audit.get("method_artifact_keys", []),
@@ -215,6 +216,7 @@ def _build_readme(
                 f"daemon_telemetry：{result_files.get('daemon_telemetry_artifact', '--')}",
                 f"supervisor_integration：{result_files.get('supervisor_integration_artifact', '--')}",
                 f"installable_runtime：{result_files.get('installable_runtime_artifact', '--')}",
+                f"runtime_deployment：{result_files.get('runtime_deployment_artifact', '--')}",
                 f"clock_sync：{result_files.get('clock_sync_artifact', '--')}",
                 f"network_validation_summary：{result_files.get('network_validation_summary', '--')}",
             ]
@@ -243,6 +245,7 @@ def _build_delivery_audit(
     daemon_telemetry = dict(result_manifest.get("daemon_telemetry_summary", {}) or {})
     supervisor_integration = dict(result_manifest.get("supervisor_integration_summary", {}) or {})
     installable_runtime = dict(result_manifest.get("installable_runtime_summary", {}) or {})
+    runtime_deployment = dict(result_manifest.get("runtime_deployment_summary", {}) or {})
     clock_sync = dict(result_manifest.get("clock_sync_summary", {}) or {})
     benchmark_summary = {
         "benchmark_status": result_manifest.get("benchmark_status", ""),
@@ -282,6 +285,11 @@ def _build_delivery_audit(
         "daemon_telemetry_artifact",
         "supervisor_integration_artifact",
         "installable_runtime_artifact",
+        "runtime_deployment_artifact",
+        "runtime_deployment_install_systemd_sh",
+        "runtime_deployment_rollback_systemd_sh",
+        "runtime_deployment_install_windows_service_ps1",
+        "runtime_deployment_rollback_windows_service_ps1",
         "clock_sync_artifact",
         "benchmark_summary_artifact",
         "parity_artifact",
@@ -322,6 +330,7 @@ def _build_delivery_audit(
             "daemon_telemetry_status": dict(result_manifest.get("daemon_telemetry_summary", {}) or {}).get("status", ""),
             "supervisor_integration_status": dict(result_manifest.get("supervisor_integration_summary", {}) or {}).get("status", ""),
             "installable_runtime_status": dict(result_manifest.get("installable_runtime_summary", {}) or {}).get("status", ""),
+            "runtime_deployment_status": dict(result_manifest.get("runtime_deployment_summary", {}) or {}).get("status", ""),
             "clock_sync_status": dict(result_manifest.get("clock_sync_summary", {}) or {}).get("status", ""),
         },
         "network_validation_summary": network_validation,
@@ -330,6 +339,7 @@ def _build_delivery_audit(
         "daemon_telemetry_summary": daemon_telemetry,
         "supervisor_integration_summary": supervisor_integration,
         "installable_runtime_summary": installable_runtime,
+        "runtime_deployment_summary": runtime_deployment,
         "clock_sync_summary": clock_sync,
         "benchmark_summary": benchmark_summary,
         "method_artifact_keys": [key for key in artifact_keys if key in result_files],

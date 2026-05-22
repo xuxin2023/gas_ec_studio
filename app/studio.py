@@ -2001,6 +2001,9 @@ class StudioController(QObject):
             "installable_runtime_targets": [],
             "installable_runtime_provenance": "",
             "installable_runtime_summary": {},
+            "runtime_deployment_status": "not_run",
+            "runtime_deployment_execution_mode": "",
+            "runtime_deployment_summary": {},
         }
         if rp_result is None:
             return default
@@ -2170,11 +2173,15 @@ class StudioController(QObject):
         installable_runtime_status = str(installable_runtime_summary.get("status") or default["installable_runtime_status"])
         installable_runtime_profile_id = str(installable_runtime_summary.get("profile_id", ""))
         installable_runtime_targets = list(installable_runtime_summary.get("os_targets", []) or [])
+        runtime_deployment_summary = dict(installable_runtime_summary.get("deployment_plan", {}) or {})
+        runtime_deployment_status = str(runtime_deployment_summary.get("status") or default["runtime_deployment_status"])
+        runtime_deployment_execution_mode = str(runtime_deployment_summary.get("execution_mode", ""))
         installable_runtime_provenance = str(installable_runtime_summary.get("provenance", ""))
         if installable_runtime_summary:
             installable_runtime_provenance = (
                 f"{installable_runtime_provenance}; profile={installable_runtime_profile_id or '--'}; "
-                f"targets={'|'.join(str(item) for item in installable_runtime_targets) or '--'}"
+                f"targets={'|'.join(str(item) for item in installable_runtime_targets) or '--'}; "
+                f"deployment={runtime_deployment_status or '--'}"
             ).strip("; ")
 
         return {
@@ -2237,6 +2244,9 @@ class StudioController(QObject):
             "installable_runtime_targets": installable_runtime_targets,
             "installable_runtime_provenance": installable_runtime_provenance,
             "installable_runtime_summary": installable_runtime_summary,
+            "runtime_deployment_status": runtime_deployment_status,
+            "runtime_deployment_execution_mode": runtime_deployment_execution_mode,
+            "runtime_deployment_summary": runtime_deployment_summary,
         }
 
     def _empty_report_payloads(self) -> dict:
@@ -2400,6 +2410,7 @@ class StudioController(QObject):
                 ("Daemon telemetry", rp_method_summary["daemon_telemetry_status"], rp_method_summary["daemon_telemetry_provenance"]),
                 ("OS supervisor", rp_method_summary["supervisor_integration_status"], rp_method_summary["supervisor_integration_provenance"]),
                 ("Install runtime", rp_method_summary["installable_runtime_status"], rp_method_summary["installable_runtime_provenance"]),
+                ("Runtime deployment", rp_method_summary["runtime_deployment_status"], rp_method_summary["runtime_deployment_execution_mode"]),
                 ("窗口完整度", f"{(sum(completion_series) / max(1, len(completion_series))):.0%}" if completion_series else "--", "按窗口样本数估算"),
                 ("关注窗口", str(len(anomalous_windows)), "窗口级 QC 结果来自 core 层"),
             ],
@@ -2537,6 +2548,7 @@ class StudioController(QObject):
                 ("Daemon", rp_method_summary["daemon_telemetry_status"]),
                 ("Supervisor", rp_method_summary["supervisor_integration_status"]),
                 ("Install", rp_method_summary["installable_runtime_status"]),
+                ("Deploy", rp_method_summary["runtime_deployment_status"]),
                 ("窗口数", str(len(rp_result.windows) if rp_result else 0)),
             ],
             "plot_series": [],
@@ -2556,6 +2568,7 @@ class StudioController(QObject):
                 ("Daemon telemetry", rp_method_summary["daemon_telemetry_status"], rp_method_summary["daemon_telemetry_provenance"]),
                 ("OS supervisor", rp_method_summary["os_supervisor_state"], rp_method_summary["supervisor_integration_provenance"]),
                 ("Install runtime", rp_method_summary["installable_runtime_profile_id"], rp_method_summary["installable_runtime_provenance"]),
+                ("Runtime deployment", rp_method_summary["runtime_deployment_status"], rp_method_summary["runtime_deployment_execution_mode"]),
             ],
             "conclusions": [
                 "方法溯源页集中展示当前批次使用的 Footprint、不确定度、谱修正方法来源和局限性。",
@@ -2572,6 +2585,7 @@ class StudioController(QObject):
                 **({"Daemon Telemetry Artifact": str(result_export_files.get("daemon_telemetry_artifact"))} if result_export_files.get("daemon_telemetry_artifact") else {}),
                 **({"Supervisor Integration Artifact": str(result_export_files.get("supervisor_integration_artifact"))} if result_export_files.get("supervisor_integration_artifact") else {}),
                 **({"Installable Runtime Artifact": str(result_export_files.get("installable_runtime_artifact"))} if result_export_files.get("installable_runtime_artifact") else {}),
+                **({"Runtime Deployment Artifact": str(result_export_files.get("runtime_deployment_artifact"))} if result_export_files.get("runtime_deployment_artifact") else {}),
                 **({"Clock Sync Artifact": str(result_export_files.get("clock_sync_artifact"))} if result_export_files.get("clock_sync_artifact") else {}),
             },
             "versions": [
@@ -2706,6 +2720,7 @@ class StudioController(QObject):
             **({"Daemon Telemetry": str(result_export_files.get("daemon_telemetry_artifact"))} if result_export_files.get("daemon_telemetry_artifact") else {}),
             **({"Supervisor Integration": str(result_export_files.get("supervisor_integration_artifact"))} if result_export_files.get("supervisor_integration_artifact") else {}),
             **({"Installable Runtime": str(result_export_files.get("installable_runtime_artifact"))} if result_export_files.get("installable_runtime_artifact") else {}),
+            **({"Runtime Deployment": str(result_export_files.get("runtime_deployment_artifact"))} if result_export_files.get("runtime_deployment_artifact") else {}),
         }
         reports["method_compare"] = {
             "title": "Method Compare",
@@ -2721,6 +2736,7 @@ class StudioController(QObject):
                 ("daemon_telemetry", str(daemon_telemetry_summary.get("status", "not_run"))),
                 ("supervisor", str(supervisor_integration_summary.get("status", "not_run"))),
                 ("installable_runtime", str(installable_runtime_summary.get("status", "not_run"))),
+                ("runtime_deployment", str(rp_method_summary.get("runtime_deployment_status", "not_run"))),
                 ("runtime_ms", str(performance_profile.get("run_elapsed_ms", "--"))),
             ],
             "plot_series": [
@@ -2738,7 +2754,7 @@ class StudioController(QObject):
             "file_info": method_compare_files,
             "versions": [
                 f"运行 ID：{run_result.run_id}",
-                "Artifacts: method_compare_artifact.json, method_parity_matrix.json, footprint_2d_contour.svg, performance_profile.json, runtime_watchdog_artifact.json, runtime_service_artifact.json, daemon_telemetry_artifact.json, supervisor_integration_artifact.json, installable_runtime_artifact.json",
+                "Artifacts: method_compare_artifact.json, method_parity_matrix.json, footprint_2d_contour.svg, performance_profile.json, runtime_watchdog_artifact.json, runtime_service_artifact.json, daemon_telemetry_artifact.json, supervisor_integration_artifact.json, installable_runtime_artifact.json, runtime_deployment_artifact.json",
             ],
             "usage": [
                 "工程师用此页快速检查三族方法对比、EddyPro 方法元数据覆盖情况和长窗口耗时。",
@@ -4259,6 +4275,11 @@ class StudioController(QObject):
             or rp_result.artifacts.get("installable_runtime_profile", {})
             or {}
         )
+        runtime_deployment_summary = dict(
+            manifest_payload.get("runtime_deployment_summary", {})
+            or installable_runtime_summary.get("deployment_plan", {})
+            or {}
+        )
 
         table_rows = [
             ("reference_id", bm_ref_id or "--", "参考数据集 ID"),
@@ -4314,6 +4335,9 @@ class StudioController(QObject):
         if installable_runtime_summary:
             table_rows.append(("installable_runtime.status", installable_runtime_summary.get("status", "--"), "OS service install plan status"))
             table_rows.append(("installable_runtime.targets", " / ".join(installable_runtime_summary.get("os_targets", []) or []), "systemd / Windows Service targets"))
+        if runtime_deployment_summary:
+            table_rows.append(("runtime_deployment.status", runtime_deployment_summary.get("status", "--"), "operator-gated deployment package status"))
+            table_rows.append(("runtime_deployment.mode", runtime_deployment_summary.get("execution_mode", "--"), "deployment execution mode"))
         for detail in per_window_detail:
             match_strategy = detail.get("match_strategy", "")
             table_rows.append(
@@ -4338,6 +4362,7 @@ class StudioController(QObject):
             "Daemon telemetry": daemon_summary.get("status", "--") if daemon_summary else "--",
             "OS supervisor": supervisor_summary.get("status", "--") if supervisor_summary else "--",
             "Install runtime": installable_runtime_summary.get("status", "--") if installable_runtime_summary else "--",
+            "Runtime deployment": runtime_deployment_summary.get("status", "--") if runtime_deployment_summary else "--",
         }
         for key, label in (
             ("benchmark_summary_artifact", "Benchmark Summary"),
@@ -4350,6 +4375,7 @@ class StudioController(QObject):
             ("daemon_telemetry_artifact", "Daemon Telemetry"),
             ("supervisor_integration_artifact", "Supervisor Integration"),
             ("installable_runtime_artifact", "Installable Runtime"),
+            ("runtime_deployment_artifact", "Runtime Deployment"),
             ("clock_sync_artifact", "Clock Sync Artifact"),
         ):
             if export_files.get(key):

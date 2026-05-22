@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import shutil
 from dataclasses import asdict, is_dataclass
@@ -8,7 +9,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from core.acquisition.runtime_install import build_installable_runtime_profile, has_runtime_install_config
+from core.acquisition.runtime_install import (
+    build_installable_runtime_profile,
+    build_runtime_deployment_artifact,
+    has_runtime_install_config,
+)
 from core.ec_rp.analysis import generate_reference_provenance
 from core.exports.report_exporter import write_report_snapshot
 from models.rp_models import RPRunResult, WindowRPResult
@@ -98,6 +103,8 @@ FULL_OUTPUT_SCHEMA = [
     ("installable_runtime_status", "acquisition", "real"),
     ("installable_runtime_profile_id", "acquisition", "real"),
     ("installable_runtime_targets", "acquisition", "real"),
+    ("runtime_deployment_status", "acquisition", "real"),
+    ("runtime_deployment_execution_mode", "acquisition", "real"),
     ("installable_runtime_detail", "acquisition", "real"),
     ("supervisor_integration_detail", "acquisition", "real"),
     ("daemon_telemetry_detail", "acquisition", "real"),
@@ -255,6 +262,11 @@ class ResultExporter:
             rp_config_snapshot=rp_config_snapshot,
             export_root=export_root,
         )
+        runtime_deployment_path, runtime_deployment_files = self.export_runtime_deployment_artifact(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+        )
         clock_sync_path = self.export_clock_sync_artifact(
             rp_result=rp_result,
             rp_config_snapshot=rp_config_snapshot,
@@ -325,6 +337,10 @@ class ResultExporter:
             exported_files.append(supervisor_integration_path.name)
         if installable_runtime_path is not None:
             exported_files.append(installable_runtime_path.name)
+        if runtime_deployment_path is not None:
+            exported_files.append(runtime_deployment_path.name)
+        for path in runtime_deployment_files.values():
+            exported_files.append(Path(path).name)
         if clock_sync_path is not None:
             exported_files.append(clock_sync_path.name)
         if method_parity_matrix_path is not None:
@@ -384,6 +400,8 @@ class ResultExporter:
                 "supervisor_integration_summary": self._supervisor_integration_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "installable_runtime_artifact": str(installable_runtime_path) if installable_runtime_path is not None else "",
                 "installable_runtime_summary": self._installable_runtime_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+                "runtime_deployment_artifact": str(runtime_deployment_path) if runtime_deployment_path is not None else "",
+                "runtime_deployment_summary": self._runtime_deployment_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
                 "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "reference_provenance": reference_provenance,
@@ -473,6 +491,9 @@ class ResultExporter:
             "supervisor_integration_artifact": str(supervisor_integration_path) if supervisor_integration_path is not None else "",
             "installable_runtime_summary": self._installable_runtime_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "installable_runtime_artifact": str(installable_runtime_path) if installable_runtime_path is not None else "",
+            "runtime_deployment_summary": self._runtime_deployment_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+            "runtime_deployment_artifact": str(runtime_deployment_path) if runtime_deployment_path is not None else "",
+            "runtime_deployment_scripts": runtime_deployment_files,
             "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
@@ -504,6 +525,7 @@ class ResultExporter:
                 "WATCHDOG_PROVIDER_STATUS",
                 "INSTALLABLE_RUNTIME_STATUS",
                 "INSTALLABLE_RUNTIME_TARGETS",
+                "RUNTIME_DEPLOYMENT_STATUS",
             ],
             "network_uncertainty_fields": [
                 "FC_RANDOM_ERROR",
@@ -555,6 +577,8 @@ class ResultExporter:
                 "installable_runtime_status",
                 "installable_runtime_profile_id",
                 "installable_runtime_targets",
+                "runtime_deployment_status",
+                "runtime_deployment_execution_mode",
                 "screening_config",
                 "screening_summary",
                 "footprint_method",
@@ -607,6 +631,9 @@ class ResultExporter:
             files["supervisor_integration_artifact"] = str(supervisor_integration_path)
         if installable_runtime_path is not None:
             files["installable_runtime_artifact"] = str(installable_runtime_path)
+        if runtime_deployment_path is not None:
+            files["runtime_deployment_artifact"] = str(runtime_deployment_path)
+            files.update(runtime_deployment_files)
         if clock_sync_path is not None:
             files["clock_sync_artifact"] = str(clock_sync_path)
         if method_parity_matrix_path is not None:
@@ -725,6 +752,8 @@ class ResultExporter:
             "installable_runtime_targets": "|".join(diagnostics.get("installable_runtime_targets", []) or [])
             if isinstance(diagnostics.get("installable_runtime_targets"), list)
             else diagnostics.get("installable_runtime_targets", ""),
+            "runtime_deployment_status": diagnostics.get("runtime_deployment_status", ""),
+            "runtime_deployment_execution_mode": diagnostics.get("runtime_deployment_execution_mode", ""),
             "installable_runtime_detail": json.dumps(diagnostics.get("installable_runtime_detail", {}), ensure_ascii=False) if diagnostics.get("installable_runtime_detail") else "",
             "supervisor_integration_detail": json.dumps(diagnostics.get("supervisor_integration_detail", {}), ensure_ascii=False) if diagnostics.get("supervisor_integration_detail") else "",
             "daemon_telemetry_detail": json.dumps(diagnostics.get("daemon_telemetry_detail", {}), ensure_ascii=False) if diagnostics.get("daemon_telemetry_detail") else "",
@@ -876,6 +905,8 @@ class ResultExporter:
                 "installable_runtime_targets": "|".join(diagnostics.get("installable_runtime_targets", []) or [])
                 if diagnostics and isinstance(diagnostics.get("installable_runtime_targets"), list)
                 else (diagnostics.get("installable_runtime_targets", "") if diagnostics else ""),
+                "runtime_deployment_status": diagnostics.get("runtime_deployment_status", "") if diagnostics else "",
+                "runtime_deployment_execution_mode": diagnostics.get("runtime_deployment_execution_mode", "") if diagnostics else "",
                 "installable_runtime_detail": json.dumps(diagnostics.get("installable_runtime_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("installable_runtime_detail") else "",
                 "supervisor_integration_detail": json.dumps(diagnostics.get("supervisor_integration_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("supervisor_integration_detail") else "",
                 "daemon_telemetry_detail": json.dumps(diagnostics.get("daemon_telemetry_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("daemon_telemetry_detail") else "",
@@ -974,6 +1005,9 @@ class ResultExporter:
 
     def _write_json(self, path: Path, payload: Any) -> None:
         path.write_text(json.dumps(self._to_jsonable(payload), ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _sha256_text(self, content: str) -> str:
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     def _to_jsonable(self, payload: Any) -> Any:
         if is_dataclass(payload):
@@ -1667,6 +1701,59 @@ class ResultExporter:
         path = export_root / "installable_runtime_artifact.json"
         self._write_json(path, payload)
         return path
+
+    def _runtime_deployment_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        installable_runtime = self._installable_runtime_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not installable_runtime:
+            return {}
+        deployment = build_runtime_deployment_artifact(installable_runtime_profile=installable_runtime)
+        if not deployment:
+            return {}
+        return {
+            key: value
+            for key, value in deployment.items()
+            if key not in {"scripts", "generated_at"}
+        }
+
+    def export_runtime_deployment_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+    ) -> tuple[Path | None, dict[str, str]]:
+        installable_runtime = self._installable_runtime_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not installable_runtime:
+            return None, {}
+        deployment = build_runtime_deployment_artifact(installable_runtime_profile=installable_runtime)
+        if not deployment:
+            return None, {}
+        companion_files: dict[str, str] = {}
+        for script in list(deployment.get("scripts", []) or []):
+            payload = dict(script or {})
+            filename = Path(str(payload.get("filename", ""))).name
+            content = str(payload.get("content", ""))
+            if not filename or not content:
+                continue
+            path = export_root / filename
+            path.write_text(content, encoding="utf-8", newline="\n")
+            companion_files[f"runtime_deployment_{filename.replace('.', '_')}"] = str(path)
+            payload["path"] = str(path)
+            payload["sha256"] = self._sha256_text(content)
+            payload.pop("content", None)
+            script.clear()
+            script.update(payload)
+        deployment["companion_files"] = companion_files
+        payload = {
+            "artifact_type": "runtime_deployment",
+            "run_id": rp_result.run_id if rp_result else "",
+            "created_at": rp_result.created_at.isoformat() if rp_result else "",
+            "summary": deployment,
+            "provenance": "Runtime deployment artifact exported with operator-gated install and rollback companion scripts.",
+        }
+        path = export_root / "runtime_deployment_artifact.json"
+        self._write_json(path, payload)
+        return path, companion_files
 
     def _clock_sync_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
         if rp_result is not None:
@@ -2586,6 +2673,7 @@ class ResultExporter:
             "INSTALLABLE_RUNTIME_TARGETS": "|".join(diagnostics.get("installable_runtime_targets", []) or [])
             if isinstance(diagnostics.get("installable_runtime_targets"), list)
             else diagnostics.get("installable_runtime_targets", ""),
+            "RUNTIME_DEPLOYMENT_STATUS": diagnostics.get("runtime_deployment_status", "not_configured"),
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2662,6 +2750,7 @@ class ResultExporter:
             "WATCHDOG_PROVIDER_STATUS": "not_configured",
             "INSTALLABLE_RUNTIME_STATUS": "not_configured",
             "INSTALLABLE_RUNTIME_TARGETS": "",
+            "RUNTIME_DEPLOYMENT_STATUS": "not_configured",
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
