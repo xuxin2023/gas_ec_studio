@@ -919,12 +919,34 @@ def compute_li7700_correction_sequence(
     config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     config = dict(config or {})
+    coefficient_profile = dict(config.get("coefficient_profile", {}) or {})
+    coefficient_profile_id = str(config.get("coefficient_profile_id", coefficient_profile.get("profile_id", "")) or "")
+    coefficient_registry_status = str(config.get("coefficient_registry_status", "") or "")
+    coefficient_provenance = str(
+        config.get("coefficient_profile_provenance", coefficient_profile.get("provenance", "")) or ""
+    )
+    coefficient_source_file = str(
+        config.get("coefficient_profile_source_file", coefficient_profile.get("source_file", "")) or ""
+    )
+    coefficient_normalization_command = str(
+        config.get(
+            "coefficient_profile_normalization_command",
+            coefficient_profile.get("normalization_command", ""),
+        )
+        or ""
+    )
     if ch4_metrics.get("status") != "computed" or not isinstance(ch4_metrics.get("ch4_flux_nmol_m2_s"), (int, float)):
         return {
             "status": "not_available",
             "selected_method": "li_7700_correction_sequence_v1",
             "reason": "CH4 Level 0 covariance flux is not available.",
             "levels": {},
+            "coefficient_profile_id": coefficient_profile_id,
+            "coefficient_registry_status": coefficient_registry_status,
+            "coefficient_profile_provenance": coefficient_provenance,
+            "coefficient_source_file": coefficient_source_file,
+            "coefficient_normalization_command": coefficient_normalization_command,
+            "coefficient_profile": coefficient_profile,
             "provenance": "LI-7700 correction sequence was skipped because the CH4 covariance input is missing.",
             "limitations": ["No LI-7700 correction sequence can be evaluated without a CH4 covariance flux."],
         }
@@ -961,6 +983,19 @@ def compute_li7700_correction_sequence(
         limitations[0] = "Spectroscopic correction uses configured empirical coefficients; raw WMS line-shape fitting is not reproduced."
     if self_heating_status == "applied_empirical":
         limitations[1] = "Self-heating correction uses configured empirical proxy parameters; instrument energy balance is not reproduced."
+    profile_label = str(config.get("coefficient_profile_label", coefficient_profile.get("label", "")) or "")
+    if coefficient_provenance:
+        limitations.extend(str(item) for item in config.get("coefficient_profile_limitations", []) if str(item))
+    provenance_tail = ""
+    if coefficient_profile_id:
+        provenance_tail = f" Coefficient profile={coefficient_profile_id}"
+        if profile_label:
+            provenance_tail += f" ({profile_label})"
+        if coefficient_registry_status:
+            provenance_tail += f"; registry_status={coefficient_registry_status}"
+        if coefficient_source_file:
+            provenance_tail += f"; source_file={coefficient_source_file}"
+        provenance_tail += "."
 
     return {
         "status": "computed",
@@ -975,6 +1010,13 @@ def compute_li7700_correction_sequence(
         "spectroscopic_correction_factor": spectroscopic_factor,
         "self_heating_correction_factor": self_heating_factor,
         "mean_h2o_molfrac": h2o_molfrac,
+        "coefficient_profile_id": coefficient_profile_id,
+        "coefficient_registry_status": coefficient_registry_status,
+        "coefficient_profile_label": profile_label,
+        "coefficient_profile_provenance": coefficient_provenance,
+        "coefficient_source_file": coefficient_source_file,
+        "coefficient_normalization_command": coefficient_normalization_command,
+        "coefficient_profile": coefficient_profile,
         "levels": {
             "level0": {
                 "name": "raw_covariance",
@@ -1009,11 +1051,20 @@ def compute_li7700_correction_sequence(
                 "mean_h2o_mmol": float(mean_h2o_mmol),
                 "mean_h2o_molfrac": h2o_molfrac,
             },
+            "coefficient_profile": {
+                "profile_id": coefficient_profile_id,
+                "registry_status": coefficient_registry_status,
+                "label": profile_label,
+                "source_file": coefficient_source_file,
+                "normalization_command": coefficient_normalization_command,
+                "provenance": coefficient_provenance,
+            },
         },
         "provenance": (
             "LI-7700 correction sequence v1: Level 0 covariance; Level 1 spectral attenuation; "
             "Level 2 water-vapor dilution/density step; Level 3 spectroscopic/self-heating hooks. "
             "Ordering follows LI-COR EddyPro guidance for LI-7200/LI-7700 systems."
+            f"{provenance_tail}"
         ),
         "limitations": limitations,
     }

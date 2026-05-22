@@ -3698,6 +3698,8 @@ class StudioController(QObject):
         if trace_gas_summary:
             table_rows.append(("trace_gas.ch4_status", trace_gas_summary.get("status", "--") or "--", "CH4 trace gas processing status"))
             table_rows.append(("trace_gas.ch4_method", trace_gas_summary.get("method", "--") or "--", "CH4 LI-7700 method"))
+            table_rows.append(("trace_gas.ch4_coefficient_profile", trace_gas_summary.get("coefficient_profile_id", "--") or "--", "CH4 LI-7700 coefficient profile"))
+            table_rows.append(("trace_gas.ch4_coefficient_source", trace_gas_summary.get("coefficient_profile_source_file", "--") or "--", "CH4 coefficient source file"))
             table_rows.append(("trace_gas.ch4_windows", str(trace_gas_summary.get("ch4_computed_window_count", 0)), "CH4 computed windows"))
             table_rows.append(("trace_gas.ch4_avg_flux", str(trace_gas_summary.get("average_ch4_flux_nmol_m2_s", "--")), "Average corrected CH4 flux"))
         for detail in per_window_detail:
@@ -3865,6 +3867,9 @@ class StudioController(QObject):
                         "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s"),
                         "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s"),
                         "ch4_correction_sequence": diagnostics.get("ch4_correction_sequence", {}),
+                        "ch4_coefficient_profile_id": diagnostics.get("ch4_coefficient_profile_id", ""),
+                        "ch4_coefficient_registry_status": diagnostics.get("ch4_coefficient_registry_status", ""),
+                        "ch4_coefficient_profile_provenance": diagnostics.get("ch4_coefficient_profile_provenance", ""),
                         "method_compare_summary": diagnostics.get("method_compare_summary", {}),
                         "method_compare_recommendations": diagnostics.get("method_compare_recommendations", {}),
                         "method_deviation_notes": list(deviation.get("method_deviation_notes", [])),
@@ -3924,6 +3929,9 @@ class StudioController(QObject):
                     "ch4_flux_nmol_m2_s": deviation.get("ch4_flux_nmol_m2_s", diagnostics.get("ch4_flux_nmol_m2_s")),
                     "ch4_flux_level0_nmol_m2_s": deviation.get("ch4_flux_level0_nmol_m2_s", diagnostics.get("ch4_flux_level0_nmol_m2_s")),
                     "ch4_correction_sequence": deviation.get("ch4_correction_sequence", diagnostics.get("ch4_correction_sequence", {})),
+                    "ch4_coefficient_profile_id": deviation.get("ch4_coefficient_profile_id", diagnostics.get("ch4_coefficient_profile_id", "")),
+                    "ch4_coefficient_registry_status": deviation.get("ch4_coefficient_registry_status", diagnostics.get("ch4_coefficient_registry_status", "")),
+                    "ch4_coefficient_profile_provenance": deviation.get("ch4_coefficient_profile_provenance", diagnostics.get("ch4_coefficient_profile_provenance", "")),
                     "method_compare_summary": deviation.get("method_compare_summary", diagnostics.get("method_compare_summary", {})),
                     "method_compare_recommendations": deviation.get("method_compare_recommendations", diagnostics.get("method_compare_recommendations", {})),
                     "method_deviation_notes": list(deviation.get("method_deviation_notes", [])),

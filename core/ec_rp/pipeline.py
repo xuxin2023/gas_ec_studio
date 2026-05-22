@@ -54,6 +54,30 @@ from models.rp_models import RPRunResult, WindowRPResult
 from models.station_models import BiometSourceMetadata, ProjectProfile, SiteProfile, aggregate_biomet_window, load_biomet_records
 
 
+LI7700_BUILTIN_COEFFICIENT_PROFILES: dict[str, dict[str, Any]] = {
+    "li7700_factory_compensated": {
+        "profile_id": "li7700_factory_compensated",
+        "label": "LI-7700 factory-compensated mixing-ratio stream",
+        "instrument_family": "LI-7700",
+        "source": "builtin",
+        "source_file": "builtin:li7700_factory_compensated",
+        "normalization_command": "gas_ec_studio builtin li7700_factory_compensated",
+        "spectroscopic_correction": {"mode": "input_corrected"},
+        "self_heating_correction": {"mode": "not_configured"},
+        "apply_water_vapor_dilution": True,
+        "use_spectral_correction_factor": True,
+        "provenance": (
+            "Built-in LI-7700 profile assuming CH4 mixing-ratio input has already received "
+            "factory spectroscopic compensation; no extra empirical coefficients are applied."
+        ),
+        "known_limitations": [
+            "Raw WMS line-shape fitting is not reproduced.",
+            "Instrument-specific empirical coefficients should be supplied for numeric EddyPro parity.",
+        ],
+    }
+}
+
+
 class ECRPPipeline:
     def run(
         self,
@@ -684,6 +708,23 @@ class ECRPPipeline:
             diagnostics["spectral_correction_cospectrum_match"] = dict(sc.get("measured_cospectrum_match", {}))
             performance_sections["spectral_correction_ms"] = round((time.perf_counter() - section_start) * 1000.0, 3)
         ch4_config = dict((trace_gas_config or {}).get("ch4", {}) or {})
+        diagnostics["ch4_coefficient_profile_id"] = ch4_config.get("coefficient_profile_id", "")
+        diagnostics["ch4_coefficient_registry_status"] = ch4_config.get("coefficient_registry_status", "")
+        diagnostics["ch4_coefficient_profile_label"] = ch4_config.get("coefficient_profile_label", "")
+        diagnostics["ch4_coefficient_profile_source"] = ch4_config.get("coefficient_profile_source", "")
+        diagnostics["ch4_coefficient_source_file"] = ch4_config.get("coefficient_profile_source_file", "")
+        diagnostics["ch4_coefficient_normalization_command"] = ch4_config.get("coefficient_profile_normalization_command", "")
+        diagnostics["ch4_coefficient_profile_provenance"] = ch4_config.get("coefficient_profile_provenance", "")
+        diagnostics["ch4_coefficient_profile_limitations"] = list(ch4_config.get("coefficient_profile_limitations", []) or [])
+        diagnostics["ch4_coefficient_profile"] = dict(ch4_config.get("coefficient_profile", {}) or {})
+        diagnostics["trace_gas_family"]["ch4"].update(
+            {
+                "coefficient_profile_id": diagnostics["ch4_coefficient_profile_id"],
+                "coefficient_registry_status": diagnostics["ch4_coefficient_registry_status"],
+                "coefficient_profile_source_file": diagnostics["ch4_coefficient_source_file"],
+                "coefficient_profile_provenance": diagnostics["ch4_coefficient_profile_provenance"],
+            }
+        )
         if ch4_config.get("use_spectral_correction_factor", True):
             ch4_spectral_factor = ch4_config.get("spectral_correction_factor", diagnostics.get("spectral_correction_factor", 1.0))
         else:
@@ -697,7 +738,18 @@ class ECRPPipeline:
             config=ch4_config,
         )
         diagnostics["ch4_correction_sequence"] = ch4_sequence
-        diagnostics["ch4_detail"] = {**ch4_metrics, "li7700_correction_sequence": ch4_sequence}
+        diagnostics["ch4_coefficient_profile_id"] = ch4_sequence.get("coefficient_profile_id", diagnostics["ch4_coefficient_profile_id"])
+        diagnostics["ch4_coefficient_registry_status"] = ch4_sequence.get("coefficient_registry_status", diagnostics["ch4_coefficient_registry_status"])
+        diagnostics["ch4_coefficient_profile_label"] = ch4_sequence.get("coefficient_profile_label", diagnostics["ch4_coefficient_profile_label"])
+        diagnostics["ch4_coefficient_source_file"] = ch4_sequence.get("coefficient_source_file", diagnostics["ch4_coefficient_source_file"])
+        diagnostics["ch4_coefficient_normalization_command"] = ch4_sequence.get("coefficient_normalization_command", diagnostics["ch4_coefficient_normalization_command"])
+        diagnostics["ch4_coefficient_profile_provenance"] = ch4_sequence.get("coefficient_profile_provenance", diagnostics["ch4_coefficient_profile_provenance"])
+        diagnostics["ch4_coefficient_profile"] = ch4_sequence.get("coefficient_profile", diagnostics["ch4_coefficient_profile"])
+        diagnostics["ch4_detail"] = {
+            **ch4_metrics,
+            "coefficient_profile": diagnostics["ch4_coefficient_profile"],
+            "li7700_correction_sequence": ch4_sequence,
+        }
         if ch4_sequence.get("status") == "computed":
             diagnostics["ch4_status"] = "computed"
             diagnostics["ch4_method"] = ch4_sequence.get("selected_method", "li_7700_correction_sequence_v1")
@@ -718,6 +770,10 @@ class ECRPPipeline:
                     "flux_nmol_m2_s": diagnostics["ch4_flux_nmol_m2_s"],
                     "level0_flux_nmol_m2_s": diagnostics["ch4_flux_level0_nmol_m2_s"],
                     "correction_sequence_status": ch4_sequence.get("status", ""),
+                    "coefficient_profile_id": diagnostics["ch4_coefficient_profile_id"],
+                    "coefficient_registry_status": diagnostics["ch4_coefficient_registry_status"],
+                    "coefficient_profile_source_file": diagnostics["ch4_coefficient_source_file"],
+                    "coefficient_profile_provenance": diagnostics["ch4_coefficient_profile_provenance"],
                     "provenance": diagnostics["ch4_provenance"],
                     "limitations": diagnostics["ch4_limitations"],
                 }
@@ -1078,6 +1134,10 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
             "average_ch4_flux_nmol_m2_s": None,
             "average_ch4_level0_flux_nmol_m2_s": None,
             "method": "not_available",
+            "coefficient_profile_id": "",
+            "coefficient_registry_status": "",
+            "coefficient_profile_source_file": "",
+            "coefficient_profile_provenance": "",
             "provenance": "",
             "limitations": [],
         }
@@ -1109,6 +1169,13 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
         ),
         "method": first.get("ch4_method", "not_available"),
         "correction_sequence": first.get("ch4_correction_sequence", {}),
+        "coefficient_profile_id": first.get("ch4_coefficient_profile_id", ""),
+        "coefficient_registry_status": first.get("ch4_coefficient_registry_status", ""),
+        "coefficient_profile_label": first.get("ch4_coefficient_profile_label", ""),
+        "coefficient_profile_source_file": first.get("ch4_coefficient_source_file", ""),
+        "coefficient_profile_normalization_command": first.get("ch4_coefficient_normalization_command", ""),
+        "coefficient_profile_provenance": first.get("ch4_coefficient_profile_provenance", ""),
+        "coefficient_profile_limitations": list(first.get("ch4_coefficient_profile_limitations", []) or []),
         "provenance": first.get("ch4_provenance", ""),
         "limitations": list(first.get("ch4_limitations", []) or []),
     }
@@ -1146,6 +1213,10 @@ def _empty_summary(
             "average_ch4_flux_nmol_m2_s": None,
             "average_ch4_level0_flux_nmol_m2_s": None,
             "method": "not_available",
+            "coefficient_profile_id": "",
+            "coefficient_registry_status": "",
+            "coefficient_profile_source_file": "",
+            "coefficient_profile_provenance": "",
         },
         "project_code": project.code,
         "site_code": site.station_code,
@@ -1372,6 +1443,14 @@ def _extract_trace_gas_config(config: dict[str, Any]) -> dict[str, Any]:
     ch4 = dict(trace.get("ch4", {}) or {}) if isinstance(trace.get("ch4", {}), dict) else {}
     li7700 = dict(trace.get("li7700", {}) or {}) if isinstance(trace.get("li7700", {}), dict) else {}
     ch4 = {**li7700, **ch4}
+    coefficient_resolution = _resolve_li7700_coefficient_profile(
+        config=config,
+        trace=trace,
+        li7700=li7700,
+        ch4=ch4,
+    )
+    profile_config = _li7700_profile_to_ch4_config(coefficient_resolution.get("profile", {}))
+    ch4 = _merge_nested_dict(profile_config, ch4)
     ch4.setdefault("enabled", True)
     ch4.setdefault("method", "li_7700_correction_sequence_v1")
     ch4.setdefault("apply_water_vapor_dilution", True)
@@ -1380,7 +1459,200 @@ def _extract_trace_gas_config(config: dict[str, Any]) -> dict[str, Any]:
         ch4["spectroscopic_correction"] = {"mode": "input_corrected"}
     if "self_heating_correction" not in ch4:
         ch4["self_heating_correction"] = {"mode": "not_configured"}
-    return {"ch4": ch4}
+    ch4["coefficient_profile_id"] = coefficient_resolution.get("profile_id", "")
+    ch4["coefficient_registry_status"] = coefficient_resolution.get("status", "")
+    ch4["coefficient_profile_label"] = coefficient_resolution.get("label", "")
+    ch4["coefficient_profile_source"] = coefficient_resolution.get("source", "")
+    ch4["coefficient_profile_source_file"] = coefficient_resolution.get("source_file", "")
+    ch4["coefficient_profile_normalization_command"] = coefficient_resolution.get("normalization_command", "")
+    ch4["coefficient_profile_provenance"] = coefficient_resolution.get("provenance", "")
+    ch4["coefficient_profile_limitations"] = list(coefficient_resolution.get("known_limitations", []) or [])
+    ch4["coefficient_profile"] = coefficient_resolution.get("profile", {})
+    return {"ch4": ch4, "coefficient_registry": {"li7700": coefficient_resolution}}
+
+
+def _resolve_li7700_coefficient_profile(
+    *,
+    config: dict[str, Any],
+    trace: dict[str, Any],
+    li7700: dict[str, Any],
+    ch4: dict[str, Any],
+) -> dict[str, Any]:
+    registry = _collect_li7700_coefficient_profiles(config=config, trace=trace, li7700=li7700, ch4=ch4)
+    profile_id = _selected_li7700_profile_id(config=config, trace=trace, li7700=li7700, ch4=ch4)
+    status = "resolved"
+    if not profile_id:
+        profile_id = "li7700_factory_compensated"
+        status = "builtin_default"
+    profile = dict(registry.get(str(profile_id), {}) or {})
+    if not profile:
+        return {
+            "profile_id": str(profile_id),
+            "status": "profile_not_found",
+            "label": "",
+            "source": "",
+            "source_file": "",
+            "normalization_command": "",
+            "provenance": f"LI-7700 coefficient profile '{profile_id}' was requested but not found.",
+            "known_limitations": ["Requested LI-7700 coefficient profile was not found; conservative defaults were used."],
+            "available_profile_ids": sorted(registry),
+            "profile": {},
+        }
+    profile.setdefault("profile_id", str(profile_id))
+    profile.setdefault("label", str(profile_id))
+    profile.setdefault("source", "custom")
+    profile.setdefault("source_file", "")
+    profile.setdefault("normalization_command", "")
+    profile.setdefault("provenance", f"LI-7700 coefficient profile '{profile_id}' resolved from coefficient registry.")
+    limitations = profile.get("known_limitations", profile.get("limitations", []))
+    if isinstance(limitations, str):
+        limitations = [limitations]
+    return {
+        "profile_id": str(profile.get("profile_id", profile_id)),
+        "status": status,
+        "label": str(profile.get("label", profile_id)),
+        "source": str(profile.get("source", "")),
+        "source_file": str(profile.get("source_file", "")),
+        "normalization_command": str(profile.get("normalization_command", "")),
+        "provenance": str(profile.get("provenance", "")),
+        "known_limitations": [str(item) for item in limitations if str(item)],
+        "available_profile_ids": sorted(registry),
+        "profile": profile,
+    }
+
+
+def _selected_li7700_profile_id(
+    *,
+    config: dict[str, Any],
+    trace: dict[str, Any],
+    li7700: dict[str, Any],
+    ch4: dict[str, Any],
+) -> str:
+    for payload in (ch4, li7700, trace):
+        for key in ("coefficient_profile_id", "coefficient_profile", "profile_id", "li7700_profile_id"):
+            value = payload.get(key) if isinstance(payload, dict) else None
+            if isinstance(value, dict):
+                value = value.get("profile_id", value.get("id", value.get("coefficient_profile_id", "")))
+            if value not in (None, ""):
+                return str(value)
+    metadata = config.get("metadata_bundle", {})
+    instruments = metadata.get("instruments", {}) if isinstance(metadata, dict) else {}
+    extra = instruments.get("extra", {}) if isinstance(instruments, dict) else {}
+    for payload in (extra, instruments):
+        if not isinstance(payload, dict):
+            continue
+        for key in ("ch4_coefficient_profile_id", "li7700_coefficient_profile_id", "coefficient_profile_id"):
+            value = payload.get(key)
+            if value not in (None, ""):
+                return str(value)
+    return ""
+
+
+def _collect_li7700_coefficient_profiles(
+    *,
+    config: dict[str, Any],
+    trace: dict[str, Any],
+    li7700: dict[str, Any],
+    ch4: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    profiles: dict[str, dict[str, Any]] = {
+        key: dict(value) for key, value in LI7700_BUILTIN_COEFFICIENT_PROFILES.items()
+    }
+    metadata = config.get("metadata_bundle", {})
+    instruments = metadata.get("instruments", {}) if isinstance(metadata, dict) else {}
+    extra = instruments.get("extra", {}) if isinstance(instruments, dict) else {}
+    containers = [
+        config.get("trace_gas_coefficient_registry"),
+        config.get("coefficient_registry"),
+        trace.get("coefficient_registry"),
+        trace.get("li7700_coefficient_registry"),
+        trace.get("coefficient_profile"),
+        li7700.get("coefficient_registry"),
+        li7700.get("coefficient_profile"),
+        ch4.get("coefficient_registry"),
+        ch4.get("coefficient_profile"),
+        instruments.get("trace_gas_coefficient_registry") if isinstance(instruments, dict) else None,
+        instruments.get("li7700_coefficient_registry") if isinstance(instruments, dict) else None,
+        extra.get("trace_gas_coefficient_registry") if isinstance(extra, dict) else None,
+        extra.get("li7700_coefficient_registry") if isinstance(extra, dict) else None,
+    ]
+    for container in containers:
+        for profile_id, profile in _iter_li7700_registry_profiles(container):
+            if profile_id:
+                profiles[str(profile_id)] = profile
+    return profiles
+
+
+def _iter_li7700_registry_profiles(container: Any) -> list[tuple[str, dict[str, Any]]]:
+    if not container:
+        return []
+    if isinstance(container, list):
+        results: list[tuple[str, dict[str, Any]]] = []
+        for item in container:
+            if isinstance(item, dict):
+                profile_id = str(item.get("profile_id", item.get("id", item.get("coefficient_profile_id", ""))))
+                if profile_id:
+                    profile = dict(item)
+                    profile.setdefault("profile_id", profile_id)
+                    results.append((profile_id, profile))
+        return results
+    if not isinstance(container, dict):
+        return []
+    if _looks_like_li7700_profile(container):
+        profile_id = str(container.get("profile_id", container.get("id", container.get("coefficient_profile_id", ""))))
+        if profile_id:
+            profile = dict(container)
+            profile.setdefault("profile_id", profile_id)
+            return [(profile_id, profile)]
+    results = []
+    for key, value in container.items():
+        if not isinstance(value, dict):
+            continue
+        if not _looks_like_li7700_profile(value) and any(isinstance(item, dict) for item in value.values()):
+            results.extend(_iter_li7700_registry_profiles(value))
+            continue
+        profile = dict(value)
+        profile_id = str(profile.get("profile_id", profile.get("id", profile.get("coefficient_profile_id", key))))
+        profile.setdefault("profile_id", profile_id)
+        results.append((profile_id, profile))
+    return results
+
+
+def _looks_like_li7700_profile(payload: dict[str, Any]) -> bool:
+    profile_keys = {
+        "profile_id",
+        "coefficient_profile_id",
+        "spectroscopic_correction",
+        "self_heating_correction",
+        "source_file",
+        "normalization_command",
+        "instrument_family",
+    }
+    return any(key in payload for key in profile_keys)
+
+
+def _li7700_profile_to_ch4_config(profile: Any) -> dict[str, Any]:
+    if not isinstance(profile, dict) or not profile:
+        return {}
+    config: dict[str, Any] = {}
+    for key in ("apply_water_vapor_dilution", "use_spectral_correction_factor", "spectral_correction_factor"):
+        if key in profile:
+            config[key] = profile[key]
+    for key in ("spectroscopic_correction", "self_heating_correction"):
+        value = profile.get(key)
+        if isinstance(value, dict):
+            config[key] = dict(value)
+    return config
+
+
+def _merge_nested_dict(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_nested_dict(dict(merged[key]), value)
+        else:
+            merged[key] = value
+    return merged
 
 
 def _extract_network_output_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -2314,7 +2586,9 @@ def _build_method_deviation_notes_from_window(window: WindowRPResult) -> list[st
         ch4_level0 = diagnostics.get("ch4_flux_level0_nmol_m2_s")
         final_text = f"; final={float(ch4_flux):.6f} nmol m-2 s-1" if isinstance(ch4_flux, (int, float)) else ""
         level0_text = f"; level0={float(ch4_level0):.6f}" if isinstance(ch4_level0, (int, float)) else ""
-        notes.append(f"trace_gas_ch4: {ch4_method}{level0_text}{final_text}")
+        coefficient_profile = diagnostics.get("ch4_coefficient_profile_id", "")
+        coefficient_text = f"; coefficient_profile={coefficient_profile}" if coefficient_profile else ""
+        notes.append(f"trace_gas_ch4: {ch4_method}{level0_text}{final_text}{coefficient_text}")
     method_compare = diagnostics.get("method_compare_recommendations", {})
     if isinstance(method_compare, dict) and method_compare:
         notes.append(
@@ -2336,6 +2610,9 @@ def _attach_method_context_to_benchmark(window: WindowRPResult, benchmark_payloa
     benchmark_payload["ch4_correction_sequence"] = diagnostics.get("ch4_correction_sequence", {})
     benchmark_payload["ch4_flux_nmol_m2_s"] = diagnostics.get("ch4_flux_nmol_m2_s")
     benchmark_payload["ch4_flux_level0_nmol_m2_s"] = diagnostics.get("ch4_flux_level0_nmol_m2_s")
+    benchmark_payload["ch4_coefficient_profile_id"] = diagnostics.get("ch4_coefficient_profile_id", "")
+    benchmark_payload["ch4_coefficient_registry_status"] = diagnostics.get("ch4_coefficient_registry_status", "")
+    benchmark_payload["ch4_coefficient_profile_provenance"] = diagnostics.get("ch4_coefficient_profile_provenance", "")
     benchmark_payload["spectral_correction_cospectrum_match"] = diagnostics.get("spectral_correction_cospectrum_match", {})
     benchmark_payload["primary_flux_random_error"] = diagnostics.get("primary_flux_random_error")
     benchmark_payload["primary_flux_relative_uncertainty"] = diagnostics.get("primary_flux_relative_uncertainty")

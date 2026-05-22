@@ -9,6 +9,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import numpy as np
 
 from core.ec_rp.analysis import compute_li7700_correction_sequence
+from core.ec_rp.pipeline import _extract_trace_gas_config
 from core.exports.result_exporter import ResultExporter
 from core.headless_batch_runner import load_input_rows, run_headless_batch
 from core.storage.ghg_bundle import load_ghg_normalized_frames
@@ -159,6 +160,49 @@ def test_li7700_correction_sequence_applies_configured_levels() -> None:
     assert sequence["final_flux_nmol_m2_s"] != sequence["level0_flux_nmol_m2_s"]
 
 
+def test_li7700_coefficient_registry_profile_merges_before_pipeline() -> None:
+    config = {
+        "metadata_bundle": {
+            "instruments": {
+                "extra": {"li7700_coefficient_profile_id": "tower_li7700_2026"}
+            }
+        },
+        "trace_gas": {
+            "ch4": {
+                "coefficient_registry": {
+                    "tower_li7700_2026": {
+                        "label": "Tower LI-7700 2026 coefficients",
+                        "source": "normalized_reference",
+                        "source_file": "references/eddypro/li7700/tower_li7700_2026.json",
+                        "normalization_command": "gas_ec normalize-li7700 --profile tower_li7700_2026",
+                        "spectroscopic_correction": {
+                            "mode": "empirical",
+                            "pressure_sensitivity_per_kpa": 0.001,
+                            "temperature_sensitivity_per_c": 0.0005,
+                        },
+                        "self_heating_correction": {
+                            "mode": "empirical",
+                            "temperature_excess_c": 1.5,
+                            "flux_sensitivity_per_c": 0.01,
+                        },
+                        "known_limitations": ["Fixture coefficients are valid only for the synthetic parity tower."],
+                    }
+                }
+            }
+        },
+    }
+
+    trace_config = _extract_trace_gas_config(config)
+    ch4 = trace_config["ch4"]
+
+    assert ch4["coefficient_profile_id"] == "tower_li7700_2026"
+    assert ch4["coefficient_registry_status"] == "resolved"
+    assert ch4["coefficient_profile_source_file"].endswith("tower_li7700_2026.json")
+    assert ch4["coefficient_profile_normalization_command"].startswith("gas_ec normalize-li7700")
+    assert ch4["spectroscopic_correction"]["mode"] == "empirical"
+    assert ch4["self_heating_correction"]["temperature_excess_c"] == 1.5
+
+
 def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> None:
     rows = _make_ch4_rows()
     metadata = MetadataBundle(
@@ -174,10 +218,29 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
         "network_output": {"schema_target": "FLUXNET", "timestamp_refers_to": "start", "timezone_offset_hours": 0.0},
         "trace_gas": {
             "ch4": {
+                "coefficient_profile_id": "tower_li7700_2026",
+                "coefficient_registry": {
+                    "tower_li7700_2026": {
+                        "label": "Tower LI-7700 2026 coefficients",
+                        "source": "normalized_reference",
+                        "source_file": "references/eddypro/li7700/tower_li7700_2026.json",
+                        "normalization_command": "gas_ec normalize-li7700 --profile tower_li7700_2026",
+                        "spectroscopic_correction": {
+                            "mode": "empirical",
+                            "pressure_sensitivity_per_kpa": 0.001,
+                            "temperature_sensitivity_per_c": 0.0005,
+                            "h2o_sensitivity_per_molfrac": 0.1,
+                        },
+                        "self_heating_correction": {
+                            "mode": "empirical",
+                            "sensor_body_temp_c": 27.0,
+                            "flux_sensitivity_per_c": 0.01,
+                        },
+                        "known_limitations": ["Fixture coefficients are valid only for the synthetic parity tower."],
+                    }
+                },
                 "spectral_correction_factor": 1.04,
                 "apply_water_vapor_dilution": True,
-                "spectroscopic_correction": {"mode": "input_corrected"},
-                "self_heating_correction": {"mode": "not_configured"},
             }
         },
     }
@@ -191,9 +254,16 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert diagnostics["ch4_flux_nmol_m2_s"] != 0.0
     assert diagnostics["ch4_flux_level0_nmol_m2_s"] != diagnostics["ch4_flux_nmol_m2_s"]
     assert diagnostics["ch4_correction_sequence"]["levels"]["level1"]["factor"] == 1.04
+    assert diagnostics["ch4_coefficient_profile_id"] == "tower_li7700_2026"
+    assert diagnostics["ch4_coefficient_registry_status"] == "resolved"
+    assert diagnostics["ch4_coefficient_source_file"].endswith("tower_li7700_2026.json")
+    assert diagnostics["ch4_correction_sequence"]["components"]["coefficient_profile"]["profile_id"] == "tower_li7700_2026"
+    assert diagnostics["ch4_correction_sequence"]["components"]["spectroscopic"]["mode"] == "empirical"
+    assert diagnostics["ch4_correction_sequence"]["components"]["self_heating"]["mode"] == "empirical"
     assert "Spectroscopic" in " ".join(diagnostics["ch4_limitations"])
     assert result["rp_result"].summary["trace_gas_summary"]["ch4_computed_window_count"] == len(result["rp_result"].windows)
     assert result["rp_result"].summary["trace_gas_summary"]["average_ch4_level0_flux_nmol_m2_s"] is not None
+    assert result["rp_result"].summary["trace_gas_summary"]["coefficient_profile_id"] == "tower_li7700_2026"
     assert result["manifest"]["trace_gas_summary"]["status"] == "computed"
 
     exporter = ResultExporter(tmp_path)
@@ -221,11 +291,16 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert float(full_rows[0]["ch4_flux_nmol_m2_s"]) != 0.0
     assert float(full_rows[0]["ch4_flux_level0_nmol_m2_s"]) != float(full_rows[0]["ch4_flux_nmol_m2_s"])
     assert "LI-7700" in full_rows[0]["ch4_provenance"]
+    assert full_rows[0]["ch4_coefficient_profile_id"] == "tower_li7700_2026"
+    assert full_rows[0]["ch4_coefficient_registry_status"] == "resolved"
     assert rp_rows[0]["ch4_method"] == "li_7700_correction_sequence_v1"
+    assert rp_rows[0]["ch4_coefficient_profile_id"] == "tower_li7700_2026"
     assert float(rp_rows[0]["ch4_flux_corrected_nmol_m2_s"]) == float(rp_rows[0]["ch4_flux_nmol_m2_s"])
     assert "FCH4" in fluxnet["rows"][0]
     assert fluxnet["rows"][0]["FCH4"] != -9999.0
     assert manifest["trace_gas_summary"]["status"] == "computed"
+    assert manifest["trace_gas_summary"]["coefficient_profile_id"] == "tower_li7700_2026"
     assert "ch4_flux_nmol_m2_s" in manifest["trace_gas_fields"]
+    assert "ch4_coefficient_profile_id" in manifest["trace_gas_fields"]
     assert "FCH4" in manifest["network_trace_gas_fields"]
     assert summary["trace_gas_summary"]["ch4_computed_window_count"] == len(result["rp_result"].windows)

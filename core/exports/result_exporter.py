@@ -65,6 +65,10 @@ FULL_OUTPUT_SCHEMA = [
     ("mean_ch4_ppb", "trace_gas", "real"),
     ("ch4_valid_ratio", "trace_gas", "real"),
     ("ch4_method", "trace_gas", "real"),
+    ("ch4_coefficient_profile_id", "trace_gas", "real"),
+    ("ch4_coefficient_registry_status", "trace_gas", "real"),
+    ("ch4_coefficient_profile_source_file", "trace_gas", "real"),
+    ("ch4_coefficient_profile_provenance", "trace_gas", "real"),
     ("ch4_spectral_correction_factor", "trace_gas", "real"),
     ("ch4_water_vapor_dilution_factor", "trace_gas", "real"),
     ("ch4_spectroscopic_correction_factor", "trace_gas", "real"),
@@ -334,6 +338,10 @@ class ResultExporter:
                 "mean_ch4_ppb",
                 "ch4_valid_ratio",
                 "ch4_method",
+                "ch4_coefficient_profile_id",
+                "ch4_coefficient_registry_status",
+                "ch4_coefficient_profile_source_file",
+                "ch4_coefficient_profile_provenance",
                 "ch4_spectral_correction_factor",
                 "ch4_water_vapor_dilution_factor",
                 "ch4_spectroscopic_correction_factor",
@@ -511,6 +519,10 @@ class ResultExporter:
             "mean_ch4_ppb": diagnostics.get("mean_ch4_ppb", ""),
             "ch4_valid_ratio": diagnostics.get("ch4_valid_ratio", ""),
             "ch4_method": diagnostics.get("ch4_method", ""),
+            "ch4_coefficient_profile_id": diagnostics.get("ch4_coefficient_profile_id", ""),
+            "ch4_coefficient_registry_status": diagnostics.get("ch4_coefficient_registry_status", ""),
+            "ch4_coefficient_profile_source_file": diagnostics.get("ch4_coefficient_source_file", ""),
+            "ch4_coefficient_profile_provenance": diagnostics.get("ch4_coefficient_profile_provenance", ""),
             "ch4_spectral_correction_factor": diagnostics.get("ch4_spectral_correction_factor", ""),
             "ch4_water_vapor_dilution_factor": diagnostics.get("ch4_water_vapor_dilution_factor", ""),
             "qc_grade": window.qc_grade,
@@ -613,6 +625,10 @@ class ResultExporter:
                 "mean_ch4_ppb": diagnostics.get("mean_ch4_ppb", "") if diagnostics else "",
                 "ch4_valid_ratio": diagnostics.get("ch4_valid_ratio", "") if diagnostics else "",
                 "ch4_method": diagnostics.get("ch4_method", "") if diagnostics else "",
+                "ch4_coefficient_profile_id": diagnostics.get("ch4_coefficient_profile_id", "") if diagnostics else "",
+                "ch4_coefficient_registry_status": diagnostics.get("ch4_coefficient_registry_status", "") if diagnostics else "",
+                "ch4_coefficient_profile_source_file": diagnostics.get("ch4_coefficient_source_file", "") if diagnostics else "",
+                "ch4_coefficient_profile_provenance": diagnostics.get("ch4_coefficient_profile_provenance", "") if diagnostics else "",
                 "ch4_spectral_correction_factor": diagnostics.get("ch4_spectral_correction_factor", "") if diagnostics else "",
                 "ch4_water_vapor_dilution_factor": diagnostics.get("ch4_water_vapor_dilution_factor", "") if diagnostics else "",
                 "ch4_spectroscopic_correction_factor": diagnostics.get("ch4_spectroscopic_correction_factor", "") if diagnostics else "",
@@ -762,6 +778,10 @@ class ResultExporter:
                 "average_ch4_flux_nmol_m2_s": None,
                 "average_ch4_level0_flux_nmol_m2_s": None,
                 "method": "not_available",
+                "coefficient_profile_id": "",
+                "coefficient_registry_status": "",
+                "coefficient_profile_source_file": "",
+                "coefficient_profile_provenance": "",
                 "provenance": "",
                 "limitations": [],
             }
@@ -793,6 +813,13 @@ class ResultExporter:
             ),
             "method": first.get("ch4_method", "not_available"),
             "correction_sequence": first.get("ch4_correction_sequence", {}),
+            "coefficient_profile_id": first.get("ch4_coefficient_profile_id", ""),
+            "coefficient_registry_status": first.get("ch4_coefficient_registry_status", ""),
+            "coefficient_profile_label": first.get("ch4_coefficient_profile_label", ""),
+            "coefficient_profile_source_file": first.get("ch4_coefficient_source_file", ""),
+            "coefficient_profile_normalization_command": first.get("ch4_coefficient_normalization_command", ""),
+            "coefficient_profile_provenance": first.get("ch4_coefficient_profile_provenance", ""),
+            "coefficient_profile_limitations": list(first.get("ch4_coefficient_profile_limitations", []) or []),
             "provenance": first.get("ch4_provenance", ""),
             "limitations": list(first.get("ch4_limitations", []) or []),
         }
@@ -1681,6 +1708,10 @@ class ResultExporter:
                     "mean_ch4_ppb": "",
                     "ch4_valid_ratio": "",
                     "ch4_method": "",
+                    "ch4_coefficient_profile_id": "",
+                    "ch4_coefficient_registry_status": "",
+                    "ch4_coefficient_profile_source_file": "",
+                    "ch4_coefficient_profile_provenance": "",
                     "ch4_spectral_correction_factor": "",
                     "ch4_water_vapor_dilution_factor": "",
                     "qc_grade": "",
@@ -1837,6 +1868,9 @@ class ResultExporter:
             entry["ch4_flux_nmol_m2_s"] = br.get("ch4_flux_nmol_m2_s", diagnostics.get("ch4_flux_nmol_m2_s"))
             entry["ch4_flux_level0_nmol_m2_s"] = br.get("ch4_flux_level0_nmol_m2_s", diagnostics.get("ch4_flux_level0_nmol_m2_s"))
             entry["ch4_correction_sequence"] = br.get("ch4_correction_sequence", diagnostics.get("ch4_correction_sequence", {}))
+            entry["ch4_coefficient_profile_id"] = br.get("ch4_coefficient_profile_id", diagnostics.get("ch4_coefficient_profile_id", ""))
+            entry["ch4_coefficient_registry_status"] = br.get("ch4_coefficient_registry_status", diagnostics.get("ch4_coefficient_registry_status", ""))
+            entry["ch4_coefficient_profile_provenance"] = br.get("ch4_coefficient_profile_provenance", diagnostics.get("ch4_coefficient_profile_provenance", ""))
             entry["primary_flux_random_error"] = br.get("primary_flux_random_error", diagnostics.get("primary_flux_random_error"))
             entry["primary_flux_relative_uncertainty"] = br.get("primary_flux_relative_uncertainty", diagnostics.get("primary_flux_relative_uncertainty"))
             entry["primary_flux_uncertainty_band"] = br.get("primary_flux_uncertainty_band", diagnostics.get("primary_flux_uncertainty_band"))
@@ -2322,6 +2356,9 @@ class ResultExporter:
                 "ch4_flux_nmol_m2_s": diag.get("ch4_flux_nmol_m2_s"),
                 "ch4_flux_level0_nmol_m2_s": diag.get("ch4_flux_level0_nmol_m2_s"),
                 "ch4_correction_sequence": diag.get("ch4_correction_sequence", {}),
+                "ch4_coefficient_profile_id": diag.get("ch4_coefficient_profile_id", ""),
+                "ch4_coefficient_registry_status": diag.get("ch4_coefficient_registry_status", ""),
+                "ch4_coefficient_profile_provenance": diag.get("ch4_coefficient_profile_provenance", ""),
                 "method_compare_summary": diag.get("method_compare_summary", {}),
                 "method_compare_recommendations": diag.get("method_compare_recommendations", {}),
                 "method_deviation_notes": _build_method_deviation_notes(diag, {}),
@@ -2367,6 +2404,9 @@ class ResultExporter:
                 "ch4_flux_nmol_m2_s": diag.get("ch4_flux_nmol_m2_s"),
                 "ch4_flux_level0_nmol_m2_s": diag.get("ch4_flux_level0_nmol_m2_s"),
                 "ch4_correction_sequence": diag.get("ch4_correction_sequence", {}),
+                "ch4_coefficient_profile_id": diag.get("ch4_coefficient_profile_id", ""),
+                "ch4_coefficient_registry_status": diag.get("ch4_coefficient_registry_status", ""),
+                "ch4_coefficient_profile_provenance": diag.get("ch4_coefficient_profile_provenance", ""),
                 "method_compare_summary": diag.get("method_compare_summary", {}),
                 "method_compare_recommendations": diag.get("method_compare_recommendations", {}),
                 "method_deviation_notes": _build_method_deviation_notes(diag, bm_dev),
@@ -2429,7 +2469,9 @@ def _build_method_deviation_notes(diag: dict[str, Any], bm_dev: dict[str, Any]) 
         ch4_level0 = diag.get("ch4_flux_level0_nmol_m2_s")
         final_text = f"; final={float(ch4_flux):.6f} nmol m-2 s-1" if isinstance(ch4_flux, (int, float)) else ""
         level0_text = f"; level0={float(ch4_level0):.6f}" if isinstance(ch4_level0, (int, float)) else ""
-        notes.append(f"trace_gas_ch4: {ch4_method}{level0_text}{final_text}")
+        coefficient_profile = diag.get("ch4_coefficient_profile_id", "")
+        coefficient_text = f"; coefficient_profile={coefficient_profile}" if coefficient_profile else ""
+        notes.append(f"trace_gas_ch4: {ch4_method}{level0_text}{final_text}{coefficient_text}")
     method_compare = diag.get("method_compare_recommendations", {})
     if isinstance(method_compare, dict) and method_compare:
         notes.append(

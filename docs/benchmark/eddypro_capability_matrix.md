@@ -22,7 +22,7 @@ The machine-readable source of truth is `docs/benchmark/eddypro_capability_matri
 - Biomet aggregation exists, but it does not yet override all thermodynamic ambient variables used by the RP flux equations.
 - Spectral methods exist, but long-period binned spectra/cospectra assessment and EddyPro-equivalent output families need more work.
 - CO2/H2O/energy flux fields exist, but full EddyPro Level 0/1/2/3 closed-path correction sequencing still needs validation.
-- CH4 now has raw/GHG/headless ingestion plus an auditable LI-7700 correction sequence v1; raw WMS line-shape fitting and real LI-7700 numeric parity fixtures remain incomplete.
+- CH4 now has raw/GHG/headless ingestion plus an auditable LI-7700 correction sequence v1 and coefficient profile registry provenance; raw WMS line-shape fitting and public real LI-7700 numeric parity fixtures remain incomplete.
 - Footprint v1 exists, but georeferenced GIS outputs remain missing.
 
 ## Missing
