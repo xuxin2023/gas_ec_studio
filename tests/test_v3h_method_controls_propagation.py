@@ -85,6 +85,9 @@ def test_ec_processing_page_method_controls_roundtrip_to_snapshot(monkeypatch, t
         page.footprint_canopy_spin.setValue(6.4)
         page.footprint_z0_spin.setValue(0.18)
         page.footprint_ol_spin.setValue(-120.0)
+        page.footprint_grid_combo.setCurrentText("enabled")
+        page.footprint_grid_x_spin.setValue(24)
+        page.footprint_grid_y_spin.setValue(15)
         page.uncertainty_mode_combo.setCurrentText("finkelstein_sims")
         page.uncertainty_timescale_spin.setValue(7.5)
         page.uncertainty_confidence_spin.setValue(0.90)
@@ -96,25 +99,37 @@ def test_ec_processing_page_method_controls_roundtrip_to_snapshot(monkeypatch, t
         page.spectral_zm_spin.setValue(3.8)
         page.spectral_ol_spin.setValue(-80.0)
         page.spectral_cospectrum_combo.setCurrentText("fcc_auto")
+        page.method_compare_combo.setCurrentText("enabled")
+        page.method_compare_threshold_spin.setValue(0.30)
 
         payload = page._collect_payload()
         assert payload["steps"]["footprint"]["method"] == "kormann_meixner"
         assert payload["steps"]["footprint"]["z_m"] == 4.2
+        assert payload["steps"]["footprint"]["grid_enabled"] is True
+        assert payload["steps"]["footprint"]["grid_x_bins"] == 24
+        assert payload["steps"]["footprint"]["grid_y_bins"] == 15
         assert payload["steps"]["uncertainty"]["method"] == "finkelstein_sims"
         assert payload["steps"]["uncertainty"]["integral_timescale_s"] == 7.5
         assert payload["steps"]["uncertainty"]["confidence_level"] == 0.9
         assert payload["steps"]["spectral_correction"]["method"] == "fratini"
         assert payload["steps"]["spectral_correction"]["use_fcc_measured_cospectrum"] is True
+        assert payload["steps"]["method_compare"]["enabled"] is True
+        assert payload["steps"]["method_compare"]["deviation_threshold"] == 0.3
 
         controller.save_ec_processing(payload)
         snapshot = controller._rp_config_snapshot(precheck_only=False)
         assert snapshot["footprint"]["method"] == "kormann_meixner"
         assert snapshot["footprint"]["z_m"] == 4.2
+        assert snapshot["footprint"]["grid_enabled"] is True
+        assert snapshot["footprint"]["grid_x_bins"] == 24
+        assert snapshot["footprint"]["grid_y_bins"] == 15
         assert snapshot["uncertainty"]["method"] == "finkelstein_sims"
         assert snapshot["uncertainty"]["integral_timescale_s"] == 7.5
         assert snapshot["uncertainty"]["confidence_level"] == 0.9
         assert snapshot["spectral_correction"]["method"] == "fratini"
         assert snapshot["spectral_correction"]["fcc_measured_cospectra"] == []
+        assert snapshot["method_compare"]["enabled"] is True
+        assert snapshot["method_compare"]["deviation_threshold"] == 0.3
     finally:
         controller.shutdown()
 

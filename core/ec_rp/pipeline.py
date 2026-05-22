@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 import math
+import time
 
 import numpy as np
 
@@ -18,6 +19,7 @@ from core.ec_rp.analysis import (
     build_uncertainty_band,
     compute_flux_metrics,
     compute_footprint,
+    compute_footprint_2d_grid,
     compute_planar_fit_coefficients,
     compute_spectral_correction,
     compute_stationarity_metrics,
@@ -34,6 +36,7 @@ from core.ec_rp.analysis import (
     optimize_lag,
     pick_window_slices,
     rotate_wind,
+    run_method_compare,
     run_statistical_screening,
     check_amplitude_resolution,
     check_angle_of_attack,
@@ -60,6 +63,7 @@ class ECRPPipeline:
         data_source: str = "",
         time_range: str = "",
     ) -> RPRunResult:
+        run_timer_start = time.perf_counter()
         created_at = datetime.now()
         run_id = f"rp_{created_at:%Y%m%d_%H%M%S}_{uuid4().hex[:6]}"
         sorted_rows = sorted(rows, key=lambda row: row.timestamp)
@@ -80,6 +84,7 @@ class ECRPPipeline:
         footprint_config = _extract_footprint_config(config)
         uncertainty_method_config = _extract_uncertainty_method_config(config)
         spectral_correction_config = _extract_spectral_correction_config(config)
+        method_compare_config = _extract_method_compare_config(config)
         benchmark_summary = _default_benchmark_summary(benchmark_config=benchmark_config, window_count=0)
         reference_provenance = _build_reference_provenance_artifact(benchmark_config.get("reference_id", ""))
         method_summary = _summarize_method_outputs(
@@ -87,9 +92,15 @@ class ECRPPipeline:
             footprint_config=footprint_config,
             uncertainty_method_config=uncertainty_method_config,
             spectral_correction_config=spectral_correction_config,
+            method_compare_config=method_compare_config,
         )
         slices = pick_window_slices(len(sorted_rows), sample_rate_hz, block_minutes=block_minutes)
         if not sorted_rows or not slices:
+            performance_profile = _summarize_performance_profile(
+                windows=[],
+                run_elapsed_ms=round((time.perf_counter() - run_timer_start) * 1000.0, 3),
+                expected_window_count=len(slices),
+            )
             return RPRunResult(
                 run_id=run_id,
                 created_at=created_at,
@@ -105,6 +116,7 @@ class ECRPPipeline:
                     reference_provenance=reference_provenance,
                     network_output_config=network_output_config,
                     method_summary=method_summary,
+                    performance_profile=performance_profile,
                 ),
                 windows=[],
                 artifacts=_artifacts(
@@ -117,6 +129,7 @@ class ECRPPipeline:
                     reference_provenance=reference_provenance,
                     network_output_config=network_output_config,
                     method_summary=method_summary,
+                    performance_profile=performance_profile,
                 ),
             )
 
@@ -146,6 +159,7 @@ class ECRPPipeline:
                             footprint_config=footprint_config,
                             uncertainty_method_config=uncertainty_method_config,
                             spectral_correction_config=spectral_correction_config,
+                            method_compare_config=method_compare_config,
                         )
                     )
                 except Exception:
@@ -184,6 +198,7 @@ class ECRPPipeline:
                         footprint_config=footprint_config,
                         uncertainty_method_config=uncertainty_method_config,
                         spectral_correction_config=spectral_correction_config,
+                        method_compare_config=method_compare_config,
                     )
                 )
             except Exception as exc:  # pragma: no cover
@@ -207,6 +222,12 @@ class ECRPPipeline:
             footprint_config=footprint_config,
             uncertainty_method_config=uncertainty_method_config,
             spectral_correction_config=spectral_correction_config,
+            method_compare_config=method_compare_config,
+        )
+        performance_profile = _summarize_performance_profile(
+            windows=windows,
+            run_elapsed_ms=round((time.perf_counter() - run_timer_start) * 1000.0, 3),
+            expected_window_count=len(slices),
         )
 
         return RPRunResult(
@@ -224,6 +245,7 @@ class ECRPPipeline:
                 reference_provenance=reference_provenance,
                 network_output_config=network_output_config,
                 method_summary=method_summary,
+                performance_profile=performance_profile,
             ),
             windows=windows,
             artifacts=_artifacts(
@@ -236,6 +258,7 @@ class ECRPPipeline:
                 reference_provenance=reference_provenance,
                 network_output_config=network_output_config,
                 method_summary=method_summary,
+                performance_profile=performance_profile,
             ),
         )
 
@@ -260,7 +283,10 @@ class ECRPPipeline:
         footprint_config: dict[str, Any] | None = None,
         uncertainty_method_config: dict[str, Any] | None = None,
         spectral_correction_config: dict[str, Any] | None = None,
+        method_compare_config: dict[str, Any] | None = None,
     ) -> WindowRPResult:
+        window_timer_start = time.perf_counter()
+        performance_sections: dict[str, float] = {}
         prepared = build_window_series(rows, sample_rate_hz)
         if rotation_mode in ("sector_wise_planar_fit", "sector_wise_planar_fit_no_velocity_bias") and planar_fit_coefficients:
             mean_u = float(np.mean(prepared.u))
@@ -427,6 +453,34 @@ class ECRPPipeline:
             diagnostics["footprint_offset_distance_m"] = fp.offset_distance_m
             diagnostics["footprint_contribution_distances"] = fp.contribution_distances
             diagnostics["footprint_detail"] = fp.detail
+            if footprint_config.get("grid_enabled", True):
+                section_start = time.perf_counter()
+                fp_grid = compute_footprint_2d_grid(
+                    footprint=fp,
+                    method=footprint_config.get("method", "kljun"),
+                    ustar=turbulence.ustar,
+                    mean_wind_speed=float(np.mean(rotation.u)) if rotation.u.size > 0 else 0.0,
+                    sigma_v=float(np.std(rotation.v)) if rotation.v.size > 0 else 0.0,
+                    z_m=footprint_config.get("z_m", 0.0),
+                    h=footprint_config.get("canopy_height_m", 0.0),
+                    z0=footprint_config.get("z0"),
+                    ol=footprint_config.get("ol"),
+                    x_bins=int(footprint_config.get("grid_x_bins", 32) or 32),
+                    y_bins=int(footprint_config.get("grid_y_bins", 25) or 25),
+                    max_downwind_m=footprint_config.get("grid_max_downwind_m"),
+                    max_crosswind_m=footprint_config.get("grid_max_crosswind_m"),
+                )
+                if fp_grid is not None:
+                    fp_grid_payload = asdict(fp_grid)
+                    diagnostics["footprint_2d_grid_status"] = "ok"
+                    diagnostics["footprint_2d_grid"] = fp_grid_payload
+                    diagnostics["footprint_2d_peak_downwind_m"] = fp_grid.peak_downwind_m
+                    diagnostics["footprint_2d_peak_crosswind_m"] = fp_grid.peak_crosswind_m
+                    diagnostics["footprint_2d_half_width_m"] = fp_grid.half_width_m
+                    diagnostics["footprint_2d_contribution_contours_m"] = fp_grid.contribution_contours_m
+                else:
+                    diagnostics["footprint_2d_grid_status"] = "insufficient_data"
+                performance_sections["footprint_2d_ms"] = round((time.perf_counter() - section_start) * 1000.0, 3)
         if uncertainty_method_config and uncertainty_method_config.get("method") in ("mann_lenschow", "finkelstein_sims"):
             selected_method = uncertainty_method_config["method"]
             if selected_method == "mann_lenschow":
@@ -489,16 +543,20 @@ class ECRPPipeline:
             method_detail["primary_flux_ci_lower"] = propagated_uncertainty.get("primary_flux_ci_lower")
             method_detail["primary_flux_ci_upper"] = propagated_uncertainty.get("primary_flux_ci_upper")
         diagnostics.update(propagated_uncertainty)
+        measured_cospectrum_freq = None
+        measured_cospectrum_value = None
+        measured_cospectrum_meta = {
+            "enabled": bool(spectral_correction_config.get("use_fcc_measured_cospectrum", False)) if spectral_correction_config else False,
+            "used": False,
+            "source": "disabled",
+            "matched_window_id": "",
+            "source_run_id": str(spectral_correction_config.get("fcc_source_run_id", "")) if spectral_correction_config else "",
+            "match_strategy": "disabled",
+            "match_quality": 0.0,
+            "frequency_count": 0,
+        }
         if spectral_correction_config and spectral_correction_config.get("enabled", False):
-            measured_cospectrum_freq = None
-            measured_cospectrum_value = None
-            measured_cospectrum_meta = {
-                "enabled": bool(spectral_correction_config.get("use_fcc_measured_cospectrum", False)),
-                "used": False,
-                "source": "disabled",
-                "matched_window_id": "",
-                "source_run_id": str(spectral_correction_config.get("fcc_source_run_id", "")),
-            }
+            section_start = time.perf_counter()
             if str(spectral_correction_config.get("method", "massman")) == "fratini":
                 measured_cospectrum_freq, measured_cospectrum_value, measured_cospectrum_meta = _resolve_fcc_measured_cospectrum(
                     window_start=rows[0].timestamp,
@@ -520,6 +578,9 @@ class ECRPPipeline:
                             "used": True,
                             "source": fallback_source,
                             "frequency_count": int(local_freq.size),
+                            "match_strategy": str(measured_cospectrum_meta.get("match_strategy", "local_fallback")),
+                            "match_quality": float(measured_cospectrum_meta.get("match_quality", 0.35) or 0.35),
+                            "fallback_reason": str(measured_cospectrum_meta.get("source", "")),
                         }
             sc = compute_spectral_correction(
                 method=spectral_correction_config.get("method", "massman"),
@@ -544,10 +605,26 @@ class ECRPPipeline:
                 sc["measured_cospectrum_window_id"] = str(measured_cospectrum_meta.get("matched_window_id", ""))
                 sc["measured_cospectrum_frequency_count"] = int(measured_cospectrum_meta.get("frequency_count", 0) or 0)
                 sc["measured_cospectrum_notes"] = list(measured_cospectrum_meta.get("provenance_notes", []))
+                sc["measured_cospectrum_match"] = {
+                    "enabled": bool(measured_cospectrum_meta.get("enabled", False)),
+                    "used": bool(measured_cospectrum_meta.get("used", False)),
+                    "source": str(measured_cospectrum_meta.get("source", "disabled")),
+                    "match_strategy": str(measured_cospectrum_meta.get("match_strategy", "")),
+                    "match_quality": float(measured_cospectrum_meta.get("match_quality", 0.0) or 0.0),
+                    "matched_window_id": str(measured_cospectrum_meta.get("matched_window_id", "")),
+                    "source_run_id": str(measured_cospectrum_meta.get("source_run_id", "")),
+                    "source_qc_grade": str(measured_cospectrum_meta.get("source_qc_grade", "")),
+                    "frequency_count": int(measured_cospectrum_meta.get("frequency_count", 0) or 0),
+                    "time_delta_s": measured_cospectrum_meta.get("time_delta_s"),
+                    "overlap_seconds": measured_cospectrum_meta.get("overlap_seconds"),
+                    "fallback_reason": str(measured_cospectrum_meta.get("fallback_reason", "")),
+                    "mismatch_warning": str(measured_cospectrum_meta.get("mismatch_warning", "")),
+                }
                 provenance_detail = dict(sc.get("provenance_detail", {}) or {})
                 provenance_detail["measured_cospectrum_source"] = sc["measured_cospectrum_source"]
                 provenance_detail["measured_cospectrum_source_run_id"] = sc["measured_cospectrum_source_run_id"]
                 provenance_detail["measured_cospectrum_window_id"] = sc["measured_cospectrum_window_id"]
+                provenance_detail["measured_cospectrum_match"] = sc["measured_cospectrum_match"]
                 sc["provenance_detail"] = provenance_detail
             diagnostics["spectral_correction_method"] = sc.get("method", "")
             diagnostics["spectral_correction_factor"] = sc.get("correction_factor", 1.0)
@@ -564,6 +641,108 @@ class ECRPPipeline:
             diagnostics["spectral_correction_measured_cospectrum_source"] = str(sc.get("measured_cospectrum_source", ""))
             diagnostics["spectral_correction_measured_cospectrum_source_run_id"] = str(sc.get("measured_cospectrum_source_run_id", ""))
             diagnostics["spectral_correction_measured_cospectrum_window_id"] = str(sc.get("measured_cospectrum_window_id", ""))
+            diagnostics["spectral_correction_cospectrum_match"] = dict(sc.get("measured_cospectrum_match", {}))
+            performance_sections["spectral_correction_ms"] = round((time.perf_counter() - section_start) * 1000.0, 3)
+        if method_compare_config and method_compare_config.get("enabled", False):
+            section_start = time.perf_counter()
+            compare_payload: dict[str, Any] = {}
+            recommendations: dict[str, str] = {}
+            deviation_flags: list[dict[str, Any]] = []
+            deviation_threshold = float(method_compare_config.get("deviation_threshold", 0.25) or 0.25)
+            families = {
+                str(item).strip()
+                for item in method_compare_config.get("families", ["footprint", "uncertainty", "spectral_correction"])
+                if str(item).strip()
+            }
+            averaging_period_s = prepared.sample_count / max(sample_rate_hz, 1.0)
+            if "footprint" in families and footprint_config and footprint_config.get("enabled", False):
+                footprint_compare = run_method_compare(
+                    method_family="footprint",
+                    selected_method=str(footprint_config.get("method", "")),
+                    methods_to_run=method_compare_config.get("footprint_methods", ["kljun", "kormann_meixner", "hsieh"]),
+                    window_params={
+                        "ustar": turbulence.ustar or 0.0,
+                        "mean_wind_speed": float(np.mean(rotation.u)) if rotation.u.size > 0 else 0.0,
+                        "sigma_v": float(np.std(rotation.v)) if rotation.v.size > 0 else 0.0,
+                        "z_m": footprint_config.get("z_m", 0.0),
+                        "h": footprint_config.get("canopy_height_m", 0.0),
+                        "z0": footprint_config.get("z0"),
+                        "ol": footprint_config.get("ol"),
+                    },
+                )
+                compare_payload["footprint"] = asdict(footprint_compare)
+            if "uncertainty" in families and uncertainty_method_config and uncertainty_method_config.get("method"):
+                uncertainty_compare = run_method_compare(
+                    method_family="uncertainty",
+                    selected_method=str(uncertainty_method_config.get("method", "")),
+                    methods_to_run=method_compare_config.get("uncertainty_methods", ["mann_lenschow", "finkelstein_sims"]),
+                    method_configs={
+                        "mann_lenschow": {
+                            "integral_timescale_s": uncertainty_method_config.get("integral_timescale_s"),
+                        }
+                    },
+                    window_params={
+                        "cov_w_scalar": flux_metrics["cov_w_co2"],
+                        "var_w": float(np.var(rotation.w)) if rotation.w.size > 1 else 0.0,
+                        "var_scalar": float(np.var(lagged_co2)) if lagged_co2.size > 1 else 0.0,
+                        "n_samples": prepared.sample_count,
+                        "averaging_period_s": averaging_period_s,
+                        "sample_rate_hz": sample_rate_hz,
+                        "integral_timescale_s": uncertainty_method_config.get("integral_timescale_s"),
+                        "w_series": rotation.w,
+                        "scalar_series": lagged_co2,
+                        "max_compare_samples": int(method_compare_config.get("max_samples", 4096) or 4096),
+                    },
+                )
+                compare_payload["uncertainty"] = asdict(uncertainty_compare)
+            if "spectral_correction" in families and spectral_correction_config and spectral_correction_config.get("enabled", False):
+                spectral_compare = run_method_compare(
+                    method_family="spectral_correction",
+                    selected_method=str(spectral_correction_config.get("method", "")),
+                    methods_to_run=method_compare_config.get("spectral_correction_methods", ["massman", "horst", "ibrom", "fratini"]),
+                    window_params={
+                        "path_length_m": spectral_correction_config.get("path_length_m", 0.15),
+                        "sensor_sep_m": spectral_correction_config.get("sensor_sep_m", 0.20),
+                        "response_time_s": spectral_correction_config.get("response_time_s", 0.1),
+                        "sample_rate_hz": sample_rate_hz,
+                        "averaging_period_s": averaging_period_s,
+                        "wind_speed": float(np.mean(rotation.u)) if rotation.u.size > 0 else 0.0,
+                        "z_m": spectral_correction_config.get("z_m", 0.0),
+                        "ustar": turbulence.ustar or 0.0,
+                        "ol": spectral_correction_config.get("ol"),
+                        "measured_cospectrum_freq": measured_cospectrum_freq,
+                        "measured_cospectrum_value": measured_cospectrum_value,
+                    },
+                )
+                compare_payload["spectral_correction"] = asdict(spectral_compare)
+            for family, result in compare_payload.items():
+                if isinstance(result, dict):
+                    recommendation = str(result.get("recommendation", ""))
+                    if recommendation:
+                        recommendations[family] = recommendation
+                    for method_name, deviation in dict(result.get("deviations", {}) or {}).items():
+                        if isinstance(deviation, (int, float)) and abs(float(deviation)) > deviation_threshold:
+                            deviation_flags.append(
+                                {
+                                    "family": family,
+                                    "method": method_name,
+                                    "relative_deviation": round(float(deviation), 6),
+                                    "threshold": deviation_threshold,
+                                }
+                            )
+            diagnostics["method_compare_enabled"] = True
+            diagnostics["method_compare_summary"] = compare_payload
+            diagnostics["method_compare_recommendations"] = recommendations
+            diagnostics["method_compare_deviation_flags"] = deviation_flags
+            performance_sections["method_compare_ms"] = round((time.perf_counter() - section_start) * 1000.0, 3)
+        diagnostics["performance_profile"] = {
+            "window_elapsed_ms": round((time.perf_counter() - window_timer_start) * 1000.0, 3),
+            "sections_ms": performance_sections,
+            "sample_count": int(prepared.sample_count),
+            "sample_rate_hz": float(sample_rate_hz),
+            "method_compare_enabled": bool(method_compare_config and method_compare_config.get("enabled", False)),
+            "footprint_2d_enabled": bool(footprint_config and footprint_config.get("enabled", False) and footprint_config.get("grid_enabled", True)),
+        }
         return WindowRPResult(
             window_id=f"{run_id}_w{window_index:03d}",
             start_time=rows[0].timestamp,
@@ -693,6 +872,7 @@ def _empty_summary(
     reference_provenance: dict[str, Any] | None = None,
     network_output_config: dict[str, Any] | None = None,
     method_summary: dict[str, Any] | None = None,
+    performance_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     summary = {
         "status": "empty",
@@ -716,6 +896,7 @@ def _empty_summary(
         reference_provenance=reference_provenance or {},
         network_output_config=network_output_config or {},
         method_summary=method_summary or {},
+        performance_profile=performance_profile or {},
     )
 
 
@@ -730,6 +911,7 @@ def _build_summary(
     reference_provenance: dict[str, Any] | None = None,
     network_output_config: dict[str, Any] | None = None,
     method_summary: dict[str, Any] | None = None,
+    performance_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not windows:
         return _empty_summary(
@@ -742,6 +924,7 @@ def _build_summary(
             reference_provenance=reference_provenance,
             network_output_config=network_output_config,
             method_summary=method_summary,
+            performance_profile=performance_profile,
         )
     summary = {
         "status": "ok",
@@ -769,6 +952,7 @@ def _build_summary(
         reference_provenance=reference_provenance or {},
         network_output_config=network_output_config or {},
         method_summary=method_summary or {},
+        performance_profile=performance_profile or {},
     )
 
 
@@ -783,6 +967,7 @@ def _artifacts(
     reference_provenance: dict[str, Any] | None = None,
     network_output_config: dict[str, Any] | None = None,
     method_summary: dict[str, Any] | None = None,
+    performance_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "project_snapshot": asdict(project),
@@ -795,6 +980,7 @@ def _artifacts(
         "network_output": network_output_config or {},
         "method_rollup": method_summary or {},
         "method_provenance": method_summary or {},
+        "performance_profile": performance_profile or {},
     }
 
 
@@ -840,10 +1026,43 @@ def _extract_footprint_config(config: dict[str, Any]) -> dict[str, Any]:
         ("canopy_height_m", 0.0),
         ("z0", None),
         ("ol", None),
+        ("grid_enabled", True),
+        ("grid_x_bins", 32),
+        ("grid_y_bins", 25),
+        ("grid_max_downwind_m", None),
+        ("grid_max_crosswind_m", None),
     ]:
         value = _config_value(config, f"footprint.{key}", f"steps.footprint.{key}", default=default)
         fc[key] = value
     return fc
+
+
+def _extract_method_compare_config(config: dict[str, Any]) -> dict[str, Any]:
+    mc = config.get("method_compare", {})
+    if not isinstance(mc, dict):
+        mc = {}
+    steps_mc = config.get("steps", {}).get("method_compare", {}) if isinstance(config.get("steps"), dict) else {}
+    if isinstance(steps_mc, dict):
+        mc = {**steps_mc, **mc}
+
+    def _method_list(key: str, default: list[str]) -> list[str]:
+        value = mc.get(key, default)
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        if isinstance(value, (list, tuple)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return list(default)
+
+    families = _method_list("families", ["footprint", "uncertainty", "spectral_correction"])
+    return {
+        "enabled": bool(mc.get("enabled", False)),
+        "families": families,
+        "deviation_threshold": float(mc.get("deviation_threshold", 0.25) or 0.25),
+        "max_samples": int(mc.get("max_samples", 4096) or 4096),
+        "footprint_methods": _method_list("footprint_methods", ["kljun", "kormann_meixner", "hsieh"]),
+        "uncertainty_methods": _method_list("uncertainty_methods", ["mann_lenschow", "finkelstein_sims"]),
+        "spectral_correction_methods": _method_list("spectral_correction_methods", ["massman", "horst", "ibrom", "fratini"]),
+    }
 
 
 def _extract_uncertainty_method_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -909,10 +1128,23 @@ def _resolve_fcc_measured_cospectrum(
     config = spectral_correction_config or {}
     candidates = config.get("fcc_measured_cospectra", [])
     if not config.get("use_fcc_measured_cospectrum") or not isinstance(candidates, list):
-        return None, None, {"enabled": False, "used": False, "source": "disabled", "matched_window_id": ""}
+        return None, None, {
+            "enabled": False,
+            "used": False,
+            "source": "disabled",
+            "matched_window_id": "",
+            "source_run_id": str(config.get("fcc_source_run_id", "")),
+            "match_strategy": "disabled",
+            "match_quality": 0.0,
+            "frequency_count": 0,
+        }
 
     matched: dict[str, Any] | None = None
-    tolerance_s = 2.0
+    match_meta: dict[str, Any] = {}
+    tolerance_s = float(config.get("fcc_match_tolerance_s", 2.0) or 2.0)
+    nearest_tolerance_s = float(config.get("fcc_nearest_tolerance_s", 120.0) or 120.0)
+    target_duration_s = max((window_end - window_start).total_seconds(), 1.0)
+    target_center = window_start + (window_end - window_start) / 2
     for item in candidates:
         if not isinstance(item, dict):
             continue
@@ -921,14 +1153,40 @@ def _resolve_fcc_measured_cospectrum(
             end = datetime.fromisoformat(str(item.get("end_time", "")))
         except ValueError:
             continue
-        if abs((start - window_start).total_seconds()) <= tolerance_s and abs((end - window_end).total_seconds()) <= tolerance_s:
-            matched = item
-            break
+        candidate_duration_s = max((end - start).total_seconds(), 1.0)
+        candidate_center = start + (end - start) / 2
+        start_delta_s = abs((start - window_start).total_seconds())
+        end_delta_s = abs((end - window_end).total_seconds())
+        center_delta_s = abs((candidate_center - target_center).total_seconds())
         latest_start = max(start, window_start)
         earliest_end = min(end, window_end)
-        if (earliest_end - latest_start).total_seconds() > 0:
+        overlap_seconds = max((earliest_end - latest_start).total_seconds(), 0.0)
+        overlap_ratio = overlap_seconds / max(min(target_duration_s, candidate_duration_s), 1.0)
+        strategy = "none"
+        quality = 0.0
+        if start_delta_s <= tolerance_s and end_delta_s <= tolerance_s:
+            strategy = "exact_time"
+            quality = 1.0
+        elif overlap_seconds > 0.0:
+            strategy = "overlap"
+            quality = min(0.95, max(0.50, overlap_ratio))
+        elif center_delta_s <= nearest_tolerance_s:
+            strategy = "nearest"
+            quality = max(0.10, 0.50 * (1.0 - center_delta_s / max(nearest_tolerance_s, 1.0)))
+        if strategy == "none":
+            continue
+        if matched is None or quality > float(match_meta.get("match_quality", -1.0)):
             matched = item
-            break
+            match_meta = {
+                "match_strategy": strategy,
+                "match_quality": round(float(quality), 4),
+                "time_delta_s": round(float(center_delta_s), 3),
+                "start_delta_s": round(float(start_delta_s), 3),
+                "end_delta_s": round(float(end_delta_s), 3),
+                "overlap_seconds": round(float(overlap_seconds), 3),
+                "overlap_ratio": round(float(overlap_ratio), 4),
+                "mismatch_warning": "" if quality >= 0.75 else "FCC/RP window timing mismatch is material; review match provenance.",
+            }
 
     if matched is None:
         return None, None, {
@@ -937,6 +1195,11 @@ def _resolve_fcc_measured_cospectrum(
             "source": "fcc_auto_no_match",
             "matched_window_id": "",
             "source_run_id": str(config.get("fcc_source_run_id", "")),
+            "match_strategy": "none",
+            "match_quality": 0.0,
+            "frequency_count": 0,
+            "fallback_reason": "no FCC cospectrum candidate matched RP window timing",
+            "mismatch_warning": "No FCC measured cospectrum window matched this RP window.",
         }
 
     freq = np.asarray(matched.get("cross_freq", []), dtype=float)
@@ -950,6 +1213,9 @@ def _resolve_fcc_measured_cospectrum(
             "matched_window_id": str(matched.get("window_id", "")),
             "source_run_id": str(matched.get("source_run_id", config.get("fcc_source_run_id", ""))),
             "frequency_count": int(np.count_nonzero(valid)),
+            "source_qc_grade": str(matched.get("source_qc_grade", "")),
+            "fallback_reason": "matched FCC cospectrum had fewer than 8 valid positive frequency bins",
+            **match_meta,
         }
 
     return freq[valid], value[valid], {
@@ -961,6 +1227,7 @@ def _resolve_fcc_measured_cospectrum(
         "frequency_count": int(np.count_nonzero(valid)),
         "source_qc_grade": str(matched.get("source_qc_grade", "")),
         "provenance_notes": list(matched.get("provenance_notes", [])) if isinstance(matched.get("provenance_notes"), list) else [],
+        **match_meta,
     }
 
 
@@ -1220,11 +1487,14 @@ def _with_summary_context(
     reference_provenance: dict[str, Any],
     network_output_config: dict[str, Any],
     method_summary: dict[str, Any],
+    performance_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     benchmark_deviation_summary = dict(benchmark_summary.get("benchmark_deviation_summary", {}))
     footprint_summary = dict(method_summary.get("footprint_summary", {}))
+    footprint_2d_summary = dict(method_summary.get("footprint_2d_summary", footprint_summary.get("footprint_2d_summary", {})) or {})
     uncertainty_summary = dict(method_summary.get("uncertainty_summary", {}))
     spectral_summary = dict(method_summary.get("spectral_correction_summary", {}))
+    method_compare_summary = dict(method_summary.get("method_compare_summary", {}) or {})
     summary.update(
         {
             "benchmark_status": benchmark_summary.get("benchmark_status", ""),
@@ -1246,6 +1516,11 @@ def _with_summary_context(
             "footprint_contribution_distances": footprint_summary.get("contribution_distances", {}),
             "footprint_provenance": footprint_summary.get("provenance", ""),
             "footprint_limitations": footprint_summary.get("limitations", []),
+            "footprint_2d_summary": footprint_2d_summary,
+            "footprint_2d_grid_status": footprint_2d_summary.get("status", ""),
+            "footprint_2d_peak_downwind_m": footprint_2d_summary.get("peak_downwind_m"),
+            "footprint_2d_peak_crosswind_m": footprint_2d_summary.get("peak_crosswind_m"),
+            "footprint_2d_half_width_m": footprint_2d_summary.get("half_width_m"),
             "uncertainty_method": method_summary.get("uncertainty_method", ""),
             "uncertainty_summary": uncertainty_summary,
             "uncertainty_relative_uncertainty": uncertainty_summary.get("relative_uncertainty"),
@@ -1262,7 +1537,11 @@ def _with_summary_context(
             "spectral_correction_measured_cospectrum_enabled": spectral_summary.get("measured_cospectrum_enabled", False),
             "spectral_correction_measured_cospectrum_used": spectral_summary.get("measured_cospectrum_used", False),
             "spectral_correction_measured_cospectrum_source": spectral_summary.get("measured_cospectrum_source", ""),
+            "spectral_correction_cospectrum_match_summary": spectral_summary.get("cospectrum_match_summary", {}),
             "spectral_correction_limitations": spectral_summary.get("limitations", []),
+            "method_compare_summary": method_compare_summary,
+            "method_compare_recommendations": method_summary.get("method_compare_recommendations", method_compare_summary.get("recommendations", {})),
+            "performance_profile": performance_profile or {},
         }
     )
     return summary
@@ -1364,6 +1643,60 @@ def _aggregate_numeric_mapping(mappings: list[dict[str, Any]]) -> dict[str, floa
     return aggregated
 
 
+def _summarize_performance_profile(
+    *,
+    windows: list[WindowRPResult],
+    run_elapsed_ms: float,
+    expected_window_count: int,
+) -> dict[str, Any]:
+    profiles = [
+        dict(window.diagnostics.get("performance_profile", {}))
+        for window in windows
+        if isinstance(window.diagnostics.get("performance_profile"), dict)
+    ]
+    window_elapsed = [
+        float(profile.get("window_elapsed_ms"))
+        for profile in profiles
+        if isinstance(profile.get("window_elapsed_ms"), (int, float))
+    ]
+    section_names = sorted(
+        {
+            name
+            for profile in profiles
+            for name, value in dict(profile.get("sections_ms", {}) or {}).items()
+            if isinstance(value, (int, float))
+        }
+    )
+    section_summary: dict[str, Any] = {}
+    for name in section_names:
+        values = [
+            float(dict(profile.get("sections_ms", {}) or {}).get(name))
+            for profile in profiles
+            if isinstance(dict(profile.get("sections_ms", {}) or {}).get(name), (int, float))
+        ]
+        if values:
+            section_summary[name] = {
+                "average_ms": round(float(np.mean(values)), 3),
+                "max_ms": round(float(np.max(values)), 3),
+                "window_count": len(values),
+            }
+    return {
+        "status": "ok" if profiles or expected_window_count == 0 else "no_window_profiles",
+        "run_elapsed_ms": float(run_elapsed_ms),
+        "expected_window_count": int(expected_window_count),
+        "profiled_window_count": len(profiles),
+        "average_window_elapsed_ms": round(float(np.mean(window_elapsed)), 3) if window_elapsed else 0.0,
+        "max_window_elapsed_ms": round(float(np.max(window_elapsed)), 3) if window_elapsed else 0.0,
+        "sections_ms": section_summary,
+        "sample_count_range": [
+            int(min(profile.get("sample_count", 0) for profile in profiles)) if profiles else 0,
+            int(max(profile.get("sample_count", 0) for profile in profiles)) if profiles else 0,
+        ],
+        "method_compare_profiled": any(bool(profile.get("method_compare_enabled", False)) for profile in profiles),
+        "footprint_2d_profiled": any(bool(profile.get("footprint_2d_enabled", False)) for profile in profiles),
+    }
+
+
 def _first_non_empty_mapping(values: list[dict[str, Any]]) -> dict[str, Any]:
     for value in values:
         if value:
@@ -1385,6 +1718,7 @@ def _summarize_method_outputs(
     footprint_config: dict[str, Any],
     uncertainty_method_config: dict[str, Any],
     spectral_correction_config: dict[str, Any],
+    method_compare_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     footprint_diags = [dict(window.diagnostics.get("footprint_detail", {})) for window in windows if window.diagnostics.get("footprint_detail")]
     footprint_contrib = [
@@ -1403,6 +1737,61 @@ def _summarize_method_outputs(
         "limitations": list(_first_non_empty_mapping(footprint_diags).get("limitations", [])),
         "detail": _first_non_empty_mapping(footprint_diags),
     }
+    footprint_grid_payloads = [
+        dict(window.diagnostics.get("footprint_2d_grid", {}))
+        for window in windows
+        if isinstance(window.diagnostics.get("footprint_2d_grid"), dict)
+    ]
+    footprint_2d_summary = {
+        "status": "enabled" if footprint_config.get("grid_enabled", True) and footprint_config.get("enabled", False) else "disabled",
+        "window_count": len(footprint_grid_payloads),
+        "grid_shape": _first_non_empty_mapping([dict(payload.get("detail", {})) for payload in footprint_grid_payloads]).get("grid_shape", []),
+        "peak_downwind_m": _mean_or_none(
+            [
+                window.diagnostics.get("footprint_2d_peak_downwind_m")
+                for window in windows
+                if isinstance(window.diagnostics.get("footprint_2d_peak_downwind_m"), (int, float))
+            ]
+        ),
+        "peak_crosswind_m": _mean_or_none(
+            [
+                window.diagnostics.get("footprint_2d_peak_crosswind_m")
+                for window in windows
+                if isinstance(window.diagnostics.get("footprint_2d_peak_crosswind_m"), (int, float))
+            ]
+        ),
+        "half_width_m": _mean_or_none(
+            [
+                window.diagnostics.get("footprint_2d_half_width_m")
+                for window in windows
+                if isinstance(window.diagnostics.get("footprint_2d_half_width_m"), (int, float))
+            ]
+        ),
+        "contribution_contours_m": _aggregate_numeric_mapping(
+            [
+                dict(window.diagnostics.get("footprint_2d_contribution_contours_m", {}))
+                for window in windows
+                if isinstance(window.diagnostics.get("footprint_2d_contribution_contours_m"), dict)
+            ]
+        ),
+        "provenance": _first_non_empty_text(
+            [
+                dict(payload.get("detail", {})).get("provenance", "")
+                for payload in footprint_grid_payloads
+                if isinstance(payload.get("detail", {}), dict)
+            ]
+        ),
+        "limitations": list(
+            _first_non_empty_mapping(
+                [
+                    dict(payload.get("detail", {}))
+                    for payload in footprint_grid_payloads
+                    if isinstance(payload.get("detail", {}), dict)
+                ]
+            ).get("limitations", [])
+        ),
+    }
+    footprint_summary["footprint_2d_summary"] = footprint_2d_summary
 
     uncertainty_diags: list[dict[str, Any]] = []
     for window in windows:
@@ -1482,17 +1871,125 @@ def _summarize_method_outputs(
         "measured_cospectrum_used": any(bool(detail.get("measured_cospectrum_used", False)) for detail in spectral_diags),
         "measured_cospectrum_source": _first_non_empty_text([detail.get("measured_cospectrum_source", "") for detail in spectral_diags]),
         "measured_cospectrum_source_run_id": _first_non_empty_text([detail.get("measured_cospectrum_source_run_id", "") for detail in spectral_diags]),
+        "cospectrum_match_summary": {
+            "window_count": len(
+                [
+                    window
+                    for window in windows
+                    if isinstance(window.diagnostics.get("spectral_correction_cospectrum_match"), dict)
+                ]
+            ),
+            "match_strategy": _first_non_empty_text(
+                [
+                    dict(window.diagnostics.get("spectral_correction_cospectrum_match", {})).get("match_strategy", "")
+                    for window in windows
+                    if isinstance(window.diagnostics.get("spectral_correction_cospectrum_match"), dict)
+                ]
+            ),
+            "average_match_quality": _mean_or_none(
+                [
+                    dict(window.diagnostics.get("spectral_correction_cospectrum_match", {})).get("match_quality")
+                    for window in windows
+                    if isinstance(dict(window.diagnostics.get("spectral_correction_cospectrum_match", {})).get("match_quality"), (int, float))
+                ]
+            ),
+            "mismatch_warnings": list(
+                dict.fromkeys(
+                    str(dict(window.diagnostics.get("spectral_correction_cospectrum_match", {})).get("mismatch_warning", "")).strip()
+                    for window in windows
+                    if str(dict(window.diagnostics.get("spectral_correction_cospectrum_match", {})).get("mismatch_warning", "")).strip()
+                )
+            ),
+        },
         "limitations": list(_first_non_empty_mapping(spectral_diags).get("limitations", [])),
         "detail": _first_non_empty_mapping(spectral_diags),
+    }
+    method_compare_windows = [
+        dict(window.diagnostics.get("method_compare_summary", {}))
+        for window in windows
+        if isinstance(window.diagnostics.get("method_compare_summary"), dict)
+    ]
+    families = sorted({family for payload in method_compare_windows for family in payload.keys()})
+    family_summaries: dict[str, Any] = {}
+    for family in families:
+        family_payloads = [
+            dict(payload.get(family, {}))
+            for payload in method_compare_windows
+            if isinstance(payload.get(family), dict)
+        ]
+        recommendations = [
+            str(payload.get("recommendation", "")).strip()
+            for payload in family_payloads
+            if str(payload.get("recommendation", "")).strip()
+        ]
+        recommendation_counts = {
+            value: recommendations.count(value)
+            for value in sorted(set(recommendations))
+        }
+        deviations = [
+            abs(float(value))
+            for payload in family_payloads
+            for value in dict(payload.get("deviations", {}) or {}).values()
+            if isinstance(value, (int, float))
+        ]
+        family_summaries[family] = {
+            "window_count": len(family_payloads),
+            "selected_method": _first_non_empty_text([payload.get("selected_method", "") for payload in family_payloads]),
+            "primary_metric": _first_non_empty_text([payload.get("primary_metric", "") for payload in family_payloads]),
+            "methods_run": sorted(
+                {
+                    str(method_name)
+                    for payload in family_payloads
+                    for method_name in list(payload.get("methods_run", []) or [])
+                }
+            ),
+            "consensus_value": _mean_or_none(
+                [
+                    payload.get("consensus_value")
+                    for payload in family_payloads
+                    if isinstance(payload.get("consensus_value"), (int, float))
+                ]
+            ),
+            "max_abs_relative_deviation": round(max(deviations), 6) if deviations else None,
+            "recommendation_counts": recommendation_counts,
+            "recommendation": max(recommendation_counts, key=recommendation_counts.get) if recommendation_counts else "",
+            "status_counts": {
+                value: [
+                    str(payload.get("status", ""))
+                    for payload in family_payloads
+                ].count(value)
+                for value in sorted({str(payload.get("status", "")) for payload in family_payloads})
+            },
+        }
+    deviation_flags = [
+        dict(flag)
+        for window in windows
+        for flag in (window.diagnostics.get("method_compare_deviation_flags", []) or [])
+        if isinstance(flag, dict)
+    ]
+    method_compare_summary = {
+        "status": "enabled" if (method_compare_config or {}).get("enabled", False) else "disabled",
+        "window_count": len(method_compare_windows),
+        "families": family_summaries,
+        "recommendations": {
+            family: summary.get("recommendation", "")
+            for family, summary in family_summaries.items()
+            if summary.get("recommendation")
+        },
+        "deviation_flags": deviation_flags,
+        "provenance": "run-level rollup of per-window method-family comparison artifacts",
     }
 
     return {
         "footprint_method": footprint_summary.get("method", ""),
         "footprint_summary": footprint_summary,
+        "footprint_2d_summary": footprint_2d_summary,
         "uncertainty_method": uncertainty_summary.get("method", ""),
         "uncertainty_summary": uncertainty_summary,
         "spectral_correction_method": spectral_summary.get("method", ""),
         "spectral_correction_summary": spectral_summary,
+        "method_compare_summary": method_compare_summary,
+        "method_compare_recommendations": method_compare_summary.get("recommendations", {}),
     }
 
 
@@ -1520,9 +2017,21 @@ def _build_method_deviation_notes_from_window(window: WindowRPResult) -> list[st
         factor_text = f" (factor={spectral_factor})" if isinstance(spectral_factor, (int, float)) else ""
         measured_source = diagnostics.get("spectral_correction_measured_cospectrum_source", "")
         source_text = f"; cospectrum={measured_source}" if measured_source else ""
+        cospectrum_match = diagnostics.get("spectral_correction_cospectrum_match", {})
+        if isinstance(cospectrum_match, dict) and cospectrum_match.get("match_strategy"):
+            source_text = (
+                f"{source_text}; match={cospectrum_match.get('match_strategy')}"
+                f"/q={cospectrum_match.get('match_quality', 0.0)}"
+            )
         notes.append(
             f"spectral_correction: {spectral_method}{factor_text}{source_text}"
             + (f" [{spectral_provenance}]" if spectral_provenance else "")
+        )
+    method_compare = diagnostics.get("method_compare_recommendations", {})
+    if isinstance(method_compare, dict) and method_compare:
+        notes.append(
+            "method_compare: "
+            + ", ".join(f"{family}={recommendation}" for family, recommendation in sorted(method_compare.items()))
         )
     return notes
 
@@ -1530,12 +2039,18 @@ def _build_method_deviation_notes_from_window(window: WindowRPResult) -> list[st
 def _attach_method_context_to_benchmark(window: WindowRPResult, benchmark_payload: dict[str, Any]) -> None:
     diagnostics = window.diagnostics or {}
     benchmark_payload["footprint_method"] = diagnostics.get("footprint_method", "")
+    benchmark_payload["footprint_2d_grid_status"] = diagnostics.get("footprint_2d_grid_status", "")
+    benchmark_payload["footprint_2d_peak_downwind_m"] = diagnostics.get("footprint_2d_peak_downwind_m")
+    benchmark_payload["footprint_2d_peak_crosswind_m"] = diagnostics.get("footprint_2d_peak_crosswind_m")
     benchmark_payload["uncertainty_method"] = diagnostics.get("uncertainty_method", "")
     benchmark_payload["spectral_correction_method"] = diagnostics.get("spectral_correction_method", "")
+    benchmark_payload["spectral_correction_cospectrum_match"] = diagnostics.get("spectral_correction_cospectrum_match", {})
     benchmark_payload["primary_flux_random_error"] = diagnostics.get("primary_flux_random_error")
     benchmark_payload["primary_flux_relative_uncertainty"] = diagnostics.get("primary_flux_relative_uncertainty")
     benchmark_payload["primary_flux_uncertainty_band"] = diagnostics.get("primary_flux_uncertainty_band")
     benchmark_payload["primary_flux_ci_lower"] = diagnostics.get("primary_flux_ci_lower")
     benchmark_payload["primary_flux_ci_upper"] = diagnostics.get("primary_flux_ci_upper")
     benchmark_payload["primary_flux_ci_level"] = diagnostics.get("primary_flux_ci_level")
+    benchmark_payload["method_compare_summary"] = diagnostics.get("method_compare_summary", {})
+    benchmark_payload["method_compare_recommendations"] = diagnostics.get("method_compare_recommendations", {})
     benchmark_payload["method_deviation_notes"] = _build_method_deviation_notes_from_window(window)

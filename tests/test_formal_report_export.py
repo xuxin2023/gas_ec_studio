@@ -89,6 +89,11 @@ def _latest_formal_report_dir(tmp_path: Path) -> Path:
     return max(root.iterdir(), key=lambda path: path.stat().st_mtime)
 
 
+def _latest_delivery_dir(tmp_path: Path) -> Path:
+    root = tmp_path / "runtime_data" / "exports" / "delivery"
+    return max((path for path in root.iterdir() if path.is_dir()), key=lambda path: path.stat().st_mtime)
+
+
 def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
     controller = StudioController(workspace_root=tmp_path)
@@ -116,7 +121,19 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert "当前无对标结果" in html
         assert "当前无归因结果" in html
         assert manifest["pdf_status"] == "fallback_html_only"
+        assert manifest["delivery_audit"]["artifact_type"] == "formal_report_delivery_audit"
+        assert "export_manifest" in manifest["artifact_index"]
         assert snapshot["header"]["current_batch_id"]
+        assert snapshot["delivery_audit"]["artifact_index"]["export_manifest"]["exists"] is True
+
+        delivery_dir = _latest_delivery_dir(tmp_path)
+        package_manifest = json.loads((delivery_dir / "package_manifest.json").read_text(encoding="utf-8"))
+        delivery_audit = json.loads((delivery_dir / "delivery_audit.json").read_text(encoding="utf-8"))
+        assert package_manifest["delivery_audit"]["validation_status"] == "ok"
+        assert delivery_audit["validation_status"] == "ok"
+        assert delivery_audit["artifact_index"]["export_manifest"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["method_parity_matrix_artifact"]["packaged"] is True
+        assert delivery_audit["network_validation_summary"]["schema_target"] == "FLUXNET"
     finally:
         controller.shutdown()
 
@@ -163,10 +180,12 @@ def test_formal_report_export_state_is_stable(monkeypatch, tmp_path: Path) -> No
         file_info = controller.report_center_workspace["reports"][controller.report_center_workspace["selected_report"]]["file_info"]
         assert file_info["正式报告HTML"].endswith("formal_report.html")
         assert file_info["正式报告Manifest"].endswith("report_manifest.json")
+        assert file_info["交付包Audit"].endswith("delivery_audit.json")
 
         export_dir = _latest_formal_report_dir(tmp_path)
         snapshot = json.loads((export_dir / "formal_report_snapshot.json").read_text(encoding="utf-8"))
         assert snapshot["data_sources"]["spectral_run_id"]
         assert snapshot["report_version"] == "formal_report_v1"
+        assert snapshot["delivery_audit"]["method_artifact_keys"]
     finally:
         controller.shutdown()

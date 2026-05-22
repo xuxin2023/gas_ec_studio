@@ -1124,6 +1124,7 @@ class StudioController(QObject):
         file_info["交付包目录"] = str(delivery_package["export_root"])
         file_info["交付包Manifest"] = str(delivery_package["files"]["package_manifest"])
         file_info["交付包README"] = str(delivery_package["files"]["readme"])
+        file_info["交付包Audit"] = str(delivery_package["files"]["delivery_audit"])
         file_info["交付包ZIP"] = str(delivery_package["files"]["zip"])
         if spectral_result is not None:
             report_exports = spectral_result.artifacts.setdefault("report_exports", {})
@@ -1139,6 +1140,7 @@ class StudioController(QObject):
                 "export_root": str(delivery_package["export_root"]),
                 "package_manifest": str(delivery_package["files"]["package_manifest"]),
                 "readme": str(delivery_package["files"]["readme"]),
+                "delivery_audit": str(delivery_package["files"]["delivery_audit"]),
                 "zip": str(delivery_package["files"]["zip"]),
                 "exported_at": timestamp,
             }
@@ -1164,6 +1166,7 @@ class StudioController(QObject):
                 "export_root": str(delivery_package["export_root"]),
                 "package_manifest": str(delivery_package["files"]["package_manifest"]),
                 "readme": str(delivery_package["files"]["readme"]),
+                "delivery_audit": str(delivery_package["files"]["delivery_audit"]),
                 "zip": str(delivery_package["files"]["zip"]),
                 "exported_at": timestamp,
             }
@@ -1401,6 +1404,7 @@ class StudioController(QObject):
         footprint_step = dict(config.get("footprint", {}) or {})
         uncertainty_step = dict(config.get("uncertainty", {}) or {})
         spectral_step = dict(config.get("spectral_correction", {}) or {})
+        method_compare_step = dict(config.get("method_compare", {}) or {})
         sample_hz = config.get("window_sampling", {}).get("sample_hz") or timing.get("sample_hz")
         if not sample_hz and selected is not None:
             sample_hz = selected.runtime.ftd_hz
@@ -1436,6 +1440,11 @@ class StudioController(QObject):
             "canopy_height_m": float(footprint_step.get("canopy_height_m", 5.0) or 5.0),
             "z0": float(footprint_step.get("z0", 0.12) or 0.12),
             "ol": float(footprint_step.get("ol", 0.0) or 0.0),
+            "grid_enabled": bool(footprint_step.get("grid_enabled", True)),
+            "grid_x_bins": int(footprint_step.get("grid_x_bins", 32) or 32),
+            "grid_y_bins": int(footprint_step.get("grid_y_bins", 25) or 25),
+            "grid_max_downwind_m": footprint_step.get("grid_max_downwind_m"),
+            "grid_max_crosswind_m": footprint_step.get("grid_max_crosswind_m"),
         }
         uncertainty_method = str(
             uncertainty_step.get("method")
@@ -1463,6 +1472,15 @@ class StudioController(QObject):
             ),
             "fcc_source_run_id": str(fcc_cospectrum_snapshot.get("fcc_source_run_id", "")),
             "fcc_measured_cospectra": list(fcc_cospectrum_snapshot.get("fcc_measured_cospectra", [])),
+        }
+        config["method_compare"] = {
+            "enabled": bool(method_compare_step.get("enabled", True)),
+            "families": list(method_compare_step.get("families", ["footprint", "uncertainty", "spectral_correction"])),
+            "deviation_threshold": float(method_compare_step.get("deviation_threshold", 0.25) or 0.25),
+            "max_samples": int(method_compare_step.get("max_samples", 4096) or 4096),
+            "footprint_methods": list(method_compare_step.get("footprint_methods", ["kljun", "kormann_meixner", "hsieh"])),
+            "uncertainty_methods": list(method_compare_step.get("uncertainty_methods", ["mann_lenschow", "finkelstein_sims"])),
+            "spectral_correction_methods": list(method_compare_step.get("spectral_correction_methods", ["massman", "horst", "ibrom", "fratini"])),
         }
         benchmark_config = self._effective_benchmark_config()
         if benchmark_config.get("reference_id"):
@@ -1680,6 +1698,10 @@ class StudioController(QObject):
                 "peak_distance_m": diagnostics.get("footprint_peak_distance_m"),
                 "offset_distance_m": diagnostics.get("footprint_offset_distance_m"),
                 "contribution_distances": footprint_contrib,
+                "footprint_2d_grid_status": diagnostics.get("footprint_2d_grid_status", ""),
+                "footprint_2d_peak_downwind_m": diagnostics.get("footprint_2d_peak_downwind_m"),
+                "footprint_2d_peak_crosswind_m": diagnostics.get("footprint_2d_peak_crosswind_m"),
+                "footprint_2d_half_width_m": diagnostics.get("footprint_2d_half_width_m"),
                 "detail": footprint_detail,
             }
             steps["footprint"]["risks"] = list(footprint_detail.get("limitations", []))[:3] or [current_window.reason]
@@ -1708,9 +1730,27 @@ class StudioController(QObject):
                 "measured_cospectrum_enabled": diagnostics.get("spectral_correction_measured_cospectrum_enabled", False),
                 "measured_cospectrum_used": diagnostics.get("spectral_correction_measured_cospectrum_used", False),
                 "measured_cospectrum_source": measured_source,
+                "cospectrum_match": diagnostics.get("spectral_correction_cospectrum_match", {}),
                 "detail": spectral_detail,
             }
             steps["spectral_correction"]["risks"] = list(diagnostics.get("spectral_correction_limitations", []))[:3] or [current_window.reason]
+        if "method_compare" in steps:
+            method_compare = diagnostics.get("method_compare_summary", {})
+            recommendations = diagnostics.get("method_compare_recommendations", {})
+            steps["method_compare"]["real_summary"] = (
+                f"enabled={bool(diagnostics.get('method_compare_enabled', False))}, "
+                f"families={len(method_compare) if isinstance(method_compare, dict) else 0}, "
+                f"flags={len(diagnostics.get('method_compare_deviation_flags', []) or [])}."
+            )
+            steps["method_compare"]["intermediate"] = {
+                "method_compare_summary": method_compare,
+                "method_compare_recommendations": recommendations,
+                "method_compare_deviation_flags": diagnostics.get("method_compare_deviation_flags", []),
+            }
+            steps["method_compare"]["risks"] = [
+                str(flag)
+                for flag in diagnostics.get("method_compare_deviation_flags", [])[:3]
+            ] or ["Method compare produced no high-deviation flags."]
 
         steps["output"]["real_summary"] = (
             f"当前运行 {result.run_id}，输出 {len(result.windows)} 个窗口结果，状态 {status}。"
@@ -1908,6 +1948,7 @@ class StudioController(QObject):
             "footprint_peak_distance_m": None,
             "footprint_offset_distance_m": None,
             "footprint_contribution_distances": {},
+            "footprint_2d_summary": {},
             "uncertainty_method": "未启用",
             "uncertainty_provenance": "",
             "uncertainty_limitations": [],
@@ -1920,14 +1961,20 @@ class StudioController(QObject):
             "spectral_correction_limitations": [],
             "spectral_correction_factor": None,
             "spectral_correction_measured_cospectrum_source": "",
+            "spectral_correction_cospectrum_match_summary": {},
+            "method_compare_summary": {},
+            "method_compare_recommendations": {},
         }
         if rp_result is None:
             return default
         summary = dict(rp_result.summary or {})
         artifacts = dict(rp_result.artifacts.get("method_rollup", {}) or rp_result.artifacts.get("method_provenance", {}) or {})
         footprint_summary = dict(summary.get("footprint_summary", {}) or artifacts.get("footprint_summary", {}) or {})
+        footprint_2d_summary = dict(summary.get("footprint_2d_summary", {}) or artifacts.get("footprint_2d_summary", {}) or footprint_summary.get("footprint_2d_summary", {}) or {})
         uncertainty_summary = dict(summary.get("uncertainty_summary", {}) or artifacts.get("uncertainty_summary", {}) or {})
         spectral_summary = dict(summary.get("spectral_correction_summary", {}) or artifacts.get("spectral_correction_summary", {}) or {})
+        method_compare_summary = dict(summary.get("method_compare_summary", {}) or artifacts.get("method_compare_summary", {}) or {})
+        method_compare_recommendations = dict(summary.get("method_compare_recommendations", {}) or artifacts.get("method_compare_recommendations", {}) or method_compare_summary.get("recommendations", {}) or {})
         if (not footprint_summary or not uncertainty_summary or not spectral_summary) and rp_result.windows:
             first = rp_result.windows[0]
             diag = first.diagnostics or {}
@@ -1940,6 +1987,13 @@ class StudioController(QObject):
                     "contribution_distances": dict(diag.get("footprint_contribution_distances", {}) or {}),
                     "provenance": footprint_detail.get("provenance", ""),
                     "limitations": footprint_detail.get("limitations", []),
+                }
+            if not footprint_2d_summary:
+                footprint_2d_summary = {
+                    "status": diag.get("footprint_2d_grid_status", ""),
+                    "peak_downwind_m": diag.get("footprint_2d_peak_downwind_m"),
+                    "peak_crosswind_m": diag.get("footprint_2d_peak_crosswind_m"),
+                    "half_width_m": diag.get("footprint_2d_half_width_m"),
                 }
             if not uncertainty_summary:
                 uncertainty_detail = dict(diag.get("uncertainty_method_detail", {}) or first.uncertainty_detail or {})
@@ -1958,8 +2012,13 @@ class StudioController(QObject):
                     "correction_factor": diag.get("spectral_correction_factor"),
                     "provenance": diag.get("spectral_correction_provenance", ""),
                     "measured_cospectrum_source": diag.get("spectral_correction_measured_cospectrum_source", ""),
+                    "cospectrum_match_summary": dict(diag.get("spectral_correction_cospectrum_match", {}) or {}),
                     "limitations": diag.get("spectral_correction_limitations", []),
                 }
+            if not method_compare_summary:
+                method_compare_summary = dict(diag.get("method_compare_summary", {}) or {})
+            if not method_compare_recommendations:
+                method_compare_recommendations = dict(diag.get("method_compare_recommendations", {}) or {})
         footprint_peak = summary.get("footprint_peak_distance_m", footprint_summary.get("peak_distance_m"))
         footprint_offset = summary.get("footprint_offset_distance_m", footprint_summary.get("offset_distance_m"))
         footprint_contrib = dict(summary.get("footprint_contribution_distances") or footprint_summary.get("contribution_distances") or {})
@@ -1992,6 +2051,11 @@ class StudioController(QObject):
             or spectral_summary.get("measured_cospectrum_source")
             or ""
         )
+        cospectrum_match_summary = dict(
+            summary.get("spectral_correction_cospectrum_match_summary")
+            or spectral_summary.get("cospectrum_match_summary")
+            or {}
+        )
         if spectral_factor is not None:
             spectral_provenance = f"{spectral_provenance}; factor={float(spectral_factor):.3f}".strip("; ")
         if spectral_measured_cospectrum_source:
@@ -2004,6 +2068,7 @@ class StudioController(QObject):
             "footprint_peak_distance_m": footprint_peak,
             "footprint_offset_distance_m": footprint_offset,
             "footprint_contribution_distances": footprint_contrib,
+            "footprint_2d_summary": footprint_2d_summary,
             "uncertainty_method": str(summary.get("uncertainty_method") or uncertainty_summary.get("method") or default["uncertainty_method"]),
             "uncertainty_provenance": uncertainty_provenance,
             "uncertainty_limitations": list(summary.get("uncertainty_limitations") or uncertainty_summary.get("limitations") or []),
@@ -2016,6 +2081,9 @@ class StudioController(QObject):
             "spectral_correction_limitations": list(summary.get("spectral_correction_limitations") or spectral_summary.get("limitations") or []),
             "spectral_correction_factor": spectral_factor,
             "spectral_correction_measured_cospectrum_source": spectral_measured_cospectrum_source,
+            "spectral_correction_cospectrum_match_summary": cospectrum_match_summary,
+            "method_compare_summary": method_compare_summary,
+            "method_compare_recommendations": method_compare_recommendations,
         }
 
     def _empty_report_payloads(self) -> dict:
@@ -2045,6 +2113,7 @@ class StudioController(QObject):
                 ("evidence_pack", "证据包"),
                 ("benchmark_cockpit", "Benchmark 驾驶舱"),
                 ("method_provenance", "方法溯源"),
+                ("method_compare", "Method Compare"),
             )
         }
 
@@ -2309,6 +2378,9 @@ class StudioController(QObject):
             "table_headers": ["方法族", "方法名", "溯源"],
             "table_rows": [
                 ("Footprint", rp_method_summary["footprint_method"], rp_method_summary["footprint_provenance"]),
+                ("Footprint 2D", str(rp_method_summary["footprint_2d_summary"]), "2D footprint grid artifact summary"),
+                ("FCC match", str(rp_method_summary["spectral_correction_cospectrum_match_summary"]), "FCC/RP cospectrum match provenance"),
+                ("Method compare", str(rp_method_summary["method_compare_recommendations"]), "method-family compare recommendations"),
                 ("不确定度", rp_method_summary["uncertainty_method"], rp_method_summary["uncertainty_provenance"]),
                 ("谱修正", rp_method_summary["spectral_correction_method"], rp_method_summary["spectral_correction_provenance"]),
                 ("不确定度带宽", str(rp_method_summary["uncertainty_band"]), "primary flux uncertainty band"),
@@ -2322,12 +2394,114 @@ class StudioController(QObject):
             "file_info": {
                 **file_info_for("method_provenance"),
                 **({"Method Rollup Artifact": str(result_export_files.get("method_rollup_artifact"))} if result_export_files.get("method_rollup_artifact") else {}),
+                **({"Footprint 2D Artifact": str(result_export_files.get("footprint_2d_artifact"))} if result_export_files.get("footprint_2d_artifact") else {}),
+                **({"Method Compare Artifact": str(result_export_files.get("method_compare_artifact"))} if result_export_files.get("method_compare_artifact") else {}),
             },
             "versions": [
                 f"运行 ID：{run_result.run_id}",
                 "方法溯源优先来自 RP run-level method rollup artifact",
             ],
             "usage": ["工程师查看方法来源和局限性。", "管理汇报时引用此页说明方法依据。"],
+        }
+
+        method_compare_summary = dict(rp_method_summary.get("method_compare_summary", {}) or {})
+        method_compare_families = dict(method_compare_summary.get("families", {}) or {})
+        method_compare_rows = []
+        for family, family_summary in sorted(method_compare_families.items()):
+            payload = dict(family_summary or {})
+            methods_run = payload.get("methods_run", [])
+            if isinstance(methods_run, list):
+                methods_text = ", ".join(str(item) for item in methods_run)
+            else:
+                methods_text = str(methods_run)
+            method_compare_rows.append(
+                (
+                    str(family),
+                    str(payload.get("recommendation", "")),
+                    f"max deviation={payload.get('max_abs_relative_deviation', '--')}; methods={methods_text}",
+                )
+            )
+        if not method_compare_rows:
+            method_compare_rows = [
+                (
+                    "method_compare",
+                    str(method_compare_summary.get("status", "disabled")),
+                    "No method-family comparison payload is available for this run.",
+                )
+            ]
+        performance_profile = dict((rp_result.summary or {}).get("performance_profile", {}) if rp_result else {})
+        performance_sections = dict(performance_profile.get("sections_ms", {}) or {})
+        for section_name, section_summary in sorted(performance_sections.items()):
+            payload = dict(section_summary or {})
+            method_compare_rows.append(
+                (
+                    f"performance:{section_name}",
+                    f"avg={payload.get('average_ms', '--')} ms",
+                    f"max={payload.get('max_ms', '--')} ms; windows={payload.get('window_count', '--')}",
+                )
+            )
+        method_parity_payload: dict[str, object] = {}
+        method_parity_path = result_export_files.get("method_parity_matrix_artifact")
+        if method_parity_path:
+            try:
+                method_parity_payload = json.loads(Path(str(method_parity_path)).read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                method_parity_payload = {}
+        for row in list(method_parity_payload.get("rows", []) if isinstance(method_parity_payload, dict) else [])[:8]:
+            payload = dict(row or {})
+            method_compare_rows.append(
+                (
+                    f"parity:{payload.get('family', '')}",
+                    str(payload.get("status", "")),
+                    (
+                        f"gas={payload.get('normalized_gas_ec_studio_method', payload.get('gas_ec_studio_method', ''))}; "
+                        f"eddypro={payload.get('normalized_eddypro_method', payload.get('eddypro_method', ''))}; "
+                        f"source={payload.get('reference_evidence_source', '')}"
+                    ),
+                )
+            )
+        metadata_coverage = dict(method_parity_payload.get("metadata_coverage", {}) if isinstance(method_parity_payload, dict) else {})
+        method_compare_files = {
+            **file_info_for("method_compare"),
+            **({"Method Compare Artifact": str(result_export_files.get("method_compare_artifact"))} if result_export_files.get("method_compare_artifact") else {}),
+            **({"Method Parity Matrix": str(result_export_files.get("method_parity_matrix_artifact"))} if result_export_files.get("method_parity_matrix_artifact") else {}),
+            **({"Method Parity CSV": str(result_export_files.get("method_parity_matrix_csv"))} if result_export_files.get("method_parity_matrix_csv") else {}),
+            **({"Footprint 2D Contour": str(result_export_files.get("footprint_2d_contour_svg"))} if result_export_files.get("footprint_2d_contour_svg") else {}),
+            **({"Footprint 2D Grid CSV": str(result_export_files.get("footprint_2d_grid_csv"))} if result_export_files.get("footprint_2d_grid_csv") else {}),
+            **({"Performance Profile": str(result_export_files.get("performance_profile_artifact"))} if result_export_files.get("performance_profile_artifact") else {}),
+        }
+        reports["method_compare"] = {
+            "title": "Method Compare",
+            "source": f"Method parity / footprint contour / performance profile / {batch_label}",
+            "updated_at": updated_at,
+            "metrics": [
+                ("status", str(method_compare_summary.get("status", "disabled"))),
+                ("families", str(len(method_compare_families))),
+                ("reference_fields", f"{metadata_coverage.get('reported_count', 0)} / {metadata_coverage.get('total_count', 0)}"),
+                ("profiled_windows", str(performance_profile.get("profiled_window_count", 0))),
+                ("runtime_ms", str(performance_profile.get("run_elapsed_ms", "--"))),
+            ],
+            "plot_series": [
+                float(performance_profile.get("average_window_elapsed_ms", 0.0) or 0.0),
+                float(performance_profile.get("max_window_elapsed_ms", 0.0) or 0.0),
+                float(performance_profile.get("run_elapsed_ms", 0.0) or 0.0),
+            ],
+            "table_headers": ["family / artifact", "recommendation / metric", "detail"],
+            "table_rows": method_compare_rows,
+            "conclusions": [
+                "This report is backed by the run-level method_compare artifact and method parity matrix, not by a view-only refresh.",
+                "EddyPro method fields that are absent from the reference metadata remain marked as not_reported in the exported matrix.",
+            ],
+            "export_options": ["导出当前报告", "导出证据包"],
+            "file_info": method_compare_files,
+            "versions": [
+                f"运行 ID：{run_result.run_id}",
+                "Artifacts: method_compare_artifact.json, method_parity_matrix.json, footprint_2d_contour.svg, performance_profile.json",
+            ],
+            "usage": [
+                "工程师用此页快速检查三族方法对比、EddyPro 方法元数据覆盖情况和长窗口耗时。",
+                "交付时优先引用 artifact 文件，页面仅作为统一入口。",
+            ],
         }
 
         included_files = evidence.get("included_files", [])
@@ -3100,6 +3274,7 @@ class StudioController(QObject):
             "evidence_pack": "证据包",
             "eddypro_compare": "EddyPro 对标报告",
             "method_provenance": "方法溯源",
+            "method_compare": "Method Compare",
         }
         return {
             key: {
@@ -3673,9 +3848,15 @@ class StudioController(QObject):
                         "primary_flux_ci_lower": diagnostics.get("primary_flux_ci_lower"),
                         "primary_flux_ci_upper": diagnostics.get("primary_flux_ci_upper"),
                         "footprint_method": diagnostics.get("footprint_method", ""),
+                        "footprint_2d_grid_status": diagnostics.get("footprint_2d_grid_status", ""),
+                        "footprint_2d_peak_downwind_m": diagnostics.get("footprint_2d_peak_downwind_m"),
+                        "footprint_2d_peak_crosswind_m": diagnostics.get("footprint_2d_peak_crosswind_m"),
                         "uncertainty_method": diagnostics.get("uncertainty_method", ""),
                         "spectral_correction_method": diagnostics.get("spectral_correction_method", ""),
                         "spectral_correction_measured_cospectrum_source": diagnostics.get("spectral_correction_measured_cospectrum_source", ""),
+                        "spectral_correction_cospectrum_match": diagnostics.get("spectral_correction_cospectrum_match", {}),
+                        "method_compare_summary": diagnostics.get("method_compare_summary", {}),
+                        "method_compare_recommendations": diagnostics.get("method_compare_recommendations", {}),
                         "method_deviation_notes": list(deviation.get("method_deviation_notes", [])),
                     }
                 )
@@ -3722,9 +3903,15 @@ class StudioController(QObject):
                     "primary_flux_ci_lower": diagnostics.get("primary_flux_ci_lower"),
                     "primary_flux_ci_upper": diagnostics.get("primary_flux_ci_upper"),
                     "footprint_method": deviation.get("footprint_method", diagnostics.get("footprint_method", "")),
+                    "footprint_2d_grid_status": deviation.get("footprint_2d_grid_status", diagnostics.get("footprint_2d_grid_status", "")),
+                    "footprint_2d_peak_downwind_m": deviation.get("footprint_2d_peak_downwind_m", diagnostics.get("footprint_2d_peak_downwind_m")),
+                    "footprint_2d_peak_crosswind_m": deviation.get("footprint_2d_peak_crosswind_m", diagnostics.get("footprint_2d_peak_crosswind_m")),
                     "uncertainty_method": deviation.get("uncertainty_method", diagnostics.get("uncertainty_method", "")),
                     "spectral_correction_method": deviation.get("spectral_correction_method", diagnostics.get("spectral_correction_method", "")),
                     "spectral_correction_measured_cospectrum_source": diagnostics.get("spectral_correction_measured_cospectrum_source", ""),
+                    "spectral_correction_cospectrum_match": deviation.get("spectral_correction_cospectrum_match", diagnostics.get("spectral_correction_cospectrum_match", {})),
+                    "method_compare_summary": deviation.get("method_compare_summary", diagnostics.get("method_compare_summary", {})),
+                    "method_compare_recommendations": deviation.get("method_compare_recommendations", diagnostics.get("method_compare_recommendations", {})),
                     "method_deviation_notes": list(deviation.get("method_deviation_notes", [])),
                 }
             )
@@ -4434,6 +4621,9 @@ class StudioController(QObject):
                     "canopy_height_m": 5.0,
                     "z0": 0.12,
                     "ol": 0.0,
+                    "grid_enabled": True,
+                    "grid_x_bins": 32,
+                    "grid_y_bins": 25,
                 },
                 "uncertainty": {
                     "title": "不确定度",
@@ -4456,6 +4646,19 @@ class StudioController(QObject):
                     "z_m": 3.0,
                     "ol": 0.0,
                     "use_fcc_measured_cospectrum": True,
+                },
+                "method_compare": {
+                    "title": "Method compare",
+                    "method": "enabled",
+                    "applicable": "Compare footprint / uncertainty / spectral correction method families on identical RP windows.",
+                    "recommended": "Enable for parity review; keep selected processing method unchanged unless review flags require action.",
+                    "enabled": True,
+                    "families": ["footprint", "uncertainty", "spectral_correction"],
+                    "deviation_threshold": 0.25,
+                    "max_samples": 4096,
+                    "footprint_methods": ["kljun", "kormann_meixner", "hsieh"],
+                    "uncertainty_methods": ["mann_lenschow", "finkelstein_sims"],
+                    "spectral_correction_methods": ["massman", "horst", "ibrom", "fratini"],
                 },
                 "output": {
                     "title": "输出",

@@ -146,6 +146,10 @@ def export_formal_report(
             "compare_id": snapshot["header"]["compare_id"],
             "attribution_id": snapshot["header"]["attribution_id"],
             "pdf_status": "fallback_html_only",
+            "delivery_audit": snapshot.get("delivery_audit", {}),
+            "artifact_index": snapshot.get("delivery_audit", {}).get("artifact_index", {}),
+            "network_validation_summary": snapshot.get("delivery_audit", {}).get("network_validation_summary", {}),
+            "benchmark_summary": snapshot.get("delivery_audit", {}).get("benchmark_summary", {}),
         }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -197,6 +201,44 @@ def _build_formal_report_snapshot(
     evidence_bundle = dict(getattr(spectral_result, "artifacts", {}).get("evidence_bundle", {}) or {}) if spectral_result else {}
     compare_files = dict(eddypro_compare.get("files", {}) or {})
     bundle_files = dict(result_bundle.get("files", {}) or {})
+    result_manifest = _read_json_file(bundle_files.get("export_manifest", ""))
+    artifact_index = _bundle_artifact_index(bundle_files)
+    method_parity_matrix = dict(result_manifest.get("method_parity_matrix", {}) or {})
+    network_validation_summary = dict(result_manifest.get("network_validation_summary", {}) or {})
+    delivery_audit = {
+        "artifact_type": "formal_report_delivery_audit",
+        "result_bundle_root": str(result_bundle.get("export_root", "")),
+        "result_manifest_path": str(bundle_files.get("export_manifest", "")),
+        "artifact_index": artifact_index,
+        "method_artifact_keys": [
+            key
+            for key in [
+                "method_rollup_artifact",
+                "method_compare_artifact",
+                "method_parity_matrix_artifact",
+                "method_parity_matrix_csv",
+                "footprint_2d_artifact",
+                "footprint_2d_contour_svg",
+                "footprint_2d_grid_csv",
+                "performance_profile_artifact",
+                "reference_provenance_artifact",
+                "network_validation_summary",
+            ]
+            if key in bundle_files
+        ],
+        "network_validation_summary": network_validation_summary,
+        "benchmark_summary": {
+            "benchmark_status": result_manifest.get("benchmark_status", ""),
+            "benchmark_reference_id": result_manifest.get("benchmark_reference_id", ""),
+            "pass_rate": result_manifest.get("pass_rate", 0.0),
+            "failed_fields": result_manifest.get("failed_fields", []),
+        },
+        "method_parity_matrix": {
+            "status_counts": dict(method_parity_matrix.get("status_counts", {}) or {}),
+            "metadata_coverage": dict(method_parity_matrix.get("metadata_coverage", {}) or {}),
+            "not_reported_families": list(method_parity_matrix.get("not_reported_families", []) or []),
+        },
+    }
     total_tf_count = sum(
         1
         for window in spectral_windows
@@ -424,6 +466,49 @@ def _build_formal_report_snapshot(
             ],
         },
         {
+            "id": "delivery-audit",
+            "title": "交付链审计",
+            "intro": "核对正式报告、result manifest、method artifact、network validation 与交付包所需文件的一致性。",
+            "tables": [
+                {
+                    "title": "关键交付字段",
+                    "headers": ["字段", "当前值"],
+                    "rows": [
+                        ["result_bundle_root", delivery_audit["result_bundle_root"] or "--"],
+                        ["schema_target", str(network_validation_summary.get("schema_target", result_manifest.get("schema_target", "--")))],
+                        ["network_validation_status", str(network_validation_summary.get("validation_status", result_manifest.get("network_validation_status", "--")))],
+                        ["network_missing_fields", json.dumps(network_validation_summary.get("missing_fields", result_manifest.get("network_missing_fields", [])), ensure_ascii=False)],
+                        ["benchmark_status", str(delivery_audit["benchmark_summary"].get("benchmark_status", ""))],
+                        ["benchmark_reference_id", str(delivery_audit["benchmark_summary"].get("benchmark_reference_id", ""))],
+                        ["method_metadata_coverage", json.dumps(delivery_audit["method_parity_matrix"].get("metadata_coverage", {}), ensure_ascii=False)],
+                    ],
+                },
+                {
+                    "title": "关键 artifact 索引",
+                    "headers": ["artifact", "存在", "路径"],
+                    "rows": [
+                        [
+                            key,
+                            "yes" if payload.get("exists") else "no",
+                            str(payload.get("path", "")),
+                        ]
+                        for key, payload in artifact_index.items()
+                        if key
+                        in {
+                            "export_manifest",
+                            "method_parity_matrix_artifact",
+                            "method_parity_matrix_csv",
+                            "footprint_2d_contour_svg",
+                            "footprint_2d_grid_csv",
+                            "performance_profile_artifact",
+                            "network_validation_summary",
+                        }
+                    ]
+                    or [["--", "no", "当前结果包未声明关键 artifact"]],
+                },
+            ],
+        },
+        {
             "id": "artifacts",
             "title": "导出与证据说明",
             "intro": "记录当前结果包、对标文件、证据包与关键 artifact。",
@@ -453,6 +538,7 @@ def _build_formal_report_snapshot(
             "attribution_id": attribution_result.get("attribution_id", ""),
         },
         "sections": sections,
+        "delivery_audit": delivery_audit,
     }
 
 
@@ -589,6 +675,30 @@ def _format_mapping(payload: dict[str, Any]) -> str:
         else:
             rows.append(f"{key}={value}")
     return "；".join(rows[:4])
+
+
+def _bundle_artifact_index(bundle_files: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    index: dict[str, dict[str, Any]] = {}
+    for key, value in bundle_files.items():
+        path = Path(str(value)) if value else Path()
+        index[str(key)] = {
+            "path": str(value or ""),
+            "exists": bool(value) and path.exists() and path.is_file(),
+            "filename": path.name if value else "",
+        }
+    return index
+
+
+def _read_json_file(path_value: Any) -> dict[str, Any]:
+    if not path_value:
+        return {}
+    path = Path(str(path_value))
+    if not path.exists() or not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
 
 
 def _to_jsonable(payload: Any) -> Any:

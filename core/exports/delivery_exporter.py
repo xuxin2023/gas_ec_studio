@@ -27,9 +27,10 @@ def export_delivery_package(
 
     file_list: list[str] = []
     notes: list[str] = []
+    file_index: dict[str, dict[str, Any]] = {}
 
-    _copy_declared_files(formal_report.get("files", {}), package_root, file_list=file_list)
-    _copy_declared_files(result_bundle.get("files", {}), package_root, file_list=file_list)
+    _copy_declared_files(formal_report.get("files", {}), package_root, file_list=file_list, file_index=file_index, source_group="formal_report")
+    _copy_declared_files(result_bundle.get("files", {}), package_root, file_list=file_list, file_index=file_index, source_group="result_bundle")
 
     if evidence_bundle and evidence_bundle.get("root_dir"):
         evidence_root = Path(str(evidence_bundle["root_dir"]))
@@ -44,7 +45,7 @@ def export_delivery_package(
 
     if compare_manifest and compare_manifest.get("files"):
         compare_files = dict(compare_manifest.get("files", {}))
-        _copy_declared_files(compare_files, package_root, file_list=file_list)
+        _copy_declared_files(compare_files, package_root, file_list=file_list, file_index=file_index, source_group="eddypro_compare")
     else:
         notes.append("当前缺少 compare 结果，已导出最小交付包。")
 
@@ -57,8 +58,22 @@ def export_delivery_package(
         notes.append("当前缺少 attribution 结果，已导出最小交付包。")
 
     readme_path = package_root / "README.txt"
-    readme_path.write_text(_build_readme(formal_report, evidence_bundle, compare_manifest, attribution_payload), encoding="utf-8")
+    readme_path.write_text(_build_readme(formal_report, evidence_bundle, compare_manifest, attribution_payload, result_bundle), encoding="utf-8")
     file_list.append(str(readme_path.relative_to(package_root)))
+
+    audit = _build_delivery_audit(
+        formal_report=formal_report,
+        result_bundle=result_bundle,
+        evidence_bundle=evidence_bundle or {},
+        compare_manifest=compare_manifest or {},
+        attribution_result=attribution_payload,
+        file_index=file_index,
+        package_file_list=file_list,
+        notes=notes,
+    )
+    audit_path = package_root / "delivery_audit.json"
+    audit_path.write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
+    file_list.append(str(audit_path.relative_to(package_root)))
 
     manifest_path = package_root / "package_manifest.json"
     zip_path = exports_root / f"{package_id}.zip"
@@ -71,6 +86,12 @@ def export_delivery_package(
         "file_list": sorted(set(file_list)),
         "zip_file": str(zip_path),
         "export_status": "ready",
+        "delivery_audit": audit,
+        "artifact_index": audit.get("artifact_index", {}),
+        "result_manifest_summary": audit.get("result_manifest_summary", {}),
+        "network_validation_summary": audit.get("network_validation_summary", {}),
+        "benchmark_summary": audit.get("benchmark_summary", {}),
+        "method_artifact_keys": audit.get("method_artifact_keys", []),
         "notes": notes or ["交付包已完整导出。"],
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -89,22 +110,41 @@ def export_delivery_package(
         "files": {
             "package_manifest": str(manifest_path),
             "readme": str(readme_path),
+            "delivery_audit": str(audit_path),
             "zip": str(zip_path),
         },
         "package_id": package_id,
     }
 
 
-def _copy_declared_files(files: dict[str, Any], package_root: Path, *, file_list: list[str]) -> None:
-    for path_str in files.values():
+def _copy_declared_files(
+    files: dict[str, Any],
+    package_root: Path,
+    *,
+    file_list: list[str],
+    file_index: dict[str, dict[str, Any]],
+    source_group: str,
+) -> None:
+    for key, path_str in files.items():
         if not path_str:
             continue
         path = Path(str(path_str))
+        index_key = f"{source_group}.{key}"
+        file_index[index_key] = {
+            "source_group": source_group,
+            "key": str(key),
+            "source_path": str(path),
+            "source_exists": path.exists() and path.is_file(),
+            "package_relative_path": "",
+            "packaged": False,
+        }
         if not path.exists() or not path.is_file():
             continue
         target = package_root / path.name
         shutil.copy2(path, target)
         file_list.append(str(target.relative_to(package_root)))
+        file_index[index_key]["package_relative_path"] = str(target.relative_to(package_root))
+        file_index[index_key]["packaged"] = True
 
 
 def _list_relative_files(root: Path, package_root: Path) -> list[str]:
@@ -116,8 +156,10 @@ def _build_readme(
     evidence_bundle: dict[str, Any] | None,
     compare_manifest: dict[str, Any] | None,
     attribution_result: dict[str, Any],
+    result_bundle: dict[str, Any] | None,
 ) -> str:
     pdf_status = str(formal_report.get("pdf_status", "fallback_html_only"))
+    result_files = dict((result_bundle or {}).get("files", {}) or {})
     lines = [
         "Gas EC Studio 交付包说明",
         "",
@@ -129,6 +171,7 @@ def _build_readme(
         "3. compare_summary.json / compare_windows.csv / compare_manifest.json：EddyPro 对标结果。",
         "4. evidence/ 子目录：谱修正与 QC 证据包，包括 manifest、summary、qc_windows 等。",
         "5. attribution_summary.json：自动归因结果摘要。",
+        "6. delivery_audit.json：交付链审计摘要，校验 result manifest、artifact、network validation 与包内文件一致性。",
         "",
         "正式报告说明：",
         "formal_report.html 为正式 HTML 报告主文件。",
@@ -137,6 +180,7 @@ def _build_readme(
         "",
         "结果表说明：",
         "rp_results.csv 为 RP 窗口结果表；spectral_qc_results.csv 为谱修正/QC 窗口结果表。",
+        "若存在 method_parity_matrix.json、footprint_2d_contour.svg、performance_profile.json，则它们来自 result bundle 并由 delivery_audit.json 统一索引。",
         "",
         "对标结果说明：",
         "若当前批次存在 EddyPro compare，则 compare 相关文件会出现在包内。",
@@ -151,5 +195,130 @@ def _build_readme(
         lines.append("当前无对标结果，交付包未包含 compare 文件。")
     if attribution_result.get("status") != "ready":
         lines.append("当前无归因结果，交付包未包含 attribution_summary.json。")
+    if result_files:
+        lines.extend(
+            [
+                "",
+                "关键结果 artifact：",
+                f"export_manifest：{result_files.get('export_manifest', '--')}",
+                f"method_parity_matrix：{result_files.get('method_parity_matrix_artifact', '--')}",
+                f"footprint_2d_contour：{result_files.get('footprint_2d_contour_svg', '--')}",
+                f"performance_profile：{result_files.get('performance_profile_artifact', '--')}",
+                f"network_validation_summary：{result_files.get('network_validation_summary', '--')}",
+            ]
+        )
     lines.append("")
     return "\n".join(lines)
+
+
+def _build_delivery_audit(
+    *,
+    formal_report: dict[str, Any],
+    result_bundle: dict[str, Any],
+    evidence_bundle: dict[str, Any],
+    compare_manifest: dict[str, Any],
+    attribution_result: dict[str, Any],
+    file_index: dict[str, dict[str, Any]],
+    package_file_list: list[str],
+    notes: list[str],
+) -> dict[str, Any]:
+    result_files = dict(result_bundle.get("files", {}) or {})
+    result_manifest = _read_json_file(result_files.get("export_manifest", ""))
+    method_parity = _read_json_file(result_files.get("method_parity_matrix_artifact", ""))
+    network_validation = dict(result_manifest.get("network_validation_summary", {}) or {})
+    benchmark_summary = {
+        "benchmark_status": result_manifest.get("benchmark_status", ""),
+        "benchmark_reference_id": result_manifest.get("benchmark_reference_id", ""),
+        "pass_rate": result_manifest.get("pass_rate", 0.0),
+        "failed_fields": result_manifest.get("failed_fields", []),
+    }
+    packaged_names = {Path(item).name for item in package_file_list}
+    exported_files = [str(item) for item in list(result_manifest.get("exported_files", []) or [])]
+    missing_manifest_files = sorted(
+        item
+        for item in exported_files
+        if Path(item).name not in packaged_names
+    )
+    missing_declared_files = sorted(
+        key
+        for key, payload in file_index.items()
+        if not payload.get("source_exists", False)
+    )
+    artifact_keys = [
+        "export_manifest",
+        "full_output",
+        "summary",
+        "config_snapshot",
+        "project_site_snapshot",
+        "report_snapshot",
+        "method_rollup_artifact",
+        "method_compare_artifact",
+        "method_parity_matrix_artifact",
+        "method_parity_matrix_csv",
+        "footprint_2d_artifact",
+        "footprint_2d_contour_svg",
+        "footprint_2d_grid_csv",
+        "performance_profile_artifact",
+        "benchmark_summary_artifact",
+        "parity_artifact",
+        "reference_provenance_artifact",
+        "network_validation_summary",
+    ]
+    artifact_index: dict[str, dict[str, Any]] = {}
+    for key in artifact_keys:
+        source_path = str(result_files.get(key, ""))
+        package_entry = file_index.get(f"result_bundle.{key}", {})
+        artifact_index[key] = {
+            "source_path": source_path,
+            "source_exists": Path(source_path).exists() if source_path else False,
+            "package_relative_path": package_entry.get("package_relative_path", ""),
+            "packaged": bool(package_entry.get("packaged", False)),
+        }
+    validation_status = "ok"
+    if missing_declared_files or missing_manifest_files:
+        validation_status = "warning"
+    if not result_manifest:
+        validation_status = "missing_result_manifest"
+    return {
+        "artifact_type": "delivery_audit",
+        "validation_status": validation_status,
+        "formal_report_files": dict(formal_report.get("files", {}) or {}),
+        "result_bundle_root": str(result_bundle.get("export_root", "")),
+        "result_manifest_path": str(result_files.get("export_manifest", "")),
+        "result_manifest_summary": {
+            "full_output_mode": result_manifest.get("full_output_mode", ""),
+            "schema_target": result_manifest.get("schema_target", ""),
+            "network_validation_status": result_manifest.get("network_validation_status", ""),
+            "network_missing_fields": result_manifest.get("network_missing_fields", []),
+            "method_parity_status_counts": dict((result_manifest.get("method_parity_matrix", {}) or {}).get("status_counts", {}) or {}),
+            "method_metadata_coverage": dict((result_manifest.get("method_parity_matrix", {}) or {}).get("metadata_coverage", {}) or {}),
+        },
+        "network_validation_summary": network_validation,
+        "benchmark_summary": benchmark_summary,
+        "method_artifact_keys": [key for key in artifact_keys if key in result_files],
+        "method_parity_matrix": {
+            "status_counts": dict(method_parity.get("status_counts", {}) or {}),
+            "metadata_coverage": dict(method_parity.get("metadata_coverage", {}) or {}),
+            "not_reported_families": list(method_parity.get("not_reported_families", []) or []),
+        },
+        "artifact_index": artifact_index,
+        "package_file_count": len(set(package_file_list)),
+        "missing_declared_files": missing_declared_files,
+        "missing_manifest_files": missing_manifest_files,
+        "evidence_root": str(evidence_bundle.get("root_dir", "")),
+        "compare_id": str(compare_manifest.get("compare_id", "")),
+        "attribution_status": str(attribution_result.get("status", "")),
+        "notes": list(notes),
+    }
+
+
+def _read_json_file(path_value: Any) -> dict[str, Any]:
+    if not path_value:
+        return {}
+    path = Path(str(path_value))
+    if not path.exists() or not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}

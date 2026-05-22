@@ -39,6 +39,7 @@ REPORT_SECTIONS = [
     ("eddypro_compare", "EddyPro 对标报告", "集中查看当前结果与 EddyPro 参考结果的对标摘要和窗口差异。"),
     ("benchmark_cockpit", "Benchmark 驾驶舱", "查看 benchmark 参考对标结果：pass rate、阈值、偏差详情。"),
     ("method_provenance", "方法溯源", "查看 Footprint、不确定度、谱修正的方法来源、局限性和溯源信息。"),
+    ("method_compare", "Method Compare", "查看方法族对比、EddyPro method parity matrix、2D footprint contour 与长窗口性能 profile。"),
 ]
 
 

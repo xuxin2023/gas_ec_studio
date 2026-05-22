@@ -77,6 +77,11 @@ FULL_OUTPUT_SCHEMA = [
     ("footprint_method", "footprint", "real"),
     ("footprint_offset_distance_m", "footprint", "real"),
     ("footprint_contribution_distances", "footprint", "real"),
+    ("footprint_2d_grid_status", "footprint", "real"),
+    ("footprint_2d_peak_downwind_m", "footprint", "real"),
+    ("footprint_2d_peak_crosswind_m", "footprint", "real"),
+    ("footprint_2d_half_width_m", "footprint", "real"),
+    ("footprint_2d_contribution_contours_m", "footprint", "real"),
     ("uncertainty_method", "uncertainty", "real"),
     ("uncertainty_method_detail", "uncertainty", "real"),
     ("spectral_correction_method", "spectral", "real"),
@@ -86,7 +91,12 @@ FULL_OUTPUT_SCHEMA = [
     ("spectral_correction_measured_cospectrum_enabled", "spectral", "real"),
     ("spectral_correction_measured_cospectrum_used", "spectral", "real"),
     ("spectral_correction_measured_cospectrum_source", "spectral", "real"),
+    ("spectral_correction_cospectrum_match", "spectral", "real"),
     ("spectral_correction_limitations", "spectral", "real"),
+    ("method_compare_summary", "method_compare", "real"),
+    ("method_compare_recommendations", "method_compare", "real"),
+    ("method_compare_deviation_flags", "method_compare", "real"),
+    ("performance_profile", "performance", "real"),
     ("schema_target", "diagnostics", "real"),
     ("fluxnet_timestamp_refers_to", "diagnostics", "real"),
     ("fluxnet_timezone_offset_h", "diagnostics", "real"),
@@ -138,6 +148,25 @@ class ResultExporter:
             rp_config_snapshot=rp_config_snapshot,
             export_root=export_root,
         )
+        footprint_2d_path = self.export_footprint_2d_artifact(
+            rp_result=rp_result,
+            export_root=export_root,
+        )
+        method_compare_path = self.export_method_compare_artifact(
+            rp_result=rp_result,
+            export_root=export_root,
+        )
+        performance_profile_path = self.export_performance_profile_artifact(
+            rp_result=rp_result,
+            export_root=export_root,
+        )
+        method_parity_matrix_path = self.export_method_parity_matrix_artifact(
+            rp_result=rp_result,
+            export_root=export_root,
+            reference_id=benchmark_rollup["benchmark_reference_id"],
+        )
+        method_parity_companion_files: dict[str, str] = {}
+        footprint_2d_companion_files: dict[str, str] = {}
         benchmark_results = benchmark_rollup["benchmark_results"]
         benchmark_summary_path = self.export_benchmark_summary_artifact(
             rp_result=rp_result,
@@ -180,6 +209,31 @@ class ResultExporter:
             exported_files.append(benchmark_summary_path.name)
         if method_rollup_path is not None:
             exported_files.append(method_rollup_path.name)
+        if footprint_2d_path is not None:
+            exported_files.append(footprint_2d_path.name)
+        if method_compare_path is not None:
+            exported_files.append(method_compare_path.name)
+        if performance_profile_path is not None:
+            exported_files.append(performance_profile_path.name)
+        if method_parity_matrix_path is not None:
+            exported_files.append(method_parity_matrix_path.name)
+            try:
+                matrix_payload = json.loads(method_parity_matrix_path.read_text(encoding="utf-8"))
+                method_parity_companion_files = dict(matrix_payload.get("companion_files", {}) or {})
+                for companion in method_parity_companion_files.values():
+                    if companion:
+                        exported_files.append(Path(companion).name)
+            except (json.JSONDecodeError, OSError):
+                pass
+        if footprint_2d_path is not None:
+            try:
+                footprint_payload = json.loads(footprint_2d_path.read_text(encoding="utf-8"))
+                footprint_2d_companion_files = dict(footprint_payload.get("companion_files", {}) or {})
+                for companion in footprint_2d_companion_files.values():
+                    if companion:
+                        exported_files.append(Path(companion).name)
+            except (json.JSONDecodeError, OSError):
+                pass
         if parity_artifact_path is not None:
             exported_files.append(parity_artifact_path.name)
         if reference_provenance_path is not None:
@@ -203,6 +257,10 @@ class ResultExporter:
                 },
                 "method_summary": method_summary,
                 "method_rollup_artifact": str(method_rollup_path) if method_rollup_path is not None else "",
+                "footprint_2d_artifact": str(footprint_2d_path) if footprint_2d_path is not None else "",
+                "method_compare_artifact": str(method_compare_path) if method_compare_path is not None else "",
+                "method_parity_matrix_artifact": str(method_parity_matrix_path) if method_parity_matrix_path is not None else "",
+                "performance_profile_artifact": str(performance_profile_path) if performance_profile_path is not None else "",
                 "reference_provenance": reference_provenance,
                 "network_validation": network_validation,
                 "exported_files": exported_files,
@@ -244,6 +302,18 @@ class ResultExporter:
             "spectral_correction_provenance": method_summary.get("spectral_correction_summary", {}).get("provenance", ""),
             "method_rollup": method_summary,
             "method_rollup_artifact": str(method_rollup_path) if method_rollup_path is not None else "",
+            "footprint_2d_summary": method_summary.get("footprint_2d_summary", {}),
+            "footprint_2d_artifact": str(footprint_2d_path) if footprint_2d_path is not None else "",
+            "footprint_2d_contour_svg": str(footprint_2d_companion_files.get("contour_svg", "")),
+            "footprint_2d_grid_csv": str(footprint_2d_companion_files.get("grid_csv", "")),
+            "method_compare_summary": method_summary.get("method_compare_summary", {}),
+            "method_compare_recommendations": method_summary.get("method_compare_recommendations", {}),
+            "method_compare_artifact": str(method_compare_path) if method_compare_path is not None else "",
+            "method_parity_matrix": self._method_parity_matrix(rp_result=rp_result, reference_id=benchmark_rollup["benchmark_reference_id"]),
+            "method_parity_matrix_artifact": str(method_parity_matrix_path) if method_parity_matrix_path is not None else "",
+            "method_parity_matrix_csv": str(method_parity_companion_files.get("csv", "")),
+            "performance_profile": self._performance_profile_payload(rp_result=rp_result),
+            "performance_profile_artifact": str(performance_profile_path) if performance_profile_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
             "network_validation_status": network_validation.get("validation_status", ""),
             "network_missing_fields": network_validation.get("missing_fields", []),
@@ -305,6 +375,31 @@ class ResultExporter:
             files["benchmark_summary_artifact"] = str(benchmark_summary_path)
         if method_rollup_path is not None:
             files["method_rollup_artifact"] = str(method_rollup_path)
+        if footprint_2d_path is not None:
+            files["footprint_2d_artifact"] = str(footprint_2d_path)
+        if method_compare_path is not None:
+            files["method_compare_artifact"] = str(method_compare_path)
+        if performance_profile_path is not None:
+            files["performance_profile_artifact"] = str(performance_profile_path)
+        if method_parity_matrix_path is not None:
+            files["method_parity_matrix_artifact"] = str(method_parity_matrix_path)
+            try:
+                matrix_payload = json.loads(method_parity_matrix_path.read_text(encoding="utf-8"))
+                companion_files = dict(matrix_payload.get("companion_files", {}) or {})
+                if companion_files.get("csv"):
+                    files["method_parity_matrix_csv"] = str(companion_files["csv"])
+            except (json.JSONDecodeError, OSError):
+                pass
+        if footprint_2d_path is not None:
+            try:
+                footprint_payload = json.loads(footprint_2d_path.read_text(encoding="utf-8"))
+                companion_files = dict(footprint_payload.get("companion_files", {}) or {})
+                if companion_files.get("contour_svg"):
+                    files["footprint_2d_contour_svg"] = str(companion_files["contour_svg"])
+                if companion_files.get("grid_csv"):
+                    files["footprint_2d_grid_csv"] = str(companion_files["grid_csv"])
+            except (json.JSONDecodeError, OSError):
+                pass
         if parity_artifact_path is not None:
             files["parity_artifact"] = str(parity_artifact_path)
         if reference_provenance_path is not None:
@@ -474,6 +569,11 @@ class ResultExporter:
                 "footprint_method": diagnostics.get("footprint_method", "") if diagnostics else "",
                 "footprint_offset_distance_m": diagnostics.get("footprint_offset_distance_m", "") if diagnostics else "",
                 "footprint_contribution_distances": json.dumps(diagnostics.get("footprint_contribution_distances", {}), ensure_ascii=False) if diagnostics and diagnostics.get("footprint_contribution_distances") else "",
+                "footprint_2d_grid_status": diagnostics.get("footprint_2d_grid_status", "") if diagnostics else "",
+                "footprint_2d_peak_downwind_m": diagnostics.get("footprint_2d_peak_downwind_m", "") if diagnostics else "",
+                "footprint_2d_peak_crosswind_m": diagnostics.get("footprint_2d_peak_crosswind_m", "") if diagnostics else "",
+                "footprint_2d_half_width_m": diagnostics.get("footprint_2d_half_width_m", "") if diagnostics else "",
+                "footprint_2d_contribution_contours_m": json.dumps(diagnostics.get("footprint_2d_contribution_contours_m", {}), ensure_ascii=False) if diagnostics and diagnostics.get("footprint_2d_contribution_contours_m") else "",
                 "uncertainty_method": diagnostics.get("uncertainty_method", "") if diagnostics else "",
                 "uncertainty_method_detail": json.dumps(diagnostics.get("uncertainty_method_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("uncertainty_method_detail") else "",
                 "spectral_correction_method": diagnostics.get("spectral_correction_method", "") if diagnostics else "",
@@ -483,7 +583,12 @@ class ResultExporter:
                 "spectral_correction_measured_cospectrum_enabled": diagnostics.get("spectral_correction_measured_cospectrum_enabled", False) if diagnostics else False,
                 "spectral_correction_measured_cospectrum_used": diagnostics.get("spectral_correction_measured_cospectrum_used", False) if diagnostics else False,
                 "spectral_correction_measured_cospectrum_source": diagnostics.get("spectral_correction_measured_cospectrum_source", "") if diagnostics else "",
+                "spectral_correction_cospectrum_match": json.dumps(diagnostics.get("spectral_correction_cospectrum_match", {}), ensure_ascii=False) if diagnostics and diagnostics.get("spectral_correction_cospectrum_match") else "",
                 "spectral_correction_limitations": json.dumps(diagnostics.get("spectral_correction_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("spectral_correction_limitations") else "",
+                "method_compare_summary": json.dumps(diagnostics.get("method_compare_summary", {}), ensure_ascii=False) if diagnostics and diagnostics.get("method_compare_summary") else "",
+                "method_compare_recommendations": json.dumps(diagnostics.get("method_compare_recommendations", {}), ensure_ascii=False) if diagnostics and diagnostics.get("method_compare_recommendations") else "",
+                "method_compare_deviation_flags": json.dumps(diagnostics.get("method_compare_deviation_flags", []), ensure_ascii=False) if diagnostics and diagnostics.get("method_compare_deviation_flags") else "",
+                "performance_profile": json.dumps(diagnostics.get("performance_profile", {}), ensure_ascii=False) if diagnostics and diagnostics.get("performance_profile") else "",
                 "schema_target": diagnostics.get("schema_target", "") if diagnostics else "",
                 "fluxnet_timestamp_refers_to": diagnostics.get("fluxnet_timestamp_refers_to", "") if diagnostics else "",
                 "fluxnet_timezone_offset_h": diagnostics.get("fluxnet_timezone_offset_h", "") if diagnostics else "",
@@ -611,10 +716,13 @@ class ResultExporter:
         defaults = {
             "footprint_method": "",
             "footprint_summary": {},
+            "footprint_2d_summary": {},
             "uncertainty_method": "",
             "uncertainty_summary": {},
             "spectral_correction_method": "",
             "spectral_correction_summary": {},
+            "method_compare_summary": {},
+            "method_compare_recommendations": {},
         }
         if rp_result is None:
             return defaults
@@ -624,10 +732,13 @@ class ResultExporter:
             normalized = {
                 "footprint_method": str(method_rollup.get("footprint_method", "")),
                 "footprint_summary": dict(method_rollup.get("footprint_summary", {}) or {}),
+                "footprint_2d_summary": dict(method_rollup.get("footprint_2d_summary", {}) or {}),
                 "uncertainty_method": str(method_rollup.get("uncertainty_method", "")),
                 "uncertainty_summary": dict(method_rollup.get("uncertainty_summary", {}) or {}),
                 "spectral_correction_method": str(method_rollup.get("spectral_correction_method", "")),
                 "spectral_correction_summary": dict(method_rollup.get("spectral_correction_summary", {}) or {}),
+                "method_compare_summary": dict(method_rollup.get("method_compare_summary", {}) or {}),
+                "method_compare_recommendations": dict(method_rollup.get("method_compare_recommendations", {}) or {}),
             }
             if any(normalized.values()):
                 return normalized
@@ -635,10 +746,13 @@ class ResultExporter:
         method_summary = {
             "footprint_method": str(summary.get("footprint_method", "")),
             "footprint_summary": dict(summary.get("footprint_summary", {}) or {}),
+            "footprint_2d_summary": dict(summary.get("footprint_2d_summary", {}) or {}),
             "uncertainty_method": str(summary.get("uncertainty_method", "")),
             "uncertainty_summary": dict(summary.get("uncertainty_summary", {}) or {}),
             "spectral_correction_method": str(summary.get("spectral_correction_method", "")),
             "spectral_correction_summary": dict(summary.get("spectral_correction_summary", {}) or {}),
+            "method_compare_summary": dict(summary.get("method_compare_summary", {}) or {}),
+            "method_compare_recommendations": dict(summary.get("method_compare_recommendations", {}) or {}),
         }
         if any(method_summary.values()):
             return method_summary
@@ -658,6 +772,13 @@ class ResultExporter:
                 "provenance": footprint_detail.get("provenance", ""),
                 "limitations": footprint_detail.get("limitations", []),
                 "detail": footprint_detail,
+            },
+            "footprint_2d_summary": {
+                "status": first_diag.get("footprint_2d_grid_status", ""),
+                "peak_downwind_m": first_diag.get("footprint_2d_peak_downwind_m"),
+                "peak_crosswind_m": first_diag.get("footprint_2d_peak_crosswind_m"),
+                "half_width_m": first_diag.get("footprint_2d_half_width_m"),
+                "contribution_contours_m": dict(first_diag.get("footprint_2d_contribution_contours_m", {}) or {}),
             },
             "uncertainty_method": str(first_diag.get("uncertainty_method", "")),
             "uncertainty_summary": {
@@ -680,9 +801,12 @@ class ResultExporter:
                 "measured_cospectrum_enabled": first_diag.get("spectral_correction_measured_cospectrum_enabled", False),
                 "measured_cospectrum_used": first_diag.get("spectral_correction_measured_cospectrum_used", False),
                 "measured_cospectrum_source": first_diag.get("spectral_correction_measured_cospectrum_source", ""),
+                "cospectrum_match_summary": dict(first_diag.get("spectral_correction_cospectrum_match", {}) or {}),
                 "limitations": first_diag.get("spectral_correction_limitations", []),
                 "detail": spectral_detail,
             },
+            "method_compare_summary": dict(first_diag.get("method_compare_summary", {}) or {}),
+            "method_compare_recommendations": dict(first_diag.get("method_compare_recommendations", {}) or {}),
         }
 
     def export_method_rollup_artifact(
@@ -697,6 +821,450 @@ class ResultExporter:
             return None
         path = export_root / "method_rollup.json"
         self._write_json(path, method_summary)
+        return path
+
+    def export_footprint_2d_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows:
+            return None
+        windows: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            diagnostics = dict(window.diagnostics or {})
+            grid = diagnostics.get("footprint_2d_grid")
+            if not isinstance(grid, dict):
+                continue
+            windows.append(
+                {
+                    "window_id": window.window_id,
+                    "start_time": window.start_time.isoformat(),
+                    "end_time": window.end_time.isoformat(),
+                    "qc_grade": window.qc_grade,
+                    "method": diagnostics.get("footprint_method", grid.get("method", "")),
+                    "grid_status": diagnostics.get("footprint_2d_grid_status", "ok"),
+                    "peak_downwind_m": diagnostics.get("footprint_2d_peak_downwind_m"),
+                    "peak_crosswind_m": diagnostics.get("footprint_2d_peak_crosswind_m"),
+                    "half_width_m": diagnostics.get("footprint_2d_half_width_m"),
+                    "contribution_contours_m": diagnostics.get("footprint_2d_contribution_contours_m", {}),
+                    "grid": grid,
+                }
+            )
+        if not windows:
+            return None
+        payload = {
+            "artifact_type": "footprint_2d_grid",
+            "run_id": rp_result.run_id,
+            "created_at": rp_result.created_at.isoformat(),
+            "summary": dict(rp_result.summary.get("footprint_2d_summary", {}) if isinstance(rp_result.summary, dict) else {}),
+            "window_count": len(windows),
+            "windows": windows,
+            "provenance": "Per-window 2D footprint grids exported from RP diagnostics.",
+        }
+        grid_csv_path = export_root / "footprint_2d_grid.csv"
+        contour_svg_path = export_root / "footprint_2d_contour.svg"
+        self._write_footprint_2d_grid_csv(grid_csv_path, windows)
+        self._write_footprint_2d_contour_svg(contour_svg_path, windows[0])
+        payload["companion_files"] = {
+            "grid_csv": str(grid_csv_path),
+            "contour_svg": str(contour_svg_path),
+        }
+        path = export_root / "footprint_2d_artifact.json"
+        self._write_json(path, payload)
+        return path
+
+    def _write_footprint_2d_grid_csv(self, path: Path, windows: list[dict[str, Any]]) -> None:
+        rows: list[dict[str, Any]] = []
+        for window in windows:
+            grid_payload = dict(window.get("grid", {}) or {})
+            x_coords = list(grid_payload.get("x_coords_m", []) or [])
+            y_coords = list(grid_payload.get("y_coords_m", []) or [])
+            grid = list(grid_payload.get("contribution_grid", []) or [])
+            for y_index, row in enumerate(grid):
+                if not isinstance(row, list):
+                    continue
+                for x_index, contribution in enumerate(row):
+                    rows.append(
+                        {
+                            "window_id": window.get("window_id", ""),
+                            "method": window.get("method", ""),
+                            "x_m": x_coords[x_index] if x_index < len(x_coords) else "",
+                            "y_m": y_coords[y_index] if y_index < len(y_coords) else "",
+                            "contribution": contribution,
+                        }
+                    )
+        self._write_csv(path, rows, ["window_id", "method", "x_m", "y_m", "contribution"])
+
+    def _write_footprint_2d_contour_svg(self, path: Path, window: dict[str, Any]) -> None:
+        grid_payload = dict(window.get("grid", {}) or {})
+        x_coords = [float(value) for value in list(grid_payload.get("x_coords_m", []) or [])]
+        y_coords = [float(value) for value in list(grid_payload.get("y_coords_m", []) or [])]
+        grid = [
+            [float(value) for value in row]
+            for row in list(grid_payload.get("contribution_grid", []) or [])
+            if isinstance(row, list)
+        ]
+        if not x_coords or not y_coords or not grid:
+            path.write_text("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"640\" height=\"360\"></svg>", encoding="utf-8")
+            return
+        width, height = 840, 520
+        margin_left, margin_top, margin_right, margin_bottom = 72, 40, 32, 70
+        plot_w = width - margin_left - margin_right
+        plot_h = height - margin_top - margin_bottom
+        rows = len(grid)
+        cols = len(grid[0]) if rows else 0
+        cell_w = plot_w / max(cols, 1)
+        cell_h = plot_h / max(rows, 1)
+        max_value = max(max(row) for row in grid) if grid else 0.0
+
+        def _color(value: float) -> str:
+            ratio = min(max(value / max(max_value, 1e-12), 0.0), 1.0)
+            red = int(34 + 206 * ratio)
+            green = int(72 + 111 * (1.0 - abs(ratio - 0.45)))
+            blue = int(92 + 120 * (1.0 - ratio))
+            return f"rgb({red},{green},{blue})"
+
+        rects: list[str] = []
+        for row_index, row in enumerate(grid):
+            for col_index, value in enumerate(row):
+                x = margin_left + col_index * cell_w
+                y = margin_top + row_index * cell_h
+                rects.append(
+                    f'<rect x="{x:.2f}" y="{y:.2f}" width="{cell_w + 0.35:.2f}" '
+                    f'height="{cell_h + 0.35:.2f}" fill="{_color(float(value))}" opacity="0.92" />'
+                )
+        contours = dict(window.get("contribution_contours_m", {}) or {})
+        contour_lines: list[str] = []
+        x_max = max(x_coords) if x_coords else 1.0
+        for label, x_value in contours.items():
+            try:
+                x_pos = margin_left + min(max(float(x_value) / max(x_max, 1e-9), 0.0), 1.0) * plot_w
+            except (TypeError, ValueError):
+                continue
+            contour_lines.append(
+                f'<line x1="{x_pos:.2f}" y1="{margin_top}" x2="{x_pos:.2f}" y2="{margin_top + plot_h}" '
+                'stroke="#ffffff" stroke-width="1.2" stroke-dasharray="4 5" opacity="0.85" />'
+                f'<text x="{x_pos + 4:.2f}" y="{margin_top + 16}" fill="#ffffff" font-size="12">{label}</text>'
+            )
+        peak_x = window.get("peak_downwind_m", "")
+        peak_y = window.get("peak_crosswind_m", "")
+        title = f"2D Footprint Contour - {window.get('window_id', '')} ({window.get('method', '')})"
+        subtitle = f"peak=({peak_x} m downwind, {peak_y} m crosswind), grid={cols}x{rows}"
+        svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+  <rect width="100%" height="100%" fill="#0f172a" />
+  <text x="{margin_left}" y="24" fill="#f8fafc" font-size="18" font-family="Segoe UI, sans-serif">{title}</text>
+  <text x="{margin_left}" y="{height - 24}" fill="#cbd5e1" font-size="13" font-family="Segoe UI, sans-serif">{subtitle}</text>
+  <g>{''.join(rects)}</g>
+  <g>{''.join(contour_lines)}</g>
+  <rect x="{margin_left}" y="{margin_top}" width="{plot_w}" height="{plot_h}" fill="none" stroke="#e2e8f0" stroke-width="1" />
+  <text x="{margin_left + plot_w / 2:.1f}" y="{height - 44}" fill="#e2e8f0" font-size="13" text-anchor="middle" font-family="Segoe UI, sans-serif">Downwind distance (m)</text>
+  <text x="22" y="{margin_top + plot_h / 2:.1f}" fill="#e2e8f0" font-size="13" text-anchor="middle" transform="rotate(-90 22 {margin_top + plot_h / 2:.1f})" font-family="Segoe UI, sans-serif">Crosswind distance (m)</text>
+  <text x="{margin_left}" y="{margin_top + plot_h + 20}" fill="#cbd5e1" font-size="12" font-family="Segoe UI, sans-serif">0</text>
+  <text x="{margin_left + plot_w - 56}" y="{margin_top + plot_h + 20}" fill="#cbd5e1" font-size="12" font-family="Segoe UI, sans-serif">{x_max:.1f} m</text>
+</svg>"""
+        path.write_text(svg, encoding="utf-8")
+
+    def export_method_compare_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows:
+            return None
+        windows: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            diagnostics = dict(window.diagnostics or {})
+            compare = diagnostics.get("method_compare_summary")
+            if not isinstance(compare, dict) or not compare:
+                continue
+            windows.append(
+                {
+                    "window_id": window.window_id,
+                    "start_time": window.start_time.isoformat(),
+                    "end_time": window.end_time.isoformat(),
+                    "qc_grade": window.qc_grade,
+                    "method_compare": compare,
+                    "recommendations": diagnostics.get("method_compare_recommendations", {}),
+                    "deviation_flags": diagnostics.get("method_compare_deviation_flags", []),
+                    "method_deviation_notes": _build_method_deviation_notes(diagnostics, {}),
+                }
+            )
+        if not windows:
+            return None
+        summary = dict(rp_result.summary.get("method_compare_summary", {}) if isinstance(rp_result.summary, dict) else {})
+        payload = {
+            "artifact_type": "method_compare",
+            "run_id": rp_result.run_id,
+            "created_at": rp_result.created_at.isoformat(),
+            "summary": summary,
+            "window_count": len(windows),
+            "windows": windows,
+            "provenance": "Run-level method-family comparison exported from RP diagnostics.",
+        }
+        path = export_root / "method_compare_artifact.json"
+        self._write_json(path, payload)
+        return path
+
+    def _performance_profile_payload(self, *, rp_result: RPRunResult | None) -> dict[str, Any]:
+        if rp_result is None:
+            return {"status": "missing", "run_summary": {}, "windows": []}
+        windows: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            profile = dict(window.diagnostics.get("performance_profile", {}) if window.diagnostics else {})
+            if not profile:
+                continue
+            windows.append(
+                {
+                    "window_id": window.window_id,
+                    "start_time": window.start_time.isoformat(),
+                    "end_time": window.end_time.isoformat(),
+                    "qc_grade": window.qc_grade,
+                    **profile,
+                }
+            )
+        return {
+            "artifact_type": "performance_profile",
+            "status": "ok" if windows or rp_result.summary.get("performance_profile") else "no_profiles",
+            "run_id": rp_result.run_id,
+            "created_at": rp_result.created_at.isoformat(),
+            "run_summary": dict(rp_result.summary.get("performance_profile", {}) if isinstance(rp_result.summary, dict) else {}),
+            "window_count": len(windows),
+            "windows": windows,
+            "provenance": "Measured with time.perf_counter during RP pipeline execution.",
+        }
+
+    def export_performance_profile_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+    ) -> Path | None:
+        payload = self._performance_profile_payload(rp_result=rp_result)
+        if payload.get("status") in {"missing", "no_profiles"}:
+            return None
+        path = export_root / "performance_profile.json"
+        self._write_json(path, payload)
+        return path
+
+    def _reference_method_profile(self, reference_id: str) -> dict[str, Any]:
+        json_path = self._reference_json_path(reference_id)
+        if json_path is None:
+            return {
+                "status": "reference_not_found" if reference_id else "not_requested",
+                "reference_id": reference_id,
+                "source_file": "",
+                "processing_settings": {},
+                "method_metadata": {},
+                "metadata_coverage": {},
+                "source": "",
+            }
+        try:
+            payload = json.loads(json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {
+                "status": "read_error",
+                "reference_id": reference_id,
+                "source_file": str(json_path),
+                "processing_settings": {},
+                "method_metadata": {},
+                "metadata_coverage": {},
+                "source": "",
+            }
+        settings = dict(payload.get("processing_settings", {}) if isinstance(payload, dict) else {})
+        provenance = generate_reference_provenance(json_path)
+        method_metadata = self._reference_method_metadata(settings=settings)
+        available = [family for family, metadata in method_metadata.items() if metadata.get("availability") == "reported"]
+        not_reported = [family for family, metadata in method_metadata.items() if metadata.get("availability") == "not_reported"]
+        return {
+            "status": "ready",
+            "reference_id": reference_id,
+            "source_file": str(json_path),
+            "source": str(payload.get("source", "") if isinstance(payload, dict) else ""),
+            "processing_settings": settings,
+            "method_metadata": method_metadata,
+            "metadata_coverage": {
+                "reported_families": available,
+                "not_reported_families": not_reported,
+                "reported_count": len(available),
+                "total_count": len(method_metadata),
+            },
+            "normalization_command": provenance.get("normalization_command", ""),
+            "normalization_time": provenance.get("normalization_time", ""),
+            "qc_mapping": provenance.get("qc_mapping_strategy", ""),
+            "known_limitations": list(provenance.get("known_limitations", []) or []),
+        }
+
+    def _reference_method_metadata(self, *, settings: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        definitions = {
+            "rotation": "rotation_mode",
+            "lag": "lag_determination",
+            "detrend": "detrend_method",
+            "density_correction": "density_correction",
+            "footprint": "footprint_method",
+            "uncertainty": "uncertainty_method",
+            "spectral_correction": "frequency_correction",
+        }
+        metadata: dict[str, dict[str, Any]] = {}
+        for family, field_name in definitions.items():
+            raw_method = settings.get(field_name, "")
+            if family == "spectral_correction" and not raw_method:
+                raw_method = settings.get("spectral_correction_method", "")
+                field_name = "spectral_correction_method"
+            normalized_method = self._normalize_method_name(raw_method, family=family)
+            metadata[family] = {
+                "reference_field": field_name,
+                "raw_method": str(raw_method or ""),
+                "normalized_method": normalized_method,
+                "availability": "reported" if raw_method else "not_reported",
+                "evidence_source": "processing_settings" if raw_method else "missing_from_reference_metadata",
+            }
+        return metadata
+
+    def _normalize_method_name(self, value: Any, *, family: str = "") -> str:
+        method = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "block_average": "block_mean",
+            "block_averaging": "block_mean",
+            "covariance_maximum": "covariance_max",
+            "max_covariance": "covariance_max",
+            "double_rotation": "double",
+            "wpl_correction": "wpl",
+            "webb_pearman_leuning": "wpl",
+            "analytical_frequency_correction": "analytical",
+        }
+        normalized = aliases.get(method, method)
+        if family == "density_correction" and normalized == "wpl":
+            return "wpl"
+        return normalized
+
+    def _method_parity_status(self, *, gas_method: str, reference_method: str, family: str) -> tuple[str, str]:
+        gas = str(gas_method or "").strip().lower()
+        ref = str(reference_method or "").strip().lower()
+        if not ref:
+            return "not_reported", "Reference did not expose this method family."
+        if not gas:
+            return "not_enabled", "gas_ec_studio did not enable this method family."
+        gas_norm = self._normalize_method_name(gas, family=family)
+        ref_norm = self._normalize_method_name(ref, family=family)
+        if gas_norm == ref_norm or gas_norm in ref_norm or ref_norm in gas_norm:
+            return "match", "Method names match after normalization."
+        if family == "spectral_correction" and ref_norm == "analytical" and gas_norm in {"massman", "horst", "ibrom"}:
+            return "compatible_family", "EddyPro reports analytical frequency correction; selected method is an analytical transfer-function family."
+        if family == "density_correction" and gas_norm == "wpl" and ref_norm == "wpl":
+            return "match", "Both chains use WPL density correction."
+        return "differs", f"Method differs: gas_ec_studio={gas_method}, reference={reference_method}."
+
+    def _method_parity_matrix(self, *, rp_result: RPRunResult | None, reference_id: str = "") -> dict[str, Any]:
+        method_summary = self._method_summary(rp_result=rp_result, rp_config_snapshot={})
+        summary = dict(rp_result.summary or {}) if rp_result is not None else {}
+        config_snapshot = dict(summary.get("config_snapshot", {}) if isinstance(summary.get("config_snapshot", {}), dict) else {})
+        reference_profile = self._reference_method_profile(reference_id)
+        settings = dict(reference_profile.get("processing_settings", {}) or {})
+        reference_metadata = dict(reference_profile.get("method_metadata", {}) or self._reference_method_metadata(settings=settings))
+        method_compare = dict(method_summary.get("method_compare_summary", {}) or summary.get("method_compare_summary", {}) or {})
+        compare_families = dict(method_compare.get("families", {}) or {})
+        lag_config = dict(config_snapshot.get("lag_phase", {}) if isinstance(config_snapshot.get("lag_phase", {}), dict) else {})
+        steps_config = dict(config_snapshot.get("steps", {}) if isinstance(config_snapshot.get("steps", {}), dict) else {})
+        step_lag_config = dict(steps_config.get("lag", {}) if isinstance(steps_config.get("lag", {}), dict) else {})
+        step_rotation_config = dict(steps_config.get("rotation", {}) if isinstance(steps_config.get("rotation", {}), dict) else {})
+        step_detrend_config = dict(steps_config.get("detrend", {}) if isinstance(steps_config.get("detrend", {}), dict) else {})
+        step_density_config = dict(steps_config.get("density_correction", {}) if isinstance(steps_config.get("density_correction", {}), dict) else {})
+        rows: list[dict[str, Any]] = []
+        definitions = [
+            ("rotation", config_snapshot.get("rotation_mode") or step_rotation_config.get("rotation_mode") or summary.get("rotation_mode", ""), settings.get("rotation_mode", "")),
+            ("lag", lag_config.get("strategy") or step_lag_config.get("lag_strategy") or step_lag_config.get("strategy") or "", settings.get("lag_determination", "")),
+            ("detrend", config_snapshot.get("detrend_mode") or step_detrend_config.get("detrend_mode") or summary.get("detrend_mode", ""), settings.get("detrend_method", "")),
+            ("density_correction", config_snapshot.get("density_correction_mode") or step_density_config.get("correction_mode") or summary.get("density_correction_mode", ""), settings.get("density_correction", "")),
+            ("footprint", method_summary.get("footprint_method", ""), settings.get("footprint_method", "")),
+            ("uncertainty", method_summary.get("uncertainty_method", ""), settings.get("uncertainty_method", "")),
+            ("spectral_correction", method_summary.get("spectral_correction_method", ""), settings.get("frequency_correction", settings.get("spectral_correction_method", ""))),
+        ]
+        for family, gas_method, reference_method in definitions:
+            metadata = dict(reference_metadata.get(family, {}) or {})
+            reference_method = metadata.get("raw_method", reference_method)
+            status, note = self._method_parity_status(
+                gas_method=str(gas_method or ""),
+                reference_method=str(reference_method or ""),
+                family=family,
+            )
+            compare_summary = dict(compare_families.get(family, {}) or {})
+            rows.append(
+                {
+                    "family": family,
+                    "gas_ec_studio_method": str(gas_method or ""),
+                    "eddypro_method": str(reference_method or ""),
+                    "normalized_gas_ec_studio_method": self._normalize_method_name(gas_method, family=family),
+                    "normalized_eddypro_method": metadata.get("normalized_method", self._normalize_method_name(reference_method, family=family)),
+                    "reference_field": metadata.get("reference_field", ""),
+                    "reference_evidence_source": metadata.get("evidence_source", ""),
+                    "reference_availability": metadata.get("availability", "reported" if reference_method else "not_reported"),
+                    "status": status,
+                    "note": note,
+                    "method_compare_recommendation": compare_summary.get("recommendation", ""),
+                    "method_compare_max_abs_relative_deviation": compare_summary.get("max_abs_relative_deviation"),
+                    "method_compare_methods_run": compare_summary.get("methods_run", []),
+                }
+            )
+        status_counts = {
+            status: sum(1 for row in rows if row["status"] == status)
+            for status in sorted({row["status"] for row in rows})
+        }
+        coverage = dict(reference_profile.get("metadata_coverage", {}) or {})
+        return {
+            "artifact_type": "method_parity_matrix",
+            "reference_id": reference_id,
+            "reference_profile": reference_profile,
+            "metadata_coverage": coverage,
+            "directly_comparable_families": [
+                row["family"]
+                for row in rows
+                if row.get("reference_availability") == "reported" and row.get("status") in {"match", "differs", "compatible_family"}
+            ],
+            "not_reported_families": [row["family"] for row in rows if row.get("status") == "not_reported"],
+            "status_counts": status_counts,
+            "rows": rows,
+            "truthfulness_note": "Only method families present in EddyPro reference metadata are judged directly; missing EddyPro fields are marked not_reported.",
+        }
+
+    def export_method_parity_matrix_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+        reference_id: str = "",
+    ) -> Path | None:
+        if rp_result is None:
+            return None
+        matrix = self._method_parity_matrix(rp_result=rp_result, reference_id=reference_id)
+        path = export_root / "method_parity_matrix.json"
+        self._write_json(path, matrix)
+        csv_path = export_root / "method_parity_matrix.csv"
+        rows = list(matrix.get("rows", []) or [])
+        if rows:
+            self._write_csv(
+                csv_path,
+                rows,
+                [
+                    "family",
+                    "gas_ec_studio_method",
+                    "eddypro_method",
+                    "normalized_gas_ec_studio_method",
+                    "normalized_eddypro_method",
+                    "reference_field",
+                    "reference_evidence_source",
+                    "reference_availability",
+                    "status",
+                    "note",
+                    "method_compare_recommendation",
+                    "method_compare_max_abs_relative_deviation",
+                    "method_compare_methods_run",
+                ],
+            )
+            matrix["companion_files"] = {"csv": str(csv_path)}
+            self._write_json(path, matrix)
         return path
 
     def _reference_json_path(self, reference_id: str) -> Path | None:
@@ -1086,6 +1654,7 @@ class ResultExporter:
         summary = self.compute_benchmark_summary(rp_result=rp_result, benchmark_results=benchmark_results)
         summary["reference_id"] = reference_id
         summary["thresholds"] = thresholds or {}
+        summary["method_parity_matrix"] = self._method_parity_matrix(rp_result=rp_result, reference_id=reference_id)
         per_window: list[dict[str, Any]] = []
         for br in benchmark_results:
             entry: dict[str, Any] = {"window_id": br.get("window_id", ""), "overall_pass": br.get("overall_pass", True)}
@@ -1100,14 +1669,20 @@ class ResultExporter:
                 if comp.get("note"):
                     entry[f"{fname}_note"] = comp["note"]
             entry["footprint_method"] = br.get("footprint_method", diagnostics.get("footprint_method", ""))
+            entry["footprint_2d_grid_status"] = br.get("footprint_2d_grid_status", diagnostics.get("footprint_2d_grid_status", ""))
+            entry["footprint_2d_peak_downwind_m"] = br.get("footprint_2d_peak_downwind_m", diagnostics.get("footprint_2d_peak_downwind_m"))
+            entry["footprint_2d_peak_crosswind_m"] = br.get("footprint_2d_peak_crosswind_m", diagnostics.get("footprint_2d_peak_crosswind_m"))
             entry["uncertainty_method"] = br.get("uncertainty_method", diagnostics.get("uncertainty_method", ""))
             entry["spectral_correction_method"] = br.get("spectral_correction_method", diagnostics.get("spectral_correction_method", ""))
+            entry["spectral_correction_cospectrum_match"] = br.get("spectral_correction_cospectrum_match", diagnostics.get("spectral_correction_cospectrum_match", {}))
             entry["primary_flux_random_error"] = br.get("primary_flux_random_error", diagnostics.get("primary_flux_random_error"))
             entry["primary_flux_relative_uncertainty"] = br.get("primary_flux_relative_uncertainty", diagnostics.get("primary_flux_relative_uncertainty"))
             entry["primary_flux_uncertainty_band"] = br.get("primary_flux_uncertainty_band", diagnostics.get("primary_flux_uncertainty_band"))
             entry["primary_flux_ci_lower"] = br.get("primary_flux_ci_lower", diagnostics.get("primary_flux_ci_lower"))
             entry["primary_flux_ci_upper"] = br.get("primary_flux_ci_upper", diagnostics.get("primary_flux_ci_upper"))
             entry["primary_flux_ci_level"] = br.get("primary_flux_ci_level", diagnostics.get("primary_flux_ci_level"))
+            entry["method_compare_summary"] = br.get("method_compare_summary", diagnostics.get("method_compare_summary", {}))
+            entry["method_compare_recommendations"] = br.get("method_compare_recommendations", diagnostics.get("method_compare_recommendations", {}))
             entry["method_deviation_notes"] = br.get("method_deviation_notes") or _build_method_deviation_notes(diagnostics, br)
             per_window.append(entry)
         summary["per_window"] = per_window
@@ -1569,8 +2144,14 @@ class ResultExporter:
                 "primary_flux_ci_upper": diag.get("primary_flux_ci_upper"),
                 "primary_flux_ci_level": diag.get("primary_flux_ci_level"),
                 "footprint_method": diag.get("footprint_method", ""),
+                "footprint_2d_grid_status": diag.get("footprint_2d_grid_status", ""),
+                "footprint_2d_peak_downwind_m": diag.get("footprint_2d_peak_downwind_m"),
+                "footprint_2d_peak_crosswind_m": diag.get("footprint_2d_peak_crosswind_m"),
                 "uncertainty_method": diag.get("uncertainty_method", ""),
                 "spectral_correction_method": diag.get("spectral_correction_method", ""),
+                "spectral_correction_cospectrum_match": diag.get("spectral_correction_cospectrum_match", {}),
+                "method_compare_summary": diag.get("method_compare_summary", {}),
+                "method_compare_recommendations": diag.get("method_compare_recommendations", {}),
                 "method_deviation_notes": _build_method_deviation_notes(diag, {}),
             })
                 continue
@@ -1604,8 +2185,14 @@ class ResultExporter:
                 "primary_flux_ci_upper": diag.get("primary_flux_ci_upper"),
                 "primary_flux_ci_level": diag.get("primary_flux_ci_level"),
                 "footprint_method": diag.get("footprint_method", ""),
+                "footprint_2d_grid_status": diag.get("footprint_2d_grid_status", ""),
+                "footprint_2d_peak_downwind_m": diag.get("footprint_2d_peak_downwind_m"),
+                "footprint_2d_peak_crosswind_m": diag.get("footprint_2d_peak_crosswind_m"),
                 "uncertainty_method": diag.get("uncertainty_method", ""),
                 "spectral_correction_method": diag.get("spectral_correction_method", ""),
+                "spectral_correction_cospectrum_match": diag.get("spectral_correction_cospectrum_match", {}),
+                "method_compare_summary": diag.get("method_compare_summary", {}),
+                "method_compare_recommendations": diag.get("method_compare_recommendations", {}),
                 "method_deviation_notes": _build_method_deviation_notes(diag, bm_dev),
             })
         total = len(per_window)
@@ -1615,6 +2202,7 @@ class ResultExporter:
         artifact = {
             "reference_id": reference_id,
             "thresholds": thresholds or {},
+            "method_parity_matrix": self._method_parity_matrix(rp_result=rp_result, reference_id=reference_id),
             "total_windows": total,
             "matched_windows": len(matched),
             "passed_windows": passed,
@@ -1633,7 +2221,9 @@ def _build_method_deviation_notes(diag: dict[str, Any], bm_dev: dict[str, Any]) 
     if fp_method:
         fp_detail = diag.get("footprint_detail", {})
         fp_prov = fp_detail.get("provenance", "") if isinstance(fp_detail, dict) else ""
-        notes.append(f"footprint: {fp_method}" + (f" ({fp_prov})" if fp_prov else ""))
+        fp_grid = diag.get("footprint_2d_grid_status", "")
+        grid_text = f"; grid2d={fp_grid}" if fp_grid else ""
+        notes.append(f"footprint: {fp_method}{grid_text}" + (f" ({fp_prov})" if fp_prov else ""))
     unc_method = diag.get("uncertainty_method", "")
     if unc_method:
         unc_detail = diag.get("uncertainty_method_detail", {})
@@ -1647,9 +2237,21 @@ def _build_method_deviation_notes(diag: dict[str, Any], bm_dev: dict[str, Any]) 
         sc_prov = diag.get("spectral_correction_provenance", "")
         cospectrum_source = diag.get("spectral_correction_measured_cospectrum_source", "")
         source_text = f"; cospectrum={cospectrum_source}" if cospectrum_source else ""
+        cospectrum_match = diag.get("spectral_correction_cospectrum_match", {})
+        if isinstance(cospectrum_match, dict) and cospectrum_match.get("match_strategy"):
+            source_text = (
+                f"{source_text}; match={cospectrum_match.get('match_strategy')}"
+                f"/q={cospectrum_match.get('match_quality', 0.0)}"
+            )
         notes.append(
             f"spectral_correction: {sc_method} (factor={sc_factor}){source_text}"
             + (f" [{sc_prov}]" if sc_prov else "")
+        )
+    method_compare = diag.get("method_compare_recommendations", {})
+    if isinstance(method_compare, dict) and method_compare:
+        notes.append(
+            "method_compare: "
+            + ", ".join(f"{family}={recommendation}" for family, recommendation in sorted(method_compare.items()))
         )
     return notes
 

@@ -272,3 +272,62 @@ def test_report_center_method_provenance_reflects_rp_method_rollups(monkeypatch,
         assert page.preview_table.rowCount() >= 3
     finally:
         controller.shutdown()
+
+
+def test_report_center_method_compare_surfaces_artifacts(monkeypatch, tmp_path) -> None:
+    _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    try:
+        controller.report_center_workspace["benchmark"] = {
+            "status": "active",
+            "target": "eddypro_v7",
+            "reference_id": "eddypro_v7_synthetic_001",
+            "flux_rel_threshold": 0.10,
+            "lag_abs_threshold_s": 0.5,
+            "wpl_rel_threshold": 0.20,
+            "qc_grade_must_match": False,
+        }
+        controller.ec_processing["steps"]["window_sampling"]["sample_hz"] = 10.0
+        controller.ec_processing["steps"]["window_sampling"]["window_minutes"] = 0.5
+        controller.ec_processing["steps"]["footprint"]["grid_enabled"] = True
+        controller.ec_processing["steps"]["method_compare"] = {
+            "enabled": True,
+            "families": ["footprint", "uncertainty", "spectral_correction"],
+            "deviation_threshold": 0.20,
+            "max_samples": 2048,
+            "footprint_methods": ["kljun", "kormann_meixner", "hsieh"],
+            "uncertainty_methods": ["mann_lenschow", "finkelstein_sims"],
+            "spectral_correction_methods": ["massman", "horst", "ibrom", "fratini"],
+        }
+
+        _run_real_batch(controller, _make_rows(samples=900))
+        controller.run_ec_processing()
+        controller.set_report_nav_section("method_compare")
+        controller.export_current_report()
+        controller.refresh_report_center()
+
+        page = ReportCenterPage(controller)
+        page.refresh()
+
+        report = controller.report_center_workspace["reports"]["method_compare"]
+        rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
+        assert report["title"] == "Method Compare"
+        assert "footprint" in rows_text
+        assert "uncertainty" in rows_text
+        assert "spectral_correction" in rows_text
+        assert "performance:" in rows_text
+        assert "parity:rotation" in rows_text
+        assert "processing_settings" in rows_text
+        assert "missing_from_reference_metadata" in rows_text
+        assert "Method Compare Artifact" in report["file_info"]
+        assert "Method Parity Matrix" in report["file_info"]
+        assert "Footprint 2D Contour" in report["file_info"]
+        assert "Performance Profile" in report["file_info"]
+        latest_files = controller.current_spectral_run().artifacts["result_exports"]["latest"]["files"]
+        assert Path(latest_files["method_parity_matrix_artifact"]).exists()
+        assert Path(latest_files["footprint_2d_contour_svg"]).exists()
+        assert Path(latest_files["performance_profile_artifact"]).exists()
+        assert page.preview_table.rowCount() >= 3
+    finally:
+        controller.shutdown()

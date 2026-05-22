@@ -1764,6 +1764,34 @@ class FootprintResult:
     detail: dict[str, Any]
 
 
+@dataclass(slots=True)
+class Footprint2DGrid:
+    method: str
+    x_coords_m: list[float]
+    y_coords_m: list[float]
+    contribution_grid: list[list[float]]
+    peak_downwind_m: float
+    peak_crosswind_m: float
+    half_width_m: float
+    contribution_contours_m: dict[str, float]
+    detail: dict[str, Any]
+
+
+@dataclass(slots=True)
+class MethodCompareResult:
+    method_family: str
+    selected_method: str
+    methods_run: list[str]
+    primary_metric: str
+    primary_outputs: dict[str, float]
+    consensus_value: float | None
+    deviations: dict[str, float]
+    recommendation: str
+    recommendation_reason: str
+    status: str
+    detail: dict[str, Any]
+
+
 def compute_footprint_kljun(
     *,
     ustar: float,
@@ -1981,6 +2009,131 @@ def compute_footprint(
     return compute_footprint_kljun(
         ustar=ustar, mean_wind_speed=mean_wind_speed,
         sigma_v=sigma_v, z_m=z_m, h=h, z0=z0, ol=ol,
+    )
+
+
+def compute_footprint_2d_grid(
+    *,
+    footprint: FootprintResult | None = None,
+    method: str = "kljun",
+    ustar: float,
+    mean_wind_speed: float,
+    sigma_v: float = 0.0,
+    z_m: float,
+    h: float = 0.0,
+    z0: float | None = None,
+    ol: float | None = None,
+    x_bins: int = 32,
+    y_bins: int = 25,
+    max_downwind_m: float | None = None,
+    max_crosswind_m: float | None = None,
+) -> Footprint2DGrid | None:
+    """Build a compact 2D source-area grid from the selected footprint family.
+
+    The grid is a window-level diagnostic artifact: the downwind distribution is
+    anchored to the selected footprint method and the crosswind spread is a
+    Gaussian dispersion envelope driven by sigma_v / wind speed.
+    """
+    if footprint is None:
+        footprint = compute_footprint(
+            method=method,
+            ustar=ustar,
+            mean_wind_speed=mean_wind_speed,
+            sigma_v=sigma_v,
+            z_m=z_m,
+            h=h,
+            z0=z0,
+            ol=ol,
+        )
+    if footprint.peak_distance_m <= 0.0 or mean_wind_speed < 1e-6 or z_m <= 0.0:
+        return None
+
+    x_bins = max(8, min(int(x_bins or 32), 96))
+    y_bins = max(7, min(int(y_bins or 25), 81))
+    if y_bins % 2 == 0:
+        y_bins += 1
+
+    peak_x = max(float(footprint.peak_distance_m), 0.1)
+    x90 = float(footprint.contribution_distances.get("x90", peak_x * 4.0) or peak_x * 4.0)
+    x_max = max(float(max_downwind_m or 0.0), x90 * 1.25, peak_x * 5.0, z_m * 10.0, 1.0)
+    dispersion_ratio = abs(float(sigma_v or 0.0)) / max(abs(float(mean_wind_speed or 0.0)), 0.1)
+    y_extent = max(float(max_crosswind_m or 0.0), x90 * (0.12 + 0.35 * dispersion_ratio), z_m * 2.5, 1.0)
+
+    x_coords = np.linspace(x_max / x_bins, x_max, x_bins)
+    y_coords = np.linspace(-y_extent, y_extent, y_bins)
+
+    shape_by_method = {
+        "kljun": 0.70,
+        "kormann_meixner": 0.82,
+        "hsieh": 0.76,
+    }
+    log_sigma = shape_by_method.get(str(footprint.method), 0.74)
+    safe_x = np.maximum(x_coords, 1e-6)
+    downwind = np.exp(-0.5 * (np.log(safe_x / peak_x) / log_sigma) ** 2) / safe_x
+    downwind = np.where(np.isfinite(downwind), downwind, 0.0)
+    if float(np.sum(downwind)) <= 1e-15:
+        return None
+
+    grid = np.zeros((y_bins, x_bins), dtype=float)
+    for idx, x_value in enumerate(x_coords):
+        sigma_y = max(0.35, z_m * 0.20 + x_value * (0.07 + 0.22 * dispersion_ratio))
+        crosswind = np.exp(-0.5 * (y_coords / sigma_y) ** 2)
+        crosswind_sum = float(np.sum(crosswind))
+        if crosswind_sum > 1e-15:
+            grid[:, idx] = downwind[idx] * crosswind / crosswind_sum
+
+    total = float(np.sum(grid))
+    if total <= 1e-15:
+        return None
+    grid = grid / total
+
+    peak_idx = np.unravel_index(int(np.argmax(grid)), grid.shape)
+    peak_downwind_m = float(x_coords[peak_idx[1]])
+    peak_crosswind_m = float(y_coords[peak_idx[0]])
+    peak_column = grid[:, peak_idx[1]]
+    half_mask = peak_column >= (float(np.max(peak_column)) * 0.5)
+    half_width = float(np.max(np.abs(y_coords[half_mask]))) if np.any(half_mask) else 0.0
+
+    downwind_cumulative = np.cumsum(np.sum(grid, axis=0))
+    contribution_contours: dict[str, float] = {}
+    for pct in (10, 30, 50, 70, 90):
+        target = pct / 100.0
+        contour_idx = int(np.searchsorted(downwind_cumulative, target, side="left"))
+        contour_idx = min(max(contour_idx, 0), len(x_coords) - 1)
+        contribution_contours[f"x{pct}"] = round(float(x_coords[contour_idx]), 2)
+
+    return Footprint2DGrid(
+        method=str(footprint.method),
+        x_coords_m=[round(float(value), 3) for value in x_coords],
+        y_coords_m=[round(float(value), 3) for value in y_coords],
+        contribution_grid=[
+            [round(float(value), 8) for value in row]
+            for row in grid.tolist()
+        ],
+        peak_downwind_m=round(peak_downwind_m, 2),
+        peak_crosswind_m=round(peak_crosswind_m, 2),
+        half_width_m=round(half_width, 2),
+        contribution_contours_m=contribution_contours,
+        detail={
+            "status": "ok",
+            "grid_shape": [int(y_bins), int(x_bins)],
+            "grid_sum": round(float(np.sum(grid)), 6),
+            "downwind_extent_m": round(float(x_max), 2),
+            "crosswind_extent_m": round(float(y_extent), 2),
+            "dispersion_ratio": round(float(dispersion_ratio), 4),
+            "source_peak_distance_m": round(float(footprint.peak_distance_m), 2),
+            "source_contribution_distances_m": dict(footprint.contribution_distances),
+            "provenance": (
+                "2D footprint grid derived from selected 1D footprint family and "
+                "sigma_v wind-direction dispersion envelope"
+            ),
+            "method_provenance": footprint.detail.get("provenance", ""),
+            "limitations": [
+                "Diagnostic 2D source-area grid, not a full analytical footprint solver",
+                "Assumes flat homogeneous terrain and symmetric crosswind dispersion",
+                "Crosswind width uses sigma_v / mean wind speed as an empirical envelope",
+            ],
+        },
     )
 
 
@@ -2524,4 +2677,179 @@ def compute_spectral_correction(
         path_length_m=path_length_m, sensor_sep_m=sensor_sep_m,
         response_time_s=response_time_s, sample_rate_hz=sample_rate_hz,
         averaging_period_s=averaging_period_s, wind_speed=wind_speed,
+    )
+
+
+def run_method_compare(
+    *,
+    method_family: str,
+    selected_method: str = "",
+    window_params: dict[str, Any],
+    methods_to_run: list[str] | tuple[str, ...] | None = None,
+    method_configs: dict[str, dict[str, Any]] | None = None,
+) -> MethodCompareResult:
+    """Run one method family side-by-side for a single RP window."""
+    family = str(method_family or "").strip()
+    defaults = {
+        "footprint": ["kljun", "kormann_meixner", "hsieh"],
+        "uncertainty": ["mann_lenschow", "finkelstein_sims"],
+        "spectral_correction": ["massman", "horst", "ibrom", "fratini"],
+    }
+    methods = list(dict.fromkeys(str(item).strip() for item in (methods_to_run or defaults.get(family, [])) if str(item).strip()))
+    selected = str(selected_method or window_params.get("selected_method", "") or "").strip()
+    configs = method_configs or {}
+    outputs: dict[str, float] = {}
+    details: dict[str, Any] = {}
+    primary_metric = ""
+
+    for method_name in methods:
+        cfg = dict(configs.get(method_name, {}) or {})
+        try:
+            if family == "footprint":
+                primary_metric = "peak_distance_m"
+                fp = compute_footprint(
+                    method=method_name,
+                    ustar=float(window_params.get("ustar", 0.0) or 0.0),
+                    mean_wind_speed=float(window_params.get("mean_wind_speed", 0.0) or 0.0),
+                    sigma_v=float(window_params.get("sigma_v", 0.0) or 0.0),
+                    z_m=float(cfg.get("z_m", window_params.get("z_m", 0.0)) or 0.0),
+                    h=float(cfg.get("canopy_height_m", cfg.get("h", window_params.get("h", 0.0))) or 0.0),
+                    z0=cfg.get("z0", window_params.get("z0")),
+                    ol=cfg.get("ol", window_params.get("ol")),
+                )
+                details[method_name] = {
+                    "status": fp.detail.get("status", ""),
+                    "peak_distance_m": fp.peak_distance_m,
+                    "offset_distance_m": fp.offset_distance_m,
+                    "contribution_distances": dict(fp.contribution_distances),
+                    "provenance": fp.detail.get("provenance", ""),
+                    "limitations": fp.detail.get("limitations", []),
+                }
+                if fp.peak_distance_m > 0.0:
+                    outputs[method_name] = float(fp.peak_distance_m)
+            elif family == "uncertainty":
+                primary_metric = "random_error"
+                if method_name == "mann_lenschow":
+                    result = compute_uncertainty_mann_lenschow(
+                        cov_w_scalar=float(window_params.get("cov_w_scalar", 0.0) or 0.0),
+                        var_w=float(window_params.get("var_w", 0.0) or 0.0),
+                        var_scalar=float(window_params.get("var_scalar", 0.0) or 0.0),
+                        n_samples=int(window_params.get("n_samples", 0) or 0),
+                        averaging_period_s=float(window_params.get("averaging_period_s", 0.0) or 0.0),
+                        integral_timescale_s=cfg.get("integral_timescale_s", window_params.get("integral_timescale_s")),
+                    )
+                elif method_name == "finkelstein_sims":
+                    w_series = np.asarray(window_params.get("w_series", []), dtype=float)
+                    scalar_series = np.asarray(window_params.get("scalar_series", []), dtype=float)
+                    compare_sample_rate_hz = float(window_params.get("sample_rate_hz", 0.0) or 0.0)
+                    max_compare_samples = int(window_params.get("max_compare_samples", 4096) or 4096)
+                    downsample_stride = 1
+                    if w_series.size > max_compare_samples > 0:
+                        downsample_stride = int(math.ceil(w_series.size / max_compare_samples))
+                        w_series = w_series[::downsample_stride]
+                        scalar_series = scalar_series[::downsample_stride]
+                        compare_sample_rate_hz = compare_sample_rate_hz / downsample_stride if compare_sample_rate_hz > 0 else compare_sample_rate_hz
+                    result = compute_uncertainty_finkelstein_sims(
+                        w_series=w_series,
+                        scalar_series=scalar_series,
+                        sample_rate_hz=compare_sample_rate_hz,
+                        averaging_period_s=float(window_params.get("averaging_period_s", 0.0) or 0.0),
+                    )
+                    if downsample_stride > 1:
+                        result = dict(result)
+                        result.setdefault("components", {})
+                        if isinstance(result["components"], dict):
+                            result["components"]["method_compare_downsample_stride"] = downsample_stride
+                            result["components"]["method_compare_sample_count"] = int(w_series.size)
+                        result.setdefault("limitations", [])
+                        if isinstance(result["limitations"], list):
+                            result["limitations"].append(
+                                "Method compare downsampled Finkelstein-Sims input to bound cockpit rerun latency"
+                            )
+                else:
+                    result = {"method": method_name, "status": "unsupported_method", "random_error": None}
+                details[method_name] = result
+                value = result.get("random_error")
+                if isinstance(value, (int, float)) and np.isfinite(float(value)):
+                    outputs[method_name] = float(value)
+            elif family == "spectral_correction":
+                primary_metric = "correction_factor"
+                result = compute_spectral_correction(
+                    method=method_name,
+                    path_length_m=float(cfg.get("path_length_m", window_params.get("path_length_m", 0.15)) or 0.15),
+                    sensor_sep_m=float(cfg.get("sensor_sep_m", window_params.get("sensor_sep_m", 0.20)) or 0.20),
+                    response_time_s=float(cfg.get("response_time_s", window_params.get("response_time_s", 0.1)) or 0.1),
+                    sample_rate_hz=float(window_params.get("sample_rate_hz", 10.0) or 10.0),
+                    averaging_period_s=float(window_params.get("averaging_period_s", 1800.0) or 1800.0),
+                    wind_speed=float(window_params.get("wind_speed", 0.0) or 0.0),
+                    z_m=float(cfg.get("z_m", window_params.get("z_m", 0.0)) or 0.0),
+                    ustar=float(window_params.get("ustar", 0.0) or 0.0),
+                    ol=cfg.get("ol", window_params.get("ol")),
+                    measured_cospectrum_freq=window_params.get("measured_cospectrum_freq") if method_name == "fratini" else None,
+                    measured_cospectrum_value=window_params.get("measured_cospectrum_value") if method_name == "fratini" else None,
+                )
+                details[method_name] = result
+                value = result.get("correction_factor")
+                if isinstance(value, (int, float)) and np.isfinite(float(value)):
+                    outputs[method_name] = float(value)
+        except Exception as exc:  # pragma: no cover - defensive method-family comparison
+            details[method_name] = {"status": "error", "error": str(exc)}
+
+    if not outputs:
+        return MethodCompareResult(
+            method_family=family,
+            selected_method=selected,
+            methods_run=methods,
+            primary_metric=primary_metric,
+            primary_outputs={},
+            consensus_value=None,
+            deviations={},
+            recommendation=selected or (methods[0] if methods else ""),
+            recommendation_reason="No comparable method outputs were available for this window.",
+            status="insufficient_data",
+            detail={"methods": details, "provenance": "side-by-side method comparison"},
+        )
+
+    values = list(outputs.values())
+    consensus = float(np.median(values))
+    denominator = max(abs(consensus), 1e-12)
+    deviations = {
+        method_name: round(float((value - consensus) / denominator), 6)
+        for method_name, value in outputs.items()
+    }
+    if selected in outputs:
+        selected_abs_dev = abs(deviations[selected])
+        recommendation = selected
+        if selected_abs_dev > 0.25:
+            recommendation = min(outputs, key=lambda name: abs(deviations[name]))
+            reason = (
+                f"Selected method deviates {selected_abs_dev:.1%} from family median; "
+                f"{recommendation} is closest to consensus."
+            )
+        else:
+            reason = "Selected method is within 25% of the family median."
+    else:
+        recommendation = min(outputs, key=lambda name: abs(deviations[name]))
+        reason = "Selected method did not produce a comparable output; closest-to-consensus method is recommended."
+
+    return MethodCompareResult(
+        method_family=family,
+        selected_method=selected,
+        methods_run=methods,
+        primary_metric=primary_metric,
+        primary_outputs={key: round(float(value), 6) for key, value in outputs.items()},
+        consensus_value=round(consensus, 6),
+        deviations=deviations,
+        recommendation=recommendation,
+        recommendation_reason=reason,
+        status="ok",
+        detail={
+            "methods": details,
+            "deviation_threshold": 0.25,
+            "provenance": "side-by-side method-family comparison using identical RP window inputs",
+            "limitations": [
+                "Consensus is a median of available method outputs, not an external truth value",
+                "Method compare is diagnostic and does not automatically alter selected processing outputs",
+            ],
+        },
     )

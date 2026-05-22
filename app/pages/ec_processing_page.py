@@ -136,6 +136,9 @@ class ECProcessingPage(QWidget):
         self.footprint_canopy_spin.setValue(float(footprint_step.get("canopy_height_m", 5.0) or 5.0))
         self.footprint_z0_spin.setValue(float(footprint_step.get("z0", 0.12) or 0.12))
         self.footprint_ol_spin.setValue(float(footprint_step.get("ol", 0.0) or 0.0))
+        self.footprint_grid_combo.setCurrentIndex(0 if footprint_step.get("grid_enabled", True) else 1)
+        self.footprint_grid_x_spin.setValue(int(footprint_step.get("grid_x_bins", 32) or 32))
+        self.footprint_grid_y_spin.setValue(int(footprint_step.get("grid_y_bins", 25) or 25))
 
         uncertainty_step = steps.get("uncertainty", {})
         self._set_combo_text(
@@ -154,6 +157,9 @@ class ECProcessingPage(QWidget):
         self.spectral_zm_spin.setValue(float(spectral_step.get("z_m", 3.0) or 3.0))
         self.spectral_ol_spin.setValue(float(spectral_step.get("ol", 0.0) or 0.0))
         self.spectral_cospectrum_combo.setCurrentIndex(0 if spectral_step.get("use_fcc_measured_cospectrum", True) else 1)
+        method_compare_step = steps.get("method_compare", {})
+        self.method_compare_combo.setCurrentIndex(0 if method_compare_step.get("enabled", True) else 1)
+        self.method_compare_threshold_spin.setValue(float(method_compare_step.get("deviation_threshold", 0.25) or 0.25))
         self.output_fields_edit.setText(str(steps["output"].get("output_fields", "")))
         self._set_combo_text(self.full_output_mode_combo, str(steps["output"].get("full_output_mode", "only_available")))
 
@@ -612,12 +618,21 @@ class ECProcessingPage(QWidget):
         self.footprint_canopy_spin = self._double_spin(0.1, 60.0, 2, suffix=" m")
         self.footprint_z0_spin = self._double_spin(0.001, 5.0, 3, suffix=" m")
         self.footprint_ol_spin = self._double_spin(-2000.0, 2000.0, 1, suffix=" m")
+        self.footprint_grid_combo = QComboBox()
+        self.footprint_grid_combo.addItems(["enabled", "disabled"])
+        self.footprint_grid_x_spin = QSpinBox()
+        self.footprint_grid_x_spin.setRange(8, 96)
+        self.footprint_grid_y_spin = QSpinBox()
+        self.footprint_grid_y_spin.setRange(7, 81)
         footprint_form.addRow("开关", self.footprint_enable_combo)
         footprint_form.addRow("method", self.footprint_method_combo)
         footprint_form.addRow("z_m", self.footprint_zm_spin)
         footprint_form.addRow("canopy_height_m", self.footprint_canopy_spin)
         footprint_form.addRow("z0", self.footprint_z0_spin)
         footprint_form.addRow("ol", self.footprint_ol_spin)
+        footprint_form.addRow("grid_2d", self.footprint_grid_combo)
+        footprint_form.addRow("grid_x_bins", self.footprint_grid_x_spin)
+        footprint_form.addRow("grid_y_bins", self.footprint_grid_y_spin)
         footprint_layout.addLayout(footprint_form)
         self.footprint_summary_label = QLabel("--")
         self.footprint_summary_label.setObjectName("subtitle")
@@ -676,6 +691,20 @@ class ECProcessingPage(QWidget):
         self.spectral_summary_label.setWordWrap(True)
         spectral_layout.addWidget(self.spectral_summary_label)
         param_layout.addWidget(spectral_card)
+
+        compare_card = CardFrame(muted=True)
+        compare_layout = QVBoxLayout(compare_card)
+        compare_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        compare_layout.setSpacing(TOKENS.spacing_sm)
+        compare_layout.addWidget(section_title("Method Compare", "Run method families side-by-side without changing selected processing outputs"))
+        compare_form = QFormLayout()
+        self.method_compare_combo = QComboBox()
+        self.method_compare_combo.addItems(["enabled", "disabled"])
+        self.method_compare_threshold_spin = self._double_spin(0.01, 2.0, 2)
+        compare_form.addRow("enabled", self.method_compare_combo)
+        compare_form.addRow("deviation_threshold", self.method_compare_threshold_spin)
+        compare_layout.addLayout(compare_form)
+        param_layout.addWidget(compare_card)
 
         row.addWidget(param_card, 3)
 
@@ -757,6 +786,9 @@ class ECProcessingPage(QWidget):
         self.footprint_canopy_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.footprint_z0_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.footprint_ol_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.footprint_grid_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
+        self.footprint_grid_x_spin.valueChanged.connect(self._refresh_uncertainty_preview)
+        self.footprint_grid_y_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.uncertainty_mode_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
         self.uncertainty_timescale_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.uncertainty_confidence_spin.valueChanged.connect(self._refresh_uncertainty_preview)
@@ -768,6 +800,8 @@ class ECProcessingPage(QWidget):
         self.spectral_zm_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.spectral_ol_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.spectral_cospectrum_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
+        self.method_compare_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
+        self.method_compare_threshold_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.output_fields_edit.textChanged.connect(self._refresh_output_preview)
         self.full_output_mode_combo.currentIndexChanged.connect(self._refresh_output_preview)
 
@@ -892,6 +926,9 @@ class ECProcessingPage(QWidget):
                     "canopy_height_m": self.footprint_canopy_spin.value(),
                     "z0": self.footprint_z0_spin.value(),
                     "ol": self.footprint_ol_spin.value(),
+                    "grid_enabled": self.footprint_grid_combo.currentText().strip() == "enabled",
+                    "grid_x_bins": self.footprint_grid_x_spin.value(),
+                    "grid_y_bins": self.footprint_grid_y_spin.value(),
                     "preview": self.footprint_summary_label.text().strip(),
                 },
                 "uncertainty": {
@@ -917,6 +954,19 @@ class ECProcessingPage(QWidget):
                     "ol": self.spectral_ol_spin.value(),
                     "use_fcc_measured_cospectrum": self.spectral_cospectrum_combo.currentText().strip() == "fcc_auto",
                     "preview": self.spectral_summary_label.text().strip(),
+                },
+                "method_compare": {
+                    "title": "Method compare",
+                    "method": "enabled" if self.method_compare_combo.currentText().strip() == "enabled" else "disabled",
+                    "applicable": "Compare footprint / uncertainty / spectral correction method families on identical RP windows.",
+                    "recommended": "Use for parity review and method provenance; selected processing methods are not changed automatically.",
+                    "enabled": self.method_compare_combo.currentText().strip() == "enabled",
+                    "families": ["footprint", "uncertainty", "spectral_correction"],
+                    "deviation_threshold": self.method_compare_threshold_spin.value(),
+                    "max_samples": 4096,
+                    "footprint_methods": ["kljun", "kormann_meixner", "hsieh"],
+                    "uncertainty_methods": ["mann_lenschow", "finkelstein_sims"],
+                    "spectral_correction_methods": ["massman", "horst", "ibrom", "fratini"],
                 },
                 "output": {
                     "title": "输出",
@@ -1134,6 +1184,8 @@ class ECProcessingPage(QWidget):
                     f"method={self.footprint_method_combo.currentText().strip()}",
                     f"z_m={self.footprint_zm_spin.value():.2f}",
                     f"canopy={self.footprint_canopy_spin.value():.2f}",
+                    f"grid2d={self.footprint_grid_combo.currentText().strip()}",
+                    f"grid={self.footprint_grid_x_spin.value()}x{self.footprint_grid_y_spin.value()}",
                 ]
             )
         )
@@ -1153,6 +1205,7 @@ class ECProcessingPage(QWidget):
                     f"method={self.spectral_method_combo.currentText().strip()}",
                     f"path_length_m={self.spectral_path_spin.value():.3f}",
                     f"cospectrum={self.spectral_cospectrum_combo.currentText().strip()}",
+                    f"compare={self.method_compare_combo.currentText().strip()}",
                 ]
             )
         )
@@ -1171,7 +1224,8 @@ class ECProcessingPage(QWidget):
                 f"footprint={diagnostics.get('footprint_method', '--')} / "
                 f"uncertainty={diagnostics.get('uncertainty_method', detail.get('selected_method', '--'))} / "
                 f"spectral={diagnostics.get('spectral_correction_method', '--')} / "
-                f"cospectrum={diagnostics.get('spectral_correction_measured_cospectrum_source', 'disabled') or 'disabled'}"
+                f"cospectrum={diagnostics.get('spectral_correction_measured_cospectrum_source', 'disabled') or 'disabled'} / "
+                f"method_compare={len(diagnostics.get('method_compare_summary', {}) or {})}"
             )
         self.uncertainty_sampling_label.setText(values[0])
         self.uncertainty_sensor_label.setText(values[1])
