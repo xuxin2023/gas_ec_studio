@@ -6,9 +6,13 @@ from pathlib import Path
 import re
 from typing import Any
 
+from core.acquisition.runtime_install import build_installable_runtime_profile, has_runtime_install_config
+
 
 def has_supervisor_integration_config(config: dict[str, Any]) -> bool:
     if any(isinstance(config.get(key), dict) and config.get(key) for key in ("supervisor_integration", "os_supervisor", "hardware_watchdog_provider")):
+        return True
+    if has_runtime_install_config(config):
         return True
     smartflux = config.get("smartflux_runtime", {})
     return isinstance(smartflux, dict) and any(
@@ -65,10 +69,16 @@ def build_supervisor_integration_artifact(
         runtime_root=root,
         allow_reboot_request=_truthy(integration_config.get("allow_reboot_request", False)),
     )
+    installable_runtime_profile = (
+        build_installable_runtime_profile(config=config, runtime_root=root)
+        if has_runtime_install_config(config)
+        else {}
+    )
     checks = _checks(
         integration_config=integration_config,
         service_status=service_status,
         watchdog_provider=watchdog_provider,
+        installable_runtime_profile=installable_runtime_profile,
     )
     fail_count = sum(1 for item in checks if item["status"] == "fail")
     warn_count = sum(1 for item in checks if item["status"] == "warn")
@@ -82,16 +92,19 @@ def build_supervisor_integration_artifact(
         "runtime_root": str(root),
         "service_status": service_status,
         "hardware_watchdog_provider": watchdog_provider,
+        "installable_runtime_profile": installable_runtime_profile,
         "checks": checks,
         "fail_count": fail_count,
         "warn_count": warn_count,
         "recommended_actions": _recommended_actions(checks),
         "provenance": (
             "Supervisor integration v1 normalizes configured systemd/Windows/manual service status and records "
-            "hardware watchdog kick/reboot provider attempts without installing or mutating an OS service."
+            "hardware watchdog kick/reboot provider attempts, plus optional installable runtime deployment plans, "
+            "without installing or mutating an OS service."
         ),
         "limitations": [
             "This artifact reads configured status snapshots and uses file/manual watchdog providers; direct systemd/Windows Service control is intentionally not invoked here.",
+            "Installable runtime profiles are rendered as dry-run deployment plans and must be applied by a privileged deployment step.",
             "Real hardware watchdog kick and reboot control require a platform-specific provider supplied by the deployment host.",
         ],
     }
@@ -284,11 +297,12 @@ def _checks(
     integration_config: dict[str, Any],
     service_status: dict[str, Any],
     watchdog_provider: dict[str, Any],
+    installable_runtime_profile: dict[str, Any],
 ) -> list[dict[str, Any]]:
     require_running = _truthy(integration_config.get("require_running", False))
     max_restart_count = int(_float_first(integration_config.get("max_restart_count"), default=3.0))
     require_kick = _truthy(integration_config.get("require_watchdog_kick", False))
-    return [
+    checks = [
         _check(
             "os_supervisor_state",
             service_status.get("state") in {"running", "active", "ok"} if require_running else service_status.get("state") not in {"failed", "crashed"},
@@ -322,6 +336,29 @@ def _checks(
             failure_message="A reboot request was present but blocked by integration policy.",
         ),
     ]
+    if installable_runtime_profile:
+        install_status = str(installable_runtime_profile.get("status", "not_configured"))
+        checks.append(
+            _check(
+                "installable_runtime_profile",
+                install_status != "fail",
+                measured=install_status,
+                threshold="not fail",
+                severity="fail",
+                failure_message="Installable runtime profile preflight has blocking failures.",
+            )
+        )
+        checks.append(
+            _check(
+                "installable_runtime_preflight_warnings",
+                install_status not in {"warning"},
+                measured=install_status,
+                threshold="no warning preflight checks",
+                severity="warn",
+                failure_message="Installable runtime profile has deployment preflight warnings.",
+            )
+        )
+    return checks
 
 
 def _check(
@@ -355,6 +392,8 @@ def _recommended_actions(checks: list[dict[str, Any]]) -> list[str]:
             actions.append("Configure a supported hardware watchdog provider or verify the deployment-side file handoff.")
         elif check_id == "reboot_policy":
             actions.append("Review reboot policy; enable allow_reboot_request only for supervised deployments.")
+        elif check_id.startswith("installable_runtime"):
+            actions.append("Review installable runtime profile preflight checks before applying OS service deployment commands.")
         else:
             actions.append(f"Review supervisor integration check {check_id}.")
     return list(dict.fromkeys(actions))

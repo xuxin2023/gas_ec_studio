@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.acquisition.runtime_install import build_installable_runtime_profile, has_runtime_install_config
 from core.ec_rp.analysis import generate_reference_provenance
 from core.exports.report_exporter import write_report_snapshot
 from models.rp_models import RPRunResult, WindowRPResult
@@ -94,6 +95,10 @@ FULL_OUTPUT_SCHEMA = [
     ("os_supervisor_status", "acquisition", "real"),
     ("os_supervisor_state", "acquisition", "real"),
     ("watchdog_provider_status", "acquisition", "real"),
+    ("installable_runtime_status", "acquisition", "real"),
+    ("installable_runtime_profile_id", "acquisition", "real"),
+    ("installable_runtime_targets", "acquisition", "real"),
+    ("installable_runtime_detail", "acquisition", "real"),
     ("supervisor_integration_detail", "acquisition", "real"),
     ("daemon_telemetry_detail", "acquisition", "real"),
     ("ch4_status", "trace_gas", "real"),
@@ -245,6 +250,11 @@ class ResultExporter:
             rp_config_snapshot=rp_config_snapshot,
             export_root=export_root,
         )
+        installable_runtime_path = self.export_installable_runtime_artifact(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+        )
         clock_sync_path = self.export_clock_sync_artifact(
             rp_result=rp_result,
             rp_config_snapshot=rp_config_snapshot,
@@ -313,6 +323,8 @@ class ResultExporter:
             exported_files.append(daemon_telemetry_path.name)
         if supervisor_integration_path is not None:
             exported_files.append(supervisor_integration_path.name)
+        if installable_runtime_path is not None:
+            exported_files.append(installable_runtime_path.name)
         if clock_sync_path is not None:
             exported_files.append(clock_sync_path.name)
         if method_parity_matrix_path is not None:
@@ -370,6 +382,8 @@ class ResultExporter:
                 "daemon_telemetry_summary": self._daemon_telemetry_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "supervisor_integration_artifact": str(supervisor_integration_path) if supervisor_integration_path is not None else "",
                 "supervisor_integration_summary": self._supervisor_integration_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+                "installable_runtime_artifact": str(installable_runtime_path) if installable_runtime_path is not None else "",
+                "installable_runtime_summary": self._installable_runtime_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
                 "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "reference_provenance": reference_provenance,
@@ -457,6 +471,8 @@ class ResultExporter:
             "daemon_telemetry_artifact": str(daemon_telemetry_path) if daemon_telemetry_path is not None else "",
             "supervisor_integration_summary": self._supervisor_integration_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "supervisor_integration_artifact": str(supervisor_integration_path) if supervisor_integration_path is not None else "",
+            "installable_runtime_summary": self._installable_runtime_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+            "installable_runtime_artifact": str(installable_runtime_path) if installable_runtime_path is not None else "",
             "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
@@ -486,6 +502,8 @@ class ResultExporter:
                 "OS_SUPERVISOR_STATUS",
                 "OS_SUPERVISOR_STATE",
                 "WATCHDOG_PROVIDER_STATUS",
+                "INSTALLABLE_RUNTIME_STATUS",
+                "INSTALLABLE_RUNTIME_TARGETS",
             ],
             "network_uncertainty_fields": [
                 "FC_RANDOM_ERROR",
@@ -534,6 +552,9 @@ class ResultExporter:
                 "os_supervisor_status",
                 "os_supervisor_state",
                 "watchdog_provider_status",
+                "installable_runtime_status",
+                "installable_runtime_profile_id",
+                "installable_runtime_targets",
                 "screening_config",
                 "screening_summary",
                 "footprint_method",
@@ -584,6 +605,8 @@ class ResultExporter:
             files["daemon_telemetry_artifact"] = str(daemon_telemetry_path)
         if supervisor_integration_path is not None:
             files["supervisor_integration_artifact"] = str(supervisor_integration_path)
+        if installable_runtime_path is not None:
+            files["installable_runtime_artifact"] = str(installable_runtime_path)
         if clock_sync_path is not None:
             files["clock_sync_artifact"] = str(clock_sync_path)
         if method_parity_matrix_path is not None:
@@ -697,6 +720,12 @@ class ResultExporter:
             "os_supervisor_status": diagnostics.get("os_supervisor_status", ""),
             "os_supervisor_state": diagnostics.get("os_supervisor_state", ""),
             "watchdog_provider_status": diagnostics.get("watchdog_provider_status", ""),
+            "installable_runtime_status": diagnostics.get("installable_runtime_status", ""),
+            "installable_runtime_profile_id": diagnostics.get("installable_runtime_profile_id", ""),
+            "installable_runtime_targets": "|".join(diagnostics.get("installable_runtime_targets", []) or [])
+            if isinstance(diagnostics.get("installable_runtime_targets"), list)
+            else diagnostics.get("installable_runtime_targets", ""),
+            "installable_runtime_detail": json.dumps(diagnostics.get("installable_runtime_detail", {}), ensure_ascii=False) if diagnostics.get("installable_runtime_detail") else "",
             "supervisor_integration_detail": json.dumps(diagnostics.get("supervisor_integration_detail", {}), ensure_ascii=False) if diagnostics.get("supervisor_integration_detail") else "",
             "daemon_telemetry_detail": json.dumps(diagnostics.get("daemon_telemetry_detail", {}), ensure_ascii=False) if diagnostics.get("daemon_telemetry_detail") else "",
             "ch4_status": diagnostics.get("ch4_status", ""),
@@ -842,6 +871,12 @@ class ResultExporter:
                 "os_supervisor_status": diagnostics.get("os_supervisor_status", "") if diagnostics else "",
                 "os_supervisor_state": diagnostics.get("os_supervisor_state", "") if diagnostics else "",
                 "watchdog_provider_status": diagnostics.get("watchdog_provider_status", "") if diagnostics else "",
+                "installable_runtime_status": diagnostics.get("installable_runtime_status", "") if diagnostics else "",
+                "installable_runtime_profile_id": diagnostics.get("installable_runtime_profile_id", "") if diagnostics else "",
+                "installable_runtime_targets": "|".join(diagnostics.get("installable_runtime_targets", []) or [])
+                if diagnostics and isinstance(diagnostics.get("installable_runtime_targets"), list)
+                else (diagnostics.get("installable_runtime_targets", "") if diagnostics else ""),
+                "installable_runtime_detail": json.dumps(diagnostics.get("installable_runtime_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("installable_runtime_detail") else "",
                 "supervisor_integration_detail": json.dumps(diagnostics.get("supervisor_integration_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("supervisor_integration_detail") else "",
                 "daemon_telemetry_detail": json.dumps(diagnostics.get("daemon_telemetry_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("daemon_telemetry_detail") else "",
                 "ch4_status": diagnostics.get("ch4_status", "") if diagnostics else "",
@@ -1597,6 +1632,39 @@ class ResultExporter:
             "provenance": "Supervisor integration artifact exported from daemon telemetry.",
         }
         path = export_root / "supervisor_integration_artifact.json"
+        self._write_json(path, payload)
+        return path
+
+    def _installable_runtime_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        if rp_result is not None:
+            artifacts = dict(rp_result.artifacts or {})
+            if isinstance(artifacts.get("installable_runtime_profile"), dict) and artifacts["installable_runtime_profile"]:
+                return dict(artifacts["installable_runtime_profile"])
+        supervisor = self._supervisor_integration_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if isinstance(supervisor.get("installable_runtime_profile"), dict) and supervisor["installable_runtime_profile"]:
+            return dict(supervisor["installable_runtime_profile"])
+        if has_runtime_install_config(rp_config_snapshot):
+            return build_installable_runtime_profile(config=rp_config_snapshot, runtime_root=self.runtime_root)
+        return {}
+
+    def export_installable_runtime_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+    ) -> Path | None:
+        summary = self._installable_runtime_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not summary:
+            return None
+        payload = {
+            "artifact_type": "installable_runtime_profile",
+            "run_id": rp_result.run_id if rp_result else "",
+            "created_at": rp_result.created_at.isoformat() if rp_result else "",
+            "summary": summary,
+            "provenance": "Installable runtime artifact exported from supervisor integration or config snapshot.",
+        }
+        path = export_root / "installable_runtime_artifact.json"
         self._write_json(path, payload)
         return path
 
@@ -2514,6 +2582,10 @@ class ResultExporter:
             "OS_SUPERVISOR_STATUS": diagnostics.get("os_supervisor_status", "not_configured"),
             "OS_SUPERVISOR_STATE": diagnostics.get("os_supervisor_state", "not_configured"),
             "WATCHDOG_PROVIDER_STATUS": diagnostics.get("watchdog_provider_status", "not_configured"),
+            "INSTALLABLE_RUNTIME_STATUS": diagnostics.get("installable_runtime_status", "not_configured"),
+            "INSTALLABLE_RUNTIME_TARGETS": "|".join(diagnostics.get("installable_runtime_targets", []) or [])
+            if isinstance(diagnostics.get("installable_runtime_targets"), list)
+            else diagnostics.get("installable_runtime_targets", ""),
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2588,6 +2660,8 @@ class ResultExporter:
             "OS_SUPERVISOR_STATUS": "not_configured",
             "OS_SUPERVISOR_STATE": "not_configured",
             "WATCHDOG_PROVIDER_STATUS": "not_configured",
+            "INSTALLABLE_RUNTIME_STATUS": "not_configured",
+            "INSTALLABLE_RUNTIME_TARGETS": "",
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,

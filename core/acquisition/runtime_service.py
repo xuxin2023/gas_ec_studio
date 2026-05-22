@@ -303,6 +303,9 @@ def attach_runtime_service_manifest(run_result: Any, service_manifest: dict[str,
         artifacts["runtime_service"] = dict(service_manifest)
         if isinstance(service_manifest.get("daemon_telemetry"), dict) and service_manifest["daemon_telemetry"]:
             artifacts["daemon_telemetry"] = dict(service_manifest["daemon_telemetry"])
+            supervisor_integration = dict(service_manifest["daemon_telemetry"].get("supervisor_integration", {}) or {})
+            if isinstance(supervisor_integration.get("installable_runtime_profile"), dict) and supervisor_integration["installable_runtime_profile"]:
+                artifacts["installable_runtime_profile"] = dict(supervisor_integration["installable_runtime_profile"])
     for window in list(getattr(run_result, "windows", []) or []):
         diagnostics = getattr(window, "diagnostics", None)
         if not isinstance(diagnostics, dict):
@@ -320,10 +323,16 @@ def attach_runtime_service_manifest(run_result: Any, service_manifest: dict[str,
         diagnostics["ptp_lock_status"] = dict(daemon.get("ptp_servo", {}) or {}).get("status", "")
         diagnostics["gps_pps_lock_status"] = dict(daemon.get("gps_pps", {}) or {}).get("status", "")
         diagnostics["hardware_watchdog_status"] = dict(daemon.get("hardware_watchdog", {}) or {}).get("status", "")
-        diagnostics["os_supervisor_status"] = dict(daemon.get("supervisor_integration", {}) or {}).get("status", "")
-        diagnostics["os_supervisor_state"] = dict(dict(daemon.get("supervisor_integration", {}) or {}).get("service_status", {}) or {}).get("state", "")
-        diagnostics["watchdog_provider_status"] = dict(dict(daemon.get("supervisor_integration", {}) or {}).get("hardware_watchdog_provider", {}) or {}).get("status", "")
-        diagnostics["supervisor_integration_detail"] = dict(daemon.get("supervisor_integration", {}) or {})
+        supervisor_integration = dict(daemon.get("supervisor_integration", {}) or {})
+        install_profile = dict(supervisor_integration.get("installable_runtime_profile", {}) or {})
+        diagnostics["os_supervisor_status"] = supervisor_integration.get("status", "")
+        diagnostics["os_supervisor_state"] = dict(supervisor_integration.get("service_status", {}) or {}).get("state", "")
+        diagnostics["watchdog_provider_status"] = dict(supervisor_integration.get("hardware_watchdog_provider", {}) or {}).get("status", "")
+        diagnostics["installable_runtime_status"] = install_profile.get("status", "")
+        diagnostics["installable_runtime_profile_id"] = install_profile.get("profile_id", "")
+        diagnostics["installable_runtime_targets"] = list(install_profile.get("os_targets", []) or [])
+        diagnostics["installable_runtime_detail"] = install_profile
+        diagnostics["supervisor_integration_detail"] = supervisor_integration
         diagnostics["daemon_telemetry_detail"] = _compact_daemon_telemetry(daemon)
 
 
