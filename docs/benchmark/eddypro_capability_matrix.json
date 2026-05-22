@@ -70,8 +70,8 @@
   ],
   "coverage_summary": {
     "covered": 9,
-    "partial": 11,
-    "missing": 2,
+    "partial": 12,
+    "missing": 1,
     "beyond_eddypro": 3
   },
   "capabilities": [
@@ -106,10 +106,10 @@
       "id": "raw_binary_tob1_slt",
       "family": "raw_ingestion",
       "eddypro_requirement": "Support binary and TOB1/SLT family raw formats.",
-      "gas_ec_status": "missing",
-      "evidence": [],
-      "gap": "No binary/TOB1/SLT parser is present.",
-      "next_action": "Implement TOB1 adapter or documented conversion bridge first."
+      "gas_ec_status": "partial",
+      "evidence": ["core/storage/raw_importer.py", "core/headless_batch_runner.py", "tests/test_raw_importer_biomet_injection.py"],
+      "gap": "Native reader bridge now decodes TOB1 IEEE4 float32, generic fixed-record binary, and SLT EdiSol/EddySoft-style int16 fixtures into NormalizedHFFrame with provenance; Campbell FP2 lookup tables, all vendor dialects, and broad real-world binary fixture parity are still incomplete.",
+      "next_action": "Add FP2 decoding and real anonymized TOB1/SLT/binary fixture parity against EddyPro import outputs."
     },
     {
       "id": "site_instrument_metadata",

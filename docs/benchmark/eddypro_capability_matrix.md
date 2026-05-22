@@ -35,6 +35,7 @@ Primary public repositories to track:
 ## Partial
 
 - `.ghg` support is now real for manifest/metadata/embedded biomet and high-frequency raw rows can run through headless RP/FCC/export. Broader real-world LI-COR fixture coverage is still needed.
+- Native TOB1 IEEE4, generic fixed-record binary, and SLT EdiSol/EddySoft-style int16 bridge readers now decode fixture payloads into `NormalizedHFFrame` with provenance; FP2 and broad vendor dialect parity remain incomplete.
 - Biomet aggregation exists, but it does not yet override all thermodynamic ambient variables used by the RP flux equations.
 - Spectral methods exist, but long-period binned spectra/cospectra assessment and EddyPro-equivalent output families need more work.
 - CO2/H2O/energy flux fields exist, but full EddyPro Level 0/1/2/3 closed-path correction sequencing still needs validation.
@@ -45,7 +46,6 @@ Primary public repositories to track:
 
 ## Missing
 
-- Binary/TOB1/SLT raw file readers.
 - GPS/PTP synchronization subsystem.
 - Full SmartFlux-like embedded/on-site runtime hardening.
 

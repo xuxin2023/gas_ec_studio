@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+import struct
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from core.headless_batch_runner import load_input_rows, run_headless_batch
-from core.storage.raw_importer import load_raw_text_frames
+from core.storage.raw_importer import load_raw_native_frames, load_raw_text_frames
 from models.hf_models import FrameQuality, NormalizedHFFrame
 from models.station_models import (
     BiometSourceMetadata,
@@ -56,7 +58,7 @@ def test_load_input_rows_accepts_mapped_raw_csv_with_unit_conversion(tmp_path: P
     assert len(rows) == 1
     assert rows[0].co2_ppm == 410.0
     assert rows[0].h2o_mmol == 12.0
-    assert rows[0].pressure_kpa == 101.3
+    assert rows[0].pressure_kpa == pytest.approx(101.3)
     assert rows[0].chamber_temp_c == 25.0
     assert json.loads(rows[0].raw_text)["w"] == 0.2
 
@@ -81,6 +83,130 @@ def test_raw_text_importer_handles_tob1_like_text_headers(tmp_path: Path) -> Non
     assert rows[0].device_uid == "TOB1-001"
     assert rows[0].co2_ppm == 410.0
     assert json.loads(rows[0].raw_text)["u"] == 2.0
+
+
+def test_native_tob1_ieee4_bridge_reads_binary_records(tmp_path: Path) -> None:
+    tob1_path = tmp_path / "native.tob1"
+    header = b"TOB1 fixture\r\nTIMESTAMP,U,V,W,CO2,H2O,P,TA\r\n"
+    values = [
+        (2.0, 0.1, 0.2, 410.0, 12.0, 101.3, 25.0),
+        (2.1, 0.2, 0.3, 411.0, 12.5, 101.4, 25.1),
+    ]
+    tob1_path.write_bytes(header + b"".join(struct.pack("<7f", *row) for row in values))
+    metadata = MetadataBundle(
+        project=ProjectProfile(code="TOB1N-001", name="Native TOB1"),
+        raw_file_description=RawFileDescriptionMetadata(source_type="tob1"),
+        raw_file_settings=RawFileSettingsMetadata(
+            sample_hz=10.0,
+            header_rows=2,
+            extra={
+                "native_format": "tob1_ieee4",
+                "columns": ["u", "v", "w", "co2", "h2o", "pressure", "temperature"],
+                "start_time": "2026-05-22T10:00:00",
+            },
+        ),
+    )
+
+    rows = load_input_rows(tob1_path, metadata=metadata)
+
+    assert len(rows) == 2
+    assert rows[0].timestamp.isoformat() == "2026-05-22T10:00:00"
+    assert rows[1].timestamp.isoformat() == "2026-05-22T10:00:00.100000"
+    assert rows[0].co2_ppm == 410.0
+    assert json.loads(rows[0].raw_text)["raw_native_import"]["format"] == "tob1_ieee4"
+
+
+def test_native_generic_binary_bridge_uses_column_mappings_and_manifest(tmp_path: Path) -> None:
+    binary_path = tmp_path / "native.bin"
+    records = [
+        (4100, 120, 1013, 250, 20, 1, 2),
+        (4110, 121, 1014, 251, 21, 2, 3),
+    ]
+    binary_path.write_bytes(b"".join(struct.pack("<7h", *record) for record in records))
+    metadata = MetadataBundle(
+        project=ProjectProfile(code="BIN-001", name="Binary Raw"),
+        site=SiteProfile(station_code="BIN", station_name="Binary Tower"),
+        raw_file_description=RawFileDescriptionMetadata(
+            source_type="binary",
+            column_mappings=[
+                RawColumnMapping(column_name="co2_raw", variable="co2_ppm", scaling=0.1),
+                RawColumnMapping(column_name="h2o_raw", variable="h2o_mmol", scaling=0.1),
+                RawColumnMapping(column_name="p_raw", variable="pressure_kpa", scaling=0.1),
+                RawColumnMapping(column_name="ta_raw", variable="chamber_temp_c", scaling=0.1),
+                RawColumnMapping(column_name="u_raw", variable="u", scaling=0.1),
+                RawColumnMapping(column_name="v_raw", variable="v", scaling=0.1),
+                RawColumnMapping(column_name="w_raw", variable="w", scaling=0.1),
+            ],
+        ),
+        raw_file_settings=RawFileSettingsMetadata(
+            sample_hz=10.0,
+            extra={
+                "native_format": "binary_int16",
+                "data_type": "int16",
+                "columns": ["co2_raw", "h2o_raw", "p_raw", "ta_raw", "u_raw", "v_raw", "w_raw"],
+                "start_time": "2026-05-22T10:00:00",
+            },
+        ),
+    )
+
+    rows = load_raw_native_frames(binary_path, metadata=metadata)
+    manifest = run_headless_batch(
+        config={"sample_hz": 10.0, "block_minutes": 0.1, "rotation_mode": "double"},
+        metadata=metadata,
+        rows=rows,
+        data_source="native-binary",
+    )["manifest"]
+
+    assert len(rows) == 2
+    assert rows[0].co2_ppm == 410.0
+    assert rows[0].h2o_mmol == 12.0
+    assert rows[0].pressure_kpa == pytest.approx(101.3)
+    assert json.loads(rows[0].raw_text)["u"] == 2.0
+    assert manifest["raw_import_summary"]["native"] is True
+    assert manifest["raw_import_summary"]["format"] == "binary_int16"
+
+
+def test_native_slt_edisol_bridge_reads_int16_payload(tmp_path: Path) -> None:
+    slt_path = tmp_path / "native.slt"
+    header = bytes(range(20))
+    records = [
+        (4100, 120, 1013, 250, 20, 1, 2),
+        (4110, 121, 1014, 251, 21, 2, 3),
+    ]
+    slt_path.write_bytes(header + b"".join(struct.pack("<7h", *record) for record in records))
+    metadata = MetadataBundle(
+        project=ProjectProfile(code="SLT-001", name="SLT"),
+        raw_file_description=RawFileDescriptionMetadata(
+            source_type="slt_edisol",
+            column_mappings=[
+                RawColumnMapping(column_name="co2_raw", variable="co2_ppm", scaling=0.1),
+                RawColumnMapping(column_name="h2o_raw", variable="h2o_mmol", scaling=0.1),
+                RawColumnMapping(column_name="p_raw", variable="pressure_kpa", scaling=0.1),
+                RawColumnMapping(column_name="ta_raw", variable="chamber_temp_c", scaling=0.1),
+                RawColumnMapping(column_name="u_raw", variable="u", scaling=0.1),
+                RawColumnMapping(column_name="v_raw", variable="v", scaling=0.1),
+                RawColumnMapping(column_name="w_raw", variable="w", scaling=0.1),
+            ],
+        ),
+        raw_file_settings=RawFileSettingsMetadata(
+            sample_hz=10.0,
+            extra={
+                "native_format": "slt_edisol",
+                "header_bytes": 20,
+                "columns": ["co2_raw", "h2o_raw", "p_raw", "ta_raw", "u_raw", "v_raw", "w_raw"],
+                "start_time": "2026-05-22T10:00:00",
+            },
+        ),
+    )
+
+    rows = load_input_rows(slt_path, metadata=metadata)
+
+    assert len(rows) == 2
+    assert rows[0].co2_ppm == 410.0
+    assert rows[0].device_id == "slt_edisol"
+    assert json.loads(rows[0].raw_text)["raw_native_import"]["source_reference"]["eddypro_engine_files"] == [
+        "src/src_common/import_slt_edisol.f90"
+    ]
 
 
 def test_external_biomet_overrides_rp_ambient_pressure_and_temperature(tmp_path: Path) -> None:

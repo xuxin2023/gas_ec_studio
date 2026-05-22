@@ -14,7 +14,7 @@ from core.ec_fcc.pipeline import ECFCCPipeline
 from core.ec_rp.pipeline import ECRPPipeline
 from core.exports.result_exporter import ResultExporter
 from core.storage.ghg_bundle import load_ghg_normalized_frames
-from core.storage.raw_importer import can_load_raw_text, load_raw_text_frames
+from core.storage.raw_importer import can_load_raw_native, can_load_raw_text, load_raw_native_frames, load_raw_text_frames
 from models.hf_models import FrameQuality, NormalizedHFFrame
 from models.station_models import MetadataBundle
 
@@ -70,6 +70,7 @@ def run_headless_batch(
     return {
         "batch_id": batch_digest,
         "metadata_snapshot": metadata_bundle.to_dict(),
+        "raw_import_summary": _raw_import_summary(rows),
         "project_snapshot": asdict(metadata_bundle.project),
         "site_snapshot": asdict(metadata_bundle.site),
         "rp_result": rp_result,
@@ -119,6 +120,7 @@ def build_batch_manifest(
             "absolute_limits": config.get("screening", {}).get("absolute_limits", None),
         },
         "metadata_snapshot": metadata_bundle.to_dict(),
+        "raw_import_summary": _raw_import_summary(rows),
         "project_snapshot": asdict(metadata_bundle.project),
         "site_snapshot": asdict(metadata_bundle.site),
         "rp_run": {
@@ -152,6 +154,30 @@ def build_batch_manifest(
     }
 
 
+def _raw_import_summary(rows: list[NormalizedHFFrame]) -> dict[str, Any]:
+    native_items: list[dict[str, Any]] = []
+    for row in rows[:100]:
+        try:
+            payload = json.loads(row.raw_text or "{}")
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get("raw_native_import"), dict):
+            native_items.append(dict(payload["raw_native_import"]))
+    if not native_items:
+        return {"status": "not_native", "native": False}
+    first = native_items[0]
+    return {
+        "status": first.get("status", "decoded"),
+        "native": True,
+        "format": first.get("format", ""),
+        "record_count": first.get("record_count", len(rows)),
+        "columns": first.get("columns", []),
+        "source_file": first.get("source_file", ""),
+        "source_reference": first.get("source_reference", {}),
+        "limitations": first.get("limitations", []),
+    }
+
+
 def load_config_file(path: str | Path) -> dict[str, Any]:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -162,10 +188,13 @@ def load_metadata_file(path: str | Path) -> MetadataBundle:
 
 def load_input_rows(path: str | Path, metadata: MetadataBundle | dict[str, Any] | None = None) -> list[NormalizedHFFrame]:
     input_path = Path(path)
+    metadata_bundle = metadata if isinstance(metadata, MetadataBundle) else (MetadataBundle.from_dict(dict(metadata)) if metadata else None)
     if input_path.suffix.lower() == ".ghg":
         return load_ghg_normalized_frames(input_path)
+    if can_load_raw_native(input_path, metadata_bundle):
+        return load_raw_native_frames(input_path, metadata=metadata_bundle)
     if can_load_raw_text(input_path):
-        return load_raw_text_frames(input_path, metadata=metadata)
+        return load_raw_text_frames(input_path, metadata=metadata_bundle)
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
         raise ValueError("Input data file must contain a JSON list of row objects.")
