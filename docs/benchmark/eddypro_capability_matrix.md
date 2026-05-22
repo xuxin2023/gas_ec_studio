@@ -8,6 +8,22 @@ gas_ec_studio is not yet a complete EddyPro replacement. It already goes beyond 
 
 The machine-readable source of truth is `docs/benchmark/eddypro_capability_matrix.json`.
 
+Primary EddyPro source-code references for parity work are:
+
+- EddyPro Engine: https://github.com/LI-COR-Environmental/eddypro-engine
+- EddyPro GUI: https://github.com/LI-COR-Environmental/eddypro-gui
+- LI-COR Environmental GitHub: https://github.com/LI-COR-Environmental
+
+## Strategic Target
+
+The benchmark target is full public EddyPro parity across the official command-line engine and GUI feature surface, followed by differentiated capabilities that exceed EddyPro in auditability, reproducibility, automation, and delivery workflows.
+
+Primary public repositories to track:
+
+- EddyPro Engine: https://github.com/LI-COR-Environmental/eddypro-engine
+- EddyPro GUI: https://github.com/LI-COR-Environmental/eddypro-gui
+- LI-COR Environmental GitHub organization: https://github.com/LI-COR-Environmental
+
 ## Covered Or Strong
 
 - Metadata model, dynamic metadata, external biomet, and now `.ghg` embedded biomet inspection/loading.
@@ -24,17 +40,20 @@ The machine-readable source of truth is `docs/benchmark/eddypro_capability_matri
 - CO2/H2O/energy flux fields exist, but full EddyPro Level 0/1/2/3 closed-path correction sequencing still needs validation.
 - CH4 now has raw/GHG/headless ingestion plus an auditable LI-7700 correction sequence v1 and coefficient profile registry provenance; raw WMS line-shape fitting and public real LI-7700 numeric parity fixtures remain incomplete.
 - Sonic coordinate/head correction now runs before rotation/lag/flux for common EddyPro-style orientation offsets, Gill WindMaster W-boost handling, bias offsets, and configured angle gain; full Nakai AoA lookup-table parity remains incomplete.
+- Crosswind sonic-temperature correction now runs before thermodynamic flux calculations for common EddyPro A/B/C coefficient families; real instrument parity fixtures and GUI controls remain incomplete.
 - Footprint v1 exists, but georeferenced GIS outputs remain missing.
 
 ## Missing
 
 - Binary/TOB1/SLT raw file readers.
 - GPS/PTP synchronization subsystem.
-- Crosswind correction.
 - Full SmartFlux-like embedded/on-site runtime hardening.
 
 ## Official Source Anchors
 
+- EddyPro Engine repository: https://github.com/LI-COR-Environmental/eddypro-engine
+- EddyPro GUI repository: https://github.com/LI-COR-Environmental/eddypro-gui
+- LI-COR Environmental GitHub organization: https://github.com/LI-COR-Environmental
 - LI-COR Eddy Covariance Software: https://home.licor.com/env/products/eddy-covariance/software
 - LI-COR SmartFlux System: https://bio.licor.com/env/products/eddy-covariance/smartflux
 - EddyPro `.ghg` file type: https://www.licor.com/support/EddyPro/topics/ghg-file-format.html

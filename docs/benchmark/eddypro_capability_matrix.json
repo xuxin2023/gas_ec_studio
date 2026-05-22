@@ -2,7 +2,26 @@
   "artifact_type": "eddypro_capability_matrix",
   "updated_at": "2026-05-22",
   "overall_status": "not_full_eddypro_parity_yet",
-  "truthfulness_note": "gas_ec_studio has surpassed EddyPro in several auditability and delivery-chain areas, but it does not yet implement every EddyPro/SmartFlux feature family.",
+  "truthfulness_note": "gas_ec_studio has surpassed EddyPro in several auditability and delivery-chain areas, but it does not yet implement every EddyPro/SmartFlux feature family. The strategic target is to cover the full public EddyPro engine and GUI feature surface, then exceed EddyPro in auditability, reproducibility, automation, and delivery workflows.",
+  "source_repositories": [
+    {
+      "label": "EddyPro Engine",
+      "url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+      "clone": "git clone https://github.com/LI-COR-Environmental/eddypro-engine.git",
+      "used_for": "Public command-line processing engine feature surface and parity tracking."
+    },
+    {
+      "label": "EddyPro GUI",
+      "url": "https://github.com/LI-COR-Environmental/eddypro-gui",
+      "clone": "git clone https://github.com/LI-COR-Environmental/eddypro-gui.git",
+      "used_for": "Public graphical workflow, settings, and user-facing feature surface parity tracking."
+    },
+    {
+      "label": "LI-COR Environmental GitHub organization",
+      "url": "https://github.com/LI-COR-Environmental",
+      "used_for": "Discovery of related public repositories and upstream project changes."
+    }
+  ],
   "official_sources": [
     {
       "label": "LI-COR Eddy Covariance Software",
@@ -30,10 +49,29 @@
       "used_for": "Level 1/2/3 flux correction sequence, CH4, spectral corrections, density fluctuation corrections."
     }
   ],
+  "source_code_repositories": [
+    {
+      "label": "EddyPro Engine",
+      "url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+      "local_reference": "%TEMP%/eddypro-engine-reference",
+      "used_for": "Computational module inventory and parity guidance."
+    },
+    {
+      "label": "EddyPro GUI",
+      "url": "https://github.com/LI-COR-Environmental/eddypro-gui",
+      "local_reference": "%TEMP%/eddypro-gui-reference",
+      "used_for": "GUI configuration and workflow coverage guidance."
+    },
+    {
+      "label": "LI-COR Environmental GitHub",
+      "url": "https://github.com/LI-COR-Environmental",
+      "used_for": "Discovery of public LI-COR Environmental repositories."
+    }
+  ],
   "coverage_summary": {
     "covered": 9,
-    "partial": 10,
-    "missing": 3,
+    "partial": 11,
+    "missing": 2,
     "beyond_eddypro": 3
   },
   "capabilities": [
@@ -158,10 +196,10 @@
       "id": "crosswind_correction",
       "family": "preprocessing",
       "eddypro_requirement": "Support crosswind correction for applicable hygrometers/analyzers.",
-      "gas_ec_status": "missing",
-      "evidence": [],
-      "gap": "No crosswind correction implementation.",
-      "next_action": "Add optional crosswind correction family with provenance."
+      "gas_ec_status": "partial",
+      "evidence": ["core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_crosswind_correction_pipeline.py"],
+      "gap": "Liu et al.-style crosswind sonic-temperature correction now runs before thermodynamic flux calculations with EddyPro A/B/C coefficient families for Gill, Metek, CSI, and Young; real instrument parity fixtures and GUI controls remain incomplete.",
+      "next_action": "Add real sonic temperature parity fixtures and explicit EC processing controls for crosswind correction."
     },
     {
       "id": "co2_h2o_energy_fluxes",

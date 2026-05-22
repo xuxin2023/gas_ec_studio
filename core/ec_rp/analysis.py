@@ -74,6 +74,12 @@ class SonicCorrectionResult:
 
 
 @dataclass(slots=True)
+class CrosswindCorrectionResult:
+    temp_c: np.ndarray
+    detail: dict[str, Any]
+
+
+@dataclass(slots=True)
 class StationarityMetrics:
     score: float | None
     detail: dict[str, Any]
@@ -678,6 +684,157 @@ def _nanstd_or_none(values: np.ndarray) -> float | None:
     if values.size == 0 or np.all(np.isnan(values)):
         return None
     return float(np.nanstd(values))
+
+
+# ---------------------------------------------------------------------------
+# Crosswind sonic-temperature correction
+# ---------------------------------------------------------------------------
+
+def apply_crosswind_correction(
+    *,
+    u: np.ndarray,
+    v: np.ndarray,
+    temp_c: np.ndarray,
+    config: dict[str, Any] | None = None,
+) -> CrosswindCorrectionResult:
+    cfg = dict(config or {})
+    method = str(cfg.get("method", "liu_2001_crosswind_v1") or "liu_2001_crosswind_v1")
+    if not bool(cfg.get("enabled", False)):
+        return CrosswindCorrectionResult(
+            temp_c=temp_c,
+            detail={
+                "status": "disabled",
+                "applied": False,
+                "method": method,
+                "provenance": "Crosswind correction disabled by configuration.",
+                "limitations": [],
+            },
+        )
+
+    manufacturer = _normalize_sonic_text(cfg.get("sonic_manufacturer", cfg.get("manufacturer", cfg.get("firm", ""))))
+    model = _normalize_sonic_text(cfg.get("sonic_model", cfg.get("model", "")))
+    coefficients = cfg.get("coefficients")
+    if isinstance(coefficients, dict):
+        coeff_detail = _coerce_crosswind_coefficients(coefficients)
+        coefficient_source = "configured"
+    else:
+        coeff_detail = _crosswind_coefficients_for_sonic(manufacturer=manufacturer, model=model)
+        coefficient_source = "eddypro_model_registry"
+
+    if coeff_detail is None:
+        return CrosswindCorrectionResult(
+            temp_c=temp_c,
+            detail={
+                "status": "unsupported_sonic",
+                "applied": False,
+                "method": method,
+                "sonic_manufacturer": manufacturer,
+                "sonic_model": model,
+                "provenance": "No crosswind correction coefficients are available for the configured sonic.",
+                "limitations": ["Configure A/B/C coefficients or choose a supported Gill/Metek/CSI/Young sonic family."],
+            },
+        )
+
+    a = np.array(coeff_detail["A"], dtype=float)
+    b = np.array(coeff_detail["B"], dtype=float)
+    c = np.array(coeff_detail["C"], dtype=float)
+    u2 = np.asarray(u, dtype=float) ** 2
+    v2 = np.asarray(v, dtype=float) ** 2
+    uv = np.asarray(u, dtype=float) * np.asarray(v, dtype=float)
+    un = a[0] * u2 + b[0] * v2 + c[0] * uv
+    vn = a[1] * u2 + b[1] * v2 + c[1] * uv
+    wn = a[2] * u2 + b[2] * v2 + c[2] * uv
+    divisor = _safe_float(cfg.get("temperature_divisor", 1209.0), default=1209.0)
+    if abs(divisor) < 1e-12:
+        divisor = 1209.0
+    delta_c = (un + vn + wn) / divisor
+    corrected = np.asarray(temp_c, dtype=float) + delta_c
+    detail = {
+        "status": "applied",
+        "applied": True,
+        "method": method,
+        "sonic_manufacturer": manufacturer,
+        "sonic_model": model,
+        "coefficient_source": coefficient_source,
+        "coefficients": {
+            "A": [float(value) for value in a],
+            "B": [float(value) for value in b],
+            "C": [float(value) for value in c],
+        },
+        "temperature_divisor": divisor,
+        "mean_delta_c": float(np.mean(delta_c)) if delta_c.size else 0.0,
+        "max_abs_delta_c": float(np.max(np.abs(delta_c))) if delta_c.size else 0.0,
+        "mean_temp_before_c": _nanmean_or_none(np.asarray(temp_c, dtype=float)),
+        "mean_temp_after_c": _nanmean_or_none(corrected),
+        "provenance": (
+            "Crosswind sonic-temperature correction v1 following the Liu et al. (2001) style "
+            "A/B/C coefficient pathway used by EddyPro CrossWindCorr before thermodynamic flux calculations."
+        ),
+        "source_reference": {
+            "eddypro_engine_files": ["src/src_common/cross_wind_corr.f90"],
+            "eddypro_engine_repository": "https://github.com/LI-COR-Environmental/eddypro-engine",
+        },
+        "limitations": [
+            "Correction is applied to the temperature channel available in NormalizedHFFrame; site metadata should confirm this is sonic temperature.",
+            "Model registry covers EddyPro's common Gill/Metek/CSI/Young coefficient families; real instrument parity still needs fixtures.",
+        ],
+    }
+    return CrosswindCorrectionResult(temp_c=corrected, detail=detail)
+
+
+def _coerce_crosswind_coefficients(payload: dict[str, Any]) -> dict[str, list[float]] | None:
+    try:
+        a = [float(value) for value in payload.get("A", payload.get("a", []))]
+        b = [float(value) for value in payload.get("B", payload.get("b", []))]
+        c = [float(value) for value in payload.get("C", payload.get("c", []))]
+    except (TypeError, ValueError):
+        return None
+    if len(a) != 3 or len(b) != 3 or len(c) != 3:
+        return None
+    return {"A": a, "B": b, "C": c}
+
+
+def _crosswind_coefficients_for_sonic(*, manufacturer: str, model: str) -> dict[str, list[float]] | None:
+    firm = manufacturer
+    if firm in {"campbell", "campbell_scientific"}:
+        firm = "csi"
+    if firm in {"rm_young", "rmyoung", "r_m_young"}:
+        firm = "young"
+    if firm == "gill_instruments":
+        firm = "gill"
+    if model in {"windmaster", "windmaster_pro", "windmasterpro"}:
+        model = "wmpro" if "pro" in model else "wm"
+    if firm == "gill":
+        if model in {"hs_50", "hs_100"}:
+            return _symmetric_gill_crosswind_coefficients(48.75)
+        if model == "r2":
+            return {"A": [1.5, 0.0, 0.0], "B": [3.0, 0.0, 0.0], "C": [0.0, 0.0, 0.0]}
+        if model in {"r3_50", "r3_100", "wm", "wmpro", "r3a_100"}:
+            return _symmetric_gill_crosswind_coefficients(45.0)
+    if firm == "metek":
+        return {
+            "A": [1.0, 5.0 / 8.0, 5.0 / 8.0],
+            "B": [0.5, 7.0 / 8.0, 7.0 / 8.0],
+            "C": [0.0, 0.25 * math.sqrt(3.0), -0.25 * math.sqrt(3.0)],
+        }
+    if firm == "csi":
+        return {
+            "A": [0.75, 15.0 / 16.0, 15.0 / 16.0],
+            "B": [1.0, 13.0 / 16.0, 13.0 / 16.0],
+            "C": [0.0, math.sqrt(3.0) / 8.0, -math.sqrt(3.0) / 8.0],
+        }
+    if firm == "young":
+        return _symmetric_gill_crosswind_coefficients(45.0)
+    return None
+
+
+def _symmetric_gill_crosswind_coefficients(phi_deg: float) -> dict[str, list[float]]:
+    cos2 = math.cos(math.radians(phi_deg)) ** 2
+    return {
+        "A": [1.0 - cos2, 1.0 - 0.25 * cos2, 1.0 - 0.25 * cos2],
+        "B": [1.0, 1.0 - 0.75 * cos2, 1.0 - 0.75 * cos2],
+        "C": [0.0, 0.5 * math.sqrt(3.0) * cos2, -0.5 * math.sqrt(3.0) * cos2],
+    }
 
 
 # ---------------------------------------------------------------------------

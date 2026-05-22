@@ -60,6 +60,12 @@ FULL_OUTPUT_SCHEMA = [
     ("sonic_correction_steps", "preprocessing", "real"),
     ("sonic_correction_provenance", "preprocessing", "real"),
     ("sonic_correction_detail", "preprocessing", "real"),
+    ("crosswind_correction_status", "preprocessing", "real"),
+    ("crosswind_correction_method", "preprocessing", "real"),
+    ("crosswind_correction_mean_delta_c", "preprocessing", "real"),
+    ("crosswind_correction_max_abs_delta_c", "preprocessing", "real"),
+    ("crosswind_correction_provenance", "preprocessing", "real"),
+    ("crosswind_correction_detail", "preprocessing", "real"),
     ("ch4_status", "trace_gas", "real"),
     ("ch4_flux_nmol_m2_s", "trace_gas", "real"),
     ("ch4_flux_level0_nmol_m2_s", "trace_gas", "real"),
@@ -400,6 +406,9 @@ class ResultExporter:
                 "sonic_correction_method",
                 "sonic_correction_status",
                 "sonic_correction_provenance",
+                "crosswind_correction_method",
+                "crosswind_correction_status",
+                "crosswind_correction_provenance",
                 "screening_config",
                 "screening_summary",
                 "footprint_method",
@@ -523,6 +532,11 @@ class ResultExporter:
             "sonic_correction_method": diagnostics.get("sonic_correction_method", ""),
             "sonic_correction_steps": json.dumps(diagnostics.get("sonic_correction_steps", []), ensure_ascii=False) if diagnostics.get("sonic_correction_steps") else "",
             "sonic_correction_provenance": diagnostics.get("sonic_correction_provenance", ""),
+            "crosswind_correction_status": diagnostics.get("crosswind_correction_status", ""),
+            "crosswind_correction_method": diagnostics.get("crosswind_correction_method", ""),
+            "crosswind_correction_mean_delta_c": diagnostics.get("crosswind_correction_mean_delta_c", ""),
+            "crosswind_correction_max_abs_delta_c": diagnostics.get("crosswind_correction_max_abs_delta_c", ""),
+            "crosswind_correction_provenance": diagnostics.get("crosswind_correction_provenance", ""),
             "ch4_status": diagnostics.get("ch4_status", ""),
             "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", ""),
             "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", ""),
@@ -632,6 +646,12 @@ class ResultExporter:
                 "sonic_correction_steps": json.dumps(diagnostics.get("sonic_correction_steps", []), ensure_ascii=False) if diagnostics and diagnostics.get("sonic_correction_steps") else "",
                 "sonic_correction_provenance": diagnostics.get("sonic_correction_provenance", "") if diagnostics else "",
                 "sonic_correction_detail": json.dumps(diagnostics.get("sonic_correction_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("sonic_correction_detail") else "",
+                "crosswind_correction_status": diagnostics.get("crosswind_correction_status", "") if diagnostics else "",
+                "crosswind_correction_method": diagnostics.get("crosswind_correction_method", "") if diagnostics else "",
+                "crosswind_correction_mean_delta_c": diagnostics.get("crosswind_correction_mean_delta_c", "") if diagnostics else "",
+                "crosswind_correction_max_abs_delta_c": diagnostics.get("crosswind_correction_max_abs_delta_c", "") if diagnostics else "",
+                "crosswind_correction_provenance": diagnostics.get("crosswind_correction_provenance", "") if diagnostics else "",
+                "crosswind_correction_detail": json.dumps(diagnostics.get("crosswind_correction_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("crosswind_correction_detail") else "",
                 "ch4_status": diagnostics.get("ch4_status", "") if diagnostics else "",
                 "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", "") if diagnostics else "",
                 "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", "") if diagnostics else "",
@@ -1721,6 +1741,11 @@ class ResultExporter:
                     "sonic_correction_method": "",
                     "sonic_correction_steps": "",
                     "sonic_correction_provenance": "",
+                    "crosswind_correction_status": "",
+                    "crosswind_correction_method": "",
+                    "crosswind_correction_mean_delta_c": "",
+                    "crosswind_correction_max_abs_delta_c": "",
+                    "crosswind_correction_provenance": "",
                     "ch4_status": "",
                     "ch4_flux_nmol_m2_s": "",
                     "ch4_flux_level0_nmol_m2_s": "",
@@ -1888,6 +1913,9 @@ class ResultExporter:
             entry["sonic_correction_method"] = br.get("sonic_correction_method", diagnostics.get("sonic_correction_method", ""))
             entry["sonic_correction_status"] = br.get("sonic_correction_status", diagnostics.get("sonic_correction_status", ""))
             entry["sonic_correction_steps"] = br.get("sonic_correction_steps", diagnostics.get("sonic_correction_steps", []))
+            entry["crosswind_correction_method"] = br.get("crosswind_correction_method", diagnostics.get("crosswind_correction_method", ""))
+            entry["crosswind_correction_status"] = br.get("crosswind_correction_status", diagnostics.get("crosswind_correction_status", ""))
+            entry["crosswind_correction_mean_delta_c"] = br.get("crosswind_correction_mean_delta_c", diagnostics.get("crosswind_correction_mean_delta_c"))
             entry["ch4_method"] = br.get("ch4_method", diagnostics.get("ch4_method", ""))
             entry["ch4_flux_nmol_m2_s"] = br.get("ch4_flux_nmol_m2_s", diagnostics.get("ch4_flux_nmol_m2_s"))
             entry["ch4_flux_level0_nmol_m2_s"] = br.get("ch4_flux_level0_nmol_m2_s", diagnostics.get("ch4_flux_level0_nmol_m2_s"))
@@ -2379,6 +2407,9 @@ class ResultExporter:
                 "sonic_correction_method": diag.get("sonic_correction_method", ""),
                 "sonic_correction_status": diag.get("sonic_correction_status", ""),
                 "sonic_correction_steps": diag.get("sonic_correction_steps", []),
+                "crosswind_correction_method": diag.get("crosswind_correction_method", ""),
+                "crosswind_correction_status": diag.get("crosswind_correction_status", ""),
+                "crosswind_correction_mean_delta_c": diag.get("crosswind_correction_mean_delta_c"),
                 "ch4_method": diag.get("ch4_method", ""),
                 "ch4_flux_nmol_m2_s": diag.get("ch4_flux_nmol_m2_s"),
                 "ch4_flux_level0_nmol_m2_s": diag.get("ch4_flux_level0_nmol_m2_s"),
@@ -2430,6 +2461,9 @@ class ResultExporter:
                 "sonic_correction_method": diag.get("sonic_correction_method", ""),
                 "sonic_correction_status": diag.get("sonic_correction_status", ""),
                 "sonic_correction_steps": diag.get("sonic_correction_steps", []),
+                "crosswind_correction_method": diag.get("crosswind_correction_method", ""),
+                "crosswind_correction_status": diag.get("crosswind_correction_status", ""),
+                "crosswind_correction_mean_delta_c": diag.get("crosswind_correction_mean_delta_c"),
                 "ch4_method": diag.get("ch4_method", ""),
                 "ch4_flux_nmol_m2_s": diag.get("ch4_flux_nmol_m2_s"),
                 "ch4_flux_level0_nmol_m2_s": diag.get("ch4_flux_level0_nmol_m2_s"),
@@ -2499,6 +2533,12 @@ def _build_method_deviation_notes(diag: dict[str, Any], bm_dev: dict[str, Any]) 
         steps = diag.get("sonic_correction_steps", [])
         step_count = len(steps) if isinstance(steps, list) else 0
         notes.append(f"sonic_correction: {sonic_method}; status={sonic_status}; steps={step_count}")
+    crosswind_method = diag.get("crosswind_correction_method", "")
+    crosswind_status = diag.get("crosswind_correction_status", "")
+    if crosswind_method and crosswind_status not in {"", "disabled"}:
+        delta = diag.get("crosswind_correction_mean_delta_c")
+        delta_text = f"; mean_delta_c={float(delta):.6f}" if isinstance(delta, (int, float)) else ""
+        notes.append(f"crosswind_correction: {crosswind_method}; status={crosswind_status}{delta_text}")
     ch4_method = diag.get("ch4_method", "")
     if ch4_method:
         ch4_flux = diag.get("ch4_flux_nmol_m2_s")

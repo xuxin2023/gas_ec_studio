@@ -15,6 +15,7 @@ from core.ec_rp.analysis import (
     apply_lag,
     apply_planar_fit_no_velocity_bias,
     apply_planar_fit_rotation,
+    apply_crosswind_correction,
     apply_sonic_corrections,
     build_window_series,
     build_uncertainty_band,
@@ -113,6 +114,7 @@ class ECRPPipeline:
         spectral_correction_config = _extract_spectral_correction_config(config)
         trace_gas_config = _extract_trace_gas_config(config)
         sonic_correction_config = _extract_sonic_correction_config(config)
+        crosswind_correction_config = _extract_crosswind_correction_config(config)
         method_compare_config = _extract_method_compare_config(config)
         biomet_context = _build_biomet_context(config)
         benchmark_summary = _default_benchmark_summary(benchmark_config=benchmark_config, window_count=0)
@@ -191,6 +193,7 @@ class ECRPPipeline:
                             spectral_correction_config=spectral_correction_config,
                             trace_gas_config=trace_gas_config,
                             sonic_correction_config=sonic_correction_config,
+                            crosswind_correction_config=crosswind_correction_config,
                             method_compare_config=method_compare_config,
                             biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                         )
@@ -237,6 +240,7 @@ class ECRPPipeline:
                         spectral_correction_config=spectral_correction_config,
                         trace_gas_config=trace_gas_config,
                         sonic_correction_config=sonic_correction_config,
+                        crosswind_correction_config=crosswind_correction_config,
                         method_compare_config=method_compare_config,
                         biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                     )
@@ -325,6 +329,7 @@ class ECRPPipeline:
         spectral_correction_config: dict[str, Any] | None = None,
         trace_gas_config: dict[str, Any] | None = None,
         sonic_correction_config: dict[str, Any] | None = None,
+        crosswind_correction_config: dict[str, Any] | None = None,
         method_compare_config: dict[str, Any] | None = None,
         biomet_override: dict[str, Any] | None = None,
     ) -> WindowRPResult:
@@ -333,6 +338,15 @@ class ECRPPipeline:
         prepared, sonic_correction_detail = _prepare_window_series(rows, sample_rate_hz, sonic_correction_config)
         if biomet_override:
             _apply_biomet_override(prepared, biomet_override)
+        crosswind_result = apply_crosswind_correction(
+            u=prepared.u,
+            v=prepared.v,
+            temp_c=prepared.temp_c,
+            config=crosswind_correction_config,
+        )
+        if crosswind_result.detail.get("applied"):
+            prepared.temp_c = crosswind_result.temp_c
+        crosswind_correction_detail = crosswind_result.detail
         if rotation_mode in ("sector_wise_planar_fit", "sector_wise_planar_fit_no_velocity_bias") and planar_fit_coefficients:
             mean_u = float(np.mean(prepared.u))
             mean_v = float(np.mean(prepared.v))
@@ -468,6 +482,13 @@ class ECRPPipeline:
             "sonic_correction_provenance": sonic_correction_detail.get("provenance", ""),
             "sonic_correction_limitations": sonic_correction_detail.get("limitations", []),
             "sonic_correction_source_reference": sonic_correction_detail.get("source_reference", {}),
+            "crosswind_correction_status": crosswind_correction_detail.get("status", ""),
+            "crosswind_correction_method": crosswind_correction_detail.get("method", ""),
+            "crosswind_correction_detail": crosswind_correction_detail,
+            "crosswind_correction_provenance": crosswind_correction_detail.get("provenance", ""),
+            "crosswind_correction_limitations": crosswind_correction_detail.get("limitations", []),
+            "crosswind_correction_mean_delta_c": crosswind_correction_detail.get("mean_delta_c"),
+            "crosswind_correction_max_abs_delta_c": crosswind_correction_detail.get("max_abs_delta_c"),
             "trace_gas_family": {
                 "ch4": {
                     "status": ch4_metrics.get("status", "not_available"),
@@ -1504,6 +1525,36 @@ def _extract_sonic_correction_config(config: dict[str, Any]) -> dict[str, Any]:
     sonic.setdefault("w_offset_ms", 0.0)
     sonic.setdefault("gill_wm_w_boost", "auto")
     return sonic
+
+
+def _extract_crosswind_correction_config(config: dict[str, Any]) -> dict[str, Any]:
+    steps = config.get("steps", {}) if isinstance(config.get("steps"), dict) else {}
+    crosswind = (
+        dict(steps.get("crosswind_correction", {}) or {})
+        if isinstance(steps.get("crosswind_correction", {}), dict)
+        else {}
+    )
+    root = config.get("crosswind_correction", {})
+    if isinstance(root, dict):
+        crosswind = {**crosswind, **root}
+    metadata = config.get("metadata_bundle", {})
+    instruments = metadata.get("instruments", {}) if isinstance(metadata, dict) else {}
+    extra = instruments.get("extra", {}) if isinstance(instruments, dict) else {}
+    if isinstance(instruments, dict):
+        crosswind.setdefault("sonic_model", instruments.get("sonic_model", ""))
+        crosswind.setdefault("sonic_manufacturer", instruments.get("sonic_manufacturer", ""))
+    if isinstance(extra, dict):
+        for source_key, target_key in [
+            ("crosswind_enabled", "enabled"),
+            ("crosswind_temperature_divisor", "temperature_divisor"),
+            ("crosswind_coefficients", "coefficients"),
+        ]:
+            if source_key in extra and target_key not in crosswind:
+                crosswind[target_key] = extra[source_key]
+    crosswind.setdefault("enabled", False)
+    crosswind.setdefault("method", "liu_2001_crosswind_v1")
+    crosswind.setdefault("temperature_divisor", 1209.0)
+    return crosswind
 
 
 def _extract_trace_gas_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -2657,6 +2708,12 @@ def _build_method_deviation_notes_from_window(window: WindowRPResult) -> list[st
         steps = diagnostics.get("sonic_correction_steps", [])
         step_count = len(steps) if isinstance(steps, list) else 0
         notes.append(f"sonic_correction: {sonic_method}; status={sonic_status}; steps={step_count}")
+    crosswind_method = diagnostics.get("crosswind_correction_method", "")
+    crosswind_status = diagnostics.get("crosswind_correction_status", "")
+    if crosswind_method and crosswind_status not in {"", "disabled"}:
+        delta = diagnostics.get("crosswind_correction_mean_delta_c")
+        delta_text = f"; mean_delta_c={float(delta):.6f}" if isinstance(delta, (int, float)) else ""
+        notes.append(f"crosswind_correction: {crosswind_method}; status={crosswind_status}{delta_text}")
     ch4_method = diagnostics.get("ch4_method", "")
     if ch4_method:
         ch4_flux = diagnostics.get("ch4_flux_nmol_m2_s")
@@ -2686,6 +2743,9 @@ def _attach_method_context_to_benchmark(window: WindowRPResult, benchmark_payloa
     benchmark_payload["sonic_correction_method"] = diagnostics.get("sonic_correction_method", "")
     benchmark_payload["sonic_correction_status"] = diagnostics.get("sonic_correction_status", "")
     benchmark_payload["sonic_correction_steps"] = diagnostics.get("sonic_correction_steps", [])
+    benchmark_payload["crosswind_correction_method"] = diagnostics.get("crosswind_correction_method", "")
+    benchmark_payload["crosswind_correction_status"] = diagnostics.get("crosswind_correction_status", "")
+    benchmark_payload["crosswind_correction_mean_delta_c"] = diagnostics.get("crosswind_correction_mean_delta_c")
     benchmark_payload["ch4_method"] = diagnostics.get("ch4_method", "")
     benchmark_payload["ch4_correction_sequence"] = diagnostics.get("ch4_correction_sequence", {})
     benchmark_payload["ch4_flux_nmol_m2_s"] = diagnostics.get("ch4_flux_nmol_m2_s")
