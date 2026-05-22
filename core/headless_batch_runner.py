@@ -14,6 +14,7 @@ from core.ec_fcc.pipeline import ECFCCPipeline
 from core.ec_rp.pipeline import ECRPPipeline
 from core.exports.result_exporter import ResultExporter
 from core.storage.ghg_bundle import load_ghg_normalized_frames
+from core.storage.clock_sync import apply_clock_sync_to_rows
 from core.storage.raw_importer import can_load_raw_native, can_load_raw_text, load_raw_native_frames, load_raw_text_frames
 from models.hf_models import FrameQuality, NormalizedHFFrame
 from models.station_models import MetadataBundle
@@ -28,33 +29,42 @@ def run_headless_batch(
     time_range: str = "",
 ) -> dict[str, Any]:
     metadata_bundle = metadata if isinstance(metadata, MetadataBundle) else MetadataBundle.from_dict(dict(metadata))
+    base_config = deepcopy(config)
+    base_config.setdefault("metadata_bundle", metadata_bundle.to_dict())
+    clock_sync_result = apply_clock_sync_to_rows(rows, config=base_config, metadata=metadata_bundle)
+    synced_rows = clock_sync_result.rows
+    clock_sync_summary = clock_sync_result.summary
+    pipeline_config = deepcopy(base_config)
+    pipeline_config["_clock_sync_already_applied"] = True
+    pipeline_config["_clock_sync_summary"] = clock_sync_summary
     payload = {
         "config": config,
         "metadata": metadata_bundle.to_dict(),
-        "rows": [row.to_record() for row in rows],
+        "rows": [row.to_record() for row in synced_rows],
+        "clock_sync_summary": clock_sync_summary,
     }
     batch_digest = hashlib.sha1(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:12]
     rp_pipeline = ECRPPipeline()
     spectral_pipeline = ECFCCPipeline()
-    base_config = deepcopy(config)
-    base_config.setdefault("metadata_bundle", metadata_bundle.to_dict())
     rp_result = rp_pipeline.run(
-        rows=rows,
+        rows=synced_rows,
         project=metadata_bundle.project,
         site=metadata_bundle.site,
-        config=base_config,
+        config=pipeline_config,
         data_source=data_source,
         time_range=time_range,
     )
     spectral_result = spectral_pipeline.run(
-        rows=rows,
+        rows=synced_rows,
         project=metadata_bundle.project,
         site=metadata_bundle.site,
-        config=base_config,
+        config=pipeline_config,
         data_source=data_source,
         time_range=time_range,
     )
-    deterministic_created_at = rows[0].timestamp if rows else datetime(2000, 1, 1)
+    _replace_config_snapshot(rp_result, base_config)
+    _replace_config_snapshot(spectral_result, base_config)
+    deterministic_created_at = synced_rows[0].timestamp if synced_rows else datetime(2000, 1, 1)
     rp_result.run_id = f"rp_det_{batch_digest}"
     rp_result.created_at = deterministic_created_at
     spectral_result.run_id = f"spectral_det_{batch_digest}"
@@ -62,21 +72,32 @@ def run_headless_batch(
     manifest = build_batch_manifest(
         batch_id=batch_digest,
         metadata_bundle=metadata_bundle,
-        config=config,
-        rows=rows,
+        config=base_config,
+        rows=synced_rows,
         rp_result=rp_result,
         spectral_result=spectral_result,
+        clock_sync_summary=clock_sync_summary,
     )
     return {
         "batch_id": batch_digest,
         "metadata_snapshot": metadata_bundle.to_dict(),
-        "raw_import_summary": _raw_import_summary(rows),
+        "raw_import_summary": _raw_import_summary(synced_rows),
+        "clock_sync_summary": clock_sync_summary,
         "project_snapshot": asdict(metadata_bundle.project),
         "site_snapshot": asdict(metadata_bundle.site),
         "rp_result": rp_result,
         "spectral_result": spectral_result,
         "manifest": manifest,
     }
+
+
+def _replace_config_snapshot(run_result: Any, config: dict[str, Any]) -> None:
+    public_config = deepcopy(config)
+    if isinstance(getattr(run_result, "summary", None), dict):
+        run_result.summary["config_snapshot"] = deepcopy(public_config)
+    artifacts = getattr(run_result, "artifacts", None)
+    if isinstance(artifacts, dict):
+        artifacts["config_snapshot"] = deepcopy(public_config)
 
 
 def build_batch_manifest(
@@ -87,6 +108,7 @@ def build_batch_manifest(
     rows: list[NormalizedHFFrame],
     rp_result,
     spectral_result,
+    clock_sync_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     with TemporaryDirectory() as tmpdir:
         exporter = ResultExporter(Path(tmpdir))
@@ -121,6 +143,7 @@ def build_batch_manifest(
         },
         "metadata_snapshot": metadata_bundle.to_dict(),
         "raw_import_summary": _raw_import_summary(rows),
+        "clock_sync_summary": deepcopy(clock_sync_summary or {}),
         "project_snapshot": asdict(metadata_bundle.project),
         "site_snapshot": asdict(metadata_bundle.site),
         "rp_run": {
@@ -247,6 +270,11 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--lag-abs-threshold-s", default="", help="Benchmark lag absolute threshold in seconds (default: 0.5)")
     parser.add_argument("--wpl-rel-threshold", default="", help="Benchmark WPL relative threshold (default: 0.20)")
     parser.add_argument("--qc-grade-must-match", default="", help="Benchmark QC grade must match exactly (true/false, default: false)")
+    parser.add_argument("--clock-sync-enabled", default="", help="Apply GPS/PTP timestamp correction before RP/FCC windowing (true/false).")
+    parser.add_argument("--clock-source", default="", help="Clock source label, e.g. GPS, PTP, GPS+PTP, manual.")
+    parser.add_argument("--clock-offset-s", default="", help="Correction added to raw timestamps in seconds.")
+    parser.add_argument("--clock-drift-ppm", default="", help="Linear clock drift correction in parts per million.")
+    parser.add_argument("--clock-events-json", default="", help="Clock event list JSON with timestamp/time and offset_seconds fields.")
     args = parser.parse_args(argv)
 
     config = load_config_file(args.config)
@@ -288,6 +316,16 @@ def run_cli(argv: list[str] | None = None) -> int:
         config.setdefault("benchmark", {})["wpl_rel_threshold"] = float(args.wpl_rel_threshold)
     if args.qc_grade_must_match:
         config.setdefault("benchmark", {})["qc_grade_must_match"] = args.qc_grade_must_match.lower() in ("true", "1", "yes")
+    if args.clock_sync_enabled:
+        config.setdefault("clock_sync", {})["enabled"] = args.clock_sync_enabled.lower() in ("true", "1", "yes")
+    if args.clock_source:
+        config.setdefault("clock_sync", {})["clock_source"] = args.clock_source
+    if args.clock_offset_s:
+        config.setdefault("clock_sync", {})["offset_seconds"] = float(args.clock_offset_s)
+    if args.clock_drift_ppm:
+        config.setdefault("clock_sync", {})["drift_ppm"] = float(args.clock_drift_ppm)
+    if args.clock_events_json:
+        config.setdefault("clock_sync", {})["events"] = json.loads(args.clock_events_json)
     result = run_headless_batch(
         config=config,
         metadata=metadata,

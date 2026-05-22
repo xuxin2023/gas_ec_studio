@@ -42,11 +42,11 @@ Primary public repositories to track:
 - CH4 now has raw/GHG/headless ingestion plus an auditable LI-7700 correction sequence v1 and coefficient profile registry provenance; raw WMS line-shape fitting and public real LI-7700 numeric parity fixtures remain incomplete.
 - Sonic coordinate/head correction now runs before rotation/lag/flux for common EddyPro-style orientation offsets, Gill WindMaster W-boost handling, bias offsets, and configured angle gain; full Nakai AoA lookup-table parity remains incomplete.
 - Crosswind sonic-temperature correction now runs before thermodynamic flux calculations for common EddyPro A/B/C coefficient families; real instrument parity fixtures and GUI controls remain incomplete.
+- GPS/PTP-style acquisition clock synchronization now applies offset/drift/event corrections before RP/FCC window slicing and carries provenance into diagnostics, exports, report center, and manifests; hardware servo-log parsing remains incomplete.
 - Footprint v1 exists, but georeferenced GIS outputs remain missing.
 
 ## Missing
 
-- GPS/PTP synchronization subsystem.
 - Full SmartFlux-like embedded/on-site runtime hardening.
 
 ## Official Source Anchors

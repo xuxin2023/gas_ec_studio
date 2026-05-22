@@ -66,6 +66,14 @@ FULL_OUTPUT_SCHEMA = [
     ("crosswind_correction_max_abs_delta_c", "preprocessing", "real"),
     ("crosswind_correction_provenance", "preprocessing", "real"),
     ("crosswind_correction_detail", "preprocessing", "real"),
+    ("clock_sync_status", "acquisition", "real"),
+    ("clock_sync_method", "acquisition", "real"),
+    ("clock_sync_source", "acquisition", "real"),
+    ("clock_sync_mean_offset_s", "acquisition", "real"),
+    ("clock_sync_min_offset_s", "acquisition", "real"),
+    ("clock_sync_max_offset_s", "acquisition", "real"),
+    ("clock_sync_provenance", "acquisition", "real"),
+    ("clock_sync_detail", "acquisition", "real"),
     ("ch4_status", "trace_gas", "real"),
     ("ch4_flux_nmol_m2_s", "trace_gas", "real"),
     ("ch4_flux_level0_nmol_m2_s", "trace_gas", "real"),
@@ -195,6 +203,11 @@ class ResultExporter:
             rp_result=rp_result,
             export_root=export_root,
         )
+        clock_sync_path = self.export_clock_sync_artifact(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+        )
         method_parity_matrix_path = self.export_method_parity_matrix_artifact(
             rp_result=rp_result,
             export_root=export_root,
@@ -250,6 +263,8 @@ class ResultExporter:
             exported_files.append(method_compare_path.name)
         if performance_profile_path is not None:
             exported_files.append(performance_profile_path.name)
+        if clock_sync_path is not None:
+            exported_files.append(clock_sync_path.name)
         if method_parity_matrix_path is not None:
             exported_files.append(method_parity_matrix_path.name)
             try:
@@ -297,6 +312,8 @@ class ResultExporter:
                 "method_compare_artifact": str(method_compare_path) if method_compare_path is not None else "",
                 "method_parity_matrix_artifact": str(method_parity_matrix_path) if method_parity_matrix_path is not None else "",
                 "performance_profile_artifact": str(performance_profile_path) if performance_profile_path is not None else "",
+                "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
+                "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "reference_provenance": reference_provenance,
                 "network_validation": network_validation,
                 "exported_files": exported_files,
@@ -374,6 +391,8 @@ class ResultExporter:
             "method_parity_matrix_csv": str(method_parity_companion_files.get("csv", "")),
             "performance_profile": self._performance_profile_payload(rp_result=rp_result),
             "performance_profile_artifact": str(performance_profile_path) if performance_profile_path is not None else "",
+            "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+            "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
             "network_validation_status": network_validation.get("validation_status", ""),
             "network_missing_fields": network_validation.get("missing_fields", []),
@@ -383,6 +402,10 @@ class ResultExporter:
                 "UNCERTAINTY_METHOD",
                 "SPECTRAL_CORRECTION_METHOD",
                 "METHOD_DEVIATION_NOTES",
+                "CLOCK_SYNC_STATUS",
+                "CLOCK_SYNC_METHOD",
+                "CLOCK_SYNC_SOURCE",
+                "CLOCK_SYNC_MEAN_OFFSET_S",
             ],
             "network_uncertainty_fields": [
                 "FC_RANDOM_ERROR",
@@ -409,6 +432,11 @@ class ResultExporter:
                 "crosswind_correction_method",
                 "crosswind_correction_status",
                 "crosswind_correction_provenance",
+                "clock_sync_status",
+                "clock_sync_method",
+                "clock_sync_source",
+                "clock_sync_mean_offset_s",
+                "clock_sync_provenance",
                 "screening_config",
                 "screening_summary",
                 "footprint_method",
@@ -451,6 +479,8 @@ class ResultExporter:
             files["method_compare_artifact"] = str(method_compare_path)
         if performance_profile_path is not None:
             files["performance_profile_artifact"] = str(performance_profile_path)
+        if clock_sync_path is not None:
+            files["clock_sync_artifact"] = str(clock_sync_path)
         if method_parity_matrix_path is not None:
             files["method_parity_matrix_artifact"] = str(method_parity_matrix_path)
             try:
@@ -537,6 +567,11 @@ class ResultExporter:
             "crosswind_correction_mean_delta_c": diagnostics.get("crosswind_correction_mean_delta_c", ""),
             "crosswind_correction_max_abs_delta_c": diagnostics.get("crosswind_correction_max_abs_delta_c", ""),
             "crosswind_correction_provenance": diagnostics.get("crosswind_correction_provenance", ""),
+            "clock_sync_status": diagnostics.get("clock_sync_status", ""),
+            "clock_sync_method": diagnostics.get("clock_sync_method", ""),
+            "clock_sync_source": diagnostics.get("clock_sync_source", ""),
+            "clock_sync_mean_offset_s": diagnostics.get("clock_sync_mean_offset_s", ""),
+            "clock_sync_provenance": diagnostics.get("clock_sync_provenance", ""),
             "ch4_status": diagnostics.get("ch4_status", ""),
             "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", ""),
             "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", ""),
@@ -652,6 +687,14 @@ class ResultExporter:
                 "crosswind_correction_max_abs_delta_c": diagnostics.get("crosswind_correction_max_abs_delta_c", "") if diagnostics else "",
                 "crosswind_correction_provenance": diagnostics.get("crosswind_correction_provenance", "") if diagnostics else "",
                 "crosswind_correction_detail": json.dumps(diagnostics.get("crosswind_correction_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("crosswind_correction_detail") else "",
+                "clock_sync_status": diagnostics.get("clock_sync_status", "") if diagnostics else "",
+                "clock_sync_method": diagnostics.get("clock_sync_method", "") if diagnostics else "",
+                "clock_sync_source": diagnostics.get("clock_sync_source", "") if diagnostics else "",
+                "clock_sync_mean_offset_s": diagnostics.get("clock_sync_mean_offset_s", "") if diagnostics else "",
+                "clock_sync_min_offset_s": diagnostics.get("clock_sync_min_offset_s", "") if diagnostics else "",
+                "clock_sync_max_offset_s": diagnostics.get("clock_sync_max_offset_s", "") if diagnostics else "",
+                "clock_sync_provenance": diagnostics.get("clock_sync_provenance", "") if diagnostics else "",
+                "clock_sync_detail": json.dumps(diagnostics.get("clock_sync_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("clock_sync_detail") else "",
                 "ch4_status": diagnostics.get("ch4_status", "") if diagnostics else "",
                 "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", "") if diagnostics else "",
                 "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", "") if diagnostics else "",
@@ -1232,6 +1275,72 @@ class ResultExporter:
         self._write_json(path, payload)
         return path
 
+    def _clock_sync_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        if rp_result is not None:
+            artifacts = dict(rp_result.artifacts or {})
+            if isinstance(artifacts.get("clock_sync"), dict) and artifacts["clock_sync"]:
+                return dict(artifacts["clock_sync"])
+            summary = dict(rp_result.summary or {})
+            if isinstance(summary.get("clock_sync_summary"), dict) and summary["clock_sync_summary"]:
+                return dict(summary["clock_sync_summary"])
+            if rp_result.windows:
+                detail = dict(rp_result.windows[0].diagnostics.get("clock_sync_detail", {}) if rp_result.windows[0].diagnostics else {})
+                if detail:
+                    return detail
+        cfg = dict(rp_config_snapshot.get("clock_sync", {}) if isinstance(rp_config_snapshot.get("clock_sync", {}), dict) else {})
+        if cfg:
+            return {
+                "artifact_type": "acquisition_clock_sync",
+                "status": "configured_not_run",
+                "enabled": bool(cfg.get("enabled", False)),
+                "method": str(cfg.get("method", "gps_ptp_offset_drift_v1")),
+                "clock_source": str(cfg.get("clock_source", "")),
+                "offset_seconds": cfg.get("offset_seconds"),
+                "drift_ppm": cfg.get("drift_ppm"),
+                "provenance": "Clock synchronization is configured in the export snapshot, but no RP run summary was available.",
+                "limitations": ["No per-row clock_sync provenance could be verified without RP diagnostics."],
+            }
+        return {}
+
+    def export_clock_sync_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+    ) -> Path | None:
+        summary = self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not summary:
+            return None
+        windows: list[dict[str, Any]] = []
+        for window in (rp_result.windows if rp_result else []):
+            diagnostics = dict(window.diagnostics or {})
+            if not diagnostics.get("clock_sync_status"):
+                continue
+            windows.append(
+                {
+                    "window_id": window.window_id,
+                    "start_time": window.start_time.isoformat(),
+                    "end_time": window.end_time.isoformat(),
+                    "clock_sync_status": diagnostics.get("clock_sync_status", ""),
+                    "clock_sync_method": diagnostics.get("clock_sync_method", ""),
+                    "clock_sync_source": diagnostics.get("clock_sync_source", ""),
+                    "clock_sync_mean_offset_s": diagnostics.get("clock_sync_mean_offset_s"),
+                }
+            )
+        payload = {
+            "artifact_type": "acquisition_clock_sync",
+            "run_id": rp_result.run_id if rp_result else "",
+            "created_at": rp_result.created_at.isoformat() if rp_result else "",
+            "summary": summary,
+            "window_count": len(windows),
+            "windows": windows,
+            "provenance": "Clock synchronization artifact exported from RP run diagnostics.",
+        }
+        path = export_root / "clock_sync_artifact.json"
+        self._write_json(path, payload)
+        return path
+
     def _reference_method_profile(self, reference_id: str) -> dict[str, Any]:
         json_path = self._reference_json_path(reference_id)
         if json_path is None:
@@ -1746,6 +1855,11 @@ class ResultExporter:
                     "crosswind_correction_mean_delta_c": "",
                     "crosswind_correction_max_abs_delta_c": "",
                     "crosswind_correction_provenance": "",
+                    "clock_sync_status": "",
+                    "clock_sync_method": "",
+                    "clock_sync_source": "",
+                    "clock_sync_mean_offset_s": "",
+                    "clock_sync_provenance": "",
                     "ch4_status": "",
                     "ch4_flux_nmol_m2_s": "",
                     "ch4_flux_level0_nmol_m2_s": "",
@@ -1916,6 +2030,10 @@ class ResultExporter:
             entry["crosswind_correction_method"] = br.get("crosswind_correction_method", diagnostics.get("crosswind_correction_method", ""))
             entry["crosswind_correction_status"] = br.get("crosswind_correction_status", diagnostics.get("crosswind_correction_status", ""))
             entry["crosswind_correction_mean_delta_c"] = br.get("crosswind_correction_mean_delta_c", diagnostics.get("crosswind_correction_mean_delta_c"))
+            entry["clock_sync_status"] = br.get("clock_sync_status", diagnostics.get("clock_sync_status", ""))
+            entry["clock_sync_method"] = br.get("clock_sync_method", diagnostics.get("clock_sync_method", ""))
+            entry["clock_sync_source"] = br.get("clock_sync_source", diagnostics.get("clock_sync_source", ""))
+            entry["clock_sync_mean_offset_s"] = br.get("clock_sync_mean_offset_s", diagnostics.get("clock_sync_mean_offset_s"))
             entry["ch4_method"] = br.get("ch4_method", diagnostics.get("ch4_method", ""))
             entry["ch4_flux_nmol_m2_s"] = br.get("ch4_flux_nmol_m2_s", diagnostics.get("ch4_flux_nmol_m2_s"))
             entry["ch4_flux_level0_nmol_m2_s"] = br.get("ch4_flux_level0_nmol_m2_s", diagnostics.get("ch4_flux_level0_nmol_m2_s"))
@@ -2053,6 +2171,10 @@ class ResultExporter:
             "UNCERTAINTY_METHOD": diagnostics.get("uncertainty_method", ""),
             "SPECTRAL_CORRECTION_METHOD": diagnostics.get("spectral_correction_method", ""),
             "METHOD_DEVIATION_NOTES": " | ".join(_build_method_deviation_notes(diagnostics, {})),
+            "CLOCK_SYNC_STATUS": diagnostics.get("clock_sync_status", ""),
+            "CLOCK_SYNC_METHOD": diagnostics.get("clock_sync_method", ""),
+            "CLOCK_SYNC_SOURCE": diagnostics.get("clock_sync_source", ""),
+            "CLOCK_SYNC_MEAN_OFFSET_S": diagnostics.get("clock_sync_mean_offset_s", ""),
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2109,6 +2231,10 @@ class ResultExporter:
             "UNCERTAINTY_METHOD": "",
             "SPECTRAL_CORRECTION_METHOD": "",
             "METHOD_DEVIATION_NOTES": "",
+            "CLOCK_SYNC_STATUS": "",
+            "CLOCK_SYNC_METHOD": "",
+            "CLOCK_SYNC_SOURCE": "",
+            "CLOCK_SYNC_MEAN_OFFSET_S": "",
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2410,6 +2536,10 @@ class ResultExporter:
                 "crosswind_correction_method": diag.get("crosswind_correction_method", ""),
                 "crosswind_correction_status": diag.get("crosswind_correction_status", ""),
                 "crosswind_correction_mean_delta_c": diag.get("crosswind_correction_mean_delta_c"),
+                "clock_sync_status": diag.get("clock_sync_status", ""),
+                "clock_sync_method": diag.get("clock_sync_method", ""),
+                "clock_sync_source": diag.get("clock_sync_source", ""),
+                "clock_sync_mean_offset_s": diag.get("clock_sync_mean_offset_s"),
                 "ch4_method": diag.get("ch4_method", ""),
                 "ch4_flux_nmol_m2_s": diag.get("ch4_flux_nmol_m2_s"),
                 "ch4_flux_level0_nmol_m2_s": diag.get("ch4_flux_level0_nmol_m2_s"),
@@ -2464,6 +2594,10 @@ class ResultExporter:
                 "crosswind_correction_method": diag.get("crosswind_correction_method", ""),
                 "crosswind_correction_status": diag.get("crosswind_correction_status", ""),
                 "crosswind_correction_mean_delta_c": diag.get("crosswind_correction_mean_delta_c"),
+                "clock_sync_status": diag.get("clock_sync_status", ""),
+                "clock_sync_method": diag.get("clock_sync_method", ""),
+                "clock_sync_source": diag.get("clock_sync_source", ""),
+                "clock_sync_mean_offset_s": diag.get("clock_sync_mean_offset_s"),
                 "ch4_method": diag.get("ch4_method", ""),
                 "ch4_flux_nmol_m2_s": diag.get("ch4_flux_nmol_m2_s"),
                 "ch4_flux_level0_nmol_m2_s": diag.get("ch4_flux_level0_nmol_m2_s"),
@@ -2539,6 +2673,14 @@ def _build_method_deviation_notes(diag: dict[str, Any], bm_dev: dict[str, Any]) 
         delta = diag.get("crosswind_correction_mean_delta_c")
         delta_text = f"; mean_delta_c={float(delta):.6f}" if isinstance(delta, (int, float)) else ""
         notes.append(f"crosswind_correction: {crosswind_method}; status={crosswind_status}{delta_text}")
+    clock_status = diag.get("clock_sync_status", "")
+    if clock_status and clock_status not in {"", "disabled"}:
+        mean_offset = diag.get("clock_sync_mean_offset_s")
+        offset_text = f"; mean_offset_s={float(mean_offset):.6f}" if isinstance(mean_offset, (int, float)) else ""
+        notes.append(
+            f"clock_sync: {diag.get('clock_sync_method', '')}; "
+            f"source={diag.get('clock_sync_source', '')}; status={clock_status}{offset_text}"
+        )
     ch4_method = diag.get("ch4_method", "")
     if ch4_method:
         ch4_flux = diag.get("ch4_flux_nmol_m2_s")
@@ -2582,6 +2724,10 @@ FLUXNET_HALF_HOURLY_SCHEMA = [
     ("UNCERTAINTY_METHOD", "text", "Random uncertainty method used for the run"),
     ("SPECTRAL_CORRECTION_METHOD", "text", "Spectral correction method used for the run"),
     ("METHOD_DEVIATION_NOTES", "text", "Method provenance notes for benchmark/export review"),
+    ("CLOCK_SYNC_STATUS", "text", "Acquisition clock synchronization status"),
+    ("CLOCK_SYNC_METHOD", "text", "Clock synchronization method"),
+    ("CLOCK_SYNC_SOURCE", "text", "GPS/PTP/manual clock source label"),
+    ("CLOCK_SYNC_MEAN_OFFSET_S", "seconds", "Mean timestamp correction applied before windowing"),
     ("TIMEZONE_OFFSET_H", "hours", "UTC offset for local time"),
     ("TIMESTAMP_REFERS_TO", "start/end", "Whether timestamp refers to start or end of period"),
 ]
@@ -2608,6 +2754,10 @@ AMERIFLUX_FIELD_MAP = {
     "UNCERTAINTY_METHOD": "UNCERTAINTY_METHOD",
     "SPECTRAL_CORRECTION_METHOD": "SPECTRAL_CORRECTION_METHOD",
     "METHOD_DEVIATION_NOTES": "METHOD_DEVIATION_NOTES",
+    "CLOCK_SYNC_STATUS": "CLOCK_SYNC_STATUS",
+    "CLOCK_SYNC_METHOD": "CLOCK_SYNC_METHOD",
+    "CLOCK_SYNC_SOURCE": "CLOCK_SYNC_SOURCE",
+    "CLOCK_SYNC_MEAN_OFFSET_S": "CLOCK_SYNC_MEAN_OFFSET_S",
     "WIND_SPEED": "WS",
     "WIND_DIR": "WD",
 }
@@ -2634,6 +2784,10 @@ ICOS_FIELD_MAP = {
     "UNCERTAINTY_METHOD": "UncertaintyMethod",
     "SPECTRAL_CORRECTION_METHOD": "SpectralCorrectionMethod",
     "METHOD_DEVIATION_NOTES": "MethodDeviationNotes",
+    "CLOCK_SYNC_STATUS": "ClockSyncStatus",
+    "CLOCK_SYNC_METHOD": "ClockSyncMethod",
+    "CLOCK_SYNC_SOURCE": "ClockSyncSource",
+    "CLOCK_SYNC_MEAN_OFFSET_S": "ClockSyncMeanOffsetS",
     "WIND_SPEED": "WindSpeed",
     "WIND_DIR": "WindDir",
 }

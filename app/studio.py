@@ -1964,6 +1964,12 @@ class StudioController(QObject):
             "spectral_correction_cospectrum_match_summary": {},
             "method_compare_summary": {},
             "method_compare_recommendations": {},
+            "clock_sync_status": "disabled",
+            "clock_sync_method": "",
+            "clock_sync_source": "",
+            "clock_sync_mean_offset_s": None,
+            "clock_sync_provenance": "",
+            "clock_sync_summary": {},
         }
         if rp_result is None:
             return default
@@ -1975,6 +1981,9 @@ class StudioController(QObject):
         spectral_summary = dict(summary.get("spectral_correction_summary", {}) or artifacts.get("spectral_correction_summary", {}) or {})
         method_compare_summary = dict(summary.get("method_compare_summary", {}) or artifacts.get("method_compare_summary", {}) or {})
         method_compare_recommendations = dict(summary.get("method_compare_recommendations", {}) or artifacts.get("method_compare_recommendations", {}) or method_compare_summary.get("recommendations", {}) or {})
+        clock_sync_summary = dict(summary.get("clock_sync_summary", {}) or rp_result.artifacts.get("clock_sync", {}) or {})
+        if not clock_sync_summary and rp_result.windows:
+            clock_sync_summary = dict(rp_result.windows[0].diagnostics.get("clock_sync_detail", {}) if rp_result.windows[0].diagnostics else {})
         if (not footprint_summary or not uncertainty_summary or not spectral_summary) and rp_result.windows:
             first = rp_result.windows[0]
             diag = first.diagnostics or {}
@@ -2060,6 +2069,13 @@ class StudioController(QObject):
             spectral_provenance = f"{spectral_provenance}; factor={float(spectral_factor):.3f}".strip("; ")
         if spectral_measured_cospectrum_source:
             spectral_provenance = f"{spectral_provenance}; cospectrum={spectral_measured_cospectrum_source}".strip("; ")
+        clock_status = str(summary.get("clock_sync_status") or clock_sync_summary.get("status") or default["clock_sync_status"])
+        clock_method = str(summary.get("clock_sync_method") or clock_sync_summary.get("method") or "")
+        clock_source = str(summary.get("clock_sync_source") or clock_sync_summary.get("clock_source") or "")
+        clock_mean_offset = summary.get("clock_sync_mean_offset_s", clock_sync_summary.get("mean_offset_seconds"))
+        clock_provenance = str(clock_sync_summary.get("provenance", ""))
+        if clock_mean_offset is not None:
+            clock_provenance = f"{clock_provenance}; mean_offset_s={float(clock_mean_offset):.6f}".strip("; ")
 
         return {
             "footprint_method": str(summary.get("footprint_method") or footprint_summary.get("method") or default["footprint_method"]),
@@ -2084,6 +2100,12 @@ class StudioController(QObject):
             "spectral_correction_cospectrum_match_summary": cospectrum_match_summary,
             "method_compare_summary": method_compare_summary,
             "method_compare_recommendations": method_compare_recommendations,
+            "clock_sync_status": clock_status,
+            "clock_sync_method": clock_method,
+            "clock_sync_source": clock_source,
+            "clock_sync_mean_offset_s": clock_mean_offset,
+            "clock_sync_provenance": clock_provenance,
+            "clock_sync_summary": clock_sync_summary,
         }
 
     def _empty_report_payloads(self) -> dict:
@@ -2224,6 +2246,8 @@ class StudioController(QObject):
             "usage": ["适合现场交接班和设备健康复盘。"],
         }
 
+        rp_result = self.current_rp_run()
+        rp_method_summary = self._rp_method_summary(rp_result)
         reports["acquisition_quality"] = {
             "title": "采集质量报告",
             "source": f"高频缓冲 / {batch_label}",
@@ -2239,6 +2263,7 @@ class StudioController(QObject):
             "table_rows": [
                 ("时间范围", run_result.time_range, "与谱分析批次一致"),
                 ("数据来源", run_result.data_source, "来自当前高频缓冲/批次"),
+                ("Clock sync", rp_method_summary["clock_sync_status"], rp_method_summary["clock_sync_provenance"]),
                 ("窗口完整度", f"{(sum(completion_series) / max(1, len(completion_series))):.0%}" if completion_series else "--", "按窗口样本数估算"),
                 ("关注窗口", str(len(anomalous_windows)), "窗口级 QC 结果来自 core 层"),
             ],
@@ -2249,8 +2274,6 @@ class StudioController(QObject):
             "usage": ["工程师可用来判断问题来自采集链还是谱修正链。"],
         }
 
-        rp_result = self.current_rp_run()
-        rp_method_summary = self._rp_method_summary(rp_result)
         reports["ec_results"] = {
             "title": "EC 结果报告",
             "source": f"谱修正后通量摘要 / {batch_label}",
@@ -2372,6 +2395,7 @@ class StudioController(QObject):
                 ("Footprint", rp_method_summary["footprint_method"]),
                 ("不确定度", rp_method_summary["uncertainty_method"]),
                 ("谱修正", rp_method_summary["spectral_correction_method"]),
+                ("Clock sync", rp_method_summary["clock_sync_status"]),
                 ("窗口数", str(len(rp_result.windows) if rp_result else 0)),
             ],
             "plot_series": [],
@@ -2385,6 +2409,7 @@ class StudioController(QObject):
                 ("谱修正", rp_method_summary["spectral_correction_method"], rp_method_summary["spectral_correction_provenance"]),
                 ("不确定度带宽", str(rp_method_summary["uncertainty_band"]), "primary flux uncertainty band"),
                 ("FCC cospectrum", rp_method_summary["spectral_correction_measured_cospectrum_source"], "Fratini/FCC 自动注入路径"),
+                ("Clock sync", rp_method_summary["clock_sync_method"], rp_method_summary["clock_sync_provenance"]),
             ],
             "conclusions": [
                 "方法溯源页集中展示当前批次使用的 Footprint、不确定度、谱修正方法来源和局限性。",
@@ -2396,6 +2421,7 @@ class StudioController(QObject):
                 **({"Method Rollup Artifact": str(result_export_files.get("method_rollup_artifact"))} if result_export_files.get("method_rollup_artifact") else {}),
                 **({"Footprint 2D Artifact": str(result_export_files.get("footprint_2d_artifact"))} if result_export_files.get("footprint_2d_artifact") else {}),
                 **({"Method Compare Artifact": str(result_export_files.get("method_compare_artifact"))} if result_export_files.get("method_compare_artifact") else {}),
+                **({"Clock Sync Artifact": str(result_export_files.get("clock_sync_artifact"))} if result_export_files.get("clock_sync_artifact") else {}),
             },
             "versions": [
                 f"运行 ID：{run_result.run_id}",
@@ -3867,6 +3893,10 @@ class StudioController(QObject):
                         "sonic_correction_status": diagnostics.get("sonic_correction_status", ""),
                         "crosswind_correction_method": diagnostics.get("crosswind_correction_method", ""),
                         "crosswind_correction_status": diagnostics.get("crosswind_correction_status", ""),
+                        "clock_sync_status": diagnostics.get("clock_sync_status", ""),
+                        "clock_sync_method": diagnostics.get("clock_sync_method", ""),
+                        "clock_sync_source": diagnostics.get("clock_sync_source", ""),
+                        "clock_sync_mean_offset_s": diagnostics.get("clock_sync_mean_offset_s"),
                         "ch4_method": diagnostics.get("ch4_method", ""),
                         "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s"),
                         "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s"),
@@ -3933,6 +3963,10 @@ class StudioController(QObject):
                     "sonic_correction_status": deviation.get("sonic_correction_status", diagnostics.get("sonic_correction_status", "")),
                     "crosswind_correction_method": deviation.get("crosswind_correction_method", diagnostics.get("crosswind_correction_method", "")),
                     "crosswind_correction_status": deviation.get("crosswind_correction_status", diagnostics.get("crosswind_correction_status", "")),
+                    "clock_sync_status": deviation.get("clock_sync_status", diagnostics.get("clock_sync_status", "")),
+                    "clock_sync_method": deviation.get("clock_sync_method", diagnostics.get("clock_sync_method", "")),
+                    "clock_sync_source": deviation.get("clock_sync_source", diagnostics.get("clock_sync_source", "")),
+                    "clock_sync_mean_offset_s": deviation.get("clock_sync_mean_offset_s", diagnostics.get("clock_sync_mean_offset_s")),
                     "ch4_method": deviation.get("ch4_method", diagnostics.get("ch4_method", "")),
                     "ch4_flux_nmol_m2_s": deviation.get("ch4_flux_nmol_m2_s", diagnostics.get("ch4_flux_nmol_m2_s")),
                     "ch4_flux_level0_nmol_m2_s": deviation.get("ch4_flux_level0_nmol_m2_s", diagnostics.get("ch4_flux_level0_nmol_m2_s")),
@@ -3972,6 +4006,13 @@ class StudioController(QObject):
                 "timezone_offset_hours": summary.get("fluxnet_timezone_offset_h", first_diag.get("fluxnet_timezone_offset_h", 0.0)),
             }
         trace_gas_summary = dict(manifest_payload.get("trace_gas_summary", {}) or summary.get("trace_gas_summary", {}) or {})
+        clock_summary = dict(
+            manifest_payload.get("clock_sync_summary", {})
+            or summary.get("clock_sync_summary", {})
+            or rp_result.artifacts.get("clock_sync", {})
+            or first_diag.get("clock_sync_detail", {})
+            or {}
+        )
 
         table_rows = [
             ("reference_id", bm_ref_id or "--", "参考数据集 ID"),
@@ -3998,6 +4039,11 @@ class StudioController(QObject):
         table_rows.append(("network.schema_target", network_summary.get("schema_target", "--") or "--", "网络导出目标"))
         table_rows.append(("network.validation_status", network_summary.get("validation_status", "--") or "--", "网络校验状态"))
         table_rows.append(("network.missing_fields", " / ".join(network_summary.get("missing_fields", [])) or "无", "网络缺失字段"))
+        if clock_summary:
+            table_rows.append(("clock_sync.status", clock_summary.get("status", "--"), "采集时钟同步状态"))
+            table_rows.append(("clock_sync.method", clock_summary.get("method", "--"), "GPS/PTP 同步方法"))
+            table_rows.append(("clock_sync.source", clock_summary.get("clock_source", "--"), "采集时钟来源"))
+            table_rows.append(("clock_sync.mean_offset_s", str(clock_summary.get("mean_offset_seconds", "--")), "平均时间戳修正"))
         for detail in per_window_detail:
             match_strategy = detail.get("match_strategy", "")
             table_rows.append(
@@ -4016,6 +4062,7 @@ class StudioController(QObject):
             "网络目标": network_summary.get("schema_target", "--") or "--",
             "网络校验": network_summary.get("validation_status", "--") or "--",
             "缺失字段": " / ".join(network_summary.get("missing_fields", [])) or "无",
+            "Clock sync": clock_summary.get("status", "--") if clock_summary else "--",
         }
         for key, label in (
             ("benchmark_summary_artifact", "Benchmark Summary"),
@@ -4023,6 +4070,7 @@ class StudioController(QObject):
             ("parity_artifact", "Parity Artifact"),
             ("reference_provenance_artifact", "Provenance Artifact"),
             ("network_validation_summary", "Network Validation"),
+            ("clock_sync_artifact", "Clock Sync Artifact"),
         ):
             if export_files.get(key):
                 file_info[label] = str(export_files[key])

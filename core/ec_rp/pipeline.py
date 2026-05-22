@@ -51,6 +51,7 @@ from core.ec_rp.analysis import (
     load_eddypro_reference_json,
 )
 from core.ec_rp.qc import classify_window_qc
+from core.storage.clock_sync import apply_clock_sync_to_rows, clock_sync_diagnostics
 from models.hf_models import NormalizedHFFrame
 from models.rp_models import RPRunResult, WindowRPResult
 from models.station_models import BiometSourceMetadata, ProjectProfile, SiteProfile, aggregate_biomet_window, load_biomet_records
@@ -94,7 +95,14 @@ class ECRPPipeline:
         run_timer_start = time.perf_counter()
         created_at = datetime.now()
         run_id = f"rp_{created_at:%Y%m%d_%H%M%S}_{uuid4().hex[:6]}"
-        sorted_rows = sorted(rows, key=lambda row: row.timestamp)
+        if config.get("_clock_sync_already_applied"):
+            working_rows = list(rows)
+            clock_sync_summary = dict(config.get("_clock_sync_summary", {}) or {})
+        else:
+            clock_sync_result = apply_clock_sync_to_rows(rows, config=config)
+            working_rows = clock_sync_result.rows
+            clock_sync_summary = clock_sync_result.summary
+        sorted_rows = sorted(working_rows, key=lambda row: row.timestamp)
         sample_rate_hz = infer_sample_rate(sorted_rows, fallback_hz=float(_config_value(config, "sample_hz", "steps.window_sampling.sample_hz", default=10.0)))
         block_minutes = float(_config_value(config, "block_minutes", "steps.window_sampling.block_minutes", "steps.window_sampling.window_minutes", default=30.0))
         rotation_mode = normalize_rotation_mode(_config_value(config, "rotation_mode", "steps.rotation.rotation_mode", "steps.rotation.method", default="double"))
@@ -148,6 +156,7 @@ class ECRPPipeline:
                     reference_provenance=reference_provenance,
                     network_output_config=network_output_config,
                     method_summary=method_summary,
+                    clock_sync_summary=clock_sync_summary,
                     performance_profile=performance_profile,
                 ),
                 windows=[],
@@ -161,6 +170,7 @@ class ECRPPipeline:
                     reference_provenance=reference_provenance,
                     network_output_config=network_output_config,
                     method_summary=method_summary,
+                    clock_sync_summary=clock_sync_summary,
                     performance_profile=performance_profile,
                 ),
             )
@@ -195,6 +205,7 @@ class ECRPPipeline:
                             sonic_correction_config=sonic_correction_config,
                             crosswind_correction_config=crosswind_correction_config,
                             method_compare_config=method_compare_config,
+                            clock_sync_summary=clock_sync_summary,
                             biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                         )
                     )
@@ -242,6 +253,7 @@ class ECRPPipeline:
                         sonic_correction_config=sonic_correction_config,
                         crosswind_correction_config=crosswind_correction_config,
                         method_compare_config=method_compare_config,
+                        clock_sync_summary=clock_sync_summary,
                         biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                     )
                 )
@@ -254,6 +266,7 @@ class ECRPPipeline:
                         rotation_mode=rotation_mode,
                         detrend_mode=detrend_mode,
                         reason=f"window processing failed: {exc}",
+                        clock_sync_summary=clock_sync_summary,
                     )
                 )
 
@@ -289,6 +302,7 @@ class ECRPPipeline:
                 reference_provenance=reference_provenance,
                 network_output_config=network_output_config,
                 method_summary=method_summary,
+                clock_sync_summary=clock_sync_summary,
                 performance_profile=performance_profile,
             ),
             windows=windows,
@@ -302,6 +316,7 @@ class ECRPPipeline:
                 reference_provenance=reference_provenance,
                 network_output_config=network_output_config,
                 method_summary=method_summary,
+                clock_sync_summary=clock_sync_summary,
                 performance_profile=performance_profile,
             ),
         )
@@ -331,6 +346,7 @@ class ECRPPipeline:
         sonic_correction_config: dict[str, Any] | None = None,
         crosswind_correction_config: dict[str, Any] | None = None,
         method_compare_config: dict[str, Any] | None = None,
+        clock_sync_summary: dict[str, Any] | None = None,
         biomet_override: dict[str, Any] | None = None,
     ) -> WindowRPResult:
         window_timer_start = time.perf_counter()
@@ -439,6 +455,7 @@ class ECRPPipeline:
         )
         diagnostics = {
             **prepared.diagnostics,
+            **clock_sync_diagnostics(clock_sync_summary),
             "issues": list(combined_issues),
             "qc_reasons": list(combined_qc_reasons),
             "rotation_applied": bool(rotation.applied),
@@ -1133,6 +1150,7 @@ def _failed_window_result(
     rotation_mode: str,
     detrend_mode: str,
     reason: str,
+    clock_sync_summary: dict[str, Any] | None = None,
 ) -> WindowRPResult:
     start_time = rows[0].timestamp if rows else datetime.now()
     end_time = rows[-1].timestamp if rows else start_time
@@ -1175,7 +1193,11 @@ def _failed_window_result(
         stationarity_detail={"status": "processing_error", "reason": reason},
         turbulence_detail={"status": "processing_error", "reason": reason},
         uncertainty_detail={"status": "placeholder", "reason": reason},
-        diagnostics={"issues": ["processing_error"], "qc_reasons": [reason]},
+        diagnostics={
+            "issues": ["processing_error"],
+            "qc_reasons": [reason],
+            **clock_sync_diagnostics(clock_sync_summary),
+        },
     )
 
 
@@ -1246,6 +1268,7 @@ def _empty_summary(
     reference_provenance: dict[str, Any] | None = None,
     network_output_config: dict[str, Any] | None = None,
     method_summary: dict[str, Any] | None = None,
+    clock_sync_summary: dict[str, Any] | None = None,
     performance_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     summary = {
@@ -1282,6 +1305,7 @@ def _empty_summary(
         reference_provenance=reference_provenance or {},
         network_output_config=network_output_config or {},
         method_summary=method_summary or {},
+        clock_sync_summary=clock_sync_summary or {},
         performance_profile=performance_profile or {},
     )
 
@@ -1297,6 +1321,7 @@ def _build_summary(
     reference_provenance: dict[str, Any] | None = None,
     network_output_config: dict[str, Any] | None = None,
     method_summary: dict[str, Any] | None = None,
+    clock_sync_summary: dict[str, Any] | None = None,
     performance_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not windows:
@@ -1310,6 +1335,7 @@ def _build_summary(
             reference_provenance=reference_provenance,
             network_output_config=network_output_config,
             method_summary=method_summary,
+            clock_sync_summary=clock_sync_summary,
             performance_profile=performance_profile,
         )
     summary = {
@@ -1339,6 +1365,7 @@ def _build_summary(
         reference_provenance=reference_provenance or {},
         network_output_config=network_output_config or {},
         method_summary=method_summary or {},
+        clock_sync_summary=clock_sync_summary or {},
         performance_profile=performance_profile or {},
     )
 
@@ -1354,6 +1381,7 @@ def _artifacts(
     reference_provenance: dict[str, Any] | None = None,
     network_output_config: dict[str, Any] | None = None,
     method_summary: dict[str, Any] | None = None,
+    clock_sync_summary: dict[str, Any] | None = None,
     performance_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
@@ -1367,6 +1395,7 @@ def _artifacts(
         "network_output": network_output_config or {},
         "method_rollup": method_summary or {},
         "method_provenance": method_summary or {},
+        "clock_sync": clock_sync_summary or {},
         "performance_profile": performance_profile or {},
     }
 
@@ -2162,6 +2191,7 @@ def _with_summary_context(
     reference_provenance: dict[str, Any],
     network_output_config: dict[str, Any],
     method_summary: dict[str, Any],
+    clock_sync_summary: dict[str, Any],
     performance_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     benchmark_deviation_summary = dict(benchmark_summary.get("benchmark_deviation_summary", {}))
@@ -2216,6 +2246,11 @@ def _with_summary_context(
             "spectral_correction_limitations": spectral_summary.get("limitations", []),
             "method_compare_summary": method_compare_summary,
             "method_compare_recommendations": method_summary.get("method_compare_recommendations", method_compare_summary.get("recommendations", {})),
+            "clock_sync_summary": clock_sync_summary,
+            "clock_sync_status": clock_sync_summary.get("status", "disabled"),
+            "clock_sync_method": clock_sync_summary.get("method", ""),
+            "clock_sync_source": clock_sync_summary.get("clock_source", ""),
+            "clock_sync_mean_offset_s": clock_sync_summary.get("mean_offset_seconds"),
             "performance_profile": performance_profile or {},
         }
     )
@@ -2714,6 +2749,14 @@ def _build_method_deviation_notes_from_window(window: WindowRPResult) -> list[st
         delta = diagnostics.get("crosswind_correction_mean_delta_c")
         delta_text = f"; mean_delta_c={float(delta):.6f}" if isinstance(delta, (int, float)) else ""
         notes.append(f"crosswind_correction: {crosswind_method}; status={crosswind_status}{delta_text}")
+    clock_status = diagnostics.get("clock_sync_status", "")
+    if clock_status and clock_status not in {"", "disabled"}:
+        mean_offset = diagnostics.get("clock_sync_mean_offset_s")
+        offset_text = f"; mean_offset_s={float(mean_offset):.6f}" if isinstance(mean_offset, (int, float)) else ""
+        notes.append(
+            f"clock_sync: {diagnostics.get('clock_sync_method', '')}; "
+            f"source={diagnostics.get('clock_sync_source', '')}; status={clock_status}{offset_text}"
+        )
     ch4_method = diagnostics.get("ch4_method", "")
     if ch4_method:
         ch4_flux = diagnostics.get("ch4_flux_nmol_m2_s")
@@ -2746,6 +2789,11 @@ def _attach_method_context_to_benchmark(window: WindowRPResult, benchmark_payloa
     benchmark_payload["crosswind_correction_method"] = diagnostics.get("crosswind_correction_method", "")
     benchmark_payload["crosswind_correction_status"] = diagnostics.get("crosswind_correction_status", "")
     benchmark_payload["crosswind_correction_mean_delta_c"] = diagnostics.get("crosswind_correction_mean_delta_c")
+    benchmark_payload["clock_sync_status"] = diagnostics.get("clock_sync_status", "")
+    benchmark_payload["clock_sync_method"] = diagnostics.get("clock_sync_method", "")
+    benchmark_payload["clock_sync_source"] = diagnostics.get("clock_sync_source", "")
+    benchmark_payload["clock_sync_mean_offset_s"] = diagnostics.get("clock_sync_mean_offset_s")
+    benchmark_payload["clock_sync_detail"] = diagnostics.get("clock_sync_detail", {})
     benchmark_payload["ch4_method"] = diagnostics.get("ch4_method", "")
     benchmark_payload["ch4_correction_sequence"] = diagnostics.get("ch4_correction_sequence", {})
     benchmark_payload["ch4_flux_nmol_m2_s"] = diagnostics.get("ch4_flux_nmol_m2_s")

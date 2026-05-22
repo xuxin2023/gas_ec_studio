@@ -70,8 +70,8 @@
   ],
   "coverage_summary": {
     "covered": 9,
-    "partial": 12,
-    "missing": 1,
+    "partial": 13,
+    "missing": 0,
     "beyond_eddypro": 3
   },
   "capabilities": [
@@ -142,10 +142,10 @@
       "id": "gps_ptp_sync",
       "family": "acquisition",
       "eddypro_requirement": "Synchronize high-speed and low-speed data by GPS/PTP in SmartFlux deployments.",
-      "gas_ec_status": "missing",
-      "evidence": [],
-      "gap": "No GPS/PTP synchronization subsystem.",
-      "next_action": "Add acquisition clock provenance and optional PTP/GPS offset model."
+      "gas_ec_status": "partial",
+      "evidence": ["core/storage/clock_sync.py", "core/headless_batch_runner.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_clock_sync_pipeline.py"],
+      "gap": "GPS/PTP-style offset, drift, and event interpolation corrections now run before RP/FCC windowing with diagnostics/export/manifest provenance; direct PTP servo-log and GPS PPS hardware trace parsing remain incomplete.",
+      "next_action": "Add SmartFlux/PTP daemon log parser and hardware clock-health diagnostics."
     },
     {
       "id": "smartflux_realtime_site_processing",
