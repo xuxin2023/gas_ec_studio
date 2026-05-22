@@ -86,6 +86,12 @@ FULL_OUTPUT_SCHEMA = [
     ("runtime_service_quarantine_count", "acquisition", "real"),
     ("runtime_service_restart_count", "acquisition", "real"),
     ("runtime_service_detail", "acquisition", "real"),
+    ("daemon_telemetry_status", "acquisition", "real"),
+    ("supervisor_state", "acquisition", "real"),
+    ("ptp_lock_status", "acquisition", "real"),
+    ("gps_pps_lock_status", "acquisition", "real"),
+    ("hardware_watchdog_status", "acquisition", "real"),
+    ("daemon_telemetry_detail", "acquisition", "real"),
     ("ch4_status", "trace_gas", "real"),
     ("ch4_flux_nmol_m2_s", "trace_gas", "real"),
     ("ch4_flux_level0_nmol_m2_s", "trace_gas", "real"),
@@ -225,6 +231,11 @@ class ResultExporter:
             rp_config_snapshot=rp_config_snapshot,
             export_root=export_root,
         )
+        daemon_telemetry_path = self.export_daemon_telemetry_artifact(
+            rp_result=rp_result,
+            rp_config_snapshot=rp_config_snapshot,
+            export_root=export_root,
+        )
         clock_sync_path = self.export_clock_sync_artifact(
             rp_result=rp_result,
             rp_config_snapshot=rp_config_snapshot,
@@ -289,6 +300,8 @@ class ResultExporter:
             exported_files.append(runtime_watchdog_path.name)
         if runtime_service_path is not None:
             exported_files.append(runtime_service_path.name)
+        if daemon_telemetry_path is not None:
+            exported_files.append(daemon_telemetry_path.name)
         if clock_sync_path is not None:
             exported_files.append(clock_sync_path.name)
         if method_parity_matrix_path is not None:
@@ -342,6 +355,8 @@ class ResultExporter:
                 "runtime_watchdog_summary": self._runtime_watchdog_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "runtime_service_artifact": str(runtime_service_path) if runtime_service_path is not None else "",
                 "runtime_service_summary": self._runtime_service_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+                "daemon_telemetry_artifact": str(daemon_telemetry_path) if daemon_telemetry_path is not None else "",
+                "daemon_telemetry_summary": self._daemon_telemetry_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
                 "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "reference_provenance": reference_provenance,
@@ -425,6 +440,8 @@ class ResultExporter:
             "runtime_watchdog_artifact": str(runtime_watchdog_path) if runtime_watchdog_path is not None else "",
             "runtime_service_summary": self._runtime_service_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "runtime_service_artifact": str(runtime_service_path) if runtime_service_path is not None else "",
+            "daemon_telemetry_summary": self._daemon_telemetry_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
+            "daemon_telemetry_artifact": str(daemon_telemetry_path) if daemon_telemetry_path is not None else "",
             "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
             "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
@@ -446,6 +463,11 @@ class ResultExporter:
                 "RUNTIME_SERVICE_STATUS",
                 "RUNTIME_SERVICE_DELIVERY_STATE",
                 "RUNTIME_SERVICE_QUARANTINE_COUNT",
+                "DAEMON_TELEMETRY_STATUS",
+                "SUPERVISOR_STATE",
+                "PTP_LOCK_STATUS",
+                "GPS_PPS_LOCK_STATUS",
+                "HARDWARE_WATCHDOG_STATUS",
             ],
             "network_uncertainty_fields": [
                 "FC_RANDOM_ERROR",
@@ -486,6 +508,11 @@ class ResultExporter:
                 "runtime_service_delivery_state",
                 "runtime_service_quarantine_count",
                 "runtime_service_restart_count",
+                "daemon_telemetry_status",
+                "supervisor_state",
+                "ptp_lock_status",
+                "gps_pps_lock_status",
+                "hardware_watchdog_status",
                 "screening_config",
                 "screening_summary",
                 "footprint_method",
@@ -532,6 +559,8 @@ class ResultExporter:
             files["runtime_watchdog_artifact"] = str(runtime_watchdog_path)
         if runtime_service_path is not None:
             files["runtime_service_artifact"] = str(runtime_service_path)
+        if daemon_telemetry_path is not None:
+            files["daemon_telemetry_artifact"] = str(daemon_telemetry_path)
         if clock_sync_path is not None:
             files["clock_sync_artifact"] = str(clock_sync_path)
         if method_parity_matrix_path is not None:
@@ -637,6 +666,12 @@ class ResultExporter:
             "runtime_service_quarantine_count": diagnostics.get("runtime_service_quarantine_count", ""),
             "runtime_service_restart_count": diagnostics.get("runtime_service_restart_count", ""),
             "runtime_service_detail": json.dumps(diagnostics.get("runtime_service_detail", {}), ensure_ascii=False) if diagnostics.get("runtime_service_detail") else "",
+            "daemon_telemetry_status": diagnostics.get("daemon_telemetry_status", ""),
+            "supervisor_state": diagnostics.get("supervisor_state", ""),
+            "ptp_lock_status": diagnostics.get("ptp_lock_status", ""),
+            "gps_pps_lock_status": diagnostics.get("gps_pps_lock_status", ""),
+            "hardware_watchdog_status": diagnostics.get("hardware_watchdog_status", ""),
+            "daemon_telemetry_detail": json.dumps(diagnostics.get("daemon_telemetry_detail", {}), ensure_ascii=False) if diagnostics.get("daemon_telemetry_detail") else "",
             "ch4_status": diagnostics.get("ch4_status", ""),
             "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", ""),
             "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", ""),
@@ -772,6 +807,12 @@ class ResultExporter:
                 "runtime_service_quarantine_count": diagnostics.get("runtime_service_quarantine_count", "") if diagnostics else "",
                 "runtime_service_restart_count": diagnostics.get("runtime_service_restart_count", "") if diagnostics else "",
                 "runtime_service_detail": json.dumps(diagnostics.get("runtime_service_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("runtime_service_detail") else "",
+                "daemon_telemetry_status": diagnostics.get("daemon_telemetry_status", "") if diagnostics else "",
+                "supervisor_state": diagnostics.get("supervisor_state", "") if diagnostics else "",
+                "ptp_lock_status": diagnostics.get("ptp_lock_status", "") if diagnostics else "",
+                "gps_pps_lock_status": diagnostics.get("gps_pps_lock_status", "") if diagnostics else "",
+                "hardware_watchdog_status": diagnostics.get("hardware_watchdog_status", "") if diagnostics else "",
+                "daemon_telemetry_detail": json.dumps(diagnostics.get("daemon_telemetry_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("daemon_telemetry_detail") else "",
                 "ch4_status": diagnostics.get("ch4_status", "") if diagnostics else "",
                 "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", "") if diagnostics else "",
                 "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", "") if diagnostics else "",
@@ -1434,6 +1475,52 @@ class ResultExporter:
             "provenance": "Runtime service artifact exported from the service-level headless manifest.",
         }
         path = export_root / "runtime_service_artifact.json"
+        self._write_json(path, payload)
+        return path
+
+    def _daemon_telemetry_summary(self, *, rp_result: RPRunResult | None, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
+        if rp_result is not None:
+            artifacts = dict(rp_result.artifacts or {})
+            if isinstance(artifacts.get("daemon_telemetry"), dict) and artifacts["daemon_telemetry"]:
+                return dict(artifacts["daemon_telemetry"])
+            service = dict(artifacts.get("runtime_service", {}) or {})
+            if isinstance(service.get("daemon_telemetry"), dict) and service["daemon_telemetry"]:
+                return dict(service["daemon_telemetry"])
+            summary = dict(rp_result.summary or {})
+            service_summary = dict(summary.get("runtime_service_summary", {}) or {})
+            if isinstance(service_summary.get("daemon_telemetry"), dict) and service_summary["daemon_telemetry"]:
+                return dict(service_summary["daemon_telemetry"])
+            if isinstance(summary.get("daemon_telemetry_summary"), dict) and summary["daemon_telemetry_summary"]:
+                return dict(summary["daemon_telemetry_summary"])
+        cfg = dict(rp_config_snapshot.get("daemon_telemetry", {}) if isinstance(rp_config_snapshot.get("daemon_telemetry", {}), dict) else {})
+        if cfg:
+            return {
+                "artifact_type": "daemon_telemetry",
+                "status": "configured_not_run",
+                "profile_id": str(cfg.get("profile_id", "daemon_telemetry_v1")),
+                "provenance": "Daemon telemetry is configured in the export snapshot, but no runtime service telemetry artifact was available.",
+                "limitations": ["No supervisor, PTP/GPS, process, or hardware watchdog telemetry was collected without a runtime service run."],
+            }
+        return {}
+
+    def export_daemon_telemetry_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        rp_config_snapshot: dict[str, Any],
+        export_root: Path,
+    ) -> Path | None:
+        summary = self._daemon_telemetry_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
+        if not summary:
+            return None
+        payload = {
+            "artifact_type": "daemon_telemetry",
+            "run_id": rp_result.run_id if rp_result else "",
+            "created_at": rp_result.created_at.isoformat() if rp_result else "",
+            "summary": summary,
+            "provenance": "Daemon telemetry artifact exported from the runtime service manifest.",
+        }
+        path = export_root / "daemon_telemetry_artifact.json"
         self._write_json(path, payload)
         return path
 
@@ -2343,6 +2430,11 @@ class ResultExporter:
             "RUNTIME_SERVICE_STATUS": diagnostics.get("runtime_service_status", "not_run"),
             "RUNTIME_SERVICE_DELIVERY_STATE": diagnostics.get("runtime_service_delivery_state", "not_run"),
             "RUNTIME_SERVICE_QUARANTINE_COUNT": diagnostics.get("runtime_service_quarantine_count", 0),
+            "DAEMON_TELEMETRY_STATUS": diagnostics.get("daemon_telemetry_status", "not_run"),
+            "SUPERVISOR_STATE": diagnostics.get("supervisor_state", "not_configured"),
+            "PTP_LOCK_STATUS": diagnostics.get("ptp_lock_status", "not_configured"),
+            "GPS_PPS_LOCK_STATUS": diagnostics.get("gps_pps_lock_status", "not_configured"),
+            "HARDWARE_WATCHDOG_STATUS": diagnostics.get("hardware_watchdog_status", "not_configured"),
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2409,6 +2501,11 @@ class ResultExporter:
             "RUNTIME_SERVICE_STATUS": "gap_fill",
             "RUNTIME_SERVICE_DELIVERY_STATE": "not_run",
             "RUNTIME_SERVICE_QUARANTINE_COUNT": 0,
+            "DAEMON_TELEMETRY_STATUS": "gap_fill",
+            "SUPERVISOR_STATE": "not_configured",
+            "PTP_LOCK_STATUS": "not_configured",
+            "GPS_PPS_LOCK_STATUS": "not_configured",
+            "HARDWARE_WATCHDOG_STATUS": "not_configured",
             "WIND_SPEED": "",
             "WIND_DIR": "",
             "TIMEZONE_OFFSET_H": timezone_offset_hours,
@@ -2908,6 +3005,11 @@ FLUXNET_HALF_HOURLY_SCHEMA = [
     ("RUNTIME_SERVICE_STATUS", "text", "Headless runtime service status"),
     ("RUNTIME_SERVICE_DELIVERY_STATE", "text", "Runtime service delivery readiness state"),
     ("RUNTIME_SERVICE_QUARANTINE_COUNT", "count", "Inputs quarantined by runtime service"),
+    ("DAEMON_TELEMETRY_STATUS", "text", "Daemon telemetry aggregate status"),
+    ("SUPERVISOR_STATE", "text", "Runtime supervisor state"),
+    ("PTP_LOCK_STATUS", "text", "PTP servo lock status"),
+    ("GPS_PPS_LOCK_STATUS", "text", "GPS PPS lock status"),
+    ("HARDWARE_WATCHDOG_STATUS", "text", "Hardware watchdog event status"),
     ("TIMEZONE_OFFSET_H", "hours", "UTC offset for local time"),
     ("TIMESTAMP_REFERS_TO", "start/end", "Whether timestamp refers to start or end of period"),
 ]
@@ -2944,6 +3046,11 @@ AMERIFLUX_FIELD_MAP = {
     "RUNTIME_SERVICE_STATUS": "RUNTIME_SERVICE_STATUS",
     "RUNTIME_SERVICE_DELIVERY_STATE": "RUNTIME_SERVICE_DELIVERY_STATE",
     "RUNTIME_SERVICE_QUARANTINE_COUNT": "RUNTIME_SERVICE_QUARANTINE_COUNT",
+    "DAEMON_TELEMETRY_STATUS": "DAEMON_TELEMETRY_STATUS",
+    "SUPERVISOR_STATE": "SUPERVISOR_STATE",
+    "PTP_LOCK_STATUS": "PTP_LOCK_STATUS",
+    "GPS_PPS_LOCK_STATUS": "GPS_PPS_LOCK_STATUS",
+    "HARDWARE_WATCHDOG_STATUS": "HARDWARE_WATCHDOG_STATUS",
     "WIND_SPEED": "WS",
     "WIND_DIR": "WD",
 }
@@ -2980,6 +3087,11 @@ ICOS_FIELD_MAP = {
     "RUNTIME_SERVICE_STATUS": "RuntimeServiceStatus",
     "RUNTIME_SERVICE_DELIVERY_STATE": "RuntimeServiceDeliveryState",
     "RUNTIME_SERVICE_QUARANTINE_COUNT": "RuntimeServiceQuarantineCount",
+    "DAEMON_TELEMETRY_STATUS": "DaemonTelemetryStatus",
+    "SUPERVISOR_STATE": "SupervisorState",
+    "PTP_LOCK_STATUS": "PtpLockStatus",
+    "GPS_PPS_LOCK_STATUS": "GpsPpsLockStatus",
+    "HARDWARE_WATCHDOG_STATUS": "HardwareWatchdogStatus",
     "WIND_SPEED": "WindSpeed",
     "WIND_DIR": "WindDir",
 }

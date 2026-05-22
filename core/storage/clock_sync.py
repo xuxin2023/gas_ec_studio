@@ -118,7 +118,7 @@ def apply_clock_sync_to_rows(
         ),
         "limitations": [
             "This aligns recorded timestamps and does not discipline the physical acquisition clock.",
-            "PTP servo logs and GPS PPS hardware traces are not parsed directly yet; provide offset/drift/events from the acquisition controller.",
+            "PTP servo and GPS PPS logs are parsed by daemon_telemetry for health provenance; clock_sync still expects offset/drift/events or controller-supplied corrections for timestamp discipline.",
             "Event offsets are linearly interpolated and clamped outside the event range.",
         ],
     }

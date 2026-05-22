@@ -1984,6 +1984,13 @@ class StudioController(QObject):
             "runtime_service_restart_count": None,
             "runtime_service_provenance": "",
             "runtime_service_summary": {},
+            "daemon_telemetry_status": "not_run",
+            "supervisor_state": "",
+            "ptp_lock_status": "",
+            "gps_pps_lock_status": "",
+            "hardware_watchdog_status": "",
+            "daemon_telemetry_provenance": "",
+            "daemon_telemetry_summary": {},
         }
         if rp_result is None:
             return default
@@ -1998,6 +2005,12 @@ class StudioController(QObject):
         clock_sync_summary = dict(summary.get("clock_sync_summary", {}) or rp_result.artifacts.get("clock_sync", {}) or {})
         runtime_watchdog_summary = dict(summary.get("runtime_watchdog_summary", {}) or rp_result.artifacts.get("runtime_watchdog", {}) or {})
         runtime_service_summary = dict(summary.get("runtime_service_summary", {}) or rp_result.artifacts.get("runtime_service", {}) or {})
+        daemon_telemetry_summary = dict(
+            summary.get("daemon_telemetry_summary", {})
+            or rp_result.artifacts.get("daemon_telemetry", {})
+            or runtime_service_summary.get("daemon_telemetry", {})
+            or {}
+        )
         if not clock_sync_summary and rp_result.windows:
             clock_sync_summary = dict(rp_result.windows[0].diagnostics.get("clock_sync_detail", {}) if rp_result.windows[0].diagnostics else {})
         if (not footprint_summary or not uncertainty_summary or not spectral_summary) and rp_result.windows:
@@ -2116,6 +2129,17 @@ class StudioController(QObject):
             service_provenance = f"{service_provenance}; delivery={service_delivery_state}".strip("; ")
         if runtime_service_summary:
             service_provenance = f"{service_provenance}; quarantine={service_quarantine_count}; restarts={service_restart_count}".strip("; ")
+        daemon_status = str(daemon_telemetry_summary.get("status") or default["daemon_telemetry_status"])
+        supervisor_state = str(dict(daemon_telemetry_summary.get("supervisor", {}) or {}).get("state", ""))
+        ptp_lock_status = str(dict(daemon_telemetry_summary.get("ptp_servo", {}) or {}).get("status", ""))
+        gps_pps_lock_status = str(dict(daemon_telemetry_summary.get("gps_pps", {}) or {}).get("status", ""))
+        hardware_watchdog_status = str(dict(daemon_telemetry_summary.get("hardware_watchdog", {}) or {}).get("status", ""))
+        daemon_provenance = str(daemon_telemetry_summary.get("provenance", ""))
+        if daemon_telemetry_summary:
+            daemon_provenance = (
+                f"{daemon_provenance}; supervisor={supervisor_state or '--'}; "
+                f"ptp={ptp_lock_status or '--'}; gps={gps_pps_lock_status or '--'}; hw_watchdog={hardware_watchdog_status or '--'}"
+            ).strip("; ")
 
         return {
             "footprint_method": str(summary.get("footprint_method") or footprint_summary.get("method") or default["footprint_method"]),
@@ -2160,6 +2184,13 @@ class StudioController(QObject):
             "runtime_service_restart_count": service_restart_count if runtime_service_summary else None,
             "runtime_service_provenance": service_provenance,
             "runtime_service_summary": runtime_service_summary,
+            "daemon_telemetry_status": daemon_status,
+            "supervisor_state": supervisor_state,
+            "ptp_lock_status": ptp_lock_status,
+            "gps_pps_lock_status": gps_pps_lock_status,
+            "hardware_watchdog_status": hardware_watchdog_status,
+            "daemon_telemetry_provenance": daemon_provenance,
+            "daemon_telemetry_summary": daemon_telemetry_summary,
         }
 
     def _empty_report_payloads(self) -> dict:
@@ -2320,6 +2351,7 @@ class StudioController(QObject):
                 ("Clock sync", rp_method_summary["clock_sync_status"], rp_method_summary["clock_sync_provenance"]),
                 ("Runtime watchdog", rp_method_summary["runtime_watchdog_status"], rp_method_summary["runtime_watchdog_provenance"]),
                 ("Runtime service", rp_method_summary["runtime_service_status"], rp_method_summary["runtime_service_provenance"]),
+                ("Daemon telemetry", rp_method_summary["daemon_telemetry_status"], rp_method_summary["daemon_telemetry_provenance"]),
                 ("窗口完整度", f"{(sum(completion_series) / max(1, len(completion_series))):.0%}" if completion_series else "--", "按窗口样本数估算"),
                 ("关注窗口", str(len(anomalous_windows)), "窗口级 QC 结果来自 core 层"),
             ],
@@ -2454,6 +2486,7 @@ class StudioController(QObject):
                 ("Clock sync", rp_method_summary["clock_sync_status"]),
                 ("Runtime", rp_method_summary["runtime_watchdog_status"]),
                 ("Service", rp_method_summary["runtime_service_status"]),
+                ("Daemon", rp_method_summary["daemon_telemetry_status"]),
                 ("窗口数", str(len(rp_result.windows) if rp_result else 0)),
             ],
             "plot_series": [],
@@ -2470,6 +2503,7 @@ class StudioController(QObject):
                 ("Clock sync", rp_method_summary["clock_sync_method"], rp_method_summary["clock_sync_provenance"]),
                 ("Runtime watchdog", rp_method_summary["runtime_watchdog_profile"], rp_method_summary["runtime_watchdog_provenance"]),
                 ("Runtime service", rp_method_summary["runtime_service_id"], rp_method_summary["runtime_service_provenance"]),
+                ("Daemon telemetry", rp_method_summary["daemon_telemetry_status"], rp_method_summary["daemon_telemetry_provenance"]),
             ],
             "conclusions": [
                 "方法溯源页集中展示当前批次使用的 Footprint、不确定度、谱修正方法来源和局限性。",
@@ -2483,6 +2517,7 @@ class StudioController(QObject):
                 **({"Method Compare Artifact": str(result_export_files.get("method_compare_artifact"))} if result_export_files.get("method_compare_artifact") else {}),
                 **({"Runtime Watchdog Artifact": str(result_export_files.get("runtime_watchdog_artifact"))} if result_export_files.get("runtime_watchdog_artifact") else {}),
                 **({"Runtime Service Artifact": str(result_export_files.get("runtime_service_artifact"))} if result_export_files.get("runtime_service_artifact") else {}),
+                **({"Daemon Telemetry Artifact": str(result_export_files.get("daemon_telemetry_artifact"))} if result_export_files.get("daemon_telemetry_artifact") else {}),
                 **({"Clock Sync Artifact": str(result_export_files.get("clock_sync_artifact"))} if result_export_files.get("clock_sync_artifact") else {}),
             },
             "versions": [
@@ -2523,6 +2558,8 @@ class StudioController(QObject):
         runtime_checks = list(runtime_watchdog_summary.get("checks", []) or [])
         runtime_service_summary = dict(rp_method_summary.get("runtime_service_summary", {}) or {})
         runtime_service_checks = list(runtime_service_summary.get("checks", []) or [])
+        daemon_telemetry_summary = dict(rp_method_summary.get("daemon_telemetry_summary", {}) or {})
+        daemon_telemetry_checks = list(daemon_telemetry_summary.get("checks", []) or [])
         for section_name, section_summary in sorted(performance_sections.items()):
             payload = dict(section_summary or {})
             method_compare_rows.append(
@@ -2546,6 +2583,15 @@ class StudioController(QObject):
             method_compare_rows.append(
                 (
                     f"service:{payload.get('check_id', '')}",
+                    str(payload.get("status", "")),
+                    f"measured={payload.get('measured', '--')}; threshold={payload.get('threshold', '--')}",
+                )
+            )
+        for check in daemon_telemetry_checks[:8]:
+            payload = dict(check or {})
+            method_compare_rows.append(
+                (
+                    f"daemon:{payload.get('check_id', '')}",
                     str(payload.get("status", "")),
                     f"measured={payload.get('measured', '--')}; threshold={payload.get('threshold', '--')}",
                 )
@@ -2581,6 +2627,7 @@ class StudioController(QObject):
             **({"Performance Profile": str(result_export_files.get("performance_profile_artifact"))} if result_export_files.get("performance_profile_artifact") else {}),
             **({"Runtime Watchdog": str(result_export_files.get("runtime_watchdog_artifact"))} if result_export_files.get("runtime_watchdog_artifact") else {}),
             **({"Runtime Service": str(result_export_files.get("runtime_service_artifact"))} if result_export_files.get("runtime_service_artifact") else {}),
+            **({"Daemon Telemetry": str(result_export_files.get("daemon_telemetry_artifact"))} if result_export_files.get("daemon_telemetry_artifact") else {}),
         }
         reports["method_compare"] = {
             "title": "Method Compare",
@@ -2593,6 +2640,7 @@ class StudioController(QObject):
                 ("profiled_windows", str(performance_profile.get("profiled_window_count", 0))),
                 ("runtime_watchdog", str(runtime_watchdog_summary.get("status", "not_run"))),
                 ("runtime_service", str(runtime_service_summary.get("status", "not_run"))),
+                ("daemon_telemetry", str(daemon_telemetry_summary.get("status", "not_run"))),
                 ("runtime_ms", str(performance_profile.get("run_elapsed_ms", "--"))),
             ],
             "plot_series": [
@@ -2610,7 +2658,7 @@ class StudioController(QObject):
             "file_info": method_compare_files,
             "versions": [
                 f"运行 ID：{run_result.run_id}",
-                "Artifacts: method_compare_artifact.json, method_parity_matrix.json, footprint_2d_contour.svg, performance_profile.json, runtime_watchdog_artifact.json, runtime_service_artifact.json",
+                "Artifacts: method_compare_artifact.json, method_parity_matrix.json, footprint_2d_contour.svg, performance_profile.json, runtime_watchdog_artifact.json, runtime_service_artifact.json, daemon_telemetry_artifact.json",
             ],
             "usage": [
                 "工程师用此页快速检查三族方法对比、EddyPro 方法元数据覆盖情况和长窗口耗时。",
@@ -4113,6 +4161,13 @@ class StudioController(QObject):
             or rp_result.artifacts.get("runtime_service", {})
             or {}
         )
+        daemon_summary = dict(
+            manifest_payload.get("daemon_telemetry_summary", {})
+            or summary.get("daemon_telemetry_summary", {})
+            or rp_result.artifacts.get("daemon_telemetry", {})
+            or service_summary.get("daemon_telemetry", {})
+            or {}
+        )
 
         table_rows = [
             ("reference_id", bm_ref_id or "--", "参考数据集 ID"),
@@ -4155,6 +4210,12 @@ class StudioController(QObject):
             table_rows.append(("runtime_service.delivery_state", service_summary.get("delivery_state", "--"), "交付就绪状态"))
             table_rows.append(("runtime_service.quarantine_count", str(len(service_summary.get("quarantine_records", []) or [])), "隔离批次数"))
             table_rows.append(("runtime_service.restart_count", str(len(service_summary.get("restart_records", []) or [])), "重试/重启记录数"))
+        if daemon_summary:
+            table_rows.append(("daemon_telemetry.status", daemon_summary.get("status", "--"), "守护遥测状态"))
+            table_rows.append(("daemon_telemetry.supervisor", dict(daemon_summary.get("supervisor", {}) or {}).get("state", "--"), "supervisor 状态"))
+            table_rows.append(("daemon_telemetry.ptp", dict(daemon_summary.get("ptp_servo", {}) or {}).get("status", "--"), "PTP servo 状态"))
+            table_rows.append(("daemon_telemetry.gps_pps", dict(daemon_summary.get("gps_pps", {}) or {}).get("status", "--"), "GPS PPS 状态"))
+            table_rows.append(("daemon_telemetry.hw_watchdog", dict(daemon_summary.get("hardware_watchdog", {}) or {}).get("status", "--"), "硬件 watchdog 状态"))
         for detail in per_window_detail:
             match_strategy = detail.get("match_strategy", "")
             table_rows.append(
@@ -4176,6 +4237,7 @@ class StudioController(QObject):
             "Clock sync": clock_summary.get("status", "--") if clock_summary else "--",
             "Runtime watchdog": runtime_summary.get("status", "--") if runtime_summary else "--",
             "Runtime service": service_summary.get("status", "--") if service_summary else "--",
+            "Daemon telemetry": daemon_summary.get("status", "--") if daemon_summary else "--",
         }
         for key, label in (
             ("benchmark_summary_artifact", "Benchmark Summary"),
@@ -4185,6 +4247,7 @@ class StudioController(QObject):
             ("network_validation_summary", "Network Validation"),
             ("runtime_watchdog_artifact", "Runtime Watchdog"),
             ("runtime_service_artifact", "Runtime Service"),
+            ("daemon_telemetry_artifact", "Daemon Telemetry"),
             ("clock_sync_artifact", "Clock Sync Artifact"),
         ):
             if export_files.get(key):

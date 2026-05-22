@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 from typing import Any
 
+from core.acquisition.daemon_telemetry import build_daemon_telemetry_artifact, has_daemon_telemetry_config
 from models.hf_models import NormalizedHFFrame
 
 
@@ -59,7 +60,7 @@ def build_host_telemetry(
         "queue_status": queue_status,
         "provenance": "Host telemetry collected with Python standard-library disk usage and service queue counters.",
         "limitations": [
-            "Process memory, CPU load, and hardware watchdog state are not sampled without an OS service supervisor.",
+            "Detailed CPU load, hardware watchdog control, and OS supervisor state require daemon_telemetry or platform-specific integration.",
         ],
     }
 
@@ -222,12 +223,18 @@ def run_runtime_service_batches(
     failure_count = sum(1 for item in batch_records if item["status"] == "failed")
     watchdog_failure_count = sum(1 for item in batch_records if item["status"] == "watchdog_fail")
     warning_count = sum(1 for item in batch_records if item["status"] == "warning")
+    daemon_telemetry = (
+        build_daemon_telemetry_artifact(config=config, runtime_root=runtime_root, service_config=service_config)
+        if has_daemon_telemetry_config(config)
+        else {}
+    )
     status = _service_status(
         failure_count=failure_count,
         watchdog_failure_count=watchdog_failure_count,
         warning_count=warning_count,
         max_observed_consecutive_failures=max_observed_consecutive_failures,
         max_consecutive_failures=max_consecutive_failures,
+        daemon_telemetry_status=str(daemon_telemetry.get("status", "")),
     )
     manifest = {
         "artifact_type": "runtime_service",
@@ -254,20 +261,23 @@ def run_runtime_service_batches(
         "restart_records": restart_records,
         "quarantine_records": quarantine_records,
         "host_telemetry": heartbeats[-1]["telemetry"] if heartbeats else build_host_telemetry(runtime_root=runtime_root, queue_depth=0, service_config=service_config),
+        "daemon_telemetry": daemon_telemetry,
+        "daemon_telemetry_status": daemon_telemetry.get("status", ""),
         "checks": _service_checks(
             status=status,
             batch_records=batch_records,
             host_telemetry=heartbeats[-1]["telemetry"] if heartbeats else {},
             service_config=service_config,
             max_observed_consecutive_failures=max_observed_consecutive_failures,
+            daemon_telemetry=daemon_telemetry,
         ),
         "provenance": (
-            "Runtime service v1 executes queued headless batches, records heartbeats, isolates failed inputs, "
-            "and attaches service-level health provenance to successful RP/FCC results."
+        "Runtime service v1 executes queued headless batches, records heartbeats, isolates failed inputs, "
+            "and attaches service-level health and daemon telemetry provenance to successful RP/FCC results."
         ),
         "limitations": [
             "This service wrapper is process-level Python orchestration, not an installed OS daemon.",
-            "Hardware watchdog kicks, automatic system reboot, CPU telemetry, and PTP servo-log ingestion remain future work.",
+            "Hardware watchdog control and automatic system reboot still require platform-specific supervisor integration.",
         ],
     }
     for result in successful_results:
@@ -291,6 +301,8 @@ def attach_runtime_service_manifest(run_result: Any, service_manifest: dict[str,
     artifacts = getattr(run_result, "artifacts", None)
     if isinstance(artifacts, dict):
         artifacts["runtime_service"] = dict(service_manifest)
+        if isinstance(service_manifest.get("daemon_telemetry"), dict) and service_manifest["daemon_telemetry"]:
+            artifacts["daemon_telemetry"] = dict(service_manifest["daemon_telemetry"])
     for window in list(getattr(run_result, "windows", []) or []):
         diagnostics = getattr(window, "diagnostics", None)
         if not isinstance(diagnostics, dict):
@@ -302,6 +314,13 @@ def attach_runtime_service_manifest(run_result: Any, service_manifest: dict[str,
         diagnostics["runtime_service_quarantine_count"] = compact["quarantine_count"]
         diagnostics["runtime_service_restart_count"] = compact["restart_count"]
         diagnostics["runtime_service_detail"] = dict(compact)
+        daemon = dict(service_manifest.get("daemon_telemetry", {}) or {})
+        diagnostics["daemon_telemetry_status"] = daemon.get("status", "")
+        diagnostics["supervisor_state"] = dict(daemon.get("supervisor", {}) or {}).get("state", "")
+        diagnostics["ptp_lock_status"] = dict(daemon.get("ptp_servo", {}) or {}).get("status", "")
+        diagnostics["gps_pps_lock_status"] = dict(daemon.get("gps_pps", {}) or {}).get("status", "")
+        diagnostics["hardware_watchdog_status"] = dict(daemon.get("hardware_watchdog", {}) or {}).get("status", "")
+        diagnostics["daemon_telemetry_detail"] = _compact_daemon_telemetry(daemon)
 
 
 def _compact_service_manifest(service_manifest: dict[str, Any]) -> dict[str, Any]:
@@ -321,8 +340,26 @@ def _compact_service_manifest(service_manifest: dict[str, Any]) -> dict[str, Any
         "restart_count": len(service_manifest.get("restart_records", []) or []),
         "latest_batch_id": service_manifest.get("latest_batch_id", ""),
         "host_telemetry": dict(service_manifest.get("host_telemetry", {}) or {}),
+        "daemon_telemetry_status": dict(service_manifest.get("daemon_telemetry", {}) or {}).get("status", ""),
         "provenance": service_manifest.get("provenance", ""),
         "limitations": list(service_manifest.get("limitations", []) or []),
+    }
+
+
+def _compact_daemon_telemetry(daemon_telemetry: dict[str, Any]) -> dict[str, Any]:
+    if not daemon_telemetry:
+        return {}
+    return {
+        "artifact_type": "daemon_telemetry",
+        "status": daemon_telemetry.get("status", ""),
+        "profile_id": daemon_telemetry.get("profile_id", ""),
+        "supervisor": dict(daemon_telemetry.get("supervisor", {}) or {}),
+        "ptp_servo": dict(daemon_telemetry.get("ptp_servo", {}) or {}),
+        "gps_pps": dict(daemon_telemetry.get("gps_pps", {}) or {}),
+        "hardware_watchdog": dict(daemon_telemetry.get("hardware_watchdog", {}) or {}),
+        "fail_count": daemon_telemetry.get("fail_count", 0),
+        "warn_count": daemon_telemetry.get("warn_count", 0),
+        "recommended_actions": list(daemon_telemetry.get("recommended_actions", []) or []),
     }
 
 
@@ -333,6 +370,7 @@ def _service_checks(
     host_telemetry: dict[str, Any],
     service_config: dict[str, Any],
     max_observed_consecutive_failures: int,
+    daemon_telemetry: dict[str, Any],
 ) -> list[dict[str, Any]]:
     max_consecutive = int(_float_first(service_config.get("max_consecutive_failures"), default=3.0))
     return [
@@ -376,6 +414,14 @@ def _service_checks(
             severity="warn",
             failure_message="Runtime input queue depth is above warning threshold.",
         ),
+        _check(
+            "daemon_telemetry",
+            str(daemon_telemetry.get("status", "not_configured")) not in {"fail"},
+            measured=daemon_telemetry.get("status", "not_configured"),
+            threshold="not fail",
+            severity="fail",
+            failure_message="Daemon telemetry reports a blocking supervisor/clock/watchdog fault.",
+        ),
     ]
 
 
@@ -405,12 +451,13 @@ def _service_status(
     warning_count: int,
     max_observed_consecutive_failures: int,
     max_consecutive_failures: int,
+    daemon_telemetry_status: str = "",
 ) -> str:
-    if max_observed_consecutive_failures >= max_consecutive_failures:
+    if daemon_telemetry_status == "fail" or max_observed_consecutive_failures >= max_consecutive_failures:
         return "fail"
     if failure_count or watchdog_failure_count:
         return "degraded"
-    if warning_count:
+    if daemon_telemetry_status == "warning" or warning_count:
         return "warning"
     return "pass"
 

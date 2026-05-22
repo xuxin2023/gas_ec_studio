@@ -143,18 +143,18 @@
       "family": "acquisition",
       "eddypro_requirement": "Synchronize high-speed and low-speed data by GPS/PTP in SmartFlux deployments.",
       "gas_ec_status": "partial",
-      "evidence": ["core/storage/clock_sync.py", "core/headless_batch_runner.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_clock_sync_pipeline.py"],
-      "gap": "GPS/PTP-style offset, drift, and event interpolation corrections now run before RP/FCC windowing with diagnostics/export/manifest provenance; direct PTP servo-log and GPS PPS hardware trace parsing remain incomplete.",
-      "next_action": "Add SmartFlux/PTP daemon log parser and hardware clock-health diagnostics."
+      "evidence": ["core/storage/clock_sync.py", "core/acquisition/daemon_telemetry.py", "core/headless_batch_runner.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_clock_sync_pipeline.py", "tests/test_daemon_telemetry_runtime.py"],
+      "gap": "GPS/PTP-style offset, drift, and event interpolation corrections now run before RP/FCC windowing, and daemon_telemetry v1 parses configured PTP servo/GPS PPS logs for lock, offset, and jitter provenance; direct hardware clock discipline control and vendor-specific daemon log dialect coverage remain incomplete.",
+      "next_action": "Add vendor-specific PTP/GPS daemon dialect fixtures and optional hardware clock discipline health ingestion."
     },
     {
       "id": "smartflux_realtime_site_processing",
       "family": "acquisition",
       "eddypro_requirement": "Produce fully processed real-time site fluxes on embedded/on-site hardware.",
       "gas_ec_status": "partial",
-      "evidence": ["app/studio.py", "core/acquisition/runtime_watchdog.py", "core/acquisition/runtime_service.py", "core/headless_batch_runner.py", "core/exports/result_exporter.py", "tests/test_runtime_watchdog_headless.py", "tests/test_runtime_service_headless.py"],
-      "gap": "Headless batches now emit a SmartFlux-style runtime profile/watchdog manifest, and runtime_service v1 can execute queued headless batches with heartbeats, disk/queue telemetry, retry records, quarantined failures, delivery state, and export/report/delivery provenance; a true installed embedded daemon with hardware reboot, hardware watchdog kicks, CPU/process telemetry, and PTP servo-log ingestion is still incomplete.",
-      "next_action": "Add OS service wrapper, hardware watchdog supervisor integration, process telemetry, and PTP/GPS daemon log ingestion."
+      "evidence": ["app/studio.py", "core/acquisition/runtime_watchdog.py", "core/acquisition/runtime_service.py", "core/acquisition/daemon_telemetry.py", "core/headless_batch_runner.py", "core/exports/result_exporter.py", "tests/test_runtime_watchdog_headless.py", "tests/test_runtime_service_headless.py", "tests/test_daemon_telemetry_runtime.py"],
+      "gap": "Headless batches now emit a SmartFlux-style runtime profile/watchdog manifest, runtime_service v1 executes queued batches with heartbeats/retries/quarantine/delivery state, and daemon_telemetry v1 captures process telemetry, supervisor status, PTP/GPS logs, and hardware watchdog event logs across export/report/delivery; a true installed embedded daemon with hardware watchdog kicking and automatic system reboot is still incomplete.",
+      "next_action": "Add OS service wrapper, hardware watchdog kick/reboot integration, and broader supervisor/PTP/GPS fixture dialects."
     },
     {
       "id": "despiking_screening",

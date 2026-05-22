@@ -245,7 +245,7 @@ def build_runtime_watchdog_manifest(
         ),
         "limitations": [
             "This is a software watchdog manifest, not an embedded process supervisor.",
-            "Hardware reboot, disk-pressure telemetry, and PTP servo-log ingestion remain future SmartFlux-hardening work.",
+            "Hardware reboot and watchdog kick control remain future SmartFlux-hardening work; daemon_telemetry supplies optional PTP/GPS/watchdog log provenance.",
         ],
     }
 
