@@ -15,6 +15,7 @@ from core.ec_rp.analysis import (
     apply_lag,
     apply_planar_fit_no_velocity_bias,
     apply_planar_fit_rotation,
+    apply_sonic_corrections,
     build_window_series,
     build_uncertainty_band,
     compute_ch4_flux_metrics,
@@ -111,6 +112,7 @@ class ECRPPipeline:
         uncertainty_method_config = _extract_uncertainty_method_config(config)
         spectral_correction_config = _extract_spectral_correction_config(config)
         trace_gas_config = _extract_trace_gas_config(config)
+        sonic_correction_config = _extract_sonic_correction_config(config)
         method_compare_config = _extract_method_compare_config(config)
         biomet_context = _build_biomet_context(config)
         benchmark_summary = _default_benchmark_summary(benchmark_config=benchmark_config, window_count=0)
@@ -188,6 +190,7 @@ class ECRPPipeline:
                             uncertainty_method_config=uncertainty_method_config,
                             spectral_correction_config=spectral_correction_config,
                             trace_gas_config=trace_gas_config,
+                            sonic_correction_config=sonic_correction_config,
                             method_compare_config=method_compare_config,
                             biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                         )
@@ -199,7 +202,11 @@ class ECRPPipeline:
                 v_list = [np.array(w.diagnostics.get("rotation_v", [])) for w in first_pass_windows if w.diagnostics.get("rotation_v") is not None]
                 w_list = [np.array(w.diagnostics.get("rotation_w", [])) for w in first_pass_windows if w.diagnostics.get("rotation_w") is not None]
                 if not u_list:
-                    prepared_list = [build_window_series(sorted_rows[s:e], sample_rate_hz) for s, e in slices if s < len(sorted_rows)]
+                    prepared_list = [
+                        _prepare_window_series(sorted_rows[s:e], sample_rate_hz, sonic_correction_config)[0]
+                        for s, e in slices
+                        if s < len(sorted_rows)
+                    ]
                     u_list = [p.u for p in prepared_list]
                     v_list = [p.v for p in prepared_list]
                     w_list = [p.w for p in prepared_list]
@@ -229,6 +236,7 @@ class ECRPPipeline:
                         uncertainty_method_config=uncertainty_method_config,
                         spectral_correction_config=spectral_correction_config,
                         trace_gas_config=trace_gas_config,
+                        sonic_correction_config=sonic_correction_config,
                         method_compare_config=method_compare_config,
                         biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                     )
@@ -316,12 +324,13 @@ class ECRPPipeline:
         uncertainty_method_config: dict[str, Any] | None = None,
         spectral_correction_config: dict[str, Any] | None = None,
         trace_gas_config: dict[str, Any] | None = None,
+        sonic_correction_config: dict[str, Any] | None = None,
         method_compare_config: dict[str, Any] | None = None,
         biomet_override: dict[str, Any] | None = None,
     ) -> WindowRPResult:
         window_timer_start = time.perf_counter()
         performance_sections: dict[str, float] = {}
-        prepared = build_window_series(rows, sample_rate_hz)
+        prepared, sonic_correction_detail = _prepare_window_series(rows, sample_rate_hz, sonic_correction_config)
         if biomet_override:
             _apply_biomet_override(prepared, biomet_override)
         if rotation_mode in ("sector_wise_planar_fit", "sector_wise_planar_fit_no_velocity_bias") and planar_fit_coefficients:
@@ -452,6 +461,13 @@ class ECRPPipeline:
             "advanced_test_weights": {k: 1.0 for k in advanced_tests},
             "advanced_test_thresholds": advanced_test_config or {},
             "wpl_benchmark_status": _wpl_benchmark_status(flux_metrics),
+            "sonic_correction_status": sonic_correction_detail.get("status", ""),
+            "sonic_correction_method": sonic_correction_detail.get("method", ""),
+            "sonic_correction_detail": sonic_correction_detail,
+            "sonic_correction_steps": sonic_correction_detail.get("steps", []),
+            "sonic_correction_provenance": sonic_correction_detail.get("provenance", ""),
+            "sonic_correction_limitations": sonic_correction_detail.get("limitations", []),
+            "sonic_correction_source_reference": sonic_correction_detail.get("source_reference", {}),
             "trace_gas_family": {
                 "ch4": {
                     "status": ch4_metrics.get("status", "not_available"),
@@ -934,6 +950,23 @@ def _config_value(config: dict[str, Any], *paths: str, default: Any) -> Any:
         if found and current not in (None, ""):
             return current
     return default
+
+
+def _prepare_window_series(
+    rows: list[NormalizedHFFrame],
+    sample_rate_hz: float,
+    sonic_correction_config: dict[str, Any] | None,
+) -> tuple[Any, dict[str, Any]]:
+    prepared = build_window_series(rows, sample_rate_hz)
+    sonic_result = apply_sonic_corrections(prepared.u, prepared.v, prepared.w, sonic_correction_config)
+    if sonic_result.detail.get("applied"):
+        prepared.u = sonic_result.u
+        prepared.v = sonic_result.v
+        prepared.w = sonic_result.w
+    prepared.diagnostics["sonic_correction_status"] = sonic_result.detail.get("status", "")
+    prepared.diagnostics["sonic_correction_method"] = sonic_result.detail.get("method", "")
+    prepared.diagnostics["sonic_correction_detail"] = sonic_result.detail
+    return prepared, sonic_result.detail
 
 
 def _density_correction_factor(*, raw_flux: float, density_corrected_flux: float) -> float:
@@ -1433,6 +1466,44 @@ def _extract_spectral_correction_config(config: dict[str, Any]) -> dict[str, Any
     )
     sc["fcc_measured_cospectra"] = list(measured) if isinstance(measured, list) else []
     return sc
+
+
+def _extract_sonic_correction_config(config: dict[str, Any]) -> dict[str, Any]:
+    steps = config.get("steps", {}) if isinstance(config.get("steps"), dict) else {}
+    sonic = dict(steps.get("sonic_correction", {}) or {}) if isinstance(steps.get("sonic_correction", {}), dict) else {}
+    root = config.get("sonic_correction", {})
+    if isinstance(root, dict):
+        sonic = {**sonic, **root}
+    metadata = config.get("metadata_bundle", {})
+    instruments = metadata.get("instruments", {}) if isinstance(metadata, dict) else {}
+    extra = instruments.get("extra", {}) if isinstance(instruments, dict) else {}
+    if isinstance(instruments, dict):
+        sonic.setdefault("sonic_model", instruments.get("sonic_model", ""))
+        sonic.setdefault("sonic_firmware", instruments.get("sonic_firmware", ""))
+        sonic.setdefault("sonic_manufacturer", instruments.get("sonic_manufacturer", ""))
+    if isinstance(extra, dict):
+        for source_key, target_key in [
+            ("sonic_wind_format", "wind_format"),
+            ("sonic_wind_reference", "wind_reference"),
+            ("sonic_north_offset_deg", "north_offset_deg"),
+            ("sonic_u_offset_ms", "u_offset_ms"),
+            ("sonic_v_offset_ms", "v_offset_ms"),
+            ("sonic_w_offset_ms", "w_offset_ms"),
+            ("gill_wm_w_boost", "gill_wm_w_boost"),
+        ]:
+            if source_key in extra and target_key not in sonic:
+                sonic[target_key] = extra[source_key]
+    sonic.setdefault("enabled", False)
+    sonic.setdefault("method", "eddypro_sonic_coordinate_v1")
+    sonic.setdefault("wind_format", "cartesian")
+    sonic.setdefault("wind_reference", "")
+    sonic.setdefault("apply_model_orientation", True)
+    sonic.setdefault("north_offset_deg", 0.0)
+    sonic.setdefault("u_offset_ms", 0.0)
+    sonic.setdefault("v_offset_ms", 0.0)
+    sonic.setdefault("w_offset_ms", 0.0)
+    sonic.setdefault("gill_wm_w_boost", "auto")
+    return sonic
 
 
 def _extract_trace_gas_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -2580,6 +2651,12 @@ def _build_method_deviation_notes_from_window(window: WindowRPResult) -> list[st
             f"spectral_correction: {spectral_method}{factor_text}{source_text}"
             + (f" [{spectral_provenance}]" if spectral_provenance else "")
         )
+    sonic_method = diagnostics.get("sonic_correction_method", "")
+    sonic_status = diagnostics.get("sonic_correction_status", "")
+    if sonic_method and sonic_status not in {"", "disabled"}:
+        steps = diagnostics.get("sonic_correction_steps", [])
+        step_count = len(steps) if isinstance(steps, list) else 0
+        notes.append(f"sonic_correction: {sonic_method}; status={sonic_status}; steps={step_count}")
     ch4_method = diagnostics.get("ch4_method", "")
     if ch4_method:
         ch4_flux = diagnostics.get("ch4_flux_nmol_m2_s")
@@ -2606,6 +2683,9 @@ def _attach_method_context_to_benchmark(window: WindowRPResult, benchmark_payloa
     benchmark_payload["footprint_2d_peak_crosswind_m"] = diagnostics.get("footprint_2d_peak_crosswind_m")
     benchmark_payload["uncertainty_method"] = diagnostics.get("uncertainty_method", "")
     benchmark_payload["spectral_correction_method"] = diagnostics.get("spectral_correction_method", "")
+    benchmark_payload["sonic_correction_method"] = diagnostics.get("sonic_correction_method", "")
+    benchmark_payload["sonic_correction_status"] = diagnostics.get("sonic_correction_status", "")
+    benchmark_payload["sonic_correction_steps"] = diagnostics.get("sonic_correction_steps", [])
     benchmark_payload["ch4_method"] = diagnostics.get("ch4_method", "")
     benchmark_payload["ch4_correction_sequence"] = diagnostics.get("ch4_correction_sequence", {})
     benchmark_payload["ch4_flux_nmol_m2_s"] = diagnostics.get("ch4_flux_nmol_m2_s")

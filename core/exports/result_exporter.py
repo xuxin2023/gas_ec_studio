@@ -55,6 +55,11 @@ FULL_OUTPUT_SCHEMA = [
     ("density_correction_reason", "flux", "real"),
     ("primary_flux", "flux", "real"),
     ("primary_flux_source", "flux", "real"),
+    ("sonic_correction_status", "preprocessing", "real"),
+    ("sonic_correction_method", "preprocessing", "real"),
+    ("sonic_correction_steps", "preprocessing", "real"),
+    ("sonic_correction_provenance", "preprocessing", "real"),
+    ("sonic_correction_detail", "preprocessing", "real"),
     ("ch4_status", "trace_gas", "real"),
     ("ch4_flux_nmol_m2_s", "trace_gas", "real"),
     ("ch4_flux_level0_nmol_m2_s", "trace_gas", "real"),
@@ -392,6 +397,9 @@ class ResultExporter:
                 "lag_fallback_reason",
                 "density_correction_mode",
                 "density_correction_reason",
+                "sonic_correction_method",
+                "sonic_correction_status",
+                "sonic_correction_provenance",
                 "screening_config",
                 "screening_summary",
                 "footprint_method",
@@ -511,6 +519,10 @@ class ResultExporter:
             "primary_flux": window.primary_flux,
             "primary_flux_source": window.primary_flux_source,
             "water_vapor_flux": window.water_vapor_flux,
+            "sonic_correction_status": diagnostics.get("sonic_correction_status", ""),
+            "sonic_correction_method": diagnostics.get("sonic_correction_method", ""),
+            "sonic_correction_steps": json.dumps(diagnostics.get("sonic_correction_steps", []), ensure_ascii=False) if diagnostics.get("sonic_correction_steps") else "",
+            "sonic_correction_provenance": diagnostics.get("sonic_correction_provenance", ""),
             "ch4_status": diagnostics.get("ch4_status", ""),
             "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", ""),
             "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", ""),
@@ -615,6 +627,11 @@ class ResultExporter:
                 "density_correction_reason": diagnostics.get("density_correction_reason", "") if diagnostics else "",
                 "primary_flux": rp_window.primary_flux if rp_window else "",
                 "primary_flux_source": rp_window.primary_flux_source if rp_window else "",
+                "sonic_correction_status": diagnostics.get("sonic_correction_status", "") if diagnostics else "",
+                "sonic_correction_method": diagnostics.get("sonic_correction_method", "") if diagnostics else "",
+                "sonic_correction_steps": json.dumps(diagnostics.get("sonic_correction_steps", []), ensure_ascii=False) if diagnostics and diagnostics.get("sonic_correction_steps") else "",
+                "sonic_correction_provenance": diagnostics.get("sonic_correction_provenance", "") if diagnostics else "",
+                "sonic_correction_detail": json.dumps(diagnostics.get("sonic_correction_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("sonic_correction_detail") else "",
                 "ch4_status": diagnostics.get("ch4_status", "") if diagnostics else "",
                 "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s", "") if diagnostics else "",
                 "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s", "") if diagnostics else "",
@@ -1700,6 +1717,10 @@ class ResultExporter:
                     "primary_flux": "",
                     "primary_flux_source": "",
                     "water_vapor_flux": "",
+                    "sonic_correction_status": "",
+                    "sonic_correction_method": "",
+                    "sonic_correction_steps": "",
+                    "sonic_correction_provenance": "",
                     "ch4_status": "",
                     "ch4_flux_nmol_m2_s": "",
                     "ch4_flux_level0_nmol_m2_s": "",
@@ -1864,6 +1885,9 @@ class ResultExporter:
             entry["uncertainty_method"] = br.get("uncertainty_method", diagnostics.get("uncertainty_method", ""))
             entry["spectral_correction_method"] = br.get("spectral_correction_method", diagnostics.get("spectral_correction_method", ""))
             entry["spectral_correction_cospectrum_match"] = br.get("spectral_correction_cospectrum_match", diagnostics.get("spectral_correction_cospectrum_match", {}))
+            entry["sonic_correction_method"] = br.get("sonic_correction_method", diagnostics.get("sonic_correction_method", ""))
+            entry["sonic_correction_status"] = br.get("sonic_correction_status", diagnostics.get("sonic_correction_status", ""))
+            entry["sonic_correction_steps"] = br.get("sonic_correction_steps", diagnostics.get("sonic_correction_steps", []))
             entry["ch4_method"] = br.get("ch4_method", diagnostics.get("ch4_method", ""))
             entry["ch4_flux_nmol_m2_s"] = br.get("ch4_flux_nmol_m2_s", diagnostics.get("ch4_flux_nmol_m2_s"))
             entry["ch4_flux_level0_nmol_m2_s"] = br.get("ch4_flux_level0_nmol_m2_s", diagnostics.get("ch4_flux_level0_nmol_m2_s"))
@@ -2352,6 +2376,9 @@ class ResultExporter:
                 "uncertainty_method": diag.get("uncertainty_method", ""),
                 "spectral_correction_method": diag.get("spectral_correction_method", ""),
                 "spectral_correction_cospectrum_match": diag.get("spectral_correction_cospectrum_match", {}),
+                "sonic_correction_method": diag.get("sonic_correction_method", ""),
+                "sonic_correction_status": diag.get("sonic_correction_status", ""),
+                "sonic_correction_steps": diag.get("sonic_correction_steps", []),
                 "ch4_method": diag.get("ch4_method", ""),
                 "ch4_flux_nmol_m2_s": diag.get("ch4_flux_nmol_m2_s"),
                 "ch4_flux_level0_nmol_m2_s": diag.get("ch4_flux_level0_nmol_m2_s"),
@@ -2400,6 +2427,9 @@ class ResultExporter:
                 "uncertainty_method": diag.get("uncertainty_method", ""),
                 "spectral_correction_method": diag.get("spectral_correction_method", ""),
                 "spectral_correction_cospectrum_match": diag.get("spectral_correction_cospectrum_match", {}),
+                "sonic_correction_method": diag.get("sonic_correction_method", ""),
+                "sonic_correction_status": diag.get("sonic_correction_status", ""),
+                "sonic_correction_steps": diag.get("sonic_correction_steps", []),
                 "ch4_method": diag.get("ch4_method", ""),
                 "ch4_flux_nmol_m2_s": diag.get("ch4_flux_nmol_m2_s"),
                 "ch4_flux_level0_nmol_m2_s": diag.get("ch4_flux_level0_nmol_m2_s"),
@@ -2463,6 +2493,12 @@ def _build_method_deviation_notes(diag: dict[str, Any], bm_dev: dict[str, Any]) 
             f"spectral_correction: {sc_method} (factor={sc_factor}){source_text}"
             + (f" [{sc_prov}]" if sc_prov else "")
         )
+    sonic_method = diag.get("sonic_correction_method", "")
+    sonic_status = diag.get("sonic_correction_status", "")
+    if sonic_method and sonic_status not in {"", "disabled"}:
+        steps = diag.get("sonic_correction_steps", [])
+        step_count = len(steps) if isinstance(steps, list) else 0
+        notes.append(f"sonic_correction: {sonic_method}; status={sonic_status}; steps={step_count}")
     ch4_method = diag.get("ch4_method", "")
     if ch4_method:
         ch4_flux = diag.get("ch4_flux_nmol_m2_s")

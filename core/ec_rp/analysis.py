@@ -66,6 +66,14 @@ class RotationResult:
 
 
 @dataclass(slots=True)
+class SonicCorrectionResult:
+    u: np.ndarray
+    v: np.ndarray
+    w: np.ndarray
+    detail: dict[str, Any]
+
+
+@dataclass(slots=True)
 class StationarityMetrics:
     score: float | None
     detail: dict[str, Any]
@@ -412,6 +420,264 @@ def _compute_continuity(timestamps: list[float], sample_rate_hz: float) -> tuple
     good = np.sum(deltas <= expected * 1.5)
     ratio = float(good / max(1, deltas.size))
     return ratio, max_gap_seconds
+
+
+# ---------------------------------------------------------------------------
+# Sonic coordinate and head/flow-angle correction
+# ---------------------------------------------------------------------------
+
+def apply_sonic_corrections(
+    u: np.ndarray,
+    v: np.ndarray,
+    w: np.ndarray,
+    config: dict[str, Any] | None = None,
+) -> SonicCorrectionResult:
+    cfg = dict(config or {})
+    enabled = bool(cfg.get("enabled", False))
+    method = str(cfg.get("method", "eddypro_sonic_coordinate_v1") or "eddypro_sonic_coordinate_v1")
+    if not enabled:
+        return SonicCorrectionResult(
+            u=u,
+            v=v,
+            w=w,
+            detail={
+                "status": "disabled",
+                "applied": False,
+                "method": method,
+                "provenance": "Sonic correction disabled by configuration.",
+                "steps": [],
+                "limitations": [],
+            },
+        )
+
+    u_corr = np.array(u, dtype=float, copy=True)
+    v_corr = np.array(v, dtype=float, copy=True)
+    w_corr = np.array(w, dtype=float, copy=True)
+    steps: list[dict[str, Any]] = []
+    limitations = [
+        "Nakai angle-of-attack lookup tables are not reproduced; calibrated angle gain is applied only when explicit coefficients are configured.",
+        "Model orientation rules cover common EddyPro sonic coordinate cases and should be validated against site metadata.",
+    ]
+
+    wind_format = _normalize_sonic_text(cfg.get("wind_format", cfg.get("wformat", "cartesian")))
+    if wind_format in {"polar_w", "polar"}:
+        direction_deg = np.array(u_corr, dtype=float, copy=True)
+        speed = np.array(v_corr, dtype=float, copy=True)
+        radians = np.deg2rad(direction_deg)
+        u_corr = speed * np.cos(radians)
+        v_corr = -speed * np.sin(radians)
+        steps.append({"name": "polar_to_cartesian", "wind_format": wind_format})
+    elif wind_format == "axis":
+        a1 = np.array(u_corr, dtype=float, copy=True)
+        a2 = np.array(v_corr, dtype=float, copy=True)
+        a3 = np.array(w_corr, dtype=float, copy=True)
+        u_corr = (2.0 * a1 - a2 - a3) / 2.1213
+        v_corr = (a3 - a2) / 1.2247
+        w_corr = (a1 + a2 + a3) / 2.1213
+        steps.append({"name": "gill_axis_to_uvw", "wind_format": wind_format})
+
+    offsets = {
+        "u": _safe_float(cfg.get("u_offset_ms", cfg.get("u_offset", 0.0)), default=0.0),
+        "v": _safe_float(cfg.get("v_offset_ms", cfg.get("v_offset", 0.0)), default=0.0),
+        "w": _safe_float(cfg.get("w_offset_ms", cfg.get("w_offset", 0.0)), default=0.0),
+    }
+    if any(abs(value) > 0.0 for value in offsets.values()):
+        u_corr = u_corr - offsets["u"]
+        v_corr = v_corr - offsets["v"]
+        w_corr = w_corr - offsets["w"]
+        steps.append({"name": "sonic_bias_offsets", "offsets_ms": offsets})
+
+    model = _normalize_sonic_text(cfg.get("sonic_model", cfg.get("model", "")))
+    wind_reference = _normalize_sonic_text(cfg.get("wind_reference", cfg.get("wref", "")))
+    model_steps = _apply_sonic_model_orientation(
+        u_corr,
+        v_corr,
+        model=model,
+        wind_reference=wind_reference,
+        apply_model_orientation=bool(cfg.get("apply_model_orientation", True)),
+    )
+    u_corr = model_steps.pop("u")
+    v_corr = model_steps.pop("v")
+    if model_steps.get("steps"):
+        steps.extend(model_steps["steps"])
+
+    north_offset_deg = _safe_float(cfg.get("north_offset_deg", cfg.get("north_offset", 0.0)), default=0.0)
+    model_north_offset = _model_north_offset_adjustment(model)
+    effective_north_offset = north_offset_deg + model_north_offset
+    if abs(effective_north_offset) > 1e-12:
+        u_corr, v_corr = _rotate_horizontal(u_corr, v_corr, effective_north_offset)
+        steps.append(
+            {
+                "name": "north_offset_rotation",
+                "configured_north_offset_deg": north_offset_deg,
+                "model_adjustment_deg": model_north_offset,
+                "effective_north_offset_deg": effective_north_offset,
+            }
+        )
+
+    wboost_mode = _normalize_sonic_text(cfg.get("gill_wm_w_boost", cfg.get("w_boost", "auto")))
+    firmware = str(cfg.get("sonic_firmware", cfg.get("firmware", "")) or "")
+    if wboost_mode == "auto":
+        wboost_mode = "apply" if model in {"wm", "wmpro", "windmaster", "windmasterpro"} and _gill_wm_firmware_has_w_bug(firmware) else "none"
+    if wboost_mode in {"apply", "remove"}:
+        w_corr = _apply_gill_wm_w_boost(w_corr, mode=wboost_mode)
+        steps.append({"name": f"gill_windmaster_w_boost_{wboost_mode}", "firmware": firmware})
+
+    aoa_cfg = cfg.get("angle_of_attack", {})
+    if isinstance(aoa_cfg, dict) and bool(aoa_cfg.get("enabled", False)):
+        u_corr, v_corr, w_corr, aoa_step = _apply_calibrated_angle_of_attack_gain(u_corr, v_corr, w_corr, aoa_cfg)
+        steps.append(aoa_step)
+
+    applied = bool(steps)
+    detail = {
+        "status": "applied" if applied else "no_effect",
+        "applied": applied,
+        "method": method,
+        "sonic_model": str(cfg.get("sonic_model", cfg.get("model", "")) or ""),
+        "sonic_firmware": firmware,
+        "wind_format": wind_format,
+        "wind_reference": wind_reference,
+        "north_offset_deg": north_offset_deg,
+        "effective_north_offset_deg": effective_north_offset,
+        "steps": steps,
+        "mean_w_before": _nanmean_or_none(w),
+        "mean_w_after": _nanmean_or_none(w_corr),
+        "std_w_before": _nanstd_or_none(w),
+        "std_w_after": _nanstd_or_none(w_corr),
+        "provenance": (
+            "Sonic coordinate/head correction v1 derived from documented EddyPro processing stages: "
+            "coordinate normalization, sonic bias offsets, model orientation offsets, Gill WindMaster W-boost handling, "
+            "and optional calibrated angle-of-attack gain."
+        ),
+        "source_reference": {
+            "eddypro_engine_files": [
+                "src/src_rp/adjust_sonic_coordinates.f90",
+                "src/src_rp/gill_wm_w_boost.f90",
+                "src/src_rp/aoa_calibration.f90",
+            ],
+        },
+        "limitations": limitations if applied else [],
+    }
+    return SonicCorrectionResult(u=u_corr, v=v_corr, w=w_corr, detail=detail)
+
+
+def _normalize_sonic_text(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _safe_float(value: Any, *, default: float = 0.0) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        result = default
+    if not math.isfinite(result):
+        return default
+    return result
+
+
+def _rotate_horizontal(u: np.ndarray, v: np.ndarray, angle_deg: float) -> tuple[np.ndarray, np.ndarray]:
+    radians = math.radians(float(angle_deg))
+    cos_a = math.cos(radians)
+    sin_a = math.sin(radians)
+    return u * cos_a - v * sin_a, u * sin_a + v * cos_a
+
+
+def _apply_sonic_model_orientation(
+    u: np.ndarray,
+    v: np.ndarray,
+    *,
+    model: str,
+    wind_reference: str,
+    apply_model_orientation: bool,
+) -> dict[str, Any]:
+    steps: list[dict[str, Any]] = []
+    u_out = np.array(u, dtype=float, copy=True)
+    v_out = np.array(v, dtype=float, copy=True)
+    if not apply_model_orientation:
+        return {"u": u_out, "v": v_out, "steps": steps}
+    if model in {"hs_50", "hs_100", "r3_50", "r3_100", "r3a_100", "wm", "wmpro", "windmaster", "windmasterpro"} and wind_reference == "axis":
+        u_out, v_out = _rotate_horizontal(u_out, v_out, 30.0)
+        steps.append({"name": "gill_axis_to_spar_rotation", "angle_deg": 30.0, "model": model})
+    elif model == "r2":
+        u_out, v_out = _rotate_horizontal(-u_out, -v_out, 30.0)
+        steps.append({"name": "gill_r2_spar_rotation", "angle_deg": 30.0, "model": model})
+    elif model in {"usa1_standard", "usa1_fast"}:
+        v_out = -v_out
+        steps.append({"name": "metek_usa1_right_handed_v_flip", "model": model})
+    return {"u": u_out, "v": v_out, "steps": steps}
+
+
+def _model_north_offset_adjustment(model: str) -> float:
+    if model in {"csat3", "csat3b"}:
+        return -180.0
+    if model in {"usoni3_cage_mp", "usoni3_classa_mp"}:
+        return 90.0
+    if model in {"81000", "81000v", "81000re", "81000vre"}:
+        return -90.0
+    return 0.0
+
+
+def _gill_wm_firmware_has_w_bug(firmware: str) -> bool:
+    parts = [part for part in str(firmware).replace("-", ".").split(".") if part]
+    if len(parts) < 2 or parts[0] != "2329":
+        return False
+    try:
+        return int(parts[1]) < 700
+    except ValueError:
+        return False
+
+
+def _apply_gill_wm_w_boost(w: np.ndarray, *, mode: str) -> np.ndarray:
+    positive = w >= 0.0
+    corrected = np.array(w, dtype=float, copy=True)
+    if mode == "apply":
+        corrected[positive] = corrected[positive] * 1.166
+        corrected[~positive] = corrected[~positive] * 1.289
+    elif mode == "remove":
+        corrected[positive] = corrected[positive] / 1.166
+        corrected[~positive] = corrected[~positive] / 1.289
+    return corrected
+
+
+def _apply_calibrated_angle_of_attack_gain(
+    u: np.ndarray,
+    v: np.ndarray,
+    w: np.ndarray,
+    config: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    horizontal = np.sqrt(u ** 2 + v ** 2)
+    attack_deg = np.degrees(np.arctan2(w, np.maximum(horizontal, 1e-12)))
+    clipped = np.clip(np.abs(attack_deg), 0.0, _safe_float(config.get("max_abs_angle_deg", 70.0), default=70.0))
+    scale = clipped / max(_safe_float(config.get("reference_angle_deg", 45.0), default=45.0), 1e-6)
+    horizontal_gain = _safe_float(config.get("horizontal_gain_per_reference_angle", 0.0), default=0.0)
+    vertical_gain = _safe_float(config.get("vertical_gain_per_reference_angle", 0.0), default=0.0)
+    h_factor = np.clip(1.0 + horizontal_gain * scale, 0.5, 1.5)
+    w_factor = np.clip(1.0 + vertical_gain * scale, 0.5, 1.5)
+    return (
+        u * h_factor,
+        v * h_factor,
+        w * w_factor,
+        {
+            "name": "calibrated_angle_of_attack_gain",
+            "max_abs_attack_angle_deg": float(np.max(clipped)) if clipped.size else 0.0,
+            "mean_abs_attack_angle_deg": float(np.mean(clipped)) if clipped.size else 0.0,
+            "horizontal_gain_per_reference_angle": horizontal_gain,
+            "vertical_gain_per_reference_angle": vertical_gain,
+            "reference_angle_deg": _safe_float(config.get("reference_angle_deg", 45.0), default=45.0),
+        },
+    )
+
+
+def _nanmean_or_none(values: np.ndarray) -> float | None:
+    if values.size == 0 or np.all(np.isnan(values)):
+        return None
+    return float(np.nanmean(values))
+
+
+def _nanstd_or_none(values: np.ndarray) -> float | None:
+    if values.size == 0 or np.all(np.isnan(values)):
+        return None
+    return float(np.nanstd(values))
 
 
 # ---------------------------------------------------------------------------

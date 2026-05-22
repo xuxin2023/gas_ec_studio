@@ -32,8 +32,8 @@
   ],
   "coverage_summary": {
     "covered": 9,
-    "partial": 9,
-    "missing": 4,
+    "partial": 10,
+    "missing": 3,
     "beyond_eddypro": 3
   },
   "capabilities": [
@@ -149,10 +149,10 @@
       "id": "head_flow_angle_corrections",
       "family": "preprocessing",
       "eddypro_requirement": "Support sonic head correction, flow distortion, angle-of-attack correction, and known anemometer bug corrections.",
-      "gas_ec_status": "missing",
-      "evidence": [],
-      "gap": "No instrument-specific correction library.",
-      "next_action": "Implement correction registry for supported sonic models."
+      "gas_ec_status": "partial",
+      "evidence": ["core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_sonic_correction_pipeline.py"],
+      "gap": "Sonic coordinate normalization, offsets, common EddyPro model orientation adjustments, Gill WindMaster W-boost handling, and configured angle gain now run before rotation/lag/flux; full Nakai 2006/2012 lookup-table AoA parity and broader instrument-specific calibration libraries are still incomplete.",
+      "next_action": "Add full Nakai AoA calibration tables and fixture parity for Gill/CSAT/Metek/RM Young sonic families."
     },
     {
       "id": "crosswind_correction",

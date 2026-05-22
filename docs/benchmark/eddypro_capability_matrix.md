@@ -23,13 +23,13 @@ The machine-readable source of truth is `docs/benchmark/eddypro_capability_matri
 - Spectral methods exist, but long-period binned spectra/cospectra assessment and EddyPro-equivalent output families need more work.
 - CO2/H2O/energy flux fields exist, but full EddyPro Level 0/1/2/3 closed-path correction sequencing still needs validation.
 - CH4 now has raw/GHG/headless ingestion plus an auditable LI-7700 correction sequence v1 and coefficient profile registry provenance; raw WMS line-shape fitting and public real LI-7700 numeric parity fixtures remain incomplete.
+- Sonic coordinate/head correction now runs before rotation/lag/flux for common EddyPro-style orientation offsets, Gill WindMaster W-boost handling, bias offsets, and configured angle gain; full Nakai AoA lookup-table parity remains incomplete.
 - Footprint v1 exists, but georeferenced GIS outputs remain missing.
 
 ## Missing
 
 - Binary/TOB1/SLT raw file readers.
 - GPS/PTP synchronization subsystem.
-- Sonic head correction, flow distortion, angle-of-attack correction, and model-specific anemometer bug corrections.
 - Crosswind correction.
 - Full SmartFlux-like embedded/on-site runtime hardening.
 
