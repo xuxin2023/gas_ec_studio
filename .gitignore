@@ -8,3 +8,8 @@ tmp_test_*/
 
 _v3g*.txt
 test_v3e_output.txt
+
+# One-off patch helpers generated during local implementation rounds.
+_apply_v3i_v2.py
+_fix_indent.py
+_v3i_patches.py

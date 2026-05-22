@@ -104,18 +104,31 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
 
         delivery_dir = _latest_delivery_dir(tmp_path)
         manifest_path = delivery_dir / "package_manifest.json"
+        audit_path = delivery_dir / "delivery_audit.json"
         readme_path = delivery_dir / "README.txt"
         zip_path = _latest_delivery_zip(tmp_path)
 
         assert delivery_dir.exists()
         assert manifest_path.exists()
+        assert audit_path.exists()
         assert readme_path.exists()
         assert zip_path.exists()
 
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        audit = json.loads(audit_path.read_text(encoding="utf-8"))
         readme = readme_path.read_text(encoding="utf-8")
 
         assert manifest["export_status"] == "ready"
+        assert manifest["delivery_audit"]["validation_status"] == "ok"
+        assert audit["validation_status"] == "ok"
+        assert manifest["result_manifest_summary"]["schema_target"]
+        assert "network_validation_summary" in manifest
+        assert manifest["artifact_index"]["export_manifest"]["packaged"] is True
+        assert manifest["artifact_index"]["network_validation_summary"]["packaged"] is True
+        assert manifest["artifact_index"]["method_rollup_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["method_parity_matrix_artifact"]["packaged"] is True
+        assert audit["missing_declared_files"] == []
+        assert audit["missing_manifest_files"] == []
         assert manifest["file_list"]
         assert any("缺少 compare" in note or "缺少 attribution" in note for note in manifest["notes"])
         assert "formal_report.html" in readme
@@ -123,6 +136,11 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert (delivery_dir / "formal_report.html").exists()
         assert (delivery_dir / "rp_results.csv").exists()
         assert (delivery_dir / "spectral_qc_results.csv").exists()
+        with ZipFile(zip_path, "r") as archive:
+            names = set(archive.namelist())
+        assert any(name.endswith("package_manifest.json") for name in names)
+        assert any(name.endswith("delivery_audit.json") for name in names)
+        assert any(name.endswith("network_validation_summary.json") for name in names)
     finally:
         controller.shutdown()
 

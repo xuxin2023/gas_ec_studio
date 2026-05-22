@@ -1075,9 +1075,20 @@ class ResultExporter:
             }
         settings = dict(payload.get("processing_settings", {}) if isinstance(payload, dict) else {})
         provenance = generate_reference_provenance(json_path)
-        method_metadata = self._reference_method_metadata(settings=settings)
-        available = [family for family, metadata in method_metadata.items() if metadata.get("availability") == "reported"]
-        not_reported = [family for family, metadata in method_metadata.items() if metadata.get("availability") == "not_reported"]
+        method_metadata = self._coerce_reference_method_metadata(
+            provided=payload.get("method_metadata", {}) if isinstance(payload, dict) else {},
+            settings=settings,
+        )
+        coverage = dict(payload.get("method_metadata_coverage", {}) if isinstance(payload, dict) else {})
+        if not coverage:
+            available = [family for family, metadata in method_metadata.items() if metadata.get("availability") == "reported"]
+            not_reported = [family for family, metadata in method_metadata.items() if metadata.get("availability") == "not_reported"]
+            coverage = {
+                "reported_families": available,
+                "not_reported_families": not_reported,
+                "reported_count": len(available),
+                "total_count": len(method_metadata),
+            }
         return {
             "status": "ready",
             "reference_id": reference_id,
@@ -1085,17 +1096,35 @@ class ResultExporter:
             "source": str(payload.get("source", "") if isinstance(payload, dict) else ""),
             "processing_settings": settings,
             "method_metadata": method_metadata,
-            "metadata_coverage": {
-                "reported_families": available,
-                "not_reported_families": not_reported,
-                "reported_count": len(available),
-                "total_count": len(method_metadata),
-            },
+            "metadata_coverage": coverage,
             "normalization_command": provenance.get("normalization_command", ""),
             "normalization_time": provenance.get("normalization_time", ""),
             "qc_mapping": provenance.get("qc_mapping_strategy", ""),
             "known_limitations": list(provenance.get("known_limitations", []) or []),
         }
+
+    def _coerce_reference_method_metadata(
+        self,
+        *,
+        provided: Any,
+        settings: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        defaults = self._reference_method_metadata(settings=settings)
+        if not isinstance(provided, dict) or not provided:
+            return defaults
+        coerced = dict(defaults)
+        for family, payload in provided.items():
+            if not isinstance(payload, dict):
+                continue
+            raw_method = payload.get("raw_method", payload.get("method", payload.get("normalized_method", "")))
+            coerced[str(family)] = {
+                "reference_field": str(payload.get("reference_field", defaults.get(str(family), {}).get("reference_field", ""))),
+                "raw_method": str(raw_method or ""),
+                "normalized_method": str(payload.get("normalized_method") or self._normalize_method_name(raw_method, family=str(family))),
+                "availability": str(payload.get("availability") or ("reported" if raw_method else "not_reported")),
+                "evidence_source": str(payload.get("evidence_source") or ("method_metadata" if raw_method else "missing_from_reference_metadata")),
+            }
+        return coerced
 
     def _reference_method_metadata(self, *, settings: dict[str, Any]) -> dict[str, dict[str, Any]]:
         definitions = {

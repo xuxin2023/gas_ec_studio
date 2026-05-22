@@ -81,7 +81,12 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
 
         assert controller.current_rp_run() is not None
         assert page.lag_curve.xData is not None and len(page.lag_curve.xData) > 0
+        assert page.detrend_raw_curve.xData is not None and len(page.detrend_raw_curve.xData) > 0
+        assert page.detrend_primary_curve.xData is not None and len(page.detrend_primary_curve.xData) > 0
         assert page.density_before_curve.xData is not None and len(page.density_before_curve.xData) > 0
+        assert page.steadiness_score_curve.xData is not None and len(page.steadiness_score_curve.xData) > 0
+        assert page.turbulence_ustar_curve.xData is not None and len(page.turbulence_ustar_curve.xData) > 0
+        assert page.turbulence_score_curve.xData is not None and len(page.turbulence_score_curve.xData) > 0
         assert page.window_samples_label.text() != "--"
         assert "lag=" in page.lag_note_label.text()
         assert "u*=" in page.turbulence_preview_label.text()

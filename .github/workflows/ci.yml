@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: "1"
+      QT_QPA_PLATFORM: offscreen
+      MPLBACKEND: Agg
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-xinerama0 \
+            libxcb-xfixes0
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -e .
+
+      - name: Run priority regression suite
+        run: |
+          python -m pytest -q \
+            tests/test_reference_metadata_expansion.py \
+            tests/test_hf_data_store_parquet.py \
+            tests/test_ec_processing_page_real_data.py \
+            tests/test_delivery_package_export.py \
+            tests/test_formal_report_export.py \
+            tests/test_v3i_method_compare_footprint2d.py \
+            tests/test_v3h_method_controls_propagation.py \
+            tests/test_v3g_footprint_uncertainty_spectral.py \
+            tests/test_advanced_parity_v3b.py \
+            tests/test_result_exports.py \
+            tests/test_truthfulness_v3a3.py \
+            tests/test_parity_repair_v3a2.py \
+            tests/test_ec_rp_pipeline.py \
+            tests/test_ec_rp_analysis.py \
+            tests/test_ec_rp_qc.py \
+            tests/test_ec_rp_qc_matrix.py \
+            tests/test_rp_advanced_closure.py \
+            tests/test_report_center_real_batches.py \
+            tests/test_report_center_eddypro_compare.py \
+            tests/test_report_center_eddypro_attribution.py

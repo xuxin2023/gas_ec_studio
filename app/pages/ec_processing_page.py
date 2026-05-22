@@ -462,6 +462,14 @@ class ECProcessingPage(QWidget):
         self.detrend_preview_label.setObjectName("subtitle")
         self.detrend_preview_label.setWordWrap(True)
         preview_layout.addWidget(self.detrend_preview_label)
+        self.detrend_flux_plot = pg.PlotWidget()
+        self.detrend_flux_plot.setBackground("transparent")
+        self.detrend_flux_plot.showGrid(x=True, y=True, alpha=0.15)
+        self.detrend_flux_plot.setLabel("left", "flux")
+        self.detrend_flux_plot.setLabel("bottom", "window")
+        self.detrend_raw_curve = self.detrend_flux_plot.plot(pen=pg.mkPen("#94a3b8", width=1.6))
+        self.detrend_primary_curve = self.detrend_flux_plot.plot(pen=pg.mkPen("#2563eb", width=2.0))
+        preview_layout.addWidget(self.detrend_flux_plot, 1)
         row.addWidget(preview_card, 3)
 
     def _build_covariance_page(self, layout: QVBoxLayout) -> None:
@@ -565,6 +573,13 @@ class ECProcessingPage(QWidget):
         self.steadiness_preview_label.setObjectName("subtitle")
         self.steadiness_preview_label.setWordWrap(True)
         preview_layout.addWidget(self.steadiness_preview_label)
+        self.steadiness_score_plot = pg.PlotWidget()
+        self.steadiness_score_plot.setBackground("transparent")
+        self.steadiness_score_plot.showGrid(x=True, y=True, alpha=0.15)
+        self.steadiness_score_plot.setLabel("left", "stationarity score")
+        self.steadiness_score_plot.setLabel("bottom", "window")
+        self.steadiness_score_curve = self.steadiness_score_plot.plot(pen=pg.mkPen("#0f766e", width=2.0))
+        preview_layout.addWidget(self.steadiness_score_plot, 1)
         row.addWidget(preview_card, 3)
 
     def _build_turbulence_page(self, layout: QVBoxLayout) -> None:
@@ -592,6 +607,14 @@ class ECProcessingPage(QWidget):
         self.turbulence_preview_label.setObjectName("subtitle")
         self.turbulence_preview_label.setWordWrap(True)
         preview_layout.addWidget(self.turbulence_preview_label)
+        self.turbulence_score_plot = pg.PlotWidget()
+        self.turbulence_score_plot.setBackground("transparent")
+        self.turbulence_score_plot.showGrid(x=True, y=True, alpha=0.15)
+        self.turbulence_score_plot.setLabel("left", "u* / turbulence score")
+        self.turbulence_score_plot.setLabel("bottom", "window")
+        self.turbulence_ustar_curve = self.turbulence_score_plot.plot(pen=pg.mkPen("#f97316", width=1.8))
+        self.turbulence_score_curve = self.turbulence_score_plot.plot(pen=pg.mkPen("#0f766e", width=2.0))
+        preview_layout.addWidget(self.turbulence_score_plot, 1)
         row.addWidget(preview_card, 3)
 
     def _build_uncertainty_page(self, layout: QVBoxLayout) -> None:
@@ -1113,9 +1136,16 @@ class ECProcessingPage(QWidget):
 
     def _refresh_detrend_preview(self, *_args) -> None:
         section = self._section_workspace("detrend")
+        windows = self.controller.ec_processing_workspace.get("windows", [])
         if self._current_window() is None:
+            self.detrend_raw_curve.setData([], [])
+            self.detrend_primary_curve.setData([], [])
             self.detrend_preview_label.setText("暂无真实 RP 结果，运行处理后显示去趋势模式摘要。")
             return
+        xs, raw_flux = self._series_from_windows(windows, "raw_flux")
+        _, primary_flux = self._series_from_windows(windows, "primary_flux", fallback_key="density_corrected_flux")
+        self.detrend_raw_curve.setData(xs, raw_flux)
+        self.detrend_primary_curve.setData(xs, primary_flux)
         self.detrend_preview_label.setText(str(section.get("real_summary", "去趋势摘要不可用。")))
 
     def _refresh_covariance_preview(self, *_args) -> None:
@@ -1154,17 +1184,28 @@ class ECProcessingPage(QWidget):
     def _refresh_steadiness_preview(self, *_args) -> None:
         section = self._section_workspace("steadiness")
         current = self._current_window()
+        windows = self.controller.ec_processing_workspace.get("windows", [])
         if current is None:
+            self.steadiness_score_curve.setData([], [])
             self.steadiness_preview_label.setText("暂无真实 RP 结果，运行处理后显示窗口级 QC 与异常原因。")
             return
+        xs, scores = self._series_from_windows(windows, "stationarity_score")
+        self.steadiness_score_curve.setData(xs, scores)
         self.steadiness_preview_label.setText(str(section.get("real_summary", current.reason)))
 
     def _refresh_turbulence_preview(self, *_args) -> None:
         section = self._section_workspace("turbulence")
         current = self._current_window()
+        windows = self.controller.ec_processing_workspace.get("windows", [])
         if current is None:
+            self.turbulence_ustar_curve.setData([], [])
+            self.turbulence_score_curve.setData([], [])
             self.turbulence_preview_label.setText("暂无真实 RP 结果。")
             return
+        xs, ustar = self._series_from_windows(windows, "ustar")
+        _, score = self._series_from_windows(windows, "turbulence_score")
+        self.turbulence_ustar_curve.setData(xs, ustar)
+        self.turbulence_score_curve.setData(xs, score)
         detail = current.turbulence_detail or {}
         self.turbulence_preview_label.setText(
             str(
@@ -1252,6 +1293,21 @@ class ECProcessingPage(QWidget):
 
     def _section_workspace(self, key: str) -> dict:
         return dict(self.controller.ec_processing_workspace.get("sections", {}).get(key, {}))
+
+    def _series_from_windows(self, windows: list[dict], key: str, *, fallback_key: str | None = None) -> tuple[np.ndarray, np.ndarray]:
+        if not windows:
+            return np.array([], dtype=float), np.array([], dtype=float)
+        xs = np.arange(1, len(windows) + 1, dtype=float)
+        values: list[float] = []
+        for window in windows:
+            value = window.get(key)
+            if value is None and fallback_key:
+                value = window.get(fallback_key)
+            try:
+                values.append(float(value if value is not None else 0.0))
+            except (TypeError, ValueError):
+                values.append(0.0)
+        return xs, np.array(values, dtype=float)
 
     def _current_window(self):
         return self.controller.current_rp_window()

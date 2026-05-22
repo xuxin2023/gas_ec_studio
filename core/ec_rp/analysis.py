@@ -1710,6 +1710,8 @@ def list_available_references(references_root: str | Path | None = None) -> list
             "description": payload.get("description", ""),
             "site_info": payload.get("site_info", {}),
             "processing_settings": payload.get("processing_settings", {}),
+            "method_metadata": payload.get("method_metadata", {}),
+            "method_metadata_coverage": payload.get("method_metadata_coverage", {}),
             "window_count": len(payload.get("windows", [])),
         })
     return results
@@ -1736,6 +1738,10 @@ def generate_reference_provenance(path: str | Path) -> dict[str, Any]:
         "field_mapping": payload.get("field_mapping", {}),
         "raw_columns": payload.get("raw_columns", []),
         "unmapped_columns": payload.get("unmapped_columns", []),
+        "metadata_source_files": payload.get("metadata_source_files", []),
+        "processing_settings": payload.get("processing_settings", {}),
+        "method_metadata": payload.get("method_metadata", {}),
+        "method_metadata_coverage": payload.get("method_metadata_coverage", {}),
         "qc_mapping_strategy": payload.get("qc_mapping_strategy", "EddyPro 0/1/2 -> gas_ec_studio A/B/C"),
         "known_limitations": payload.get("known_limitations", []),
         "window_count": len(payload.get("windows", [])),
