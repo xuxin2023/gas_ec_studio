@@ -4,7 +4,12 @@ from datetime import datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from core.storage.ghg_bundle import inspect_ghg_bundle, load_ghg_biomet_records, read_ghg_tabular_member
+from core.storage.ghg_bundle import (
+    inspect_ghg_bundle,
+    load_ghg_biomet_records,
+    load_ghg_normalized_frames,
+    read_ghg_tabular_member,
+)
 from models.station_models import BiometSourceMetadata, aggregate_biomet_window, load_biomet_records
 
 
@@ -68,3 +73,17 @@ def test_read_ghg_tabular_member_supports_tabular_raw_data(tmp_path: Path) -> No
 
     assert rows[0]["co2"] == "410.0"
     assert rows[0]["w"] == "0.2"
+
+
+def test_load_ghg_normalized_frames_maps_raw_rows(tmp_path: Path) -> None:
+    ghg_path = tmp_path / "demo.ghg"
+    _write_demo_ghg(ghg_path)
+
+    frames = load_ghg_normalized_frames(ghg_path)
+
+    assert len(frames) == 1
+    assert frames[0].timestamp == datetime(2026, 5, 22, 10, 0, 0)
+    assert frames[0].device_uid == "demo"
+    assert frames[0].device_id == "ghg"
+    assert frames[0].co2_ppm == 410.0
+    assert '"u": 2.0' in frames[0].raw_text

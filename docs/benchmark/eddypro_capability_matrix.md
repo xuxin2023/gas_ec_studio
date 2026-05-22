@@ -17,7 +17,7 @@ The machine-readable source of truth is `docs/benchmark/eddypro_capability_matri
 
 ## Partial
 
-- `.ghg` support is now real for manifest/metadata/embedded biomet, but high-frequency `.ghg` rows still need direct conversion into `NormalizedHFFrame`.
+- `.ghg` support is now real for manifest/metadata/embedded biomet and high-frequency raw rows can run through headless RP/FCC/export. Broader real-world LI-COR fixture coverage is still needed.
 - Biomet aggregation exists, but it does not yet override all thermodynamic ambient variables used by the RP flux equations.
 - Spectral methods exist, but long-period binned spectra/cospectra assessment and EddyPro-equivalent output families need more work.
 - CO2/H2O/energy flux fields exist, but full EddyPro Level 0/1/2/3 closed-path correction sequencing still needs validation.

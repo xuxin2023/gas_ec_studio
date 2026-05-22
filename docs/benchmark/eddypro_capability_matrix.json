@@ -31,7 +31,7 @@
     }
   ],
   "coverage_summary": {
-    "covered": 7,
+    "covered": 8,
     "partial": 9,
     "missing": 5,
     "beyond_eddypro": 3
@@ -41,10 +41,19 @@
       "id": "raw_ghg_bundle",
       "family": "raw_ingestion",
       "eddypro_requirement": "Read LI-COR .ghg bundles with paired raw data, metadata, and optional biomet files.",
+      "gas_ec_status": "covered",
+      "evidence": ["core/storage/ghg_bundle.py", "core/headless_batch_runner.py", "tests/test_ghg_bundle_import.py", "tests/test_ghg_headless_pipeline.py"],
+      "gap": "",
+      "next_action": "Add more real-world LI-COR .ghg fixture variants and column aliases."
+    },
+    {
+      "id": "raw_ghg_real_world_fixture_breadth",
+      "family": "raw_ingestion",
+      "eddypro_requirement": "Handle the breadth of field .ghg bundle dialects, column labels, metadata variants, and long-running deployments.",
       "gas_ec_status": "partial",
-      "evidence": ["core/storage/ghg_bundle.py", "tests/test_ghg_bundle_import.py"],
-      "gap": "Raw high-frequency .ghg rows are inspectable but not yet converted directly into NormalizedHFFrame for full RP runs.",
-      "next_action": "Add .ghg high-frequency row mapping into headless and UI import paths."
+      "evidence": ["core/storage/ghg_bundle.py", "tests/test_ghg_headless_pipeline.py"],
+      "gap": "Synthetic .ghg fixtures now run through RP/FCC/export; broad real-world LI-COR fixture coverage is still limited.",
+      "next_action": "Build a fixture suite from real anonymized LI-COR .ghg files."
     },
     {
       "id": "raw_ascii_csv",

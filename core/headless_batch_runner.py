@@ -13,6 +13,7 @@ from typing import Any
 from core.ec_fcc.pipeline import ECFCCPipeline
 from core.ec_rp.pipeline import ECRPPipeline
 from core.exports.result_exporter import ResultExporter
+from core.storage.ghg_bundle import load_ghg_normalized_frames
 from models.hf_models import FrameQuality, NormalizedHFFrame
 from models.station_models import MetadataBundle
 
@@ -157,7 +158,10 @@ def load_metadata_file(path: str | Path) -> MetadataBundle:
 
 
 def load_input_rows(path: str | Path) -> list[NormalizedHFFrame]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    input_path = Path(path)
+    if input_path.suffix.lower() == ".ghg":
+        return load_ghg_normalized_frames(input_path)
+    payload = json.loads(input_path.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
         raise ValueError("Input data file must contain a JSON list of row objects.")
     rows: list[NormalizedHFFrame] = []
