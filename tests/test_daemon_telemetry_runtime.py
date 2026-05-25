@@ -7,7 +7,12 @@ from pathlib import Path
 
 import numpy as np
 
-from core.acquisition.daemon_telemetry import build_daemon_telemetry_artifact
+from core.acquisition.daemon_telemetry import (
+    build_daemon_telemetry_artifact,
+    parse_gps_pps_log,
+    parse_hardware_watchdog_log,
+    parse_ptp_servo_log,
+)
 from core.acquisition.runtime_service import run_runtime_service_batches
 from core.exports.delivery_exporter import export_delivery_package
 from core.exports.result_exporter import ResultExporter
@@ -152,6 +157,91 @@ def test_daemon_telemetry_parses_supervisor_clock_and_watchdog_logs(tmp_path: Pa
     assert artifact["gps_pps"]["max_jitter_ns"] == 70.0
     assert artifact["hardware_watchdog"]["status"] == "active"
     assert artifact["process_telemetry"]["pid"]
+
+
+def test_daemon_telemetry_parses_target_host_daemon_dialects(tmp_path: Path) -> None:
+    ptp = tmp_path / "chrony_phc2sys.log"
+    gps = tmp_path / "gpsd_pps.log"
+    watchdog = tmp_path / "watchdogd_provider.jsonl"
+    supervisor = tmp_path / "supervisor_journal.log"
+    ptp.write_text(
+        "\n".join(
+            [
+                "May 25 12:00:00 smartflux chronyd[41]: Selected source PPS",
+                "System time     : 0.000000080 seconds slow of NTP time",
+                "Last offset     : -0.000000040 seconds",
+                "Leap status     : Normal",
+                "phc2sys[99]: CLOCK_REALTIME phc offset -23 s2 freq +12 delay 800",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    gps.write_text(
+        "\n".join(
+            [
+                json.dumps({"class": "TPV", "mode": 3, "ept": 0.00000005}, ensure_ascii=False),
+                json.dumps({"class": "PPS", "offset_ns": -30, "jitter_ns": 65, "locked": True}, ensure_ascii=False),
+                "^* PPS0          .PPS.            0   6   377    12   -35ns[ -42ns] +/-   80ns",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    watchdog.write_text(
+        "\n".join(
+            [
+                "watchdogd[3]: opened /dev/watchdog0 watchdog device",
+                json.dumps({"artifact_type": "hardware_watchdog_kick", "kick_delivered": True}, ensure_ascii=False),
+                "systemd[1]: gas-ec-runtime.service: WATCHDOG=1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    supervisor.write_text(
+        "\n".join(
+            [
+                "May 25 12:00:00 smartflux systemd[1]: Started gas-ec-runtime.service.",
+                "Event ID 7036 Service Control Manager: Gas EC Studio Runtime service entered the running state.",
+                "Restart counter is at 1.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    ptp_summary = parse_ptp_servo_log(ptp)
+    gps_summary = parse_gps_pps_log(gps)
+    watchdog_summary = parse_hardware_watchdog_log(watchdog)
+    artifact = build_daemon_telemetry_artifact(
+        config={
+            "daemon_telemetry": {
+                "ptp_servo_log": str(ptp),
+                "gps_pps_log": str(gps),
+                "hardware_watchdog_log": str(watchdog),
+                "supervisor_status_file": str(supervisor),
+                "require_supervisor_running": True,
+                "require_ptp_lock": True,
+                "require_gps_lock": True,
+                "require_hardware_watchdog": True,
+                "max_ptp_offset_ns": 1000,
+                "max_gps_jitter_ns": 1000,
+                "max_supervisor_restarts": 2,
+            }
+        },
+        runtime_root=tmp_path,
+    )
+
+    assert ptp_summary["status"] == "locked"
+    assert {"chrony", "phc2sys"}.issubset(set(ptp_summary["dialects"]))
+    assert ptp_summary["max_abs_offset_ns"] == 80.0
+    assert gps_summary["status"] == "locked"
+    assert {"gpsd", "pps"}.issubset(set(gps_summary["dialects"]))
+    assert gps_summary["max_jitter_ns"] == 80.0
+    assert watchdog_summary["status"] == "active"
+    assert {"watchdogd", "linux_watchdog", "systemd_journal", "json"}.issubset(set(watchdog_summary["dialects"]))
+    assert watchdog_summary["provider_record_count"] == 1
+    assert artifact["status"] == "pass"
+    assert artifact["supervisor"]["dialect"] in {"systemd_journal", "windows_event"}
+    assert artifact["supervisor"]["state"] == "running"
+    assert artifact["supervisor"]["restart_count"] == 1
 
 
 def test_daemon_telemetry_reaches_export_network_and_delivery(tmp_path: Path) -> None:

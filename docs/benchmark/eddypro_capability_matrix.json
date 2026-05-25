@@ -144,8 +144,8 @@
       "eddypro_requirement": "Synchronize high-speed and low-speed data by GPS/PTP in SmartFlux deployments.",
       "gas_ec_status": "partial",
       "evidence": ["core/storage/clock_sync.py", "core/acquisition/daemon_telemetry.py", "core/headless_batch_runner.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_clock_sync_pipeline.py", "tests/test_daemon_telemetry_runtime.py"],
-      "gap": "GPS/PTP-style offset, drift, and event interpolation corrections now run before RP/FCC windowing, and daemon_telemetry v1 parses configured PTP servo/GPS PPS logs for lock, offset, and jitter provenance; direct hardware clock discipline control and vendor-specific daemon log dialect coverage remain incomplete.",
-      "next_action": "Add vendor-specific PTP/GPS daemon dialect fixtures and optional hardware clock discipline health ingestion."
+      "gap": "GPS/PTP-style offset, drift, and event interpolation corrections now run before RP/FCC windowing, and daemon_telemetry v1 parses ptp4l/phc2sys/chrony/GPSD/PPS-style lock, offset, and jitter logs with dialect provenance; direct hardware clock discipline control and real target-host fixture validation remain incomplete.",
+      "next_action": "Add real target-host chrony/ptp4l/gpsd fixture captures and optional hardware clock discipline health ingestion."
     },
     {
       "id": "smartflux_realtime_site_processing",
@@ -153,8 +153,8 @@
       "eddypro_requirement": "Produce fully processed real-time site fluxes on embedded/on-site hardware.",
       "gas_ec_status": "partial",
       "evidence": ["app/studio.py", "core/acquisition/runtime_watchdog.py", "core/acquisition/runtime_service.py", "core/acquisition/daemon_telemetry.py", "core/acquisition/supervisor_integration.py", "core/acquisition/runtime_install.py", "core/headless_batch_runner.py", "core/exports/result_exporter.py", "tests/test_runtime_watchdog_headless.py", "tests/test_runtime_service_headless.py", "tests/test_daemon_telemetry_runtime.py", "tests/test_supervisor_integration_runtime.py", "tests/test_installable_runtime_profile.py"],
-      "gap": "Headless batches now emit a SmartFlux-style runtime profile/watchdog manifest, runtime_service v1 executes queued batches with heartbeats/retries/quarantine/delivery state, daemon_telemetry v1 captures process/supervisor/PTP/GPS/watchdog logs, supervisor_integration v1 normalizes systemd/Windows/manual service status plus file/manual/Linux watchdog device/systemd notify/Windows recovery hardware watchdog provider handoff, installable_runtime_profile v1 renders auditable systemd/Windows Service dry-run deployment plans, runtime_deployment v1 exports operator-gated install/rollback scripts, and runtime_deployment_feedback v1 parses target-host post-install service/log evidence across export/report/delivery; broader target-host daemon dialect coverage and real hardware fixture validation are still incomplete.",
-      "next_action": "Add broader supervisor/PTP/GPS/post-install feedback fixture dialects and validate gated hardware providers with target-host SmartFlux fixtures."
+      "gap": "Headless batches now emit a SmartFlux-style runtime profile/watchdog manifest, runtime_service v1 executes queued batches with heartbeats/retries/quarantine/delivery state, daemon_telemetry v1 captures process/supervisor/PTP/GPS/watchdog logs including systemd journal, Windows Event, chrony/phc2sys, GPSD/PPS, watchdogd, and provider JSONL dialects, supervisor_integration v1 normalizes systemd/Windows/manual service status plus file/manual/Linux watchdog device/systemd notify/Windows recovery hardware watchdog provider handoff, installable_runtime_profile v1 renders auditable systemd/Windows Service dry-run deployment plans, runtime_deployment v1 exports operator-gated install/rollback scripts, and runtime_deployment_feedback v1 parses target-host post-install service/log evidence across export/report/delivery; real hardware fixture validation is still incomplete.",
+      "next_action": "Validate gated hardware providers and daemon telemetry dialects with target-host SmartFlux fixture captures."
     },
     {
       "id": "despiking_screening",
