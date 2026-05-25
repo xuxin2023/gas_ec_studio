@@ -9,6 +9,7 @@ import numpy as np
 
 from core.acquisition.daemon_telemetry import (
     build_daemon_telemetry_artifact,
+    parse_clock_discipline_log,
     parse_gps_pps_log,
     parse_hardware_watchdog_log,
     parse_ptp_servo_log,
@@ -60,6 +61,7 @@ def _write_good_telemetry(tmp_path: Path) -> dict[str, str]:
     gps = tmp_path / "gps_pps.log"
     watchdog = tmp_path / "watchdog.log"
     supervisor = tmp_path / "supervisor.json"
+    discipline = tmp_path / "chrony_tracking.log"
     ptp.write_text(
         "\n".join(
             [
@@ -91,9 +93,24 @@ def _write_good_telemetry(tmp_path: Path) -> dict[str, str]:
         json.dumps({"service_name": "gas-ec-runtime", "state": "running", "restart_count": 1}, ensure_ascii=False),
         encoding="utf-8",
     )
+    discipline.write_text(
+        "\n".join(
+            [
+                "Reference ID    : PPS",
+                "Stratum         : 1",
+                "System time     : 0.000000080 seconds slow of NTP time",
+                "Last offset     : -0.000000040 seconds",
+                "Frequency       : 12.500 ppm fast",
+                "Residual freq   : -0.010 ppm",
+                "Leap status     : Normal",
+            ]
+        ),
+        encoding="utf-8",
+    )
     return {
         "ptp_servo_log": str(ptp),
         "gps_pps_log": str(gps),
+        "clock_discipline_log": str(discipline),
         "hardware_watchdog_log": str(watchdog),
         "supervisor_status_file": str(supervisor),
     }
@@ -132,9 +149,12 @@ def _config(tmp_path: Path, *, watchdog_timeout: bool = False) -> dict:
             "require_supervisor_running": True,
             "require_ptp_lock": True,
             "require_gps_lock": True,
+            "require_clock_discipline_lock": True,
             "require_hardware_watchdog": True,
             "max_ptp_offset_ns": 1000,
             "max_gps_jitter_ns": 1000,
+            "max_clock_discipline_offset_ns": 1000,
+            "max_clock_frequency_ppm": 20,
             "max_supervisor_restarts": 2,
         },
         "network_output": {
@@ -155,6 +175,9 @@ def test_daemon_telemetry_parses_supervisor_clock_and_watchdog_logs(tmp_path: Pa
     assert artifact["ptp_servo"]["max_abs_offset_ns"] == 120.0
     assert artifact["gps_pps"]["status"] == "locked"
     assert artifact["gps_pps"]["max_jitter_ns"] == 70.0
+    assert artifact["clock_discipline"]["status"] == "locked"
+    assert artifact["clock_discipline"]["max_abs_offset_ns"] == 80.0
+    assert artifact["clock_discipline"]["max_abs_frequency_ppm"] == 12.5
     assert artifact["hardware_watchdog"]["status"] == "active"
     assert artifact["process_telemetry"]["pid"]
 
@@ -164,6 +187,7 @@ def test_daemon_telemetry_parses_target_host_daemon_dialects(tmp_path: Path) -> 
     gps = tmp_path / "gpsd_pps.log"
     watchdog = tmp_path / "watchdogd_provider.jsonl"
     supervisor = tmp_path / "supervisor_journal.log"
+    discipline = tmp_path / "discipline.jsonl"
     ptp.write_text(
         "\n".join(
             [
@@ -206,23 +230,37 @@ def test_daemon_telemetry_parses_target_host_daemon_dialects(tmp_path: Path) -> 
         ),
         encoding="utf-8",
     )
+    discipline.write_text(
+        "\n".join(
+            [
+                json.dumps({"source": "PHC0", "state": "locked", "offset_ns": 42, "frequency_ppm": -0.4, "stratum": 1}, ensure_ascii=False),
+                "phc2sys[77]: CLOCK_REALTIME phc offset -37 s2 freq +7 delay 799",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     ptp_summary = parse_ptp_servo_log(ptp)
     gps_summary = parse_gps_pps_log(gps)
+    discipline_summary = parse_clock_discipline_log(discipline)
     watchdog_summary = parse_hardware_watchdog_log(watchdog)
     artifact = build_daemon_telemetry_artifact(
         config={
             "daemon_telemetry": {
                 "ptp_servo_log": str(ptp),
                 "gps_pps_log": str(gps),
+                "clock_discipline_log": str(discipline),
                 "hardware_watchdog_log": str(watchdog),
                 "supervisor_status_file": str(supervisor),
                 "require_supervisor_running": True,
                 "require_ptp_lock": True,
                 "require_gps_lock": True,
+                "require_clock_discipline_lock": True,
                 "require_hardware_watchdog": True,
                 "max_ptp_offset_ns": 1000,
                 "max_gps_jitter_ns": 1000,
+                "max_clock_discipline_offset_ns": 1000,
+                "max_clock_frequency_ppm": 20,
                 "max_supervisor_restarts": 2,
             }
         },
@@ -235,10 +273,15 @@ def test_daemon_telemetry_parses_target_host_daemon_dialects(tmp_path: Path) -> 
     assert gps_summary["status"] == "locked"
     assert {"gpsd", "pps"}.issubset(set(gps_summary["dialects"]))
     assert gps_summary["max_jitter_ns"] == 80.0
+    assert discipline_summary["status"] == "locked"
+    assert {"json", "phc2sys"}.issubset(set(discipline_summary["dialects"]))
+    assert discipline_summary["max_abs_offset_ns"] == 42.0
+    assert discipline_summary["max_abs_frequency_ppm"] == 7.0
     assert watchdog_summary["status"] == "active"
     assert {"watchdogd", "linux_watchdog", "systemd_journal", "json"}.issubset(set(watchdog_summary["dialects"]))
     assert watchdog_summary["provider_record_count"] == 1
     assert artifact["status"] == "pass"
+    assert artifact["clock_discipline"]["clock_source"] == "PHC0"
     assert artifact["supervisor"]["dialect"] in {"systemd_journal", "windows_event"}
     assert artifact["supervisor"]["state"] == "running"
     assert artifact["supervisor"]["restart_count"] == 1
@@ -260,6 +303,7 @@ def test_daemon_telemetry_reaches_export_network_and_delivery(tmp_path: Path) ->
     assert rp_result.artifacts["daemon_telemetry"]["hardware_watchdog"]["status"] == "active"
     assert rp_result.windows[0].diagnostics["daemon_telemetry_status"] == "pass"
     assert rp_result.windows[0].diagnostics["ptp_lock_status"] == "locked"
+    assert rp_result.windows[0].diagnostics["clock_discipline_status"] == "locked"
 
     exporter = ResultExporter(tmp_path)
     bundle = exporter.export_minimal_bundle(
@@ -283,9 +327,13 @@ def test_daemon_telemetry_reaches_export_network_and_delivery(tmp_path: Path) ->
     assert export_manifest["daemon_telemetry_artifact"] == files["daemon_telemetry_artifact"]
     assert "DAEMON_TELEMETRY_STATUS" in export_manifest["network_method_fields"]
     assert daemon_artifact["summary"]["ptp_servo"]["status"] == "locked"
+    assert daemon_artifact["summary"]["clock_discipline"]["status"] == "locked"
     assert full_rows[0]["daemon_telemetry_status"] == "pass"
+    assert full_rows[0]["clock_discipline_status"] == "locked"
     assert network_payload["rows"][0]["DAEMON_TELEMETRY_STATUS"] == "pass"
     assert network_payload["rows"][0]["PTP_LOCK_STATUS"] == "locked"
+    assert network_payload["rows"][0]["CLOCK_DISCIPLINE_STATUS"] == "locked"
+    assert network_payload["rows"][0]["CLOCK_DISCIPLINE_OFFSET_NS"] == 80.0
     assert network_payload["rows"][0]["HARDWARE_WATCHDOG_STATUS"] == "active"
 
     delivery = export_delivery_package(

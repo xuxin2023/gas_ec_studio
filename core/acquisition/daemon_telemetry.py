@@ -38,11 +38,14 @@ def extract_daemon_telemetry_config(config: dict[str, Any]) -> dict[str, Any]:
     merged.setdefault("profile_id", "daemon_telemetry_v1")
     merged.setdefault("max_ptp_offset_ns", 1_000_000.0)
     merged.setdefault("max_gps_jitter_ns", 1_000_000.0)
+    merged.setdefault("max_clock_discipline_offset_ns", 1_000_000.0)
+    merged.setdefault("max_clock_frequency_ppm", 100.0)
     merged.setdefault("max_supervisor_restarts", 3)
     merged.setdefault("require_supervisor_running", False)
     merged.setdefault("require_ptp_lock", False)
     merged.setdefault("require_gps_lock", False)
     merged.setdefault("require_hardware_watchdog", False)
+    merged.setdefault("require_clock_discipline_lock", False)
     return merged
 
 
@@ -67,6 +70,14 @@ def build_daemon_telemetry_artifact(
     supervisor = _supervisor_status(telemetry_config)
     ptp_servo = parse_ptp_servo_log(_optional_path(telemetry_config.get("ptp_servo_log") or telemetry_config.get("ptp_log")))
     gps_pps = parse_gps_pps_log(_optional_path(telemetry_config.get("gps_pps_log") or telemetry_config.get("gps_log")))
+    clock_discipline = parse_clock_discipline_log(
+        _optional_path(
+            telemetry_config.get("clock_discipline_log")
+            or telemetry_config.get("clock_discipline_file")
+            or telemetry_config.get("chrony_tracking_log")
+            or telemetry_config.get("phc2sys_log")
+        )
+    )
     hardware_watchdog = parse_hardware_watchdog_log(
         _optional_path(telemetry_config.get("hardware_watchdog_log") or telemetry_config.get("watchdog_log"))
     )
@@ -80,6 +91,7 @@ def build_daemon_telemetry_artifact(
         supervisor=supervisor,
         ptp_servo=ptp_servo,
         gps_pps=gps_pps,
+        clock_discipline=clock_discipline,
         hardware_watchdog=hardware_watchdog,
         supervisor_integration=supervisor_integration,
     )
@@ -97,6 +109,7 @@ def build_daemon_telemetry_artifact(
         "supervisor": supervisor,
         "ptp_servo": ptp_servo,
         "gps_pps": gps_pps,
+        "clock_discipline": clock_discipline,
         "hardware_watchdog": hardware_watchdog,
         "supervisor_integration": supervisor_integration,
         "checks": checks,
@@ -210,6 +223,81 @@ def parse_gps_pps_log(path: Path | None) -> dict[str, Any]:
     }
 
 
+def parse_clock_discipline_log(path: Path | None) -> dict[str, Any]:
+    lines = _read_lines(path)
+    offsets: list[float] = []
+    frequencies: list[float] = []
+    states: list[str] = []
+    sources: list[str] = []
+    stratum: int | None = None
+    dialects: set[str] = set()
+    for line in lines:
+        dialects.update(_detect_daemon_dialects(line))
+        for payload in _json_payloads(line):
+            dialects.add("json")
+            offsets.extend(
+                _json_metric_values(
+                    payload,
+                    keys=("offset", "offset_ns", "last_offset", "system_time", "clock_offset", "rms_offset", "root_dispersion"),
+                    default_unit="ns",
+                )
+            )
+            frequencies.extend(
+                _json_metric_values(
+                    payload,
+                    keys=("frequency", "freq", "frequency_ppm", "residual_frequency", "residual_freq", "skew", "skew_ppm"),
+                    default_unit="ppm",
+                )
+            )
+            state = _state_from_json(payload)
+            if state:
+                states.append(state)
+            source = _source_from_json(payload)
+            if source:
+                sources.append(source)
+            parsed_stratum = _int_from_json(payload, keys=("stratum", "clock_stratum"))
+            if parsed_stratum is not None:
+                stratum = parsed_stratum
+        offsets.extend(_extract_chrony_time_offsets(line))
+        offsets.extend(_extract_metric_values(line, names=("clock offset", "discipline offset", "offset"), default_unit="ns"))
+        frequencies.extend(_extract_frequency_ppm_values(line))
+        state = _extract_state(line)
+        if state:
+            states.append(state)
+        if _chrony_line_indicates_lock(line):
+            states.append("locked")
+        source = _extract_clock_source(line)
+        if source:
+            sources.append(source)
+        stratum_match = re.search(r"\bstratum\s*[:=]?\s*(\d+)", line, flags=re.IGNORECASE)
+        if stratum_match:
+            stratum = int(stratum_match.group(1))
+    latest_state = states[-1] if states else "not_reported"
+    locked = latest_state.lower() in {"s2", "locked", "lock", "synced", "synchronized", "synchronised", "normal"}
+    return {
+        "artifact_type": "clock_discipline_health",
+        "source_file": str(path or ""),
+        "status": "not_configured" if path is None else ("missing" if not lines else ("locked" if locked else "unlocked")),
+        "dialect": _primary_dialect(dialects),
+        "dialects": sorted(dialects),
+        "line_count": len(lines),
+        "sample_count": max(len(offsets), len(frequencies), len(states)),
+        "latest_state": latest_state,
+        "locked": locked,
+        "clock_source": sources[-1] if sources else "",
+        "stratum": stratum,
+        "latest_offset_ns": offsets[-1] if offsets else None,
+        "max_abs_offset_ns": max((abs(value) for value in offsets), default=None),
+        "latest_frequency_ppm": frequencies[-1] if frequencies else None,
+        "max_abs_frequency_ppm": max((abs(value) for value in frequencies), default=None),
+        "provenance": "Parsed hardware clock discipline health from chrony/phc2sys/PTP-style status evidence.",
+        "limitations": [
+            "This artifact reports clock discipline health only; gas_ec_studio does not change the host system clock.",
+            "Frequency values are normalized to ppm when reported by the daemon evidence.",
+        ],
+    }
+
+
 def parse_hardware_watchdog_log(path: Path | None) -> dict[str, Any]:
     lines = _read_lines(path)
     kick_count = 0
@@ -276,16 +364,20 @@ def _build_checks(
     supervisor: dict[str, Any],
     ptp_servo: dict[str, Any],
     gps_pps: dict[str, Any],
+    clock_discipline: dict[str, Any],
     hardware_watchdog: dict[str, Any],
     supervisor_integration: dict[str, Any],
 ) -> list[dict[str, Any]]:
     max_ptp_offset = _float_first(telemetry_config.get("max_ptp_offset_ns"), default=1_000_000.0)
     max_gps_jitter = _float_first(telemetry_config.get("max_gps_jitter_ns"), default=1_000_000.0)
+    max_discipline_offset = _float_first(telemetry_config.get("max_clock_discipline_offset_ns"), default=1_000_000.0)
+    max_frequency = _float_first(telemetry_config.get("max_clock_frequency_ppm"), default=100.0)
     max_restarts = int(_float_first(telemetry_config.get("max_supervisor_restarts"), default=3.0))
     require_supervisor = _truthy(telemetry_config.get("require_supervisor_running", False))
     require_ptp = _truthy(telemetry_config.get("require_ptp_lock", False))
     require_gps = _truthy(telemetry_config.get("require_gps_lock", False))
     require_watchdog = _truthy(telemetry_config.get("require_hardware_watchdog", False))
+    require_discipline = _truthy(telemetry_config.get("require_clock_discipline_lock", False))
     checks = [
         _check(
             "supervisor_state",
@@ -334,6 +426,30 @@ def _build_checks(
             threshold=f"<={max_gps_jitter} ns",
             severity="fail" if require_gps else "warn",
             failure_message="GPS PPS jitter exceeds telemetry threshold.",
+        ),
+        _check(
+            "clock_discipline_lock",
+            bool(clock_discipline.get("locked")) if require_discipline else clock_discipline.get("status") not in {"unlocked"},
+            measured=clock_discipline.get("status", ""),
+            threshold="locked" if require_discipline else "not explicitly unlocked",
+            severity="fail" if require_discipline else "warn",
+            failure_message="Hardware clock discipline is not locked.",
+        ),
+        _check(
+            "clock_discipline_offset",
+            _within_abs_threshold(clock_discipline.get("max_abs_offset_ns"), max_discipline_offset, missing_ok=not require_discipline),
+            measured=clock_discipline.get("max_abs_offset_ns"),
+            threshold=f"<={max_discipline_offset} ns",
+            severity="fail" if require_discipline else "warn",
+            failure_message="Hardware clock discipline offset exceeds telemetry threshold.",
+        ),
+        _check(
+            "clock_discipline_frequency",
+            _within_abs_threshold(clock_discipline.get("max_abs_frequency_ppm"), max_frequency, missing_ok=not require_discipline),
+            measured=clock_discipline.get("max_abs_frequency_ppm"),
+            threshold=f"<={max_frequency} ppm",
+            severity="fail" if require_discipline else "warn",
+            failure_message="Hardware clock discipline frequency correction exceeds telemetry threshold.",
         ),
         _check(
             "hardware_watchdog",
@@ -572,6 +688,47 @@ def _json_metric_values(payload: dict[str, Any], *, keys: tuple[str, ...], defau
     return values
 
 
+def _extract_frequency_ppm_values(line: str) -> list[float]:
+    values: list[float] = []
+    patterns = (
+        re.compile(r"\b(?:frequency|freq|residual freq|skew)\s*[:=]?\s*([-+]?\d+(?:\.\d+)?)\s*ppm\b", re.IGNORECASE),
+        re.compile(r"\bfreq\s+([-+]?\d+(?:\.\d+)?)\b", re.IGNORECASE),
+    )
+    for pattern in patterns:
+        for match in pattern.finditer(line):
+            values.append(float(match.group(1)))
+    return values
+
+
+def _extract_clock_source(line: str) -> str:
+    for pattern in (
+        r"\b(?:reference id|refid|source|selected source)\s*[:=]\s*([A-Za-z0-9_.:+-]+)",
+        r"\bselected source\s+([A-Za-z0-9_.:+-]+)",
+    ):
+        match = re.search(pattern, line, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def _source_from_json(payload: dict[str, Any]) -> str:
+    for key, value in _flatten_json_items(payload):
+        normalized = _normalize_key(key)
+        if normalized in {"source", "selected_source", "reference_id", "refid", "clock_source"}:
+            return str(value).strip()
+    return ""
+
+
+def _int_from_json(payload: dict[str, Any], *, keys: tuple[str, ...]) -> int | None:
+    wanted = {_normalize_key(key) for key in keys}
+    for key, value in _flatten_json_items(payload):
+        if _normalize_key(key) in wanted:
+            parsed = _optional_float(value)
+            if parsed is not None:
+                return int(parsed)
+    return None
+
+
 def _flatten_json_items(payload: Any, prefix: str = "") -> list[tuple[str, Any]]:
     if isinstance(payload, dict):
         items: list[tuple[str, Any]] = []
@@ -593,6 +750,8 @@ def _normalize_key(key: str) -> str:
 
 
 def _unit_from_key(key: str, *, default_unit: str) -> str:
+    if default_unit == "ppm":
+        return "ppm"
     if key in {"ept", "offset_seconds", "system_time_seconds"} or key.endswith("_seconds") or key.endswith("_s"):
         return "s"
     if key.endswith("_ms"):
@@ -715,6 +874,8 @@ def _extract_lock_bool(line: str) -> bool | None:
 
 
 def _to_ns(value: float, unit: str) -> float:
+    if unit == "ppm":
+        return value
     if unit in {"s", "sec", "second", "seconds"}:
         return value * 1_000_000_000.0
     if unit in {"ms", "millisecond", "milliseconds"}:
@@ -766,6 +927,8 @@ def _recommended_actions(checks: list[dict[str, Any]]) -> list[str]:
             actions.append("Inspect PTP servo lock state, grandmaster selection, and network timing path.")
         elif check_id.startswith("gps"):
             actions.append("Inspect GPS PPS lock, antenna signal, and PPS jitter source.")
+        elif check_id.startswith("clock_discipline"):
+            actions.append("Inspect chrony/phc2sys/PHC discipline health, selected source, offset, and frequency correction before unattended delivery.")
         elif check_id == "hardware_watchdog":
             actions.append("Review hardware watchdog keepalive, timeout, and reboot logs before unattended delivery.")
         elif check_id.startswith("supervisor"):

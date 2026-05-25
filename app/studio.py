@@ -1988,6 +1988,9 @@ class StudioController(QObject):
             "supervisor_state": "",
             "ptp_lock_status": "",
             "gps_pps_lock_status": "",
+            "clock_discipline_status": "",
+            "clock_discipline_offset_ns": None,
+            "clock_discipline_frequency_ppm": None,
             "hardware_watchdog_status": "",
             "daemon_telemetry_provenance": "",
             "daemon_telemetry_summary": {},
@@ -2160,12 +2163,17 @@ class StudioController(QObject):
         supervisor_state = str(dict(daemon_telemetry_summary.get("supervisor", {}) or {}).get("state", ""))
         ptp_lock_status = str(dict(daemon_telemetry_summary.get("ptp_servo", {}) or {}).get("status", ""))
         gps_pps_lock_status = str(dict(daemon_telemetry_summary.get("gps_pps", {}) or {}).get("status", ""))
+        clock_discipline_summary = dict(daemon_telemetry_summary.get("clock_discipline", {}) or {})
+        clock_discipline_status = str(clock_discipline_summary.get("status", ""))
+        clock_discipline_offset_ns = clock_discipline_summary.get("max_abs_offset_ns")
+        clock_discipline_frequency_ppm = clock_discipline_summary.get("max_abs_frequency_ppm")
         hardware_watchdog_status = str(dict(daemon_telemetry_summary.get("hardware_watchdog", {}) or {}).get("status", ""))
         daemon_provenance = str(daemon_telemetry_summary.get("provenance", ""))
         if daemon_telemetry_summary:
             daemon_provenance = (
                 f"{daemon_provenance}; supervisor={supervisor_state or '--'}; "
-                f"ptp={ptp_lock_status or '--'}; gps={gps_pps_lock_status or '--'}; hw_watchdog={hardware_watchdog_status or '--'}"
+                f"ptp={ptp_lock_status or '--'}; gps={gps_pps_lock_status or '--'}; "
+                f"discipline={clock_discipline_status or '--'}; hw_watchdog={hardware_watchdog_status or '--'}"
             ).strip("; ")
         supervisor_integration_status = str(supervisor_integration_summary.get("status") or default["supervisor_integration_status"])
         os_supervisor_state = str(dict(supervisor_integration_summary.get("service_status", {}) or {}).get("state", ""))
@@ -2259,6 +2267,9 @@ class StudioController(QObject):
             "supervisor_state": supervisor_state,
             "ptp_lock_status": ptp_lock_status,
             "gps_pps_lock_status": gps_pps_lock_status,
+            "clock_discipline_status": clock_discipline_status,
+            "clock_discipline_offset_ns": clock_discipline_offset_ns,
+            "clock_discipline_frequency_ppm": clock_discipline_frequency_ppm,
             "hardware_watchdog_status": hardware_watchdog_status,
             "daemon_telemetry_provenance": daemon_provenance,
             "daemon_telemetry_summary": daemon_telemetry_summary,
@@ -2443,6 +2454,7 @@ class StudioController(QObject):
                 ("Runtime watchdog", rp_method_summary["runtime_watchdog_status"], rp_method_summary["runtime_watchdog_provenance"]),
                 ("Runtime service", rp_method_summary["runtime_service_status"], rp_method_summary["runtime_service_provenance"]),
                 ("Daemon telemetry", rp_method_summary["daemon_telemetry_status"], rp_method_summary["daemon_telemetry_provenance"]),
+                ("Clock discipline", rp_method_summary["clock_discipline_status"], f"offset_ns={rp_method_summary['clock_discipline_offset_ns']}; freq_ppm={rp_method_summary['clock_discipline_frequency_ppm']}"),
                 ("OS supervisor", rp_method_summary["supervisor_integration_status"], rp_method_summary["supervisor_integration_provenance"]),
                 ("Watchdog provider", rp_method_summary["watchdog_provider_type"], rp_method_summary["watchdog_provider_status"]),
                 ("Install runtime", rp_method_summary["installable_runtime_status"], rp_method_summary["installable_runtime_provenance"]),
@@ -2583,6 +2595,7 @@ class StudioController(QObject):
                 ("Runtime", rp_method_summary["runtime_watchdog_status"]),
                 ("Service", rp_method_summary["runtime_service_status"]),
                 ("Daemon", rp_method_summary["daemon_telemetry_status"]),
+                ("Discipline", rp_method_summary["clock_discipline_status"]),
                 ("Supervisor", rp_method_summary["supervisor_integration_status"]),
                 ("Provider", rp_method_summary["watchdog_provider_type"]),
                 ("Install", rp_method_summary["installable_runtime_status"]),
@@ -2605,6 +2618,7 @@ class StudioController(QObject):
                 ("Runtime watchdog", rp_method_summary["runtime_watchdog_profile"], rp_method_summary["runtime_watchdog_provenance"]),
                 ("Runtime service", rp_method_summary["runtime_service_id"], rp_method_summary["runtime_service_provenance"]),
                 ("Daemon telemetry", rp_method_summary["daemon_telemetry_status"], rp_method_summary["daemon_telemetry_provenance"]),
+                ("Clock discipline", rp_method_summary["clock_discipline_status"], f"offset_ns={rp_method_summary['clock_discipline_offset_ns']}; freq_ppm={rp_method_summary['clock_discipline_frequency_ppm']}"),
                 ("OS supervisor", rp_method_summary["os_supervisor_state"], rp_method_summary["supervisor_integration_provenance"]),
                 ("Watchdog provider", rp_method_summary["watchdog_provider_type"], f"status={rp_method_summary['watchdog_provider_status']}; delivered={rp_method_summary['watchdog_kick_delivered']}; reboot_recorded={rp_method_summary['watchdog_reboot_recorded']}"),
                 ("Install runtime", rp_method_summary["installable_runtime_profile_id"], rp_method_summary["installable_runtime_provenance"]),
@@ -4388,6 +4402,9 @@ class StudioController(QObject):
             table_rows.append(("daemon_telemetry.supervisor", dict(daemon_summary.get("supervisor", {}) or {}).get("state", "--"), "supervisor 状态"))
             table_rows.append(("daemon_telemetry.ptp", dict(daemon_summary.get("ptp_servo", {}) or {}).get("status", "--"), "PTP servo 状态"))
             table_rows.append(("daemon_telemetry.gps_pps", dict(daemon_summary.get("gps_pps", {}) or {}).get("status", "--"), "GPS PPS 状态"))
+            clock_discipline = dict(daemon_summary.get("clock_discipline", {}) or {})
+            table_rows.append(("daemon_telemetry.clock_discipline", clock_discipline.get("status", "--"), "硬件时钟 discipline 状态"))
+            table_rows.append(("daemon_telemetry.clock_discipline_offset_ns", str(clock_discipline.get("max_abs_offset_ns", "--")), "硬件时钟最大偏移"))
             table_rows.append(("daemon_telemetry.hw_watchdog", dict(daemon_summary.get("hardware_watchdog", {}) or {}).get("status", "--"), "硬件 watchdog 状态"))
         if supervisor_summary:
             table_rows.append(("supervisor_integration.status", supervisor_summary.get("status", "--"), "OS supervisor 集成状态"))
@@ -4428,6 +4445,7 @@ class StudioController(QObject):
             "Runtime watchdog": runtime_summary.get("status", "--") if runtime_summary else "--",
             "Runtime service": service_summary.get("status", "--") if service_summary else "--",
             "Daemon telemetry": daemon_summary.get("status", "--") if daemon_summary else "--",
+            "Clock discipline": dict(daemon_summary.get("clock_discipline", {}) or {}).get("status", "--") if daemon_summary else "--",
             "OS supervisor": supervisor_summary.get("status", "--") if supervisor_summary else "--",
             "Watchdog provider": dict(supervisor_summary.get("hardware_watchdog_provider", {}) or {}).get("provider_family", "--") if supervisor_summary else "--",
             "Install runtime": installable_runtime_summary.get("status", "--") if installable_runtime_summary else "--",

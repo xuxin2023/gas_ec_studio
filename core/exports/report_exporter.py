@@ -532,6 +532,8 @@ def _build_formal_report_snapshot(
                         ["runtime_deployment_feedback_status", str(runtime_deployment_feedback_summary.get("status", "--"))],
                         ["runtime_deployment_feedback_service_state", str(dict(runtime_deployment_feedback_summary.get("service_status", {}) or {}).get("state", "--"))],
                         ["ptp_lock_status", str(dict(daemon_telemetry_summary.get("ptp_servo", {}) or {}).get("status", "--"))],
+                        ["clock_discipline_status", str(dict(daemon_telemetry_summary.get("clock_discipline", {}) or {}).get("status", "--"))],
+                        ["clock_discipline_offset_ns", str(dict(daemon_telemetry_summary.get("clock_discipline", {}) or {}).get("max_abs_offset_ns", "--"))],
                         ["hardware_watchdog_status", str(dict(daemon_telemetry_summary.get("hardware_watchdog", {}) or {}).get("status", "--"))],
                         ["clock_sync_status", str(clock_sync_summary.get("status", "--"))],
                         ["benchmark_status", str(delivery_audit["benchmark_summary"].get("benchmark_status", ""))],
