@@ -245,7 +245,7 @@ def build_runtime_watchdog_manifest(
         ),
         "limitations": [
             "This is a software watchdog manifest, not an embedded process supervisor.",
-            "Hardware reboot and watchdog kick control remain future SmartFlux-hardening work; daemon_telemetry supplies optional PTP/GPS/watchdog log provenance.",
+            "Hardware reboot and watchdog kick control are delegated to supervisor_integration's gated providers; daemon_telemetry supplies optional PTP/GPS/watchdog log provenance.",
         ],
     }
 

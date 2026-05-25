@@ -277,7 +277,7 @@ def run_runtime_service_batches(
         ),
         "limitations": [
             "This service wrapper is process-level Python orchestration, not an installed OS daemon.",
-            "Hardware watchdog control and automatic system reboot still require platform-specific supervisor integration.",
+            "Hardware watchdog control and automatic system reboot are available only through explicit, gated supervisor_integration providers.",
         ],
     }
     for result in successful_results:
@@ -327,9 +327,13 @@ def attach_runtime_service_manifest(run_result: Any, service_manifest: dict[str,
         diagnostics["hardware_watchdog_status"] = dict(daemon.get("hardware_watchdog", {}) or {}).get("status", "")
         supervisor_integration = dict(daemon.get("supervisor_integration", {}) or {})
         install_profile = dict(supervisor_integration.get("installable_runtime_profile", {}) or {})
+        watchdog_provider = dict(supervisor_integration.get("hardware_watchdog_provider", {}) or {})
         diagnostics["os_supervisor_status"] = supervisor_integration.get("status", "")
         diagnostics["os_supervisor_state"] = dict(supervisor_integration.get("service_status", {}) or {}).get("state", "")
-        diagnostics["watchdog_provider_status"] = dict(supervisor_integration.get("hardware_watchdog_provider", {}) or {}).get("status", "")
+        diagnostics["watchdog_provider_status"] = watchdog_provider.get("status", "")
+        diagnostics["watchdog_provider_type"] = watchdog_provider.get("provider_family") or watchdog_provider.get("provider", "")
+        diagnostics["watchdog_kick_delivered"] = bool(watchdog_provider.get("kick_delivered", False))
+        diagnostics["watchdog_reboot_recorded"] = bool(watchdog_provider.get("reboot_recorded", False))
         diagnostics["installable_runtime_status"] = install_profile.get("status", "")
         diagnostics["installable_runtime_profile_id"] = install_profile.get("profile_id", "")
         diagnostics["installable_runtime_targets"] = list(install_profile.get("os_targets", []) or [])

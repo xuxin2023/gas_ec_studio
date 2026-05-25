@@ -12,6 +12,7 @@ from core.acquisition.supervisor_integration import (
     build_supervisor_integration_artifact,
     parse_systemd_status,
     parse_windows_service_status,
+    run_hardware_watchdog_provider,
 )
 from core.exports.delivery_exporter import export_delivery_package
 from core.exports.result_exporter import ResultExporter
@@ -140,6 +141,68 @@ def test_supervisor_integration_records_watchdog_kick(tmp_path: Path) -> None:
     assert kick_payload["dry_run"] is True
 
 
+def test_supervisor_integration_supports_platform_watchdog_providers(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    fake_watchdog_device = tmp_path / "dev" / "watchdog"
+    linux_audit = tmp_path / "watchdog" / "linux_provider.jsonl"
+    reboot_file = tmp_path / "watchdog" / "reboot.jsonl"
+    config["supervisor_integration"]["allow_reboot_request"] = True
+    config["supervisor_integration"]["require_watchdog_delivery"] = True
+    config["supervisor_integration"]["hardware_watchdog_provider"] = {
+        "provider": "linux_watchdog_device",
+        "device_path": str(fake_watchdog_device),
+        "kick_file": str(linux_audit),
+        "reboot_request_file": str(reboot_file),
+        "dry_run": False,
+        "allow_device_write": True,
+        "request_reboot": True,
+        "service_name": "gas-ec-runtime",
+    }
+
+    artifact = build_supervisor_integration_artifact(config=config, runtime_root=tmp_path)
+
+    assert artifact["status"] == "pass"
+    provider = artifact["hardware_watchdog_provider"]
+    assert provider["provider_family"] == "linux_watchdog_device"
+    assert provider["status"] == "kick_delivered_reboot_recorded"
+    assert provider["kick_delivered"] is True
+    assert provider["reboot_recorded"] is True
+    assert fake_watchdog_device.read_bytes() == b"\0"
+    assert json.loads(linux_audit.read_text(encoding="utf-8").splitlines()[-1])["kick_delivered"] is True
+    assert json.loads(reboot_file.read_text(encoding="utf-8").splitlines()[-1])["planned_command"] == "systemctl reboot"
+
+    systemd_audit = tmp_path / "watchdog" / "systemd_notify.jsonl"
+    systemd_provider = run_hardware_watchdog_provider(
+        provider_config={
+            "provider": "systemd_notify",
+            "audit_file": str(systemd_audit),
+            "notify_socket": "@gas_ec_studio_notify",
+            "dry_run": True,
+            "service_name": "gas-ec-runtime",
+        },
+        runtime_root=tmp_path,
+        allow_reboot_request=False,
+    )
+    assert systemd_provider["provider_family"] == "systemd_notify"
+    assert systemd_provider["status"] == "kick_recorded"
+    assert "WATCHDOG=1" in json.loads(systemd_audit.read_text(encoding="utf-8").splitlines()[-1])["datagram"]
+
+    windows_audit = tmp_path / "watchdog" / "windows_recovery.jsonl"
+    windows_provider = run_hardware_watchdog_provider(
+        provider_config={
+            "provider": "windows_service_recovery",
+            "audit_file": str(windows_audit),
+            "service_name": "gas-ec-runtime",
+            "dry_run": True,
+        },
+        runtime_root=tmp_path,
+        allow_reboot_request=False,
+    )
+    assert windows_provider["provider_family"] == "windows_service_recovery"
+    assert windows_provider["status"] == "policy_recorded"
+    assert "sc.exe failure" in windows_provider["planned_commands"][0]
+
+
 def test_supervisor_integration_reaches_export_network_and_delivery(tmp_path: Path) -> None:
     metadata = _metadata()
     config = _config(tmp_path)
@@ -155,6 +218,7 @@ def test_supervisor_integration_reaches_export_network_and_delivery(tmp_path: Pa
     assert service["service_manifest"]["daemon_telemetry"]["supervisor_integration"]["status"] == "pass"
     assert rp_result.windows[0].diagnostics["os_supervisor_status"] == "pass"
     assert rp_result.windows[0].diagnostics["watchdog_provider_status"] == "kick_recorded"
+    assert rp_result.windows[0].diagnostics["watchdog_provider_type"] == "audit_file"
 
     exporter = ResultExporter(tmp_path)
     bundle = exporter.export_minimal_bundle(
@@ -179,9 +243,15 @@ def test_supervisor_integration_reaches_export_network_and_delivery(tmp_path: Pa
     assert "OS_SUPERVISOR_STATUS" in export_manifest["network_method_fields"]
     assert supervisor_artifact["summary"]["hardware_watchdog_provider"]["status"] == "kick_recorded"
     assert full_rows[0]["os_supervisor_state"] == "running"
+    assert full_rows[0]["watchdog_provider_type"] == "audit_file"
+    assert full_rows[0]["watchdog_kick_delivered"] == "False"
+    assert full_rows[0]["watchdog_reboot_recorded"] == "False"
     assert network_payload["rows"][0]["OS_SUPERVISOR_STATUS"] == "pass"
     assert network_payload["rows"][0]["OS_SUPERVISOR_STATE"] == "running"
     assert network_payload["rows"][0]["WATCHDOG_PROVIDER_STATUS"] == "kick_recorded"
+    assert network_payload["rows"][0]["WATCHDOG_PROVIDER_TYPE"] == "audit_file"
+    assert network_payload["rows"][0]["WATCHDOG_KICK_DELIVERED"] is False
+    assert network_payload["rows"][0]["WATCHDOG_REBOOT_RECORDED"] is False
 
     delivery = export_delivery_package(
         runtime_root=tmp_path,

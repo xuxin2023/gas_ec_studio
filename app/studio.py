@@ -1994,6 +1994,9 @@ class StudioController(QObject):
             "supervisor_integration_status": "not_run",
             "os_supervisor_state": "",
             "watchdog_provider_status": "",
+            "watchdog_provider_type": "",
+            "watchdog_kick_delivered": False,
+            "watchdog_reboot_recorded": False,
             "supervisor_integration_provenance": "",
             "supervisor_integration_summary": {},
             "installable_runtime_status": "not_run",
@@ -2166,13 +2169,19 @@ class StudioController(QObject):
             ).strip("; ")
         supervisor_integration_status = str(supervisor_integration_summary.get("status") or default["supervisor_integration_status"])
         os_supervisor_state = str(dict(supervisor_integration_summary.get("service_status", {}) or {}).get("state", ""))
+        watchdog_provider_summary = dict(supervisor_integration_summary.get("hardware_watchdog_provider", {}) or {})
         watchdog_provider_status = str(
-            dict(supervisor_integration_summary.get("hardware_watchdog_provider", {}) or {}).get("status", "")
+            watchdog_provider_summary.get("status", "")
         )
+        watchdog_provider_type = str(watchdog_provider_summary.get("provider_family") or watchdog_provider_summary.get("provider", ""))
+        watchdog_kick_delivered = bool(watchdog_provider_summary.get("kick_delivered", False))
+        watchdog_reboot_recorded = bool(watchdog_provider_summary.get("reboot_recorded", False))
         supervisor_integration_provenance = str(supervisor_integration_summary.get("provenance", ""))
         if supervisor_integration_summary:
             supervisor_integration_provenance = (
-                f"{supervisor_integration_provenance}; os={os_supervisor_state or '--'}; provider={watchdog_provider_status or '--'}"
+                f"{supervisor_integration_provenance}; os={os_supervisor_state or '--'}; "
+                f"provider={watchdog_provider_status or '--'}; type={watchdog_provider_type or '--'}; "
+                f"delivered={watchdog_kick_delivered}; reboot_recorded={watchdog_reboot_recorded}"
             ).strip("; ")
         installable_runtime_status = str(installable_runtime_summary.get("status") or default["installable_runtime_status"])
         installable_runtime_profile_id = str(installable_runtime_summary.get("profile_id", ""))
@@ -2256,6 +2265,9 @@ class StudioController(QObject):
             "supervisor_integration_status": supervisor_integration_status,
             "os_supervisor_state": os_supervisor_state,
             "watchdog_provider_status": watchdog_provider_status,
+            "watchdog_provider_type": watchdog_provider_type,
+            "watchdog_kick_delivered": watchdog_kick_delivered,
+            "watchdog_reboot_recorded": watchdog_reboot_recorded,
             "supervisor_integration_provenance": supervisor_integration_provenance,
             "supervisor_integration_summary": supervisor_integration_summary,
             "installable_runtime_status": installable_runtime_status,
@@ -2432,6 +2444,7 @@ class StudioController(QObject):
                 ("Runtime service", rp_method_summary["runtime_service_status"], rp_method_summary["runtime_service_provenance"]),
                 ("Daemon telemetry", rp_method_summary["daemon_telemetry_status"], rp_method_summary["daemon_telemetry_provenance"]),
                 ("OS supervisor", rp_method_summary["supervisor_integration_status"], rp_method_summary["supervisor_integration_provenance"]),
+                ("Watchdog provider", rp_method_summary["watchdog_provider_type"], rp_method_summary["watchdog_provider_status"]),
                 ("Install runtime", rp_method_summary["installable_runtime_status"], rp_method_summary["installable_runtime_provenance"]),
                 ("Runtime deployment", rp_method_summary["runtime_deployment_status"], rp_method_summary["runtime_deployment_execution_mode"]),
                 ("Deployment feedback", rp_method_summary["runtime_deployment_feedback_status"], rp_method_summary["runtime_deployment_feedback_provenance"]),
@@ -2571,6 +2584,7 @@ class StudioController(QObject):
                 ("Service", rp_method_summary["runtime_service_status"]),
                 ("Daemon", rp_method_summary["daemon_telemetry_status"]),
                 ("Supervisor", rp_method_summary["supervisor_integration_status"]),
+                ("Provider", rp_method_summary["watchdog_provider_type"]),
                 ("Install", rp_method_summary["installable_runtime_status"]),
                 ("Deploy", rp_method_summary["runtime_deployment_status"]),
                 ("Feedback", rp_method_summary["runtime_deployment_feedback_status"]),
@@ -2592,6 +2606,7 @@ class StudioController(QObject):
                 ("Runtime service", rp_method_summary["runtime_service_id"], rp_method_summary["runtime_service_provenance"]),
                 ("Daemon telemetry", rp_method_summary["daemon_telemetry_status"], rp_method_summary["daemon_telemetry_provenance"]),
                 ("OS supervisor", rp_method_summary["os_supervisor_state"], rp_method_summary["supervisor_integration_provenance"]),
+                ("Watchdog provider", rp_method_summary["watchdog_provider_type"], f"status={rp_method_summary['watchdog_provider_status']}; delivered={rp_method_summary['watchdog_kick_delivered']}; reboot_recorded={rp_method_summary['watchdog_reboot_recorded']}"),
                 ("Install runtime", rp_method_summary["installable_runtime_profile_id"], rp_method_summary["installable_runtime_provenance"]),
                 ("Runtime deployment", rp_method_summary["runtime_deployment_status"], rp_method_summary["runtime_deployment_execution_mode"]),
                 ("Deployment feedback", rp_method_summary["runtime_deployment_feedback_status"], rp_method_summary["runtime_deployment_feedback_provenance"]),
@@ -4377,7 +4392,10 @@ class StudioController(QObject):
         if supervisor_summary:
             table_rows.append(("supervisor_integration.status", supervisor_summary.get("status", "--"), "OS supervisor 集成状态"))
             table_rows.append(("supervisor_integration.os_state", dict(supervisor_summary.get("service_status", {}) or {}).get("state", "--"), "OS service 状态"))
-            table_rows.append(("supervisor_integration.provider", dict(supervisor_summary.get("hardware_watchdog_provider", {}) or {}).get("status", "--"), "watchdog provider 状态"))
+            provider_summary = dict(supervisor_summary.get("hardware_watchdog_provider", {}) or {})
+            table_rows.append(("supervisor_integration.provider", provider_summary.get("status", "--"), "watchdog provider 状态"))
+            table_rows.append(("supervisor_integration.provider_type", provider_summary.get("provider_family", provider_summary.get("provider", "--")), "watchdog provider 类型"))
+            table_rows.append(("supervisor_integration.kick_delivered", str(provider_summary.get("kick_delivered", False)), "watchdog kick delivery evidence"))
         if installable_runtime_summary:
             table_rows.append(("installable_runtime.status", installable_runtime_summary.get("status", "--"), "OS service install plan status"))
             table_rows.append(("installable_runtime.targets", " / ".join(installable_runtime_summary.get("os_targets", []) or []), "systemd / Windows Service targets"))
@@ -4411,6 +4429,7 @@ class StudioController(QObject):
             "Runtime service": service_summary.get("status", "--") if service_summary else "--",
             "Daemon telemetry": daemon_summary.get("status", "--") if daemon_summary else "--",
             "OS supervisor": supervisor_summary.get("status", "--") if supervisor_summary else "--",
+            "Watchdog provider": dict(supervisor_summary.get("hardware_watchdog_provider", {}) or {}).get("provider_family", "--") if supervisor_summary else "--",
             "Install runtime": installable_runtime_summary.get("status", "--") if installable_runtime_summary else "--",
             "Runtime deployment": runtime_deployment_summary.get("status", "--") if runtime_deployment_summary else "--",
             "Runtime deployment feedback": runtime_deployment_feedback_summary.get("status", "--") if runtime_deployment_feedback_summary else "--",
