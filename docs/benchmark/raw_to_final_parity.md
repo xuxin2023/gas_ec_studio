@@ -6,7 +6,7 @@ The raw-to-final parity harness runs a raw fixture through `gas_ec_studio` RP pr
 
 - Raw fixture loading through text, native binary/TOB1/SLT, `.ghg`, or normalized-row JSON paths.
 - Native import provenance in `raw_input.import_summary`, including actual decoded format such as `tob1_fp2`, data type, TOB1 header-derived format/columns/header rows, EddySoft SLT analog high-resolution mask decoding, per-column data types for mixed binary records, record count, decoded record count, one-based first/last record selection, ASCII header EOL mode, columns, optional record framing/stride, EddyPro source-file anchors, and reader limitations.
-- Source-derived TOB1 conformance fixtures can be registered when public TOB1/SLT bundles are unavailable. `eddypro_source_tob1_seconds_001` is generated from EddyPro engine source anchors, preserves TOB1 `SECONDS`/`NANOSECONDS` leading ULONG timestamps, passes the raw-to-final harness, and is reported as `source_derived_conformance` rather than official field parity.
+- Source-derived TOB1/SLT conformance fixtures can be registered when public TOB1/SLT bundles are unavailable. `eddypro_source_tob1_seconds_001` is generated from EddyPro engine TOB1 source anchors, while `eddypro_source_slt_edisol_001` and `eddypro_source_slt_eddysoft_001` are generated from SLT EdiSol/EddySoft source anchors, preserve importer provenance, pass the raw-to-final harness, and are reported as `source_derived_conformance` rather than official field parity.
 - RP pipeline execution using the fixture config snapshot.
 - Window matching by exact/fuzzy start time or window ID.
 - Final field comparisons for primary flux, lag, WPL terms, primary flux source, rotation method, lag strategy, and QC grade.

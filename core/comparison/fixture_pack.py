@@ -264,6 +264,7 @@ def build_public_raw_search_summary(
         "known_limitations": list(manifest.get("known_limitations", []) or []),
         "search_status": dict(manifest.get("search_status", {}) or {}),
         "source_derived_fallback": dict(manifest.get("source_derived_fallback", {}) or {}),
+        "source_derived_fallbacks": list(manifest.get("source_derived_fallbacks", []) or []),
         "status": "pass" if leads and not errors else "fail",
         "lead_count": len(leads),
         "valid_lead_count": sum(1 for lead in leads if lead.get("status") == "pass"),

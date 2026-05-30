@@ -229,6 +229,11 @@
         "references/eddypro/source_derived/eddypro_source_tob1_seconds_001.tob1",
         "references/eddypro/source_derived/eddypro_source_tob1_seconds_001_provenance.json",
         "scripts/generate_source_derived_tob1_fixture.py",
+        "references/eddypro/source_derived/eddypro_source_slt_edisol_001.slt",
+        "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001.slt",
+        "references/eddypro/source_derived/eddypro_source_slt_edisol_001_provenance.json",
+        "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001_provenance.json",
+        "scripts/generate_source_derived_slt_fixtures.py",
         "tests/test_raw_importer_biomet_injection.py",
         "tests/test_eddypro_fixture_pack.py"
       ],
@@ -328,6 +333,19 @@
           ]
         },
         {
+          "id": "source_derived_slt_conformance_registered",
+          "label": "EddyPro source-derived SLT EdiSol and EddySoft conformance fixtures are registered and pass raw-to-final harness.",
+          "status": "done",
+          "evidence": [
+            "scripts/generate_source_derived_slt_fixtures.py",
+            "references/eddypro/source_derived/eddypro_source_slt_edisol_001.slt",
+            "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001.slt",
+            "references/eddypro/source_derived/eddypro_source_slt_edisol_001_provenance.json",
+            "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001_provenance.json",
+            "tests/test_eddypro_fixture_pack.py"
+          ]
+        },
+        {
           "id": "real_tob1_slt_binary_fixture",
           "label": "Real redistributable TOB1/SLT/native binary high-frequency fixtures are still missing.",
           "status": "needs_real_fixture",
@@ -340,7 +358,7 @@
           "blocker": "Need paired EddyPro project/settings and Full Output references for each promoted binary dialect."
         }
       ],
-      "gap": "Native reader bridge now decodes TOB1 IEEE4 float32 and TOB1 FP2 Campbell 2-byte float payloads, auto-detects TOB1 FP2/IEEE4 format, hot numeric columns, header rows, units rows, processing rows, EddyPro-style filename timestamp inference with yyyy/yy/mm/dd/ddd/HH/MM templates and common auto patterns, Campbell/LoggerNet SECONDS/NANOSECONDS record timestamps, EddyPro TOB1 data-type compatibility, header-declared leading ULONG layout fields and per-record tob1_leading_* value preservation for both FP2 and IEEE4, header-inferred non-leading IEEE4/ULONG payload column types, TOB1 full-record header decoding even when metadata or extra.columns selects only a subset of fields, and per-sample decoded native columns, records requested_columns, header_units, header_processing, timestamp_source, filename_timestamp, record_timestamp, leading_ulong_columns, preserved_leading_ulong_values, column_type_source, full_record_decode, and sample_decoded_columns in raw import provenance/manifests, decodes generic fixed-record binary with optional CRLF/LF/CR ASCII/file headers, one-based first/last record selection, per-record framing/stride, configurable byte order, and mixed per-column numeric data types, plus SLT EdiSol and EddySoft int16 fixtures including EddySoft analog high-resolution mask decoding with EddyPro source provenance; public_raw_binary_tob1_slt_search_summary_v1 now records TOB1/SLT/native-binary public search leads and blockers without promoting documentation-only sources to fixtures; eddypro_source_tob1_seconds_001 is now registered as a source-derived TOB1 conformance fixture with raw-to-final pass status; real vendor dialects and broad field binary fixture parity remain incomplete.",
+      "gap": "Native reader bridge now decodes TOB1 IEEE4 float32 and TOB1 FP2 Campbell 2-byte float payloads, auto-detects TOB1 FP2/IEEE4 format, hot numeric columns, header rows, units rows, processing rows, EddyPro-style filename timestamp inference with yyyy/yy/mm/dd/ddd/HH/MM templates and common auto patterns, Campbell/LoggerNet SECONDS/NANOSECONDS record timestamps, EddyPro TOB1 data-type compatibility, header-declared leading ULONG layout fields and per-record tob1_leading_* value preservation for both FP2 and IEEE4, header-inferred non-leading IEEE4/ULONG payload column types, TOB1 full-record header decoding even when metadata or extra.columns selects only a subset of fields, and per-sample decoded native columns, records requested_columns, header_units, header_processing, timestamp_source, filename_timestamp, record_timestamp, leading_ulong_columns, preserved_leading_ulong_values, column_type_source, full_record_decode, and sample_decoded_columns in raw import provenance/manifests, decodes generic fixed-record binary with optional CRLF/LF/CR ASCII/file headers, one-based first/last record selection, per-record framing/stride, configurable byte order, and mixed per-column numeric data types, plus SLT EdiSol and EddySoft int16 fixtures including EddySoft analog high-resolution mask decoding with EddyPro source provenance; public_raw_binary_tob1_slt_search_summary_v1 now records TOB1/SLT/native-binary public search leads and blockers without promoting documentation-only sources to fixtures; eddypro_source_tob1_seconds_001, eddypro_source_slt_edisol_001, and eddypro_source_slt_eddysoft_001 are now registered as source-derived conformance fixtures with raw-to-final pass status; real vendor dialects and broad field binary fixture parity remain incomplete.",
       "next_action": "Add real anonymized TOB1 FP2/IEEE4, SLT, and binary fixtures with EddyPro import/golden-output references."
     },
     {

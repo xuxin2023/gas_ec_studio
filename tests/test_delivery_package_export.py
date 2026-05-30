@@ -167,7 +167,7 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["result_manifest_summary"]["eddypro_closure_open_item_count"] >= 1
         assert manifest["flux_correction_ledger_summary"]["status"] == "ok"
         assert manifest["result_manifest_summary"]["fixture_pack_status"] == "pass"
-        assert manifest["result_manifest_summary"]["registered_raw_to_final_fixture_count"] == 4
+        assert manifest["result_manifest_summary"]["registered_raw_to_final_fixture_count"] == 6
         assert manifest["result_manifest_summary"]["official_raw_fixture_detail_id"]
         assert manifest["result_manifest_summary"]["official_raw_fixture_detail_id"] == "synthetic_li7700_trace_gas_001"
         assert "official_raw_acquisition_status" in manifest["result_manifest_summary"]

@@ -1,0 +1,42 @@
+{
+  "reference_id": "eddypro_source_slt_edisol_001_source_derived_oracle",
+  "source": "EddyPro engine source-derived slt_edisol conformance oracle",
+  "description": "Reference window validates slt_edisol int16 decoding and SLT source-anchor provenance.",
+  "created_at": "2026-05-30T00:00:00+08:00",
+  "source_repositories": {
+    "eddypro_engine": {
+      "url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+      "commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+      "source_files": [
+        "src/src_common/import_slt_edisol.f90"
+      ]
+    }
+  },
+  "processing_settings": {
+    "averaging_period_min": 1.0,
+    "rotation_mode": "none",
+    "density_correction": "none",
+    "lag_determination": "constant",
+    "detrend_method": "block_mean"
+  },
+  "qc_mapping_strategy": "Source-derived conformance oracle keeps QC optional; no official EddyPro QC flags are claimed.",
+  "windows": [
+    {
+      "window_id": "eddypro_source_slt_edisol_001_w001",
+      "start_time": "2026-05-30T09:00:00",
+      "end_time": "2026-05-30T09:00:59.900000",
+      "primary_flux": 13.01738365111178,
+      "primary_flux_source": "none",
+      "lag_seconds": 0.0,
+      "lag_strategy": "constant",
+      "rotation_mode": "none",
+      "applied_rotation_impl": "none",
+      "qc_grade": "",
+      "notes": "Source-derived slt_edisol conformance oracle; not an official EddyPro executable output."
+    }
+  ],
+  "known_limitations": [
+    "This fixture is generated from EddyPro source-code import rules and deterministic signals.",
+    "It is not a real field SLT dataset and must not close real-world binary fixture breadth blockers."
+  ]
+}

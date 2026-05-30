@@ -16,7 +16,7 @@
     "No lead in this manifest is promoted to a raw-to-final fixture.",
     "Documentation-only leads cannot satisfy high-frequency raw input, EddyPro project/settings, official Full_Output, normalized reference, or closure-acceptance evidence.",
     "Downloadable public TOB1/SLT/native-binary data still needs hash validation, metadata inference, EddyPro output normalization, registration, and acceptance before it can change the parity claim gate.",
-    "A source-derived TOB1 conformance fixture is registered separately to keep importer development moving, but it is not a field-data substitute."
+    "Source-derived TOB1 and SLT conformance fixtures are registered separately to keep importer development moving, but they are not field-data substitutes."
   ],
   "search_status": {
     "status": "no_public_registerable_tob1_slt_bundle_found",
@@ -47,6 +47,57 @@
     },
     "truthfulness_boundary": "This fixture proves source-derived TOB1 import and pipeline conformance only; it does not close the real TOB1/SLT/native binary field fixture blocker."
   },
+  "source_derived_fallbacks": [
+    {
+      "fixture_id": "eddypro_source_tob1_seconds_001",
+      "status": "registered_raw_to_final_pass",
+      "raw_format": "tob1_ieee4",
+      "fixture_pack_path": "references/eddypro/fixture_pack_v1.json",
+      "raw_file": "references/eddypro/source_derived/eddypro_source_tob1_seconds_001.tob1",
+      "provenance_file": "references/eddypro/source_derived/eddypro_source_tob1_seconds_001_provenance.json",
+      "source_derived_from": {
+        "eddypro_engine_repository": "https://github.com/LI-COR-Environmental/eddypro-engine",
+        "eddypro_engine_commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+        "eddypro_engine_files": [
+          "src/src_common/import_tob1.f90",
+          "src/src_common/m_fp2_to_float.f90"
+        ]
+      },
+      "truthfulness_boundary": "This fixture proves source-derived TOB1 import and pipeline conformance only; it does not close the real TOB1/SLT/native binary field fixture blocker."
+    },
+    {
+      "fixture_id": "eddypro_source_slt_edisol_001",
+      "status": "registered_raw_to_final_pass",
+      "raw_format": "slt_edisol",
+      "fixture_pack_path": "references/eddypro/fixture_pack_v1.json",
+      "raw_file": "references/eddypro/source_derived/eddypro_source_slt_edisol_001.slt",
+      "provenance_file": "references/eddypro/source_derived/eddypro_source_slt_edisol_001_provenance.json",
+      "source_derived_from": {
+        "eddypro_engine_repository": "https://github.com/LI-COR-Environmental/eddypro-engine",
+        "eddypro_engine_commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+        "eddypro_engine_files": [
+          "src/src_common/import_slt_edisol.f90"
+        ]
+      },
+      "truthfulness_boundary": "This fixture proves source-derived EdiSol SLT import and pipeline conformance only; it does not close the real TOB1/SLT/native binary field fixture blocker."
+    },
+    {
+      "fixture_id": "eddypro_source_slt_eddysoft_001",
+      "status": "registered_raw_to_final_pass",
+      "raw_format": "slt_eddysoft",
+      "fixture_pack_path": "references/eddypro/fixture_pack_v1.json",
+      "raw_file": "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001.slt",
+      "provenance_file": "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001_provenance.json",
+      "source_derived_from": {
+        "eddypro_engine_repository": "https://github.com/LI-COR-Environmental/eddypro-engine",
+        "eddypro_engine_commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+        "eddypro_engine_files": [
+          "src/src_common/import_slt_eddysoft.f90"
+        ]
+      },
+      "truthfulness_boundary": "This fixture proves source-derived EddySoft SLT import, high-resolution analog mask handling, and pipeline conformance only; it does not close the real TOB1/SLT/native binary field fixture blocker."
+    }
+  ],
   "leads": [
     {
       "lead_id": "campbellsci_loggernet_tob1_format_doc",

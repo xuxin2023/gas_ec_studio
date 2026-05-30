@@ -1,0 +1,40 @@
+{
+  "artifact_type": "source_derived_slt_fixture_provenance_v1",
+  "fixture_id": "eddypro_source_slt_edisol_001",
+  "source_file": "references/eddypro/source_derived/eddypro_source_slt_edisol_001.slt",
+  "metadata_file": "references/eddypro/source_derived/eddypro_source_slt_edisol_001_metadata.json",
+  "reference_file": "references/eddypro/source_derived/eddypro_source_slt_edisol_001_reference.json",
+  "generation_time": "2026-05-30T00:00:00+08:00",
+  "generation_method": "Deterministic slt_edisol int16 binary generated from EddyPro source-code import semantics.",
+  "normalization_script": "scripts/generate_source_derived_slt_fixtures.py",
+  "normalization_command": "python scripts/generate_source_derived_slt_fixtures.py --register",
+  "qc_mapping_strategy": "Source-derived conformance oracle keeps QC optional; no official EddyPro QC flags are claimed.",
+  "source_repositories": {
+    "eddypro_engine": {
+      "url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+      "commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+      "source_files": [
+        "src/src_common/import_slt_edisol.f90"
+      ]
+    }
+  },
+  "raw_columns": [
+    "U",
+    "V",
+    "W",
+    "CO2",
+    "H2O",
+    "P",
+    "TA"
+  ],
+  "method_metadata": {
+    "raw_format": "slt_edisol",
+    "timestamp_source": "extra.start_time",
+    "source_derived": true,
+    "eddysoft_high_resolution_columns": []
+  },
+  "known_limitations": [
+    "This fixture is generated from EddyPro source-code import rules and deterministic signals.",
+    "It is not a real field SLT dataset and must not close real-world binary fixture breadth blockers."
+  ]
+}

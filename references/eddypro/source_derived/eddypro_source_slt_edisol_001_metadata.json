@@ -1,0 +1,93 @@
+{
+  "project": {
+    "code": "EDDYPRO_SOURCE_SLT_EDISOL_001",
+    "name": "EddyPro Source-Derived slt_edisol Conformance"
+  },
+  "site": {
+    "station_code": "EDDYPRO_SOURCE_SLT_EDISOL_001",
+    "station_name": "Source-Derived slt_edisol Conformance Site"
+  },
+  "raw_file_description": {
+    "source_name": "eddypro_source_slt_edisol_001",
+    "source_type": "slt_edisol",
+    "timezone": "UTC",
+    "notes": "Source-derived slt_edisol fixture based on EddyPro SLT import source anchors.",
+    "column_mappings": [
+      {
+        "column_name": "U",
+        "variable": "u",
+        "input_unit": "m/s"
+      },
+      {
+        "column_name": "V",
+        "variable": "v",
+        "input_unit": "m/s"
+      },
+      {
+        "column_name": "W",
+        "variable": "w",
+        "input_unit": "m/s"
+      },
+      {
+        "column_name": "CO2",
+        "variable": "co2_ppm",
+        "input_unit": "umol/mol"
+      },
+      {
+        "column_name": "H2O",
+        "variable": "h2o_mmol",
+        "input_unit": "mmol/mol"
+      },
+      {
+        "column_name": "P",
+        "variable": "pressure_kpa",
+        "input_unit": "kPa"
+      },
+      {
+        "column_name": "TA",
+        "variable": "chamber_temp_c",
+        "input_unit": "C"
+      }
+    ]
+  },
+  "raw_file_settings": {
+    "sample_hz": 10.0,
+    "extra": {
+      "native_format": "slt_edisol",
+      "columns": [
+        "U",
+        "V",
+        "W",
+        "CO2",
+        "H2O",
+        "P",
+        "TA"
+      ],
+      "header_bytes": 20,
+      "start_time": "2026-05-30T09:00:00",
+      "scale": {
+        "U": 0.01,
+        "V": 0.01,
+        "W": 0.01,
+        "CO2": 0.1,
+        "H2O": 0.01,
+        "P": 0.02,
+        "TA": 0.01
+      },
+      "offset": {
+        "U": 0.0,
+        "V": 0.0,
+        "W": 0.0,
+        "CO2": 0.0,
+        "H2O": -18.0,
+        "P": 0.0,
+        "TA": -1.0
+      }
+    }
+  },
+  "metadata_version": "ec_core_metadata_v1",
+  "notes": [
+    "Source-derived conformance fixture, not a public field dataset.",
+    "Record timestamps are generated from extra.start_time plus sample_hz because SLT records do not carry explicit timestamps."
+  ]
+}

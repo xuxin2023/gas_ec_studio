@@ -747,6 +747,114 @@
         "reference_json": "4260EB7E1EAA42D9617BE0E2D1285B31DE21EB0E7B004ED3CB8EB6089E04454B",
         "provenance_json": "DB88022AEF14CBF784A04194254A53C6438F0617FCE979C681B2C301BDE4B14A"
       }
+    },
+    {
+      "fixture_id": "eddypro_source_slt_edisol_001",
+      "tier": "raw_to_final_parity",
+      "site_class": "source_derived_slt_edisol_conformance",
+      "software": "gas_ec_studio source-derived EddyPro engine conformance oracle",
+      "software_version": "eddypro-engine@3cabe637ca38",
+      "source_derived": true,
+      "source_derived_from": {
+        "eddypro_engine_repository": "https://github.com/LI-COR-Environmental/eddypro-engine",
+        "eddypro_engine_commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+        "eddypro_engine_files": [
+          "src/src_common/import_slt_edisol.f90"
+        ]
+      },
+      "raw_file": "references/eddypro/source_derived/eddypro_source_slt_edisol_001.slt",
+      "metadata_json": "references/eddypro/source_derived/eddypro_source_slt_edisol_001_metadata.json",
+      "reference_json": "references/eddypro/source_derived/eddypro_source_slt_edisol_001_reference.json",
+      "provenance_json": "references/eddypro/source_derived/eddypro_source_slt_edisol_001_provenance.json",
+      "rp_config": {
+        "sample_hz": 10.0,
+        "block_minutes": 1.0,
+        "steps": {
+          "window_sampling": {
+            "sample_hz": 10.0,
+            "window_minutes": 1.0
+          }
+        },
+        "rotation_mode": "none",
+        "detrend_mode": "block_mean",
+        "density_correction_mode": "none",
+        "lag_phase": {
+          "strategy": "constant",
+          "expected_lag_s": 0.0,
+          "search_window_s": 1.0
+        }
+      },
+      "thresholds": {
+        "flux_rel_threshold": 1e-09,
+        "lag_abs_threshold_s": 1e-12,
+        "wpl_rel_threshold": 0.2,
+        "qc_grade_must_match": false
+      },
+      "known_limitations": [
+        "Source-derived slt_edisol conformance fixture validates importer and raw-to-final harness behavior.",
+        "Reference output is a deterministic source-derived oracle, not an official EddyPro executable output.",
+        "Real TOB1/SLT/native binary field fixtures with matching EddyPro output are still required before claiming broad parity."
+      ],
+      "expected_sha256": {
+        "raw_file": "BF176288BE8F4256DFB21A7C2E9D3627BBC7716D42F5DFE1B83DBD3E20CBC58B",
+        "metadata_json": "38900B7F057CEDABDF4899D19269F12F1981ECF65CA5852C8D83C4809CB2901E",
+        "reference_json": "43B8F3CA0C11451124CC17D0E36DD0586A885B203974FBB65E2DED29D180F419",
+        "provenance_json": "7AAF8FDECE0EB7B5DE510D9A11329A3A8AA0FE6BB8FE8CB039F4FA52F17D0781"
+      }
+    },
+    {
+      "fixture_id": "eddypro_source_slt_eddysoft_001",
+      "tier": "raw_to_final_parity",
+      "site_class": "source_derived_slt_eddysoft_conformance",
+      "software": "gas_ec_studio source-derived EddyPro engine conformance oracle",
+      "software_version": "eddypro-engine@3cabe637ca38",
+      "source_derived": true,
+      "source_derived_from": {
+        "eddypro_engine_repository": "https://github.com/LI-COR-Environmental/eddypro-engine",
+        "eddypro_engine_commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+        "eddypro_engine_files": [
+          "src/src_common/import_slt_eddysoft.f90"
+        ]
+      },
+      "raw_file": "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001.slt",
+      "metadata_json": "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001_metadata.json",
+      "reference_json": "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001_reference.json",
+      "provenance_json": "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001_provenance.json",
+      "rp_config": {
+        "sample_hz": 10.0,
+        "block_minutes": 1.0,
+        "steps": {
+          "window_sampling": {
+            "sample_hz": 10.0,
+            "window_minutes": 1.0
+          }
+        },
+        "rotation_mode": "none",
+        "detrend_mode": "block_mean",
+        "density_correction_mode": "none",
+        "lag_phase": {
+          "strategy": "constant",
+          "expected_lag_s": 0.0,
+          "search_window_s": 1.0
+        }
+      },
+      "thresholds": {
+        "flux_rel_threshold": 1e-09,
+        "lag_abs_threshold_s": 1e-12,
+        "wpl_rel_threshold": 0.2,
+        "qc_grade_must_match": false
+      },
+      "known_limitations": [
+        "Source-derived slt_eddysoft conformance fixture validates importer and raw-to-final harness behavior.",
+        "Reference output is a deterministic source-derived oracle, not an official EddyPro executable output.",
+        "Real TOB1/SLT/native binary field fixtures with matching EddyPro output are still required before claiming broad parity."
+      ],
+      "expected_sha256": {
+        "raw_file": "0E0FBF6885D85D4AFE47139DF02F85AC8876DFC23119130758EA740D45B3A43D",
+        "metadata_json": "EAB7EFC7F5F76BECD422FC7C49C8108117A82B8948EB1B5E1D762B5684717BBF",
+        "reference_json": "367F91483A75CCEF20B051DC31963C94D57F0B082A893A0CCF4585BDB7486089",
+        "provenance_json": "3225337C53F6FD3D4B6F99E0F20726ACB12C14E93A5A7047893749A8E76C1291"
+      }
     }
   ],
   "coverage_gaps": [
