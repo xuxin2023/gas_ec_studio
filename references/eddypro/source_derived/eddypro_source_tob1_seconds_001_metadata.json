@@ -1,0 +1,28 @@
+{
+  "project": {
+    "code": "SRC-TOB1",
+    "name": "EddyPro Source-Derived TOB1 Conformance"
+  },
+  "site": {
+    "station_code": "SRC-TOB1",
+    "station_name": "Source-Derived TOB1 Conformance Site"
+  },
+  "raw_file_description": {
+    "source_name": "eddypro_source_tob1_seconds_001",
+    "source_type": "tob1",
+    "timezone": "UTC",
+    "notes": "Source-derived TOB1 IEEE4 conformance fixture based on EddyPro import_tob1.f90 layout rules."
+  },
+  "raw_file_settings": {
+    "sample_hz": 10.0,
+    "extra": {
+      "native_format": "tob1_ieee4",
+      "tob1_format": "IEEE4"
+    }
+  },
+  "metadata_version": "ec_core_metadata_v1",
+  "notes": [
+    "Source-derived conformance fixture, not a public field dataset.",
+    "Record timestamps come from TOB1 SECONDS/NANOSECONDS leading ULONG fields."
+  ]
+}

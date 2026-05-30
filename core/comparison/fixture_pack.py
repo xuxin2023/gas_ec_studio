@@ -262,6 +262,8 @@ def build_public_raw_search_summary(
         "normalization_command": manifest.get("normalization_command", ""),
         "qc_mapping": dict(manifest.get("qc_mapping", {}) or {}),
         "known_limitations": list(manifest.get("known_limitations", []) or []),
+        "search_status": dict(manifest.get("search_status", {}) or {}),
+        "source_derived_fallback": dict(manifest.get("source_derived_fallback", {}) or {}),
         "status": "pass" if leads and not errors else "fail",
         "lead_count": len(leads),
         "valid_lead_count": sum(1 for lead in leads if lead.get("status") == "pass"),
@@ -284,7 +286,7 @@ def build_public_raw_search_summary(
         "errors": errors,
         "truthfulness_note": (
             "This search ledger records public leads and documentation sources for TOB1/SLT/native-binary parity work. "
-            "Documentation-only leads are not fixtures and do not support a raw-to-final EddyPro parity claim."
+            "Documentation-only leads and source-derived fallback fixtures do not support a full raw-to-final EddyPro parity claim."
         ),
     }
 
@@ -1806,6 +1808,8 @@ def _official_readiness_level(asset: dict[str, Any], validation: dict[str, Any])
     if bool(asset.get("disabled", False)) or validation.get("status") == "disabled":
         return "disabled"
     tier = str(asset.get("tier", ""))
+    if bool(asset.get("source_derived", False)):
+        return "source_derived_conformance"
     software = str(asset.get("software", ""))
     if tier == "raw_to_final_parity":
         has_official_reference = software.lower().startswith("eddypro") or bool(asset.get("official_eddypro_output"))
@@ -1825,6 +1829,8 @@ def _official_readiness_level(asset: dict[str, Any], validation: dict[str, Any])
 def _fixture_evidence_role(tier: str, readiness_level: str) -> str:
     if readiness_level == "official_raw_to_final_ready":
         return "official_raw_to_final_parity"
+    if readiness_level == "source_derived_conformance":
+        return "source_derived_raw_import_conformance"
     if tier == "real_reference_output":
         return "official_output_window_reference"
     if tier == "raw_to_final_parity":

@@ -137,7 +137,7 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert snapshot["delivery_audit"]["artifact_index"]["eddypro_release_gate_artifact"]["exists"] is True
         assert snapshot["delivery_audit"]["artifact_index"]["flux_correction_ledger_artifact"]["exists"] is True
         assert snapshot["delivery_audit"]["fixture_pack_summary"]["status"] == "pass"
-        assert snapshot["delivery_audit"]["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 3
+        assert snapshot["delivery_audit"]["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 4
         assert snapshot["delivery_audit"]["official_raw_fixture_detail"]["artifact_type"] == "official_raw_fixture_detail_v1"
         assert snapshot["delivery_audit"]["official_raw_acquisition_validation"]["artifact_type"] == "official_raw_fixture_acquisition_validation_v1"
         assert snapshot["delivery_audit"]["official_raw_evidence_pack"]["artifact_type"] == "official_raw_fixture_evidence_pack_v1"

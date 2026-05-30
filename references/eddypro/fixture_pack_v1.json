@@ -692,11 +692,66 @@
       ],
       "official_full_output": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\eddypro\\eddypro_exp_full_output_2021-08-21T003117_exp.csv",
       "eddypro_project_file": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\eddypro\\processing_2021-08-21T003117_exp.eddypro"
+    },
+    {
+      "fixture_id": "eddypro_source_tob1_seconds_001",
+      "tier": "raw_to_final_parity",
+      "site_class": "source_derived_tob1_conformance",
+      "software": "gas_ec_studio source-derived EddyPro engine conformance oracle",
+      "software_version": "eddypro-engine@3cabe637ca38",
+      "source_derived": true,
+      "source_derived_from": {
+        "eddypro_engine_repository": "https://github.com/LI-COR-Environmental/eddypro-engine",
+        "eddypro_engine_commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+        "eddypro_engine_files": [
+          "src/src_common/import_tob1.f90",
+          "src/src_common/m_fp2_to_float.f90"
+        ]
+      },
+      "raw_file": "references/eddypro/source_derived/eddypro_source_tob1_seconds_001.tob1",
+      "metadata_json": "references/eddypro/source_derived/eddypro_source_tob1_seconds_001_metadata.json",
+      "reference_json": "references/eddypro/source_derived/eddypro_source_tob1_seconds_001_reference.json",
+      "provenance_json": "references/eddypro/source_derived/eddypro_source_tob1_seconds_001_provenance.json",
+      "rp_config": {
+        "sample_hz": 10.0,
+        "block_minutes": 1.0,
+        "steps": {
+          "window_sampling": {
+            "sample_hz": 10.0,
+            "window_minutes": 1.0
+          }
+        },
+        "rotation_mode": "none",
+        "detrend_mode": "block_mean",
+        "density_correction_mode": "none",
+        "lag_phase": {
+          "strategy": "constant",
+          "expected_lag_s": 0.0,
+          "search_window_s": 1.0
+        }
+      },
+      "thresholds": {
+        "flux_rel_threshold": 1e-09,
+        "lag_abs_threshold_s": 1e-12,
+        "wpl_rel_threshold": 0.2,
+        "qc_grade_must_match": false
+      },
+      "known_limitations": [
+        "Source-derived TOB1 conformance fixture validates importer and raw-to-final harness behavior.",
+        "Reference output is a deterministic source-derived oracle, not an official EddyPro executable output.",
+        "Real TOB1/SLT/native binary field fixtures with matching EddyPro output are still required before claiming broad parity."
+      ],
+      "expected_sha256": {
+        "raw_file": "A5CBBFBE4C7E6F5DFC06F20A6228EF3110B8EE63335E38096EC7DA6CE90DA013",
+        "metadata_json": "5650C5079EACB1025B54FC8190B7550793B528172650B93DEBBF2787195FF5E5",
+        "reference_json": "4260EB7E1EAA42D9617BE0E2D1285B31DE21EB0E7B004ED3CB8EB6089E04454B",
+        "provenance_json": "DB88022AEF14CBF784A04194254A53C6438F0617FCE979C681B2C301BDE4B14A"
+      }
     }
   ],
   "coverage_gaps": [
+    "Need real TOB1/SLT/binary field fixtures with official EddyPro Full_Output parity.",
     "Need anonymized raw LI-COR .ghg bundles with official EddyPro outputs.",
-    "Need TOB1/SLT/binary raw fixtures with EddyPro import-output parity.",
     "Need LI-7700 CH4 real numeric parity fixtures including WMS/spectroscopic edge cases.",
     "Need sonic head/AoA/crosswind real instrument fixtures.",
     "Need long-period spectra/cospectra/ogive assessment fixtures."

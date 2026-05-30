@@ -1,0 +1,43 @@
+{
+  "artifact_type": "source_derived_tob1_fixture_provenance_v1",
+  "fixture_id": "eddypro_source_tob1_seconds_001",
+  "source_file": "references/eddypro/source_derived/eddypro_source_tob1_seconds_001.tob1",
+  "metadata_file": "references/eddypro/source_derived/eddypro_source_tob1_seconds_001_metadata.json",
+  "reference_file": "references/eddypro/source_derived/eddypro_source_tob1_seconds_001_reference.json",
+  "generation_time": "2026-05-30T00:00:00+08:00",
+  "generation_method": "Deterministic TOB1 IEEE4 binary generated from EddyPro source-code import semantics.",
+  "normalization_script": "scripts/generate_source_derived_tob1_fixture.py",
+  "normalization_command": "python scripts/generate_source_derived_tob1_fixture.py --register",
+  "qc_mapping_strategy": "Source-derived conformance oracle keeps QC optional; no official EddyPro QC flags are claimed.",
+  "source_repositories": {
+    "eddypro_engine": {
+      "url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+      "commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+      "source_files": [
+        "src/src_common/import_tob1.f90",
+        "src/src_common/m_fp2_to_float.f90"
+      ]
+    }
+  },
+  "raw_columns": [
+    "SECONDS",
+    "NANOSECONDS",
+    "RECORD",
+    "U",
+    "V",
+    "W",
+    "CO2",
+    "H2O",
+    "P",
+    "TA"
+  ],
+  "method_metadata": {
+    "raw_format": "tob1_ieee4",
+    "timestamp_source": "tob1_record_seconds_nanoseconds",
+    "source_derived": true
+  },
+  "known_limitations": [
+    "This fixture is generated from EddyPro source-code import rules and deterministic signals.",
+    "It is not a real field TOB1/SLT dataset and must not close real-world fixture breadth blockers."
+  ]
+}

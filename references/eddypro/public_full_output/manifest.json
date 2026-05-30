@@ -89,9 +89,9 @@
       "path": "references/eddypro/public_full_output/NAMORS_EC_2005-2019_varnames_units_v2.txt",
       "source_filename": "NAMORS_EC_2005-2019_varnames_units_v2.txt",
       "source_url": "https://zenodo.org/api/records/4005781/files/NAMORS_EC_2005-2019_varnames_units_v2.txt/content",
-      "expected_md5": "729E48A6FA0AF60904B2E12CDE4E6729",
-      "expected_sha256": "EE38FA1D2D1084E679BA6C0092D9AC193FFFF83C5487EB751D8423C2057D807A",
-      "expected_size_bytes": 8314,
+      "expected_md5": "67237F90C68E5103694D09582EFD0D8E",
+      "expected_sha256": "0AACBAF8EAD351FB4610E6463C878571179B1CB0553F9322545C04835C30D1A8",
+      "expected_size_bytes": 7927,
       "delimiter": "tab",
       "required_variables": [
         "Tau",
