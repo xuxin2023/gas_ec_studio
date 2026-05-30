@@ -329,6 +329,12 @@ def attach_runtime_service_manifest(run_result: Any, service_manifest: dict[str,
         diagnostics["clock_discipline_offset_ns"] = clock_discipline.get("max_abs_offset_ns")
         diagnostics["clock_discipline_frequency_ppm"] = clock_discipline.get("max_abs_frequency_ppm")
         diagnostics["hardware_watchdog_status"] = dict(daemon.get("hardware_watchdog", {}) or {}).get("status", "")
+        target_validation = dict(daemon.get("target_host_validation", {}) or {})
+        diagnostics["target_host_validation_status"] = target_validation.get("status", "")
+        diagnostics["target_host_validation_gate_status"] = target_validation.get("gate_status", "")
+        diagnostics["target_host_validation_fixture_id"] = target_validation.get("fixture_id", "")
+        diagnostics["target_host_validation_target_host_id"] = target_validation.get("target_host_id", "")
+        diagnostics["target_host_validation_detail"] = target_validation
         supervisor_integration = dict(daemon.get("supervisor_integration", {}) or {})
         install_profile = dict(supervisor_integration.get("installable_runtime_profile", {}) or {})
         watchdog_provider = dict(supervisor_integration.get("hardware_watchdog_provider", {}) or {})
@@ -387,6 +393,7 @@ def _compact_daemon_telemetry(daemon_telemetry: dict[str, Any]) -> dict[str, Any
         "gps_pps": dict(daemon_telemetry.get("gps_pps", {}) or {}),
         "clock_discipline": dict(daemon_telemetry.get("clock_discipline", {}) or {}),
         "hardware_watchdog": dict(daemon_telemetry.get("hardware_watchdog", {}) or {}),
+        "target_host_validation": dict(daemon_telemetry.get("target_host_validation", {}) or {}),
         "supervisor_integration": dict(daemon_telemetry.get("supervisor_integration", {}) or {}),
         "fail_count": daemon_telemetry.get("fail_count", 0),
         "warn_count": daemon_telemetry.get("warn_count", 0),

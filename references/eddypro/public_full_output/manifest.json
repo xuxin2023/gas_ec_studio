@@ -1,0 +1,137 @@
+{
+  "artifact_type": "public_eddypro_full_output_fixture_manifest_v1",
+  "manifest_id": "zenodo_4005781_namors_full_output_sample",
+  "dataset_id": "10.5281/zenodo.4005781",
+  "title": "A long term hourly eddy covariance dataset of consistently processed CO2 and H2O Fluxes from the Tibetan Alpine Steppe at Nam Co (2005 - 2019)",
+  "source_url": "https://zenodo.org/records/4005781",
+  "license": "CC-BY-4.0",
+  "source_note": "Zenodo dataset whose notes state that NAMORS_EC_2005-2019_v2.txt contains EddyPro full_output, biomet data, quality flags, self-heating corrected CO2 fluxes, and REddyProc gap-filling fields. The manifest also retains a Dryad public preview sample from a flooded larch forest dataset whose README states that LI-COR LI-7500A/LI-7700 10 Hz .ghg files were processed by EddyPro v7.0.9 into 30-minute flux files.",
+  "acquired_at": "2026-05-29T02:14:00+08:00",
+  "normalization_time": "2026-05-29T02:14:00+08:00",
+  "normalization_command": "curl.exe -L https://zenodo.org/records/4005781/files/NAMORS_EC_2005-2019_varnames_units_v2.txt?download=1 -o references/eddypro/public_full_output/NAMORS_EC_2005-2019_varnames_units_v2.txt; curl.exe -L -r 0-1048575 https://zenodo.org/records/4005781/files/NAMORS_EC_2005-2019_v2.txt?download=1 -o references/eddypro/public_full_output/NAMORS_EC_2005-2019_v2.head.txt; python tools/extract_dryad_preview.py --source https://datadryad.org/dataset/doi:10.5061/dryad.kprr4xhf1 --file-stream 3543475 --output references/eddypro/public_full_output/dryad_kprr4xhf1_FL_Flux_05_2023_preview.csv",
+  "qc_mapping": {
+    "strategy": "preserve_eddypro_qc_columns",
+    "qc_columns": ["qc_Tau", "qc_H", "qc_LE", "qc_co2_flux", "qc_h2o_flux"],
+    "missing_value": "-9999"
+  },
+  "known_limitations": [
+    "The repository stores a 1 MiB byte-range sample plus the complete variable/unit descriptor, not the 261 MB original full-output file.",
+    "The original remote file MD5 and size are retained so the complete source can be reacquired and verified outside the git repository.",
+    "This is a public EddyPro Full_Output-style processed dataset, not a paired high-frequency raw-to-final acceptance fixture.",
+    "The sample supports field-schema and provenance validation but does not prove gas_ec_studio can reproduce the original full time series from raw data.",
+    "Dryad individual/full-file downloads were blocked by AWS WAF during automated acquisition, so only the public preview table is retained; this is public LI-7700/EddyPro numeric-output evidence, not a complete raw-to-final parity fixture."
+  ],
+  "original_files": [
+    {
+      "file_id": "namors_full_output_remote",
+      "role": "remote_full_output_original",
+      "source_filename": "NAMORS_EC_2005-2019_v2.txt",
+      "source_url": "https://zenodo.org/api/records/4005781/files/NAMORS_EC_2005-2019_v2.txt/content",
+      "expected_md5": "182cd0036d0df119bdbf01c1dd31f80a",
+      "expected_size_bytes": 261076627
+    },
+    {
+      "file_id": "dryad_flooded_larch_flux_remote",
+      "role": "remote_li7700_flux_output_original",
+      "source_filename": "FL_Flux_05_2023.csv",
+      "source_url": "https://datadryad.org/stash/dataset/doi:10.5061/dryad.kprr4xhf1",
+      "expected_size_bytes": 200704,
+      "download_status": "blocked_by_aws_waf_in_automated_fetch",
+      "preview_file_id": "dryad_flooded_larch_flux_05_2023_preview"
+    }
+  ],
+  "files": [
+    {
+      "file_id": "namors_full_output_head_1mib",
+      "role": "full_output_sample",
+      "path": "references/eddypro/public_full_output/NAMORS_EC_2005-2019_v2.head.txt",
+      "source_filename": "NAMORS_EC_2005-2019_v2.txt",
+      "source_url": "https://zenodo.org/api/records/4005781/files/NAMORS_EC_2005-2019_v2.txt/content",
+      "range_start": 0,
+      "range_end": 1048575,
+      "expected_md5": "61A035DEF8963025B375E50BD325A519",
+      "expected_sha256": "ACD92D1DB67C9A0425119BBBA0707C5BA50218F1C08E0DEE7C70D803DB3D63F9",
+      "expected_size_bytes": 1048576,
+      "delimiter": "tab",
+      "required_columns": [
+        "date",
+        "time",
+        "Tau",
+        "qc_Tau",
+        "rand_err_Tau",
+        "H",
+        "qc_H",
+        "rand_err_H",
+        "LE",
+        "qc_LE",
+        "rand_err_LE",
+        "co2_flux",
+        "qc_co2_flux",
+        "rand_err_co2_flux",
+        "h2o_flux",
+        "qc_h2o_flux",
+        "rand_err_h2o_flux",
+        "ET",
+        "x_peak",
+        "x_offset",
+        "x_10",
+        "x_30",
+        "x_50",
+        "x_70",
+        "x_90",
+        "co2_time_lag",
+        "h2o_time_lag"
+      ]
+    },
+    {
+      "file_id": "namors_varnames_units",
+      "role": "variable_units_descriptor",
+      "path": "references/eddypro/public_full_output/NAMORS_EC_2005-2019_varnames_units_v2.txt",
+      "source_filename": "NAMORS_EC_2005-2019_varnames_units_v2.txt",
+      "source_url": "https://zenodo.org/api/records/4005781/files/NAMORS_EC_2005-2019_varnames_units_v2.txt/content",
+      "expected_md5": "729E48A6FA0AF60904B2E12CDE4E6729",
+      "expected_sha256": "EE38FA1D2D1084E679BA6C0092D9AC193FFFF83C5487EB751D8423C2057D807A",
+      "expected_size_bytes": 8314,
+      "delimiter": "tab",
+      "required_variables": [
+        "Tau",
+        "H",
+        "LE",
+        "co2_flux",
+        "h2o_flux",
+        "ET",
+        "x_peak",
+        "x_90",
+        "rand_err_co2_flux"
+      ]
+    },
+    {
+      "file_id": "dryad_flooded_larch_flux_05_2023_preview",
+      "role": "full_output_sample",
+      "path": "references/eddypro/public_full_output/dryad_kprr4xhf1_FL_Flux_05_2023_preview.csv",
+      "source_filename": "FL_Flux_05_2023.csv",
+      "source_url": "https://datadryad.org/data_file/preview/3543475",
+      "dataset_url": "https://datadryad.org/dataset/doi:10.5061/dryad.kprr4xhf1",
+      "download_method": "dryad_public_preview",
+      "dryad_file_stream_id": "3543475",
+      "expected_md5": "2DBC5482C9E647589CC64159B2CAAA6D",
+      "expected_sha256": "2866CE1C2CF822116925EB719C4CCE131C4941EEF5867E818474F1E4991B95A5",
+      "expected_size_bytes": 6230,
+      "delimiter": "comma",
+      "source_instrument": "LI-COR LI-7500A plus LI-7700",
+      "processing_software": "EddyPro v7.0.9",
+      "preview_source": "Dryad public preview endpoint; full file download requires browser/WAF flow",
+      "required_columns": [
+        "date",
+        "time",
+        "H",
+        "LE",
+        "co2_flux",
+        "ch4_flux",
+        "ch4_mixing_ratio",
+        "u*",
+        "rssi_77_mean"
+      ]
+    }
+  ]
+}

@@ -15,12 +15,18 @@ from core.acquisition.supervisor_integration import build_supervisor_integration
 
 
 def has_daemon_telemetry_config(config: dict[str, Any]) -> bool:
-    if any(isinstance(config.get(key), dict) and config.get(key) for key in ("daemon_telemetry", "hardware_telemetry")):
+    if any(
+        isinstance(config.get(key), dict) and config.get(key)
+        for key in ("daemon_telemetry", "hardware_telemetry", "target_host_validation")
+    ):
         return True
     if has_supervisor_integration_config(config):
         return True
     smartflux = config.get("smartflux_runtime", {})
-    return isinstance(smartflux, dict) and isinstance(smartflux.get("daemon_telemetry"), dict) and bool(smartflux.get("daemon_telemetry"))
+    return isinstance(smartflux, dict) and (
+        (isinstance(smartflux.get("daemon_telemetry"), dict) and bool(smartflux.get("daemon_telemetry")))
+        or (isinstance(smartflux.get("target_host_validation"), dict) and bool(smartflux.get("target_host_validation")))
+    )
 
 
 def extract_daemon_telemetry_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -34,6 +40,12 @@ def extract_daemon_telemetry_config(config: dict[str, Any]) -> dict[str, Any]:
         telemetry = smartflux.get("daemon_telemetry", {})
         if isinstance(telemetry, dict):
             merged.update(telemetry)
+        validation = smartflux.get("target_host_validation", {})
+        if isinstance(validation, dict) and validation:
+            merged.setdefault("target_host_validation", validation)
+    validation = config.get("target_host_validation", {})
+    if isinstance(validation, dict) and validation:
+        merged.setdefault("target_host_validation", validation)
     merged.setdefault("enabled", True)
     merged.setdefault("profile_id", "daemon_telemetry_v1")
     merged.setdefault("max_ptp_offset_ns", 1_000_000.0)
@@ -97,6 +109,32 @@ def build_daemon_telemetry_artifact(
     )
     fail_count = sum(1 for item in checks if item["status"] == "fail")
     warn_count = sum(1 for item in checks if item["status"] == "warn")
+    base_status = "fail" if fail_count else ("warning" if warn_count else "pass")
+    target_host_validation = _build_target_host_validation_artifact(
+        validation_config=_target_host_validation_config(config=config, telemetry_config=telemetry_config),
+        runtime_root=root,
+        telemetry_status=base_status,
+        telemetry_components={
+            "supervisor": supervisor,
+            "ptp_servo": ptp_servo,
+            "gps_pps": gps_pps,
+            "clock_discipline": clock_discipline,
+            "hardware_watchdog": hardware_watchdog,
+        },
+    )
+    if target_host_validation.get("status") not in {"not_configured", "disabled"}:
+        checks.append(
+            _check(
+                "target_host_validation",
+                target_host_validation.get("gate_status") == "pass",
+                measured=target_host_validation.get("status", ""),
+                threshold="pass",
+                severity="fail",
+                failure_message="Target-host telemetry did not match the configured golden snapshot.",
+            )
+        )
+        fail_count = sum(1 for item in checks if item["status"] == "fail")
+        warn_count = sum(1 for item in checks if item["status"] == "warn")
     status = "fail" if fail_count else ("warning" if warn_count else "pass")
     return {
         "artifact_type": "daemon_telemetry",
@@ -112,19 +150,323 @@ def build_daemon_telemetry_artifact(
         "clock_discipline": clock_discipline,
         "hardware_watchdog": hardware_watchdog,
         "supervisor_integration": supervisor_integration,
+        "target_host_validation": target_host_validation,
         "checks": checks,
         "fail_count": fail_count,
         "warn_count": warn_count,
         "recommended_actions": _recommended_actions(checks),
         "provenance": (
             "Daemon telemetry v1 parses configured supervisor, PTP servo, GPS PPS, and hardware watchdog logs, "
-            "samples process-level telemetry, and incorporates OS supervisor integration provider evidence."
+            "samples process-level telemetry, incorporates OS supervisor integration provider evidence, "
+            "and can compare target-host captures against configured golden telemetry snapshots."
         ),
         "limitations": [
             "The artifact parses text/JSON telemetry supplied by the runtime host; it does not install or control an OS daemon.",
             "Hardware watchdog kicking and reboot control use configured providers; direct platform service mutation is not invoked by telemetry collection.",
+            "Target-host validation compares supplied capture logs with expected snapshots; it is not a substitute for direct hardware clock control.",
         ],
     }
+
+
+def build_target_host_telemetry_validation_artifact(
+    *,
+    config: dict[str, Any],
+    runtime_root: Path | str | None = None,
+    telemetry_artifact: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    telemetry_config = extract_daemon_telemetry_config(config)
+    root = Path(runtime_root or Path.cwd())
+    if telemetry_artifact:
+        components = {
+            "supervisor": dict(telemetry_artifact.get("supervisor", {}) or {}),
+            "ptp_servo": dict(telemetry_artifact.get("ptp_servo", {}) or {}),
+            "gps_pps": dict(telemetry_artifact.get("gps_pps", {}) or {}),
+            "clock_discipline": dict(telemetry_artifact.get("clock_discipline", {}) or {}),
+            "hardware_watchdog": dict(telemetry_artifact.get("hardware_watchdog", {}) or {}),
+        }
+        telemetry_status = str(telemetry_artifact.get("status", ""))
+    else:
+        components = {
+            "supervisor": _supervisor_status(telemetry_config),
+            "ptp_servo": parse_ptp_servo_log(_optional_path(telemetry_config.get("ptp_servo_log") or telemetry_config.get("ptp_log"))),
+            "gps_pps": parse_gps_pps_log(_optional_path(telemetry_config.get("gps_pps_log") or telemetry_config.get("gps_log"))),
+            "clock_discipline": parse_clock_discipline_log(
+                _optional_path(
+                    telemetry_config.get("clock_discipline_log")
+                    or telemetry_config.get("clock_discipline_file")
+                    or telemetry_config.get("chrony_tracking_log")
+                    or telemetry_config.get("phc2sys_log")
+                )
+            ),
+            "hardware_watchdog": parse_hardware_watchdog_log(
+                _optional_path(telemetry_config.get("hardware_watchdog_log") or telemetry_config.get("watchdog_log"))
+            ),
+        }
+        base_checks = _build_checks(
+            telemetry_config=telemetry_config,
+            supervisor=components["supervisor"],
+            ptp_servo=components["ptp_servo"],
+            gps_pps=components["gps_pps"],
+            clock_discipline=components["clock_discipline"],
+            hardware_watchdog=components["hardware_watchdog"],
+            supervisor_integration={},
+        )
+        fail_count = sum(1 for item in base_checks if item["status"] == "fail")
+        warn_count = sum(1 for item in base_checks if item["status"] == "warn")
+        telemetry_status = "fail" if fail_count else ("warning" if warn_count else "pass")
+    return _build_target_host_validation_artifact(
+        validation_config=_target_host_validation_config(config=config, telemetry_config=telemetry_config),
+        runtime_root=root,
+        telemetry_status=telemetry_status,
+        telemetry_components=components,
+    )
+
+
+def _target_host_validation_config(*, config: dict[str, Any], telemetry_config: dict[str, Any]) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for payload in (
+        telemetry_config.get("target_host_validation", {}),
+        config.get("target_host_validation", {}),
+        dict(config.get("smartflux_runtime", {}) or {}).get("target_host_validation", {})
+        if isinstance(config.get("smartflux_runtime", {}), dict)
+        else {},
+    ):
+        if isinstance(payload, dict) and payload:
+            merged.update(payload)
+    return merged
+
+
+def _build_target_host_validation_artifact(
+    *,
+    validation_config: dict[str, Any],
+    runtime_root: Path,
+    telemetry_status: str,
+    telemetry_components: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    validation_config = _load_target_validation_source(validation_config, runtime_root=runtime_root)
+    if not validation_config:
+        return {
+            "artifact_type": "target_host_telemetry_validation_v1",
+            "status": "not_configured",
+            "gate_status": "not_configured",
+            "checks": [],
+            "provenance": "No target-host telemetry validation snapshot was configured.",
+        }
+    if not _truthy(validation_config.get("enabled", True)):
+        return {
+            "artifact_type": "target_host_telemetry_validation_v1",
+            "status": "disabled",
+            "gate_status": "not_configured",
+            "checks": [],
+            "fixture_id": str(validation_config.get("fixture_id", "")),
+            "target_host_id": str(validation_config.get("target_host_id", "")),
+            "provenance": "Target-host telemetry validation disabled by configuration.",
+        }
+    expected = validation_config.get("expected", {})
+    if not isinstance(expected, dict) or not expected:
+        return {
+            "artifact_type": "target_host_telemetry_validation_v1",
+            "status": "not_configured",
+            "gate_status": "not_configured",
+            "checks": [],
+            "fixture_id": str(validation_config.get("fixture_id", "")),
+            "target_host_id": str(validation_config.get("target_host_id", "")),
+            "source_file": str(validation_config.get("source_file", "")),
+            "provenance": "Target-host telemetry validation was configured without expected snapshot fields.",
+        }
+
+    checks: list[dict[str, Any]] = []
+    if "status" in expected:
+        checks.append(
+            _target_validation_check(
+                "target_host.daemon.status",
+                _casefold_equal(telemetry_status, expected.get("status")),
+                component="daemon_telemetry",
+                measured=telemetry_status,
+                threshold=str(expected.get("status")),
+                failure_message="Daemon telemetry aggregate status does not match the target-host snapshot.",
+            )
+        )
+    component_keys = ("supervisor", "ptp_servo", "gps_pps", "clock_discipline", "hardware_watchdog")
+    for component_name in component_keys:
+        component_expected = expected.get(component_name, {})
+        if not isinstance(component_expected, dict) or not component_expected:
+            continue
+        component = dict(telemetry_components.get(component_name, {}) or {})
+        checks.extend(_target_component_checks(component_name=component_name, component=component, expected=component_expected))
+
+    fail_count = sum(1 for item in checks if item.get("status") == "fail")
+    pass_count = sum(1 for item in checks if item.get("status") == "pass")
+    status = "fail" if fail_count else "pass"
+    component_statuses = {
+        name: dict(telemetry_components.get(name, {}) or {}).get("status", "")
+        for name in component_keys
+    }
+    return {
+        "artifact_type": "target_host_telemetry_validation_v1",
+        "status": status,
+        "gate_status": "blocked" if fail_count else "pass",
+        "profile_id": str(validation_config.get("profile_id", "target_host_telemetry_validation_v1")),
+        "fixture_id": str(validation_config.get("fixture_id", "")),
+        "target_host_id": str(validation_config.get("target_host_id", "")),
+        "source_file": str(validation_config.get("source_file", "")),
+        "expected_keys": sorted(str(key) for key in expected.keys()),
+        "component_statuses": component_statuses,
+        "checks": checks,
+        "pass_count": pass_count,
+        "fail_count": fail_count,
+        "provenance": (
+            "Target-host telemetry validation compares parsed SmartFlux/embedded-host supervisor, PTP, GPS PPS, "
+            "clock-discipline, and watchdog captures against a configured golden snapshot."
+        ),
+        "limitations": [
+            "Validation is based on supplied target-host capture logs and expected snapshot thresholds.",
+            "This artifact does not discipline the hardware clock or operate the watchdog directly.",
+        ],
+    }
+
+
+def _load_target_validation_source(validation_config: dict[str, Any], *, runtime_root: Path) -> dict[str, Any]:
+    if not isinstance(validation_config, dict) or not validation_config:
+        return {}
+    source = (
+        validation_config.get("source_file")
+        or validation_config.get("golden_snapshot")
+        or validation_config.get("golden_snapshot_path")
+        or validation_config.get("fixture_path")
+    )
+    if not source:
+        return dict(validation_config)
+    path = Path(str(source))
+    if not path.is_absolute():
+        path = runtime_root / path
+    if not path.exists() or not path.is_file():
+        loaded: dict[str, Any] = {}
+    else:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            loaded = dict(payload.get("target_host_validation", payload) if isinstance(payload, dict) else {})
+        except (json.JSONDecodeError, OSError):
+            loaded = {}
+    merged = {**loaded, **dict(validation_config)}
+    merged["source_file"] = str(path)
+    return merged
+
+
+def _target_component_checks(*, component_name: str, component: dict[str, Any], expected: dict[str, Any]) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    exact_keys = ("status", "state", "clock_source", "service_name", "latest_state")
+    for key in exact_keys:
+        if key not in expected:
+            continue
+        checks.append(
+            _target_validation_check(
+                f"target_host.{component_name}.{key}",
+                _casefold_equal(component.get(key, ""), expected.get(key)),
+                component=component_name,
+                measured=component.get(key, ""),
+                threshold=str(expected.get(key)),
+                failure_message=f"Target-host {component_name} {key} does not match the expected snapshot.",
+            )
+        )
+    if "locked" in expected:
+        checks.append(
+            _target_validation_check(
+                f"target_host.{component_name}.locked",
+                bool(component.get("locked")) is bool(_truthy(expected.get("locked"))),
+                component=component_name,
+                measured=bool(component.get("locked")),
+                threshold=bool(_truthy(expected.get("locked"))),
+                failure_message=f"Target-host {component_name} lock flag does not match the expected snapshot.",
+            )
+        )
+    required_dialects = _string_list(expected.get("required_dialects"))
+    if required_dialects:
+        measured_dialects = {str(item).strip().lower() for item in _string_list(component.get("dialects"))}
+        if component.get("dialect"):
+            measured_dialects.add(str(component.get("dialect")).strip().lower())
+        missing = [item for item in required_dialects if item.strip().lower() not in measured_dialects]
+        checks.append(
+            _target_validation_check(
+                f"target_host.{component_name}.required_dialects",
+                not missing,
+                component=component_name,
+                measured=sorted(measured_dialects),
+                threshold=required_dialects,
+                failure_message=f"Target-host {component_name} missing required telemetry dialects: {', '.join(missing)}.",
+            )
+        )
+    numeric_checks = (
+        ("max_abs_offset_ns_lte", "max_abs_offset_ns", "<="),
+        ("latest_offset_ns_lte", "latest_offset_ns", "abs<="),
+        ("max_jitter_ns_lte", "max_jitter_ns", "<="),
+        ("max_abs_frequency_ppm_lte", "max_abs_frequency_ppm", "<="),
+        ("latest_frequency_ppm_lte", "latest_frequency_ppm", "abs<="),
+        ("max_restart_count", "restart_count", "<="),
+        ("min_kick_count", "kick_count", ">="),
+        ("max_timeout_count", "timeout_count", "<="),
+        ("min_sample_count", "sample_count", ">="),
+        ("min_line_count", "line_count", ">="),
+    )
+    for expected_key, measured_key, operator in numeric_checks:
+        if expected_key not in expected:
+            continue
+        threshold = _optional_float(expected.get(expected_key))
+        measured = _optional_float(component.get(measured_key))
+        if threshold is None or measured is None:
+            passed = False
+        elif operator == ">=":
+            passed = measured >= threshold
+        elif operator == "abs<=":
+            passed = abs(measured) <= threshold
+        else:
+            passed = measured <= threshold
+        checks.append(
+            _target_validation_check(
+                f"target_host.{component_name}.{expected_key}",
+                passed,
+                component=component_name,
+                measured=component.get(measured_key),
+                threshold=f"{operator} {threshold}",
+                failure_message=f"Target-host {component_name} {measured_key} is outside the expected snapshot threshold.",
+            )
+        )
+    return checks
+
+
+def _target_validation_check(
+    check_id: str,
+    passed: bool,
+    *,
+    component: str,
+    measured: Any,
+    threshold: Any,
+    failure_message: str,
+) -> dict[str, Any]:
+    return {
+        "check_id": check_id,
+        "component": component,
+        "status": "pass" if passed else "fail",
+        "severity": "fail",
+        "measured": measured,
+        "threshold": threshold,
+        "message": "Target-host telemetry snapshot check passed." if passed else failure_message,
+    }
+
+
+def _casefold_equal(left: Any, right: Any) -> bool:
+    return str(left).strip().casefold() == str(right).strip().casefold()
+
+
+def _string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    if not text:
+        return []
+    return [item.strip() for item in re.split(r"[,|;]", text) if item.strip()]
 
 
 def parse_ptp_servo_log(path: Path | None) -> dict[str, Any]:
@@ -931,6 +1273,8 @@ def _recommended_actions(checks: list[dict[str, Any]]) -> list[str]:
             actions.append("Inspect chrony/phc2sys/PHC discipline health, selected source, offset, and frequency correction before unattended delivery.")
         elif check_id == "hardware_watchdog":
             actions.append("Review hardware watchdog keepalive, timeout, and reboot logs before unattended delivery.")
+        elif check_id.startswith("target_host"):
+            actions.append("Compare the target-host telemetry capture with the configured golden snapshot before unattended SmartFlux delivery.")
         elif check_id.startswith("supervisor"):
             actions.append("Inspect OS supervisor state and restart history.")
         else:

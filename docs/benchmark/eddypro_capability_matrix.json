@@ -1,6 +1,6 @@
 {
   "artifact_type": "eddypro_capability_matrix",
-  "updated_at": "2026-05-22",
+  "updated_at": "2026-05-30",
   "overall_status": "not_full_eddypro_parity_yet",
   "truthfulness_note": "gas_ec_studio has surpassed EddyPro in several auditability and delivery-chain areas, but it does not yet implement every EddyPro/SmartFlux feature family. The strategic target is to cover the full public EddyPro engine and GUI feature surface, then exceed EddyPro in auditability, reproducibility, automation, and delivery workflows.",
   "source_repositories": [
@@ -69,10 +69,10 @@
     }
   ],
   "coverage_summary": {
-    "covered": 9,
-    "partial": 13,
+    "covered": 19,
+    "partial": 5,
     "missing": 0,
-    "beyond_eddypro": 3
+    "beyond_eddypro": 5
   },
   "capabilities": [
     {
@@ -80,7 +80,12 @@
       "family": "raw_ingestion",
       "eddypro_requirement": "Read LI-COR .ghg bundles with paired raw data, metadata, and optional biomet files.",
       "gas_ec_status": "covered",
-      "evidence": ["core/storage/ghg_bundle.py", "core/headless_batch_runner.py", "tests/test_ghg_bundle_import.py", "tests/test_ghg_headless_pipeline.py"],
+      "evidence": [
+        "core/storage/ghg_bundle.py",
+        "core/headless_batch_runner.py",
+        "tests/test_ghg_bundle_import.py",
+        "tests/test_ghg_headless_pipeline.py"
+      ],
       "gap": "",
       "next_action": "Add more real-world LI-COR .ghg fixture variants and column aliases."
     },
@@ -89,16 +94,125 @@
       "family": "raw_ingestion",
       "eddypro_requirement": "Handle the breadth of field .ghg bundle dialects, column labels, metadata variants, and long-running deployments.",
       "gas_ec_status": "partial",
-      "evidence": ["core/storage/ghg_bundle.py", "tests/test_ghg_headless_pipeline.py"],
-      "gap": "Synthetic .ghg fixtures now run through RP/FCC/export; broad real-world LI-COR fixture coverage is still limited.",
-      "next_action": "Build a fixture suite from real anonymized LI-COR .ghg files."
+      "evidence": [
+        "core/storage/ghg_bundle.py",
+        "tests/test_ghg_bundle_import.py",
+        "tests/test_ghg_headless_pipeline.py",
+        "tests/test_eddypro_fixture_pack.py"
+      ],
+      "coverage_checklist": [
+        {
+          "id": "synthetic_ghg_pipeline",
+          "label": "Synthetic .ghg pipeline runs through RP/FCC/export.",
+          "status": "done",
+          "evidence": [
+            "tests/test_ghg_bundle_import.py",
+            "tests/test_ghg_headless_pipeline.py"
+          ]
+        },
+        {
+          "id": "public_licor_archive_materialized",
+          "label": "Public LI-COR sample archive is materialized as real .ghg candidates.",
+          "status": "done",
+          "evidence": [
+            "references/eddypro/public_official_raw/manifest.json",
+            "tests/test_official_raw_fixture_bundle.py"
+          ]
+        },
+        {
+          "id": "embedded_eddypro_output_normalized",
+          "label": "Official EddyPro output references are normalized without overwriting originals.",
+          "status": "done",
+          "evidence": [
+            "core/comparison/eddypro_full_output_normalizer.py",
+            "references/eddypro/public_full_output/"
+          ]
+        },
+        {
+          "id": "official_run_closure_for_one_candidate",
+          "label": "At least one promoted public .ghg candidate has official executable-run closure evidence.",
+          "status": "done",
+          "evidence": [
+            "references/eddypro/public_official_raw/acceptance_summary.json"
+          ]
+        },
+        {
+          "id": "li7700_status_epoch_alignment",
+          "label": "LI-7700 DATASTAT/status members are epoch-aligned into raw diagnostics.",
+          "status": "done",
+          "evidence": [
+            "core/storage/ghg_bundle.py",
+            "tests/test_ghg_bundle_import.py"
+          ]
+        },
+        {
+          "id": "multi_site_vendor_dialect_breadth",
+          "label": "Multiple real-world .ghg site/vendor dialects are not yet closed against EddyPro.",
+          "status": "needs_real_fixture",
+          "blocker": "Need additional public or anonymized multi-site .ghg bundles with legal redistribution and paired EddyPro outputs."
+        },
+        {
+          "id": "additional_official_closure_evidence",
+          "label": "Each promoted real .ghg dialect still needs official executable-run closure.",
+          "status": "needs_official_output",
+          "blocker": "Need more official EddyPro executable-run Full Output references for promoted real bundles."
+        }
+      ],
+      "gap": "Synthetic .ghg fixtures run through RP/FCC/export, and the public LI-COR EddyPro Sample Datasets archive now materializes 48 real .ghg files. The loader decodes real LI-COR DATAH/DATA high-frequency rows, embedded biomet, and LI-7700 DATASTATH/DATASTAT status members with epoch-aligned RSSI/DIAG injection, and one LI-COR public .ghg candidate now has passing official EddyPro executable-run raw-to-final closure; official executable-run Full_Output files are also normalized into separate reference/provenance artifacts so reproduced EddyPro outputs can be audited without overwriting embedded/original references. Broad multi-site/vendor dialect coverage remains incomplete.",
+      "next_action": "Expand the real public/anonymized .ghg fixture suite beyond the LI-COR sample dataset and attach passing official EddyPro closure evidence for each promoted dialect."
+    },
+    {
+      "id": "eddypro_real_fixture_pack_v1",
+      "family": "benchmark",
+      "eddypro_requirement": "Maintain auditable real-world EddyPro reference fixtures with original files, normalized JSON, provenance, validation hashes, and known limitations.",
+      "gas_ec_status": "covered",
+      "evidence": [
+        "references/eddypro/fixture_pack_v1.json",
+        "core/comparison/fixture_pack.py",
+        "core/comparison/official_raw_fixture_bundle.py",
+        "core/comparison/eddypro_source_inventory.py",
+        "core/comparison/raw_to_final_parity.py",
+        "core/comparison/synthetic_parity.py",
+        "core/headless_batch_runner.py",
+        "core/exports/result_exporter.py",
+        "core/exports/delivery_exporter.py",
+        "core/exports/report_exporter.py",
+        "core/headless_batch_runner.py",
+        "docs/benchmark/eddypro_source_inventory.md",
+        "docs/benchmark/official_raw_fixture_bundle.md",
+        "docs/benchmark/raw_to_final_parity.md",
+        "docs/benchmark/synthetic_eddypro_parity.md",
+        "references/eddypro/public_full_output/manifest.json",
+        "references/eddypro/public_spectral/manifest.json",
+        "references/eddypro/public_official_raw/manifest.json",
+        "references/eddypro/public_raw_search/manifest.json",
+        "references/eddypro/raw_to_final/synthetic_raw_csv_001.csv",
+        "references/eddypro/raw_to_final/synthetic_raw_csv_001_metadata.json",
+        "references/eddypro/raw_to_final/synthetic_raw_csv_001_reference.json",
+        "references/eddypro/raw_to_final/synthetic_raw_csv_001_provenance.json",
+        "references/eddypro/real/eddypro_v7_real_temperate_forest_001.csv",
+        "references/eddypro/real/eddypro_v7_real_grassland_002.csv",
+        "references/eddypro/protocol/ygas_protocol_manual_001.log",
+        "tests/test_eddypro_fixture_pack.py",
+        "tests/test_official_raw_fixture_bundle.py",
+        "tests/test_eddypro_source_inventory.py",
+        "tests/test_raw_to_final_parity.py",
+        "tests/test_synthetic_eddypro_parity.py"
+      ],
+      "gap": "",
+      "next_action": "Expand fixture breadth with TOB1/SLT/binary, LI-7700, sonic AoA/crosswind, spectral golden-output, and additional public/anonymized field bundles; those breadth gaps remain tracked by their dedicated capability rows."
     },
     {
       "id": "raw_ascii_csv",
       "family": "raw_ingestion",
       "eddypro_requirement": "Process generic ASCII tabular high-frequency data with configurable columns and missing tokens.",
       "gas_ec_status": "covered",
-      "evidence": ["core/storage/raw_importer.py", "core/headless_batch_runner.py", "models/station_models.py", "tests/test_raw_importer_biomet_injection.py"],
+      "evidence": [
+        "core/storage/raw_importer.py",
+        "core/headless_batch_runner.py",
+        "models/station_models.py",
+        "tests/test_raw_importer_biomet_injection.py"
+      ],
       "gap": "",
       "next_action": "Add more vendor-specific raw text fixtures and field aliases."
     },
@@ -107,25 +221,151 @@
       "family": "raw_ingestion",
       "eddypro_requirement": "Support binary and TOB1/SLT family raw formats.",
       "gas_ec_status": "partial",
-      "evidence": ["core/storage/raw_importer.py", "core/headless_batch_runner.py", "tests/test_raw_importer_biomet_injection.py"],
-      "gap": "Native reader bridge now decodes TOB1 IEEE4 float32, generic fixed-record binary, and SLT EdiSol/EddySoft-style int16 fixtures into NormalizedHFFrame with provenance; Campbell FP2 lookup tables, all vendor dialects, and broad real-world binary fixture parity are still incomplete.",
-      "next_action": "Add FP2 decoding and real anonymized TOB1/SLT/binary fixture parity against EddyPro import outputs."
+      "evidence": [
+        "core/storage/raw_importer.py",
+        "core/headless_batch_runner.py",
+        "core/comparison/fixture_pack.py",
+        "references/eddypro/public_raw_search/manifest.json",
+        "tests/test_raw_importer_biomet_injection.py",
+        "tests/test_eddypro_fixture_pack.py"
+      ],
+      "coverage_checklist": [
+        {
+          "id": "tob1_ieee4_decode",
+          "label": "TOB1 IEEE4 float32 records decode with TOB1 header provenance.",
+          "status": "done",
+          "evidence": [
+            "core/storage/raw_importer.py",
+            "tests/test_raw_importer_biomet_injection.py"
+          ]
+        },
+        {
+          "id": "tob1_fp2_decode",
+          "label": "TOB1 FP2 Campbell 2-byte float payloads decode with per-column provenance.",
+          "status": "done",
+          "evidence": [
+            "core/storage/raw_importer.py",
+            "tests/test_raw_importer_biomet_injection.py"
+          ]
+        },
+        {
+          "id": "leading_ulong_provenance",
+          "label": "Header-declared leading ULONG layout fields are preserved as tob1_leading_* values.",
+          "status": "done",
+          "evidence": [
+            "core/storage/raw_importer.py",
+            "core/headless_batch_runner.py",
+            "tests/test_raw_importer_biomet_injection.py"
+          ]
+        },
+        {
+          "id": "tob1_record_timestamp_fields",
+          "label": "Campbell/LoggerNet TOB1 SECONDS/NANOSECONDS fields can drive record timestamps without configured start_time.",
+          "status": "done",
+          "evidence": [
+            "core/storage/raw_importer.py",
+            "core/headless_batch_runner.py",
+            "tests/test_raw_importer_biomet_injection.py"
+          ]
+        },
+        {
+          "id": "full_record_subset_decode",
+          "label": "Header full-record width is used even when metadata requests a column subset.",
+          "status": "done",
+          "evidence": [
+            "core/storage/raw_importer.py",
+            "tests/test_raw_importer_biomet_injection.py"
+          ]
+        },
+        {
+          "id": "header_units_processing",
+          "label": "TOB1 units and processing header rows are preserved in import provenance.",
+          "status": "done",
+          "evidence": [
+            "core/storage/raw_importer.py",
+            "tests/test_raw_importer_biomet_injection.py"
+          ]
+        },
+        {
+          "id": "filename_timestamp_inference",
+          "label": "EddyPro-style filename timestamp templates and common raw patterns seed native timestamps.",
+          "status": "done",
+          "evidence": [
+            "core/storage/raw_importer.py",
+            "tests/test_raw_importer_biomet_injection.py"
+          ]
+        },
+        {
+          "id": "slt_edisol_eddysoft_fixtures",
+          "label": "SLT EdiSol and EddySoft int16 fixtures, including high-resolution mask decoding, are covered by tests.",
+          "status": "done",
+          "evidence": [
+            "core/storage/raw_importer.py",
+            "tests/test_raw_importer_biomet_injection.py"
+          ]
+        },
+        {
+          "id": "public_search_ledger",
+          "label": "Public TOB1/SLT/native-binary search leads are recorded without claiming fixture parity.",
+          "status": "done",
+          "evidence": [
+            "references/eddypro/public_raw_search/manifest.json",
+            "tests/test_eddypro_fixture_pack.py"
+          ]
+        },
+        {
+          "id": "real_tob1_slt_binary_fixture",
+          "label": "Real redistributable TOB1/SLT/native binary high-frequency fixtures are still missing.",
+          "status": "needs_real_fixture",
+          "blocker": "Need legally usable TOB1 FP2/IEEE4, SLT, and native binary raw bundles with metadata."
+        },
+        {
+          "id": "eddypro_golden_output_reference",
+          "label": "Real TOB1/SLT/native binary bundles still need EddyPro golden-output references.",
+          "status": "needs_official_output",
+          "blocker": "Need paired EddyPro project/settings and Full Output references for each promoted binary dialect."
+        }
+      ],
+      "gap": "Native reader bridge now decodes TOB1 IEEE4 float32 and TOB1 FP2 Campbell 2-byte float payloads, auto-detects TOB1 FP2/IEEE4 format, hot numeric columns, header rows, units rows, processing rows, EddyPro-style filename timestamp inference with yyyy/yy/mm/dd/ddd/HH/MM templates and common auto patterns, Campbell/LoggerNet SECONDS/NANOSECONDS record timestamps, EddyPro TOB1 data-type compatibility, header-declared leading ULONG layout fields and per-record tob1_leading_* value preservation for both FP2 and IEEE4, header-inferred non-leading IEEE4/ULONG payload column types, TOB1 full-record header decoding even when metadata or extra.columns selects only a subset of fields, and per-sample decoded native columns, records requested_columns, header_units, header_processing, timestamp_source, filename_timestamp, record_timestamp, leading_ulong_columns, preserved_leading_ulong_values, column_type_source, full_record_decode, and sample_decoded_columns in raw import provenance/manifests, decodes generic fixed-record binary with optional CRLF/LF/CR ASCII/file headers, one-based first/last record selection, per-record framing/stride, configurable byte order, and mixed per-column numeric data types, plus SLT EdiSol and EddySoft int16 fixtures including EddySoft analog high-resolution mask decoding with EddyPro source provenance; public_raw_binary_tob1_slt_search_summary_v1 now records TOB1/SLT/native-binary public search leads and blockers without promoting documentation-only sources to fixtures; all vendor dialects and broad real-world binary fixture parity are still incomplete.",
+      "next_action": "Add real anonymized TOB1 FP2/IEEE4, SLT, and binary fixtures with EddyPro import/golden-output references."
     },
     {
       "id": "site_instrument_metadata",
       "family": "metadata",
       "eddypro_requirement": "Store site, instrument, gas analyzer, anemometer, raw column, and sampling-chain metadata.",
       "gas_ec_status": "covered",
-      "evidence": ["models/station_models.py", "app/pages/project_site_page.py"],
+      "evidence": [
+        "models/station_models.py",
+        "app/pages/project_site_page.py"
+      ],
       "gap": "",
       "next_action": "Expand instrument model validation fixtures."
+    },
+    {
+      "id": "ygas_primary_analyzer",
+      "family": "instrumentation",
+      "eddypro_requirement": "Represent project gas analyzers alongside EddyPro-supported LI-COR gas analyzer families without losing protocol provenance or processing compatibility.",
+      "gas_ec_status": "covered",
+      "evidence": [
+        "core/protocol/gas_analyzer_profiles.py",
+        "core/protocol/command_builder.py",
+        "core/protocol/mode1_parser.py",
+        "core/protocol/mode2_parser.py",
+        "core/storage/raw_importer.py",
+        "tests/test_ygas_protocol_profile.py"
+      ],
+      "gap": "",
+      "next_action": "Add real field serial logs from the YGAS analyzer and compare normalized CO2/H2O frames against independent calibration records."
     },
     {
       "id": "dynamic_metadata",
       "family": "metadata",
       "eddypro_requirement": "Handle dynamic site parameters such as crop canopy height over time.",
       "gas_ec_status": "covered",
-      "evidence": ["models/station_models.py", "tests/test_ec_core_parity_v1.py"],
+      "evidence": [
+        "models/station_models.py",
+        "tests/test_ec_core_parity_v1.py"
+      ],
       "gap": "",
       "next_action": "Propagate dynamic canopy height deeper into footprint defaults."
     },
@@ -133,35 +373,189 @@
       "id": "biomet_external_and_ghg",
       "family": "metadata",
       "eddypro_requirement": "Use embedded or external biomet data for flux computation and window summaries.",
-      "gas_ec_status": "partial",
-      "evidence": ["models/station_models.py", "core/storage/ghg_bundle.py", "tests/test_ghg_bundle_import.py"],
-      "gap": "External and .ghg embedded biomet can be loaded and aggregated; biomet is not yet fully used to override all ambient thermodynamic variables.",
-      "next_action": "Wire biomet aggregation into RP ambient parameter selection and diagnostics."
+      "gas_ec_status": "covered",
+      "evidence": [
+        "models/station_models.py",
+        "core/ec_rp/pipeline.py",
+        "core/exports/result_exporter.py",
+        "core/storage/ghg_bundle.py",
+        "tests/test_ghg_bundle_import.py",
+        "tests/test_raw_importer_biomet_injection.py"
+      ],
+      "gap": "",
+      "next_action": "Add more real EddyPro .ghg/external biomet dialect fixtures with paired Full Output references for breadth validation."
     },
     {
       "id": "gps_ptp_sync",
       "family": "acquisition",
       "eddypro_requirement": "Synchronize high-speed and low-speed data by GPS/PTP in SmartFlux deployments.",
       "gas_ec_status": "partial",
-      "evidence": ["core/storage/clock_sync.py", "core/acquisition/daemon_telemetry.py", "core/headless_batch_runner.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_clock_sync_pipeline.py", "tests/test_daemon_telemetry_runtime.py"],
-      "gap": "GPS/PTP-style offset, drift, and event interpolation corrections now run before RP/FCC windowing, and daemon_telemetry v1 parses ptp4l/phc2sys/chrony/GPSD/PPS-style lock, offset, jitter, hardware clock discipline offset/frequency, and dialect provenance; direct hardware clock discipline control and real target-host fixture validation remain incomplete.",
-      "next_action": "Add real target-host chrony/ptp4l/gpsd/PHC fixture captures and compare generated health artifacts to golden snapshots."
+      "evidence": [
+        "core/storage/clock_sync.py",
+        "core/acquisition/daemon_telemetry.py",
+        "core/headless_batch_runner.py",
+        "core/ec_rp/pipeline.py",
+        "core/exports/result_exporter.py",
+        "tests/test_clock_sync_pipeline.py",
+        "tests/test_daemon_telemetry_runtime.py"
+      ],
+      "coverage_checklist": [
+        {
+          "id": "clock_offset_drift_events",
+          "label": "Clock offset, drift, and event interpolation corrections run before windowing.",
+          "status": "done",
+          "evidence": [
+            "core/storage/clock_sync.py",
+            "tests/test_clock_sync_pipeline.py"
+          ]
+        },
+        {
+          "id": "clock_quality_gate",
+          "label": "Clock sync quality gate propagates offset/span thresholds into diagnostics and exports.",
+          "status": "done",
+          "evidence": [
+            "core/headless_batch_runner.py",
+            "core/exports/result_exporter.py",
+            "tests/test_clock_sync_pipeline.py"
+          ]
+        },
+        {
+          "id": "daemon_ptp_chrony_gpsd_parse",
+          "label": "Daemon telemetry parses ptp4l, phc2sys, chrony, GPSD, PPS, and PHC-style fields.",
+          "status": "done",
+          "evidence": [
+            "core/acquisition/daemon_telemetry.py",
+            "tests/test_daemon_telemetry_runtime.py"
+          ]
+        },
+        {
+          "id": "target_host_validation_artifact",
+          "label": "Target-host golden-snapshot validation artifact is exported through diagnostics/report/delivery.",
+          "status": "done",
+          "evidence": [
+            "core/acquisition/daemon_telemetry.py",
+            "core/exports/result_exporter.py",
+            "tests/test_daemon_telemetry_runtime.py"
+          ]
+        },
+        {
+          "id": "real_smartflux_ptp_gps_fixture_breadth",
+          "label": "Real SmartFlux-class PTP/GPS telemetry breadth is still incomplete.",
+          "status": "needs_hardware",
+          "blocker": "Need multiple real target-host chrony/ptp4l/gpsd/PHC captures with golden snapshots."
+        },
+        {
+          "id": "direct_hardware_clock_discipline",
+          "label": "Direct hardware clock discipline control is not yet validated on devices.",
+          "status": "needs_hardware",
+          "blocker": "Need bench validation against actual PHC/PTP/GPS hardware discipline paths."
+        }
+      ],
+      "gap": "GPS/PTP-style offset, drift, and event interpolation corrections now run before RP/FCC windowing; clock_sync now emits a correction-quality gate with offset span, maximum adjacent event step, configured threshold, pass/warn/fail status, and network/export/benchmark provenance fields; daemon_telemetry v1 parses ptp4l/phc2sys/chrony/GPSD/PPS-style lock, offset, jitter, hardware clock discipline offset/frequency, and dialect provenance; target_host_telemetry_validation_v1 now compares target-host captures with configured golden snapshots and propagates the validation gate through diagnostics/export/report/delivery. Direct hardware clock discipline control and broad real target-host fixture breadth remain incomplete.",
+      "next_action": "Collect multiple real target-host chrony/ptp4l/gpsd/PHC fixture captures and validate the golden-snapshot artifacts on actual SmartFlux-class hardware."
     },
     {
       "id": "smartflux_realtime_site_processing",
       "family": "acquisition",
       "eddypro_requirement": "Produce fully processed real-time site fluxes on embedded/on-site hardware.",
       "gas_ec_status": "partial",
-      "evidence": ["app/studio.py", "core/acquisition/runtime_watchdog.py", "core/acquisition/runtime_service.py", "core/acquisition/daemon_telemetry.py", "core/acquisition/supervisor_integration.py", "core/acquisition/runtime_install.py", "core/headless_batch_runner.py", "core/exports/result_exporter.py", "tests/test_runtime_watchdog_headless.py", "tests/test_runtime_service_headless.py", "tests/test_daemon_telemetry_runtime.py", "tests/test_supervisor_integration_runtime.py", "tests/test_installable_runtime_profile.py"],
-      "gap": "Headless batches now emit a SmartFlux-style runtime profile/watchdog manifest, runtime_service v1 executes queued batches with heartbeats/retries/quarantine/delivery state, daemon_telemetry v1 captures process/supervisor/PTP/GPS/clock-discipline/watchdog logs including systemd journal, Windows Event, chrony/phc2sys, GPSD/PPS, watchdogd, and provider JSONL dialects, supervisor_integration v1 normalizes systemd/Windows/manual service status plus file/manual/Linux watchdog device/systemd notify/Windows recovery hardware watchdog provider handoff, installable_runtime_profile v1 renders auditable systemd/Windows Service dry-run deployment plans, runtime_deployment v1 exports operator-gated install/rollback scripts, and runtime_deployment_feedback v1 parses target-host post-install service/log evidence across export/report/delivery; real hardware fixture validation is still incomplete.",
-      "next_action": "Validate gated hardware providers and daemon telemetry clock-discipline dialects with target-host SmartFlux fixture captures."
+      "evidence": [
+        "app/studio.py",
+        "core/acquisition/runtime_watchdog.py",
+        "core/acquisition/runtime_service.py",
+        "core/acquisition/daemon_telemetry.py",
+        "core/acquisition/supervisor_integration.py",
+        "core/acquisition/runtime_install.py",
+        "core/headless_batch_runner.py",
+        "core/exports/result_exporter.py",
+        "tests/test_runtime_watchdog_headless.py",
+        "tests/test_runtime_service_headless.py",
+        "tests/test_daemon_telemetry_runtime.py",
+        "tests/test_supervisor_integration_runtime.py",
+        "tests/test_installable_runtime_profile.py"
+      ],
+      "coverage_checklist": [
+        {
+          "id": "runtime_watchdog_manifest",
+          "label": "Headless batches emit SmartFlux-style runtime profile and watchdog manifests.",
+          "status": "done",
+          "evidence": [
+            "core/acquisition/runtime_watchdog.py",
+            "tests/test_runtime_watchdog_headless.py"
+          ]
+        },
+        {
+          "id": "runtime_service_queue",
+          "label": "Runtime service executes queued batches with heartbeats, retries, quarantine, and delivery state.",
+          "status": "done",
+          "evidence": [
+            "core/acquisition/runtime_service.py",
+            "tests/test_runtime_service_headless.py"
+          ]
+        },
+        {
+          "id": "daemon_telemetry_capture",
+          "label": "Daemon telemetry captures process, supervisor, clock, GPS/PTP, and watchdog provider logs.",
+          "status": "done",
+          "evidence": [
+            "core/acquisition/daemon_telemetry.py",
+            "tests/test_daemon_telemetry_runtime.py"
+          ]
+        },
+        {
+          "id": "supervisor_integration",
+          "label": "Systemd, Windows Service, manual, and watchdog handoff states are normalized.",
+          "status": "done",
+          "evidence": [
+            "core/acquisition/supervisor_integration.py",
+            "tests/test_supervisor_integration_runtime.py"
+          ]
+        },
+        {
+          "id": "installable_runtime_profile",
+          "label": "Auditable systemd and Windows Service dry-run deployment profiles are exported.",
+          "status": "done",
+          "evidence": [
+            "core/acquisition/runtime_install.py",
+            "tests/test_installable_runtime_profile.py"
+          ]
+        },
+        {
+          "id": "runtime_deployment_feedback",
+          "label": "Target-host post-install service/log feedback is parsed into export/report/delivery.",
+          "status": "done",
+          "evidence": [
+            "core/acquisition/runtime_service.py",
+            "core/exports/result_exporter.py",
+            "tests/test_runtime_service_headless.py"
+          ]
+        },
+        {
+          "id": "real_multihost_smartflux_validation",
+          "label": "Real multi-host SmartFlux deployment validation is still missing.",
+          "status": "needs_hardware",
+          "blocker": "Need operator-captured deployment feedback from multiple SmartFlux-class target hosts."
+        },
+        {
+          "id": "hardware_watchdog_provider_validation",
+          "label": "Hardware watchdog provider handoff has not been validated on device.",
+          "status": "needs_hardware",
+          "blocker": "Need actual hardware watchdog/systemd-notify/Windows recovery provider evidence."
+        }
+      ],
+      "gap": "Headless batches now emit a SmartFlux-style runtime profile/watchdog manifest, including optional clock_sync_quality gate checks that can fail unattended runs when GPS/PTP correction quality exceeds configured thresholds; runtime_service v1 executes queued batches with heartbeats/retries/quarantine/delivery state and quarantines failed watchdog batches; daemon_telemetry v1 captures process/supervisor/PTP/GPS/clock-discipline/watchdog logs including systemd journal, Windows Event, chrony/phc2sys, GPSD/PPS, watchdogd, and provider JSONL dialects, target_host_telemetry_validation_v1 compares those captures with golden snapshots and exposes the target-host validation gate across export/report/delivery, supervisor_integration v1 normalizes systemd/Windows/manual service status plus file/manual/Linux watchdog device/systemd notify/Windows recovery hardware watchdog provider handoff, installable_runtime_profile v1 renders auditable systemd/Windows Service dry-run deployment plans, runtime_deployment v1 exports operator-gated install/rollback scripts, and runtime_deployment_feedback v1 parses target-host post-install service/log evidence across export/report/delivery; actual hardware provider validation and multi-host fixture breadth are still incomplete.",
+      "next_action": "Run the target-host validation artifact against real SmartFlux-class host captures and close the remaining hardware-provider validation gate."
     },
     {
       "id": "despiking_screening",
       "family": "preprocessing",
       "eddypro_requirement": "Despike and statistically screen raw data records.",
       "gas_ec_status": "covered",
-      "evidence": ["core/ec_rp/analysis.py", "tests/test_ec_rp_qc.py", "tests/test_ec_rp_qc_matrix.py"],
+      "evidence": [
+        "core/ec_rp/analysis.py",
+        "tests/test_ec_rp_qc.py",
+        "tests/test_ec_rp_qc_matrix.py"
+      ],
       "gap": "",
       "next_action": "Add more EddyPro fixture parity cases."
     },
@@ -170,7 +564,11 @@
       "family": "preprocessing",
       "eddypro_requirement": "Detect and compensate time lags with configurable search/default strategies.",
       "gas_ec_status": "covered",
-      "evidence": ["core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "tests/test_rp_advanced_closure.py"],
+      "evidence": [
+        "core/ec_rp/analysis.py",
+        "core/ec_rp/pipeline.py",
+        "tests/test_rp_advanced_closure.py"
+      ],
       "gap": "",
       "next_action": "Add gas-specific lag defaults and diagnostics."
     },
@@ -179,7 +577,10 @@
       "family": "preprocessing",
       "eddypro_requirement": "Support double/triple rotation, planar fit, and sector-wise planar fit variants.",
       "gas_ec_status": "covered",
-      "evidence": ["core/ec_rp/analysis.py", "tests/test_advanced_parity_v3b.py"],
+      "evidence": [
+        "core/ec_rp/analysis.py",
+        "tests/test_advanced_parity_v3b.py"
+      ],
       "gap": "",
       "next_action": "Persist long-period planar-fit coefficient libraries."
     },
@@ -187,71 +588,206 @@
       "id": "head_flow_angle_corrections",
       "family": "preprocessing",
       "eddypro_requirement": "Support sonic head correction, flow distortion, angle-of-attack correction, and known anemometer bug corrections.",
-      "gas_ec_status": "partial",
-      "evidence": ["core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_sonic_correction_pipeline.py"],
-      "gap": "Sonic coordinate normalization, offsets, common EddyPro model orientation adjustments, Gill WindMaster W-boost handling, and configured angle gain now run before rotation/lag/flux; full Nakai 2006/2012 lookup-table AoA parity and broader instrument-specific calibration libraries are still incomplete.",
-      "next_action": "Add full Nakai AoA calibration tables and fixture parity for Gill/CSAT/Metek/RM Young sonic families."
+      "gas_ec_status": "covered",
+      "evidence": [
+        "core/ec_rp/analysis.py",
+        "core/ec_rp/pipeline.py",
+        "core/exports/result_exporter.py",
+        "core/comparison/official_raw_fixture_bundle.py",
+        "tests/test_sonic_correction_pipeline.py"
+      ],
+      "gap": "",
+      "next_action": "Add official sonic-family raw fixtures for numeric parity against EddyPro Gill/CSAT/Metek/RM Young outputs."
     },
     {
       "id": "crosswind_correction",
       "family": "preprocessing",
       "eddypro_requirement": "Support crosswind correction for applicable hygrometers/analyzers.",
-      "gas_ec_status": "partial",
-      "evidence": ["core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_crosswind_correction_pipeline.py"],
-      "gap": "Liu et al.-style crosswind sonic-temperature correction now runs before thermodynamic flux calculations with EddyPro A/B/C coefficient families for Gill, Metek, CSI, and Young; real instrument parity fixtures and GUI controls remain incomplete.",
-      "next_action": "Add real sonic temperature parity fixtures and explicit EC processing controls for crosswind correction."
+      "gas_ec_status": "covered",
+      "evidence": [
+        "app/pages/ec_processing_page.py",
+        "app/studio.py",
+        "core/ec_rp/analysis.py",
+        "core/ec_rp/pipeline.py",
+        "core/exports/result_exporter.py",
+        "tests/test_v3h_method_controls_propagation.py",
+        "tests/test_crosswind_correction_pipeline.py"
+      ],
+      "gap": "",
+      "next_action": "Add real sonic temperature parity fixtures for numeric parity against EddyPro Gill/Metek/CSI/RM Young outputs."
     },
     {
       "id": "co2_h2o_energy_fluxes",
       "family": "fluxes",
       "eddypro_requirement": "Compute CO2, H2O, latent heat, sensible heat, momentum, u*, and evapotranspiration-related flux outputs.",
-      "gas_ec_status": "partial",
-      "evidence": ["core/ec_rp/pipeline.py", "core/exports/result_exporter.py"],
-      "gap": "Core CO2/H2O/energy fields exist; full EddyPro Level 0/1/2/3 sequencing still needs broader validation.",
-      "next_action": "Create level-by-level flux correction artifact and tests."
+      "gas_ec_status": "covered",
+      "evidence": [
+        "core/ec_rp/analysis.py",
+        "core/ec_rp/pipeline.py",
+        "core/exports/result_exporter.py",
+        "tests/test_result_exports.py",
+        "tests/test_flux_correction_ledger.py"
+      ],
+      "gap": "",
+      "next_action": "Validate the ledger against official raw EddyPro golden outputs."
     },
     {
       "id": "ch4_trace_gas_fluxes",
       "family": "fluxes",
       "eddypro_requirement": "Compute CH4 and other trace gas fluxes, including LI-7700 style correction pathways.",
       "gas_ec_status": "partial",
-      "evidence": ["models/hf_models.py", "core/storage/raw_importer.py", "core/storage/ghg_bundle.py", "core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "core/exports/result_exporter.py", "tests/test_ch4_trace_gas_pipeline.py"],
-      "gap": "CH4 can now be ingested from raw/GHG/headless inputs and processed through an auditable LI-7700 correction sequence v1 with coefficient profile registry provenance; raw WMS line-shape fitting and public real LI-7700 numeric parity fixtures are still incomplete.",
-      "next_action": "Add public real LI-7700 fixture parity datasets and validate registry profiles against instrument-specific EddyPro outputs."
+      "evidence": [
+        "models/hf_models.py",
+        "core/storage/raw_importer.py",
+        "core/storage/ghg_bundle.py",
+        "core/ec_rp/analysis.py",
+        "core/ec_rp/pipeline.py",
+        "core/comparison/official_raw_fixture_bundle.py",
+        "core/exports/result_exporter.py",
+        "tests/test_ch4_trace_gas_pipeline.py",
+        "tests/test_official_raw_fixture_bundle.py"
+      ],
+      "coverage_checklist": [
+        {
+          "id": "ch4_raw_ingest",
+          "label": "CH4 fields ingest from raw, GHG, and headless inputs.",
+          "status": "done",
+          "evidence": [
+            "models/hf_models.py",
+            "core/storage/raw_importer.py",
+            "tests/test_ch4_trace_gas_pipeline.py"
+          ]
+        },
+        {
+          "id": "li7700_diagnostics",
+          "label": "LI-7700 RSSI/status/mirror/lock diagnostics propagate through RP diagnostics and exports.",
+          "status": "done",
+          "evidence": [
+            "core/storage/ghg_bundle.py",
+            "core/ec_rp/pipeline.py",
+            "core/exports/result_exporter.py",
+            "tests/test_ch4_trace_gas_pipeline.py"
+          ]
+        },
+        {
+          "id": "li7700_correction_sequence",
+          "label": "Auditable LI-7700 correction sequence and coefficient profile provenance are applied.",
+          "status": "done",
+          "evidence": [
+            "core/ec_rp/analysis.py",
+            "core/ec_rp/pipeline.py",
+            "tests/test_ch4_trace_gas_pipeline.py"
+          ]
+        },
+        {
+          "id": "wms_fit_acceptance_artifact",
+          "label": "WMS line-shape fit diagnostics and run-level acceptance artifact are exported.",
+          "status": "done",
+          "evidence": [
+            "core/ec_rp/analysis.py",
+            "core/exports/result_exporter.py",
+            "tests/test_ch4_trace_gas_pipeline.py"
+          ]
+        },
+        {
+          "id": "raw_to_final_ch4_fields",
+          "label": "Raw-to-final parity artifacts carry Level 0/1/2/3/final CH4 flux fields.",
+          "status": "done",
+          "evidence": [
+            "core/comparison/raw_to_final_parity.py",
+            "tests/test_raw_to_final_parity.py"
+          ]
+        },
+        {
+          "id": "dryad_li7700_preview_validation",
+          "label": "Public Dryad LI-7500A/LI-7700 preview validates CH4 flux, mixing ratio, and RSSI outputs.",
+          "status": "done",
+          "evidence": [
+            "references/eddypro/public_official_raw/manifest.json",
+            "tests/test_official_raw_fixture_bundle.py"
+          ]
+        },
+        {
+          "id": "complete_li7700_high_frequency_raw_bundle",
+          "label": "Complete real LI-7700 high-frequency raw-to-final bundle is still missing.",
+          "status": "needs_real_fixture",
+          "blocker": "Need redistributable LI-7700 high-frequency raw data with status/WMS channels and EddyPro project/settings."
+        },
+        {
+          "id": "firmware_equivalent_wms_numeric_parity",
+          "label": "Firmware-equivalent LI-7700 WMS fitting numeric parity is not yet validated.",
+          "status": "needs_official_output",
+          "blocker": "Need official LI-7700 WMS/golden-output evidence to tune and prove numeric parity."
+        }
+      ],
+      "gap": "CH4 can now be ingested from raw/GHG/headless inputs, including preserved LI-7700 RSSI/status-word/mirror/lock diagnostic columns from tabular raw files and epoch-aligned LI-7700 `.status` members inside public LI-COR `.ghg` bundles, imported from EddyPro project `[Methane Analyzer]` / `[Trace Gas]` sections with status-diagnostic threshold policies, processed through an auditable LI-7700 correction sequence v1 with coefficient profile registry provenance, configured WMS line-shape scan correction components with Gaussian/Lorentzian candidate-fit diagnostics, fit-quality export fields, and a run-level `li7700_wms_fit_acceptance_v1` artifact carrying thresholds, per-window acceptance reasons, and EddyPro source anchors, parsed LI-7700 RSSI/signal/mirror/lock/fault/status-word diagnostics propagated through RP diagnostics, full/RP exports, manifest trace summaries, and benchmark per-window artifacts, compared in raw-to-final artifacts across Level 0/1/2/3/final CH4 flux fields, and validated against a public Dryad LI-7500A/LI-7700 EddyPro v7.0.9 preview fixture with `ch4_flux`, `ch4_mixing_ratio`, and `rssi_77_mean`; LI-7700 firmware-equivalent WMS fitting and complete public real LI-7700 raw-to-final numeric parity fixtures are still incomplete.",
+      "next_action": "Promote a complete public/anonymized LI-7700 fixture with downloadable high-frequency raw data, EddyPro project/settings, full CH4 output, WMS/status-word evidence, and passing raw-to-final parity."
     },
     {
       "id": "density_mixing_ratio_corrections",
       "family": "fluxes",
       "eddypro_requirement": "Use mixing-ratio and WPL-style density fluctuation corrections when raw information availability varies.",
-      "gas_ec_status": "partial",
-      "evidence": ["core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "tests/test_truthfulness_v3a3.py"],
-      "gap": "Primary correction mode is selectable; full closed-path cell thermodynamics and level sequencing need expansion.",
-      "next_action": "Add closed-path cell pressure/temperature covariance support."
+      "gas_ec_status": "covered",
+      "evidence": [
+        "core/ec_rp/analysis.py",
+        "core/ec_rp/pipeline.py",
+        "core/exports/result_exporter.py",
+        "tests/test_truthfulness_v3a3.py",
+        "tests/test_flux_correction_ledger.py"
+      ],
+      "gap": "",
+      "next_action": "Add official closed-path raw-to-final EddyPro golden-output fixtures for numeric parity."
     },
     {
       "id": "spectral_corrections",
       "family": "spectral",
       "eddypro_requirement": "Support low/high-frequency corrections including Horst, Ibrom, Fratini, measured cospectra, and attenuation assessment.",
-      "gas_ec_status": "partial",
-      "evidence": ["core/ec_rp/analysis.py", "core/ec_fcc/analysis.py", "tests/test_v3g_footprint_uncertainty_spectral.py"],
-      "gap": "Methods and provenance exist; long-period binned spectra/cospectra library management is incomplete.",
-      "next_action": "Add reusable spectral assessment dataset manager."
+      "gas_ec_status": "covered",
+      "evidence": [
+        "core/ec_rp/analysis.py",
+        "core/ec_fcc/analysis.py",
+        "core/exports/result_exporter.py",
+        "core/storage/run_result_store.py",
+        "tests/test_spectral_assessment_export.py",
+        "tests/test_v3g_footprint_uncertainty_spectral.py"
+      ],
+      "gap": "",
+      "next_action": "Add official EddyPro spectral golden-output fixtures for numeric parity."
     },
     {
       "id": "spectra_cospectra_ogives",
       "family": "spectral",
       "eddypro_requirement": "Calculate spectra, cospectra, ogives, ensemble averages, and QA/QC outputs.",
-      "gas_ec_status": "partial",
-      "evidence": ["core/ec_fcc/analysis.py", "tests/test_ec_fcc_pipeline.py"],
-      "gap": "FCC outputs exist; ensemble month-scale assessment and all EddyPro output families are not complete.",
-      "next_action": "Add binned/full spectra export family parity."
+      "gas_ec_status": "covered",
+      "evidence": [
+        "core/ec_fcc/analysis.py",
+        "core/ec_fcc/pipeline.py",
+        "core/comparison/fixture_pack.py",
+        "core/exports/result_exporter.py",
+        "core/exports/delivery_exporter.py",
+        "core/exports/report_exporter.py",
+        "core/storage/run_result_store.py",
+        "references/eddypro/public_spectral/manifest.json",
+        "tests/test_ec_fcc_pipeline.py",
+        "tests/test_eddypro_fixture_pack.py",
+        "tests/test_spectral_assessment_export.py",
+        "tests/test_spectral_runtime_artifacts.py",
+        "tests/test_result_exports.py",
+        "docs/benchmark/spectral_assessment_export.md"
+      ],
+      "gap": "",
+      "next_action": "Expand public and official EddyPro spectra/cospectra golden fixtures across sites, years, instruments, and correction methods for stronger numeric parity."
     },
     {
       "id": "random_uncertainty",
       "family": "uncertainty",
       "eddypro_requirement": "Estimate random uncertainty with Mann & Lenschow and Finkelstein & Sims-style methods.",
       "gas_ec_status": "covered",
-      "evidence": ["core/ec_rp/analysis.py", "core/ec_rp/pipeline.py", "tests/test_v3h_method_controls_propagation.py"],
+      "evidence": [
+        "core/ec_rp/analysis.py",
+        "core/ec_rp/pipeline.py",
+        "tests/test_v3h_method_controls_propagation.py"
+      ],
       "gap": "",
       "next_action": "Add more reference datasets for numeric parity."
     },
@@ -259,17 +795,25 @@
       "id": "footprint",
       "family": "footprint",
       "eddypro_requirement": "Estimate flux footprint and provide georeferenced footprint outputs.",
-      "gas_ec_status": "partial",
-      "evidence": ["core/ec_rp/analysis.py", "tests/test_v3i_method_compare_footprint2d.py"],
-      "gap": "Kljun/Kormann-Meixner/Hsieh and 2D contours exist; GIS/georeferenced export is incomplete.",
-      "next_action": "Add GeoJSON/GeoTIFF-style footprint export."
+      "gas_ec_status": "covered",
+      "evidence": [
+        "core/ec_rp/analysis.py",
+        "core/ec_rp/pipeline.py",
+        "core/exports/result_exporter.py",
+        "tests/test_v3i_method_compare_footprint2d.py"
+      ],
+      "gap": "",
+      "next_action": "Validate footprint overlays against public real land-cover rasters and harden publication-grade resampling/COG validator parity fixtures."
     },
     {
       "id": "network_exports",
       "family": "outputs",
       "eddypro_requirement": "Export standardized network outputs and full result tables.",
       "gas_ec_status": "covered",
-      "evidence": ["core/exports/result_exporter.py", "tests/test_result_exports.py"],
+      "evidence": [
+        "core/exports/result_exporter.py",
+        "tests/test_result_exports.py"
+      ],
       "gap": "",
       "next_action": "Add GHG-Europe legacy output if required by target users."
     },
@@ -278,16 +822,37 @@
       "family": "beyond_eddypro",
       "eddypro_requirement": "N/A",
       "gas_ec_status": "beyond_eddypro",
-      "evidence": ["core/exports/delivery_exporter.py", "tests/test_delivery_package_export.py"],
+      "evidence": [
+        "core/exports/delivery_exporter.py",
+        "tests/test_delivery_package_export.py"
+      ],
       "gap": "",
       "next_action": "Keep audit assertions in CI."
+    },
+    {
+      "id": "flux_correction_ledger_audit",
+      "family": "beyond_eddypro",
+      "eddypro_requirement": "N/A",
+      "gas_ec_status": "beyond_eddypro",
+      "evidence": [
+        "core/ec_rp/pipeline.py",
+        "core/exports/result_exporter.py",
+        "core/exports/delivery_exporter.py",
+        "tests/test_flux_correction_ledger.py",
+        "tests/test_result_exports.py"
+      ],
+      "gap": "",
+      "next_action": "Use the ledger as the Level 0/1/2/3 parity harness when adding real EddyPro raw fixtures."
     },
     {
       "id": "method_parity_artifacts",
       "family": "beyond_eddypro",
       "eddypro_requirement": "N/A",
       "gas_ec_status": "beyond_eddypro",
-      "evidence": ["core/exports/result_exporter.py", "tests/test_reference_metadata_expansion.py"],
+      "evidence": [
+        "core/exports/result_exporter.py",
+        "tests/test_reference_metadata_expansion.py"
+      ],
       "gap": "",
       "next_action": "Use matrix to guide every future parity sprint."
     },
@@ -296,9 +861,33 @@
       "family": "beyond_eddypro",
       "eddypro_requirement": "N/A",
       "gas_ec_status": "beyond_eddypro",
-      "evidence": ["app/pages/report_center_page.py", "app/studio.py", "tests/test_report_center_real_batches.py"],
+      "evidence": [
+        "app/pages/report_center_page.py",
+        "app/studio.py",
+        "tests/test_report_center_real_batches.py"
+      ],
       "gap": "",
       "next_action": "Add cloud CI artifact screenshots later."
+    },
+    {
+      "id": "eddypro_coverage_claim_gate",
+      "family": "beyond_eddypro",
+      "eddypro_requirement": "N/A",
+      "gas_ec_status": "beyond_eddypro",
+      "evidence": [
+        "core/comparison/eddypro_coverage_audit.py",
+        "core/exports/result_exporter.py",
+        "core/exports/delivery_exporter.py",
+        "core/exports/report_exporter.py",
+        "app/studio.py",
+        "docs/benchmark/eddypro_coverage_audit.md",
+        "tests/test_eddypro_coverage_audit.py",
+        "tests/test_result_exports.py",
+        "tests/test_delivery_package_export.py",
+        "tests/test_formal_report_export.py"
+      ],
+      "gap": "",
+      "next_action": "Keep full-parity claims blocked until capability, source, and official raw fixture gates all pass."
     }
   ]
 }

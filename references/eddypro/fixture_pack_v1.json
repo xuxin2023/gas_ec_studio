@@ -1,0 +1,704 @@
+{
+  "fixture_pack_id": "eddypro_real_fixture_pack_v1",
+  "version": "1.0.0",
+  "created_at": "2026-05-25",
+  "purpose": "Pin the first auditable EddyPro/gas-analyzer parity fixtures used by gas_ec_studio regression tests and delivery manifests.",
+  "truthfulness_note": "This pack formalizes the currently available reference assets. It is not yet broad enough to claim full EddyPro real-world parity because public raw .ghg, TOB1/SLT/binary, field LI-7700, sonic AoA, and long-period spectral fixture coverage still need expansion.",
+  "assets": [
+    {
+      "fixture_id": "eddypro_v7_real_temperate_forest_001",
+      "tier": "real_reference_output",
+      "site_class": "temperate_forest",
+      "software": "EddyPro",
+      "software_version": "v7.0.9",
+      "reference_json": "references/eddypro/real/eddypro_v7_real_temperate_forest_001.json",
+      "source_csv": "references/eddypro/real/eddypro_v7_real_temperate_forest_001.csv",
+      "provenance_json": "references/eddypro/real/eddypro_v7_real_temperate_forest_001_provenance.json",
+      "expected_window_count": 6,
+      "required_fields": [
+        "window_id",
+        "start_time",
+        "end_time",
+        "primary_flux",
+        "lag_seconds",
+        "qc_grade"
+      ],
+      "expected_sha256": {
+        "source_csv": "73AD66CDA1609B6EED66B0FC0B327236D6C92F1EC046D3231846B756615FBEFF",
+        "reference_json": "5AD54CEE5B2E2DF9CEDC4325AA3131AA67AACA44C917E85B39A5B30E95987616",
+        "provenance_json": "A613E0C991F1F0A666FA9E36F45E0987AE0097DFE5D73C7D091F40CE3FDEA225"
+      },
+      "known_limitations": [
+        "Reference output is normalized from EddyPro Full_Output and does not include raw high-frequency source bundles.",
+        "QC flag mapping remains approximate: EddyPro 0/1/2 to gas_ec_studio A/B/C.",
+        "Frequency correction and WPL sign conventions require window-level parity review."
+      ]
+    },
+    {
+      "fixture_id": "eddypro_v7_real_grassland_002",
+      "tier": "real_reference_output",
+      "site_class": "semi_arid_grassland",
+      "software": "EddyPro",
+      "software_version": "v7.0.9",
+      "reference_json": "references/eddypro/real/eddypro_v7_real_grassland_002.json",
+      "source_csv": "references/eddypro/real/eddypro_v7_real_grassland_002.csv",
+      "provenance_json": "references/eddypro/real/eddypro_v7_real_grassland_002_provenance.json",
+      "expected_window_count": 5,
+      "required_fields": [
+        "window_id",
+        "start_time",
+        "end_time",
+        "primary_flux",
+        "lag_seconds",
+        "qc_grade"
+      ],
+      "expected_sha256": {
+        "source_csv": "A2AD1D1D99DC9008CB8A56103BB38DF5FB160B5CCAA96DD3F27411A53A354104",
+        "reference_json": "734ED7D8C1DDD94132D4C93EE8FA51A19CB787BFDCC5B737FAE755443D748929",
+        "provenance_json": "BF15207E974499A9694C661F0892E49551C2E838DD45DF3B636083DAE7CFC328"
+      },
+      "known_limitations": [
+        "Reference output is normalized from EddyPro Full_Output and does not include raw high-frequency source bundles.",
+        "QC flag mapping remains approximate: EddyPro 0/1/2 to gas_ec_studio A/B/C.",
+        "Dry-canopy and dew-transition cases require additional field windows before claiming broad grassland parity."
+      ]
+    },
+    {
+      "fixture_id": "eddypro_v7_synthetic_001",
+      "tier": "synthetic_regression_reference",
+      "site_class": "synthetic",
+      "software": "EddyPro-compatible normalized reference",
+      "software_version": "v7-style",
+      "reference_json": "references/eddypro/eddypro_v7_synthetic_001.json",
+      "source_csv": "references/eddypro/eddypro_v7_synthetic_001.csv",
+      "expected_window_count": 5,
+      "required_fields": [
+        "window_id",
+        "start_time",
+        "end_time",
+        "primary_flux",
+        "lag_seconds",
+        "qc_grade"
+      ],
+      "known_limitations": [
+        "Synthetic reference is useful for deterministic CI but must not be counted as real-world EddyPro coverage."
+      ]
+    },
+    {
+      "fixture_id": "synthetic_raw_csv_001",
+      "tier": "raw_to_final_parity",
+      "site_class": "synthetic",
+      "software": "gas_ec_studio raw-to-final harness",
+      "software_version": "manual-oracle-v1",
+      "raw_file": "references/eddypro/raw_to_final/synthetic_raw_csv_001.csv",
+      "metadata_json": "references/eddypro/raw_to_final/synthetic_raw_csv_001_metadata.json",
+      "reference_json": "references/eddypro/raw_to_final/synthetic_raw_csv_001_reference.json",
+      "provenance_json": "references/eddypro/raw_to_final/synthetic_raw_csv_001_provenance.json",
+      "rp_config": {
+        "sample_hz": 10.0,
+        "block_minutes": 1.0,
+        "steps": {
+          "window_sampling": {
+            "sample_hz": 10.0,
+            "window_minutes": 1.0
+          }
+        },
+        "rotation_mode": "none",
+        "detrend_mode": "block_mean",
+        "density_correction_mode": "none",
+        "lag_phase": {
+          "strategy": "constant",
+          "expected_lag_s": 0.0,
+          "search_window_s": 1.0
+        }
+      },
+      "thresholds": {
+        "flux_rel_threshold": 1e-09,
+        "lag_abs_threshold_s": 1e-12,
+        "wpl_rel_threshold": 0.2,
+        "qc_grade_must_match": false
+      },
+      "expected_sha256": {
+        "raw_file": "FFE05EEDE5539019F2E38ECEA18A273ECCD6EB470A493066762CB911732E4DDE",
+        "metadata_json": "88130249B3D327AEC2E7BB4435D627240C1C493474987C9E9A4F8751B73C5739",
+        "reference_json": "1840B5842FD0D80263CFE9813B0A504482C806409FCD2ABE88DB3DF4ED2CF374",
+        "provenance_json": "C47E8EDD48026FC8E7DAADBA90296E77839CA0F744D973A83F0EFB7B2980C95E"
+      },
+      "known_limitations": [
+        "Synthetic raw CSV fixture validates raw-to-final harness wiring and manual covariance parity only.",
+        "Reference output is a manual oracle, not an official EddyPro executable output.",
+        "Real raw field fixtures are still required before claiming broad EddyPro parity."
+      ]
+    },
+    {
+      "fixture_id": "synthetic_li7700_trace_gas_001",
+      "tier": "raw_to_final_parity",
+      "site_class": "synthetic_trace_gas",
+      "software": "gas_ec_studio raw-to-final harness",
+      "software_version": "manual-li7700-oracle-v1",
+      "raw_file": "references/eddypro/raw_to_final/synthetic_li7700_trace_gas_001.csv",
+      "metadata_json": "references/eddypro/raw_to_final/synthetic_li7700_trace_gas_001_metadata.json",
+      "reference_json": "references/eddypro/raw_to_final/synthetic_li7700_trace_gas_001_reference.json",
+      "provenance_json": "references/eddypro/raw_to_final/synthetic_li7700_trace_gas_001_provenance.json",
+      "rp_config": {
+        "sample_hz": 10.0,
+        "block_minutes": 1.0,
+        "steps": {
+          "window_sampling": {
+            "sample_hz": 10.0,
+            "window_minutes": 1.0
+          }
+        },
+        "rotation_mode": "none",
+        "detrend_mode": "block_mean",
+        "density_correction_mode": "none",
+        "lag_phase": {
+          "strategy": "constant",
+          "expected_lag_s": 0.0,
+          "search_window_s": 1.0
+        },
+        "trace_gas": {
+          "ch4": {
+            "coefficient_profile_id": "synthetic_li7700_profile",
+            "coefficient_registry": {
+              "synthetic_li7700_profile": {
+                "label": "Synthetic LI-7700 parity coefficients",
+                "source": "synthetic_oracle",
+                "source_file": "references/eddypro/raw_to_final/synthetic_li7700_trace_gas_001_reference.json",
+                "normalization_command": "python scripts/generate_synthetic_li7700_fixture.py --fixture synthetic_li7700_trace_gas_001 --oracle manual-li7700-levels",
+                "spectroscopic_correction": {
+                  "mode": "empirical",
+                  "pressure_sensitivity_per_kpa": 0.001,
+                  "temperature_sensitivity_per_c": 0.0005,
+                  "h2o_sensitivity_per_molfrac": 0.1
+                },
+                "self_heating_correction": {
+                  "mode": "empirical",
+                  "sensor_body_temp_c": 27.0,
+                  "flux_sensitivity_per_c": 0.01
+                },
+                "known_limitations": [
+                  "Synthetic oracle, not a public LI-7700 field fixture."
+                ]
+              }
+            },
+            "spectral_correction_factor": 1.04,
+            "apply_water_vapor_dilution": true
+          }
+        }
+      },
+      "thresholds": {
+        "flux_rel_threshold": 1e-09,
+        "lag_abs_threshold_s": 1e-12,
+        "wpl_rel_threshold": 0.2,
+        "qc_grade_must_match": false,
+        "trace_gas_rel_threshold": 1e-09
+      },
+      "expected_sha256": {
+        "raw_file": "AD7B307EE423A05AC5570D1467FA71CE6DF358DE4A5A1E9FD6D29E8E0505BAB7",
+        "metadata_json": "62FE922E92BBD7EE8755C1366528A9F29E60B4322C88AA79913F4BE54B62145B",
+        "reference_json": "48A9B2D20C56A63986B8BD544799B27580105E6AB36A83A38CDED882B3865951",
+        "provenance_json": "CCE003F3F211E0DCAE8A480CDCE39E64697849B84BE2437F72848E109A9910F2"
+      },
+      "known_limitations": [
+        "Synthetic LI-7700 raw CSV fixture validates CH4 Level 0/1/2/3 parity plumbing only.",
+        "Reference output is a manual oracle, not an official EddyPro executable output.",
+        "Real LI-7700 field fixtures with matching EddyPro output are still required before claiming trace-gas parity."
+      ]
+    },
+    {
+      "fixture_id": "ygas_protocol_manual_001",
+      "tier": "manual_protocol_validation",
+      "site_class": "protocol_manual",
+      "software": "YGAS firmware protocol",
+      "software_version": "manual-2026-03",
+      "protocol_log": "references/eddypro/protocol/ygas_protocol_manual_001.log",
+      "metadata_json": "references/eddypro/protocol/ygas_protocol_manual_001_metadata.json",
+      "expected_row_count": 2,
+      "expected_modes": [
+        1,
+        2
+      ],
+      "expected_sha256": {
+        "protocol_log": "7904704FE079B0D08C948B7E3F82B5D250B01AE87987529DAFA5F99EBD647942",
+        "metadata_json": "8EDE24D15C35AA25D4BBA65A144AAFFAE7AA5FAD7D392EB18CF9CA3113C4DE12"
+      },
+      "known_limitations": [
+        "Manual protocol fixture validates parser/import behavior only and is not an EddyPro flux reference.",
+        "Checksum algorithm is unspecified in the manual, so checksum is preserved but not validated."
+      ]
+    },
+    {
+      "fixture_id": "ghg_sample_data_2021_licor_public_raw_candidate",
+      "tier": "raw_to_final_parity",
+      "site_class": "licor_public_ghg_sample",
+      "software": "EddyPro",
+      "software_version": "EddyPro source 3cabe637",
+      "official_eddypro_output": true,
+      "raw_file": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\raw\\2021-08-21T000000_AIU-0737.ghg",
+      "metadata_json": "",
+      "reference_json": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\normalized\\reference.json",
+      "provenance_json": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\normalized\\provenance.json",
+      "import_plan": {
+        "artifact_type": "official_raw_import_plan_v1",
+        "status": "draft_ready",
+        "raw_input": {
+          "role": "raw_file",
+          "path": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\raw\\2021-08-21T000000_AIU-0737.ghg",
+          "format": "ghg",
+          "sha256": "08422B0731F61A45660C19A69F71843E4C6EB5C508ABA91AD8D0B4A2BAFBDBB1"
+        },
+        "metadata_draft": {
+          "project": {
+            "code": "exp"
+          },
+          "site": {
+            "station_code": "field_official"
+          },
+          "raw_file_description": {
+            "source_name": "2021-08-21T000000_AIU-0737.ghg",
+            "source_type": "ghg",
+            "column_mappings": []
+          },
+          "raw_file_settings": {
+            "sample_hz": 10.0,
+            "delimiter": ",",
+            "header_rows": 0,
+            "extra": {
+              "start_time": "2021-08-21T00:00:00"
+            }
+          },
+          "instruments": {
+            "extra": {
+              "sonic_u_offset_ms": 0.0,
+              "sonic_v_offset_ms": 0.0,
+              "sonic_w_offset_ms": 0.0
+            }
+          },
+          "biomet": {
+            "source_path": "official_eddypro_run_home/output/eddypro_exp_biomet_2026-05-29T194857_exp.csv",
+            "extra": {
+              "auto_discovered": true
+            },
+            "source_mode": "external_file",
+            "fields": [
+              "DOY",
+              "ABSURD_1_1_1",
+              "ADC_1_1_1_1",
+              "ADC_2_1_1_1",
+              "CHK__1_1_1",
+              "DAQM_T_1_1_1",
+              "DAQM_T_2_1_1",
+              "DAQM_V_MAIN_1_1_1",
+              "DAQM_V_MAIN_2_1_1",
+              "DRM_POWER_STATUS_1_1_1",
+              "DRM_V_BATTERY_1_1_1",
+              "DRM_V_MAIN_1_1_1",
+              "PPFD_1_1_1",
+              "P_RAIN_1_1_1",
+              "RG_1_1_1",
+              "RH_1_1_1",
+              "RainTip_1_1_1_1",
+              "Relay_1_1_1_1",
+              "Relay_2_1_1_1",
+              "SHFSENS_1_1_1",
+              "SHFSENS_2_1_1",
+              "SHF_1_1_1",
+              "SHF_2_1_1",
+              "SHF_3_1_1",
+              "SHF_4_1_1",
+              "SWC_1_1_1",
+              "SWC_2_1_1",
+              "SWC_3_1_1",
+              "SWC_4_1_1",
+              "TA_1_1_1",
+              "TS_1_1_1",
+              "TS_2_1_1",
+              "TS_3_1_1",
+              "TS_4_1_1"
+            ]
+          }
+        },
+        "rp_config_draft": {
+          "sample_hz": 10.0,
+          "block_minutes": 30.0,
+          "steps": {
+            "window_sampling": {
+              "sample_hz": 10.0,
+              "window_minutes": 30.0
+            },
+            "qc": {
+              "eddypro_qc_meth": "1",
+              "method": "mauder_foken_04",
+              "enabled": true
+            },
+            "sonic_correction": {
+              "u_offset_ms": 0.0,
+              "v_offset_ms": 0.0,
+              "w_offset_ms": 0.0,
+              "enabled": true
+            },
+            "spectral_correction": {
+              "eddypro_hf_meth": "1",
+              "eddypro_lf_meth": "1",
+              "low_frequency_method": "analytic",
+              "enabled": true,
+              "method": "moncrieff_97"
+            }
+          },
+          "rotation_mode": "double",
+          "detrend_mode": "block_mean",
+          "density_correction_mode": "wpl",
+          "lag_phase": {
+            "strategy": "covariance_max",
+            "expected_lag_s": 0.0,
+            "search_window_s": 4.0
+          },
+          "metadata_bundle": {
+            "project": {
+              "code": "exp"
+            },
+            "site": {
+              "station_code": "field_official"
+            },
+            "raw_file_description": {
+              "source_name": "2021-08-21T000000_AIU-0737.ghg",
+              "source_type": "ghg",
+              "column_mappings": []
+            },
+            "raw_file_settings": {
+              "sample_hz": 10.0,
+              "delimiter": ",",
+              "header_rows": 0,
+              "extra": {
+                "start_time": "2021-08-21T00:00:00"
+              }
+            },
+            "instruments": {
+              "extra": {
+                "sonic_u_offset_ms": 0.0,
+                "sonic_v_offset_ms": 0.0,
+                "sonic_w_offset_ms": 0.0
+              }
+            },
+            "biomet": {
+              "source_path": "official_eddypro_run_home/output/eddypro_exp_biomet_2026-05-29T194857_exp.csv",
+              "extra": {
+                "auto_discovered": true
+              },
+              "source_mode": "external_file",
+              "fields": [
+                "DOY",
+                "ABSURD_1_1_1",
+                "ADC_1_1_1_1",
+                "ADC_2_1_1_1",
+                "CHK__1_1_1",
+                "DAQM_T_1_1_1",
+                "DAQM_T_2_1_1",
+                "DAQM_V_MAIN_1_1_1",
+                "DAQM_V_MAIN_2_1_1",
+                "DRM_POWER_STATUS_1_1_1",
+                "DRM_V_BATTERY_1_1_1",
+                "DRM_V_MAIN_1_1_1",
+                "PPFD_1_1_1",
+                "P_RAIN_1_1_1",
+                "RG_1_1_1",
+                "RH_1_1_1",
+                "RainTip_1_1_1_1",
+                "Relay_1_1_1_1",
+                "Relay_2_1_1_1",
+                "SHFSENS_1_1_1",
+                "SHFSENS_2_1_1",
+                "SHF_1_1_1",
+                "SHF_2_1_1",
+                "SHF_3_1_1",
+                "SHF_4_1_1",
+                "SWC_1_1_1",
+                "SWC_2_1_1",
+                "SWC_3_1_1",
+                "SWC_4_1_1",
+                "TA_1_1_1",
+                "TS_1_1_1",
+                "TS_2_1_1",
+                "TS_3_1_1",
+                "TS_4_1_1"
+              ]
+            }
+          },
+          "qc": {
+            "eddypro_qc_meth": "1",
+            "method": "mauder_foken_04",
+            "enabled": true
+          },
+          "sonic_correction": {
+            "u_offset_ms": 0.0,
+            "v_offset_ms": 0.0,
+            "w_offset_ms": 0.0,
+            "enabled": true
+          },
+          "spectral_correction": {
+            "eddypro_hf_meth": "1",
+            "eddypro_lf_meth": "1",
+            "low_frequency_method": "analytic",
+            "enabled": true,
+            "method": "moncrieff_97"
+          }
+        },
+        "raw_import_probe": {
+          "artifact_type": "official_raw_import_probe_v1",
+          "status": "decoded",
+          "path": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\raw\\2021-08-21T000000_AIU-0737.ghg",
+          "format": "ghg",
+          "native": false,
+          "row_count": 18000,
+          "time_start": "2021-08-21T00:00:00",
+          "time_end": "2021-08-21T00:29:59.900000",
+          "import_summary": {
+            "format": "ghg",
+            "native": false
+          },
+          "errors": [],
+          "truthfulness_note": "This probe verifies that the inferred metadata can decode the raw input. It is not an EddyPro numeric parity result.",
+          "sample_fields": {
+            "co2_ppm": 473.72,
+            "h2o_mmol": 25.9452,
+            "ch4_ppb": 2464.08,
+            "pressure_kpa": 94.4327,
+            "chamber_temp_c": 21.9697
+          }
+        },
+        "inference_sources": [
+          {
+            "role": "raw_input",
+            "path": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\raw\\2021-08-21T000000_AIU-0737.ghg",
+            "used_for": "raw format, header, and column inference"
+          },
+          {
+            "role": "eddypro_project_file",
+            "path": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\eddypro\\processing_2021-08-21T003117_exp.eddypro",
+            "used_for": "sampling/timing/import settings",
+            "parsed_key_count": 752
+          },
+          {
+            "role": "reference_json",
+            "path": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\normalized\\reference.json",
+            "used_for": "window duration and start-time fallback"
+          },
+          {
+            "role": "official_full_output",
+            "path": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\eddypro\\eddypro_exp_full_output_2021-08-21T003117_exp.csv",
+            "used_for": "TIMESTAMP_START fallback"
+          },
+          {
+            "role": "import_config_draft",
+            "path": "",
+            "used_for": "native raw importer extra settings"
+          },
+          {
+            "role": "rp_config_draft",
+            "path": "",
+            "used_for": "rotation, lag, density correction, spectral, footprint, uncertainty, and QC processing settings"
+          },
+          {
+            "role": "raw_import_probe",
+            "path": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\raw\\2021-08-21T000000_AIU-0737.ghg",
+            "used_for": "preflight raw decoding with inferred metadata",
+            "status": "decoded",
+            "row_count": 18000
+          }
+        ],
+        "unresolved": [],
+        "truthfulness_note": "This import plan is an auditable draft inferred from bundle files. Operators must review units, column mappings, and timing before using it for official EddyPro parity claims."
+      },
+      "rp_config": {
+        "sample_hz": 10.0,
+        "block_minutes": 30.0,
+        "steps": {
+          "window_sampling": {
+            "sample_hz": 10.0,
+            "window_minutes": 30.0
+          },
+          "qc": {
+            "eddypro_qc_meth": "1",
+            "method": "mauder_foken_04",
+            "enabled": true
+          },
+          "sonic_correction": {
+            "u_offset_ms": 0.0,
+            "v_offset_ms": 0.0,
+            "w_offset_ms": 0.0,
+            "enabled": true
+          },
+          "spectral_correction": {
+            "eddypro_hf_meth": "1",
+            "eddypro_lf_meth": "1",
+            "low_frequency_method": "analytic",
+            "enabled": true,
+            "method": "moncrieff_97"
+          }
+        },
+        "rotation_mode": "double",
+        "detrend_mode": "block_mean",
+        "density_correction_mode": "wpl",
+        "lag_phase": {
+          "strategy": "covariance_max",
+          "expected_lag_s": 0.0,
+          "search_window_s": 4.0
+        },
+        "metadata_bundle": {
+          "project": {
+            "code": "exp"
+          },
+          "site": {
+            "station_code": "field_official"
+          },
+          "raw_file_description": {
+            "source_name": "2021-08-21T000000_AIU-0737.ghg",
+            "source_type": "ghg",
+            "column_mappings": []
+          },
+          "raw_file_settings": {
+            "sample_hz": 10.0,
+            "delimiter": ",",
+            "header_rows": 0,
+            "extra": {
+              "start_time": "2021-08-21T00:00:00"
+            }
+          },
+          "instruments": {
+            "extra": {
+              "sonic_u_offset_ms": 0.0,
+              "sonic_v_offset_ms": 0.0,
+              "sonic_w_offset_ms": 0.0
+            }
+          },
+          "biomet": {
+            "source_path": "official_eddypro_run_home/output/eddypro_exp_biomet_2026-05-29T194857_exp.csv",
+            "extra": {
+              "auto_discovered": true
+            },
+            "source_mode": "external_file",
+            "fields": [
+              "DOY",
+              "ABSURD_1_1_1",
+              "ADC_1_1_1_1",
+              "ADC_2_1_1_1",
+              "CHK__1_1_1",
+              "DAQM_T_1_1_1",
+              "DAQM_T_2_1_1",
+              "DAQM_V_MAIN_1_1_1",
+              "DAQM_V_MAIN_2_1_1",
+              "DRM_POWER_STATUS_1_1_1",
+              "DRM_V_BATTERY_1_1_1",
+              "DRM_V_MAIN_1_1_1",
+              "PPFD_1_1_1",
+              "P_RAIN_1_1_1",
+              "RG_1_1_1",
+              "RH_1_1_1",
+              "RainTip_1_1_1_1",
+              "Relay_1_1_1_1",
+              "Relay_2_1_1_1",
+              "SHFSENS_1_1_1",
+              "SHFSENS_2_1_1",
+              "SHF_1_1_1",
+              "SHF_2_1_1",
+              "SHF_3_1_1",
+              "SHF_4_1_1",
+              "SWC_1_1_1",
+              "SWC_2_1_1",
+              "SWC_3_1_1",
+              "SWC_4_1_1",
+              "TA_1_1_1",
+              "TS_1_1_1",
+              "TS_2_1_1",
+              "TS_3_1_1",
+              "TS_4_1_1"
+            ]
+          }
+        },
+        "qc": {
+          "eddypro_qc_meth": "1",
+          "method": "mauder_foken_04",
+          "enabled": true
+        },
+        "sonic_correction": {
+          "u_offset_ms": 0.0,
+          "v_offset_ms": 0.0,
+          "w_offset_ms": 0.0,
+          "enabled": true
+        },
+        "spectral_correction": {
+          "eddypro_hf_meth": "1",
+          "eddypro_lf_meth": "1",
+          "low_frequency_method": "analytic",
+          "enabled": true,
+          "method": "moncrieff_97"
+        }
+      },
+      "thresholds": {
+        "flux_rel_threshold": 0.1,
+        "lag_abs_threshold_s": 0.5,
+        "wpl_rel_threshold": 0.2,
+        "qc_grade_must_match": false
+      },
+      "official_eddypro_run": {
+        "artifact_type": "official_eddypro_executable_run_v1",
+        "status": "pass",
+        "gate_status": "pass",
+        "software": "EddyPro",
+        "software_version": "EddyPro source 3cabe637",
+        "executable_path": "D:\\external_sources\\eddypro-engine\\bin\\win\\eddypro_rp.exe",
+        "command": "set PATH=D:\\tools\\msys64\\mingw64\\bin;D:\\tools\\msys64\\usr\\bin;%PATH% && D:\\external_sources\\eddypro-engine\\bin\\win\\eddypro_rp.exe -m embedded -e D:\\gas_ec_studio\\artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\official_eddypro_run_home",
+        "run_completed_at": "2026-05-29T19:49:03.084328",
+        "exit_code": 0,
+        "working_directory": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021",
+        "project_file": "official_eddypro_run_home\\ini\\processing.eddypro",
+        "source_file": "official_eddypro_run.json",
+        "output_files": [
+          {
+            "role": "official_full_output",
+            "path": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\eddypro\\eddypro_exp_full_output_2021-08-21T003117_exp.csv",
+            "sha256": "AF6247A00C3A707DDFC1158A8C4CACCF9A41CBC91E89C2DB6CDC650B30371D79",
+            "size_bytes": 6132
+          }
+        ],
+        "declared_output_hashes": [
+          {
+            "path": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\official_eddypro_run_home\\output\\eddypro_exp_full_output_2026-05-29T194857_exp.csv",
+            "relative_to_bundle": "official_eddypro_run_home\\output\\eddypro_exp_full_output_2026-05-29T194857_exp.csv",
+            "relative_to_workspace": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\official_eddypro_run_home\\output\\eddypro_exp_full_output_2026-05-29T194857_exp.csv",
+            "exists": true,
+            "size_bytes": 6136,
+            "sha256": "5BC041777238DA8727EF74E2AFCE9C23F8206BC128BFD0986968F00396C175D2"
+          }
+        ],
+        "declared_output_files": [
+          "official_eddypro_run_home/output/eddypro_exp_full_output_2026-05-29T194857_exp.csv"
+        ],
+        "missing_requirements": [],
+        "source": "official_raw_fixture_bundle_manifest",
+        "truthfulness_note": "This records provenance that the official output was generated by EddyPro. It is a release-gate input; Gas EC Studio does not synthesize or infer this run as passed."
+      },
+      "expected_sha256": {
+        "eddypro_project_file": "48D1579A02EA59971EE46F16EF58BD4972CBDE39FD33EE6F97B6EB3D7451AECF",
+        "official_full_output": "AF6247A00C3A707DDFC1158A8C4CACCF9A41CBC91E89C2DB6CDC650B30371D79",
+        "provenance_json": "493CA4F740F8345E456E718CF741DACB0E39CB35CDD8209464447C290DA04691",
+        "raw_file": "08422B0731F61A45660C19A69F71843E4C6EB5C508ABA91AD8D0B4A2BAFBDBB1",
+        "reference_json": "CD7FD77E45457D50E55146EDFFFD5909BA80AAE361D4DFF388709DC72A900460"
+      },
+      "known_limitations": [
+        "Auto-generated manifest: review inferred file roles before using this fixture for parity claims.",
+        "Raw-to-final parity still depends on the normalized reference and QC/unit mapping provenance."
+      ],
+      "official_full_output": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\eddypro\\eddypro_exp_full_output_2021-08-21T003117_exp.csv",
+      "eddypro_project_file": "artifacts\\eddypro_public_raw\\official_raw_candidates\\ghg_sample_data_2021\\eddypro\\processing_2021-08-21T003117_exp.eddypro"
+    }
+  ],
+  "coverage_gaps": [
+    "Need anonymized raw LI-COR .ghg bundles with official EddyPro outputs.",
+    "Need TOB1/SLT/binary raw fixtures with EddyPro import-output parity.",
+    "Need LI-7700 CH4 real numeric parity fixtures including WMS/spectroscopic edge cases.",
+    "Need sonic head/AoA/crosswind real instrument fixtures.",
+    "Need long-period spectra/cospectra/ogive assessment fixtures."
+  ]
+}

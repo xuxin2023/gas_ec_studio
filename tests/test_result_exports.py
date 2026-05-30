@@ -67,6 +67,23 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
             "project_site_snapshot.json",
             "report_snapshot.json",
             "export_manifest.json",
+            "spectral_assessment.json",
+            "spectral_binned_ensemble.csv",
+            "spectral_full_windows.csv",
+            "spectral_ogive_ensemble.csv",
+            "spectral_assessment_library.json",
+            "spectral_assessment_library_groups.csv",
+            "spectral_assessment_library_bins.csv",
+            "eddypro_source_inventory.json",
+            "public_eddypro_fixture_catalog.json",
+            "official_raw_fixture_manifest.json",
+            "official_raw_closure_run.json",
+            "official_raw_repair_plan.json",
+            "official_raw_fixture_detail.json",
+            "official_raw_evidence_pack.json",
+            "flux_correction_ledger.json",
+            "eddypro_coverage_audit.json",
+            "eddypro_release_gate.json",
             "network_validation_summary.json",
             "fluxnet_half_hourly_foundation.json",
             "fluxnet_full_submission.json",
@@ -84,12 +101,59 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert "window_id" in rp_csv
         assert "window_id" in spectral_csv
         assert "relative_uncertainty" in full_output_csv
+        assert "flux_correction_ledger" in full_output_csv
         assert "diagnostics_flags" in full_output_csv
         assert "turbulence_intermediate" in full_output_csv
 
         summary_payload = json.loads((bundle_root / "summary.json").read_text(encoding="utf-8"))
         assert summary_payload["rp_run"]["status"] == "ok"
         assert summary_payload["spectral_run"]["status"] == "ok"
+        assert summary_payload["spectral_assessment"]["artifact_type"] == "spectral_assessment_export_v1"
+        assert summary_payload["spectral_assessment"]["status"] == "ok"
+        assert summary_payload["spectral_assessment"]["binned_ensemble"]["bin_count"] > 0
+        assert summary_payload["spectral_assessment_files"]["spectral_binned_ensemble_csv"].endswith("spectral_binned_ensemble.csv")
+        assert summary_payload["spectral_assessment_library"]["artifact_type"] == "spectral_assessment_library_v1"
+        assert summary_payload["spectral_assessment_library"]["status"] == "ok"
+        assert summary_payload["spectral_assessment_library_files"]["spectral_assessment_library_bins_csv"].endswith("spectral_assessment_library_bins.csv")
+        assert summary_payload["flux_correction_ledger_summary"]["status"] == "ok"
+        assert summary_payload["public_eddypro_fixture_catalog"]["status"] == "pass"
+        assert summary_payload["public_eddypro_fixture_catalog_artifact"].endswith("public_eddypro_fixture_catalog.json")
+        assert summary_payload["public_eddypro_fixture_count"] == 6
+        assert summary_payload["public_eddypro_valid_fixture_count"] == 6
+        assert summary_payload["official_raw_fixture_manifest"]["status"] == "needs_official_raw_fixtures"
+        assert summary_payload["official_raw_fixture_manifest"]["evidence_matrix"]["row_count"] >= 1
+        assert summary_payload["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
+        assert summary_payload["official_raw_fixture_manifest"]["evidence_matrix"]["official_run_normalization_status_counts"]["normalized"] >= 1
+        assert summary_payload["official_raw_closure_run"]["artifact_type"] == "official_raw_closure_run_v1"
+        assert summary_payload["official_raw_closure_run_artifact"].endswith("official_raw_closure_run.json")
+        assert summary_payload["official_raw_closure_run_status"] == "not_available"
+        assert summary_payload["official_raw_repair_plan"]["artifact_type"] == "official_raw_fixture_repair_plan_v1"
+        assert summary_payload["official_raw_repair_plan_artifact"].endswith("official_raw_repair_plan.json")
+        assert summary_payload["official_raw_repair_plan_status"] == "not_available"
+        assert summary_payload["official_raw_fixture_detail"]["artifact_type"] == "official_raw_fixture_detail_v1"
+        assert summary_payload["official_raw_acquisition_validation"]["artifact_type"] == "official_raw_fixture_acquisition_validation_v1"
+        assert "official_raw_acquisition_status" in summary_payload
+        assert summary_payload["official_raw_evidence_pack"]["artifact_type"] == "official_raw_fixture_evidence_pack_v1"
+        assert summary_payload["official_raw_evidence_pack_artifact"].endswith("official_raw_evidence_pack.json")
+        assert summary_payload["official_raw_evidence_pack_acceptance_status"] == "not_run"
+        assert summary_payload["official_eddypro_run_status"] == "not_available"
+        assert summary_payload["official_eddypro_run_gate_status"] == "blocked"
+        assert summary_payload["official_raw_official_run_normalization_status"] == "normalized"
+        assert summary_payload["official_raw_official_run_reference_json"].endswith("official_eddypro_run_reference.json")
+        assert summary_payload["eddypro_source_inventory"]["inventory_id"] == "eddypro_official_source_inventory_v1"
+        assert summary_payload["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
+        assert summary_payload["eddypro_coverage_audit"]["can_claim_full_eddypro_parity"] is False
+        assert summary_payload["eddypro_release_gate"]["artifact_type"] == "eddypro_release_gate_v1"
+        assert summary_payload["eddypro_release_gate_status"] == "blocked"
+        assert summary_payload["can_release_full_eddypro_parity"] is False
+        assert summary_payload["eddypro_closure_gate"]["artifact_type"] == "eddypro_closure_gate_v1"
+        assert summary_payload["eddypro_closure_gate_status"] == "blocked"
+        assert summary_payload["eddypro_closure_open_item_count"] >= 1
+
+        ledger_payload = json.loads((bundle_root / "flux_correction_ledger.json").read_text(encoding="utf-8"))
+        assert ledger_payload["artifact_type"] == "flux_correction_ledger_run_v1"
+        assert ledger_payload["summary"]["ledger_window_count"] >= 1
+        assert ledger_payload["windows"][0]["stage_count"] >= 4
 
         config_payload = json.loads((bundle_root / "config_snapshot.json").read_text(encoding="utf-8"))
         assert "rp_config_snapshot" in config_payload
@@ -100,6 +164,59 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["field_schema"]
         assert any(field["name"] == "diagnostics_flags" for field in manifest_payload["field_schema"])
         assert manifest_payload["schema_target"] == "FLUXNET"
+        assert manifest_payload["spectral_assessment_artifact"].endswith("spectral_assessment.json")
+        assert manifest_payload["spectral_assessment"]["full_window_row_count"] > 0
+        assert manifest_payload["spectral_assessment_files"]["spectral_full_windows_csv"].endswith("spectral_full_windows.csv")
+        assert manifest_payload["spectral_assessment_library_artifact"].endswith("spectral_assessment_library.json")
+        assert manifest_payload["spectral_assessment_library"]["group_count"] >= 1
+        assert manifest_payload["spectral_assessment_library_files"]["spectral_assessment_library_groups_csv"].endswith("spectral_assessment_library_groups.csv")
+        assert manifest_payload["flux_correction_ledger_summary"]["status"] == "ok"
+        assert manifest_payload["flux_correction_ledger_artifact"].endswith("flux_correction_ledger.json")
+        assert manifest_payload["network_energy_fields"] == ["H", "LE", "ET", "TAU"]
+        assert manifest_payload["public_eddypro_fixture_catalog_status"] == "pass"
+        assert manifest_payload["public_eddypro_fixture_catalog_artifact"].endswith("public_eddypro_fixture_catalog.json")
+        assert manifest_payload["public_eddypro_fixture_count"] == 6
+        assert manifest_payload["public_eddypro_valid_fixture_count"] == 6
+        assert Path(manifest_payload["public_eddypro_fixture_catalog_artifact"]).exists()
+        assert manifest_payload["official_raw_fixture_manifest_artifact"].endswith("official_raw_fixture_manifest.json")
+        assert manifest_payload["official_raw_closure_run_artifact"].endswith("official_raw_closure_run.json")
+        assert manifest_payload["official_raw_closure_run_status"] == "not_available"
+        assert Path(manifest_payload["official_raw_closure_run_artifact"]).exists()
+        assert manifest_payload["official_raw_repair_plan_artifact"].endswith("official_raw_repair_plan.json")
+        assert manifest_payload["official_raw_repair_plan_status"] == "not_available"
+        assert Path(manifest_payload["official_raw_repair_plan_artifact"]).exists()
+        assert manifest_payload["official_raw_fixture_detail_artifact"].endswith("official_raw_fixture_detail.json")
+        assert manifest_payload["official_raw_fixture_detail"]["fixture_id"]
+        assert manifest_payload["official_raw_acquisition_validation"]["artifact_type"] == "official_raw_fixture_acquisition_validation_v1"
+        assert "official_raw_acquisition_missing_requirements" in manifest_payload
+        assert manifest_payload["official_raw_evidence_pack_artifact"].endswith("official_raw_evidence_pack.json")
+        assert "official_raw_evidence_pack_status" in manifest_payload
+        assert manifest_payload["official_raw_evidence_pack_acceptance_status"] == "not_run"
+        assert "official_raw_evidence_pack_acceptance_command_count" in manifest_payload
+        assert manifest_payload["official_eddypro_run_status"] == "not_available"
+        assert manifest_payload["official_eddypro_run_gate_status"] == "blocked"
+        assert manifest_payload["official_raw_normalization_status"] in {"present", "ready"}
+        assert manifest_payload["official_raw_qc_mapping_strategy"]
+        assert manifest_payload["official_raw_official_run_normalization_status"] == "normalized"
+        assert manifest_payload["official_raw_official_run_qc_mapping_strategy"] == "EddyPro 0/1/2 -> gas_ec_studio A/B/C"
+        assert manifest_payload["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 3
+        assert manifest_payload["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
+        assert manifest_payload["official_raw_fixture_manifest"]["evidence_matrix"]["raw_format_counts"]["csv"] >= 1
+        assert manifest_payload["official_raw_fixture_detail"]["trace_gas_parity_status"] == "pass"
+        assert manifest_payload["official_raw_fixture_detail"]["trace_gas_coefficient_profile_id"] == "synthetic_li7700_profile"
+        assert "raw_to_final_parity_diagnostics" in manifest_payload
+        assert "raw_to_final_parity_failure_groups" in manifest_payload
+        assert "raw_to_final_parity_top_failed_fields" in manifest_payload
+        assert manifest_payload["eddypro_source_inventory_artifact"].endswith("eddypro_source_inventory.json")
+        assert manifest_payload["eddypro_source_inventory"]["feature_count"] >= 10
+        assert manifest_payload["eddypro_coverage_audit_artifact"].endswith("eddypro_coverage_audit.json")
+        assert manifest_payload["eddypro_coverage_audit"]["claim_gate"]["status"] == "blocked"
+        assert manifest_payload["eddypro_release_gate_artifact"].endswith("eddypro_release_gate.json")
+        assert manifest_payload["eddypro_release_gate"]["status"] == "blocked"
+        assert manifest_payload["can_release_full_eddypro_parity"] is False
+        assert manifest_payload["eddypro_closure_gate"]["status"] == "blocked"
+        assert manifest_payload["eddypro_closure_plan"]["next_action_count"] >= 1
+        assert manifest_payload["eddypro_closure_top_priority"] in {"P0", "P1"}
         assert "network_validation_status" in manifest_payload
         assert "network_missing_fields" in manifest_payload
 

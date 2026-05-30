@@ -138,10 +138,11 @@ class DeviceDetailPage(QWidget):
         snapshot = self.controller.device_detail_snapshot(entry.config.uid)
         latest_numeric = snapshot["latest_numeric"]
         latest_frame = snapshot["latest_frame"]
+        analyzer_profile = snapshot.get("gas_analyzer_profile", {})
 
         self.page_title.setText(f"{entry.config.label} · 单设备详情")
         self.page_subtitle.setText(
-            "操作员可在这里完成常用配置和采集；切换到工程师视图后，可以继续查看原始帧、解析结果、事务历史和错误归因。"
+            f"{analyzer_profile.get('label', 'Gas analyzer')} · 操作员可在这里完成常用配置和采集；切换到工程师视图后，可以继续查看原始帧、解析结果、事务历史和错误归因。"
         )
 
         self.summary_values["online"].setText("在线" if entry.runtime.connected else "离线")
@@ -300,7 +301,7 @@ class DeviceDetailPage(QWidget):
 
         ftd_row = QHBoxLayout()
         self.ftd_spin = QSpinBox()
-        self.ftd_spin.setRange(1, 100)
+        self.ftd_spin.setRange(1, 20)
         ftd_button = QPushButton("应用输出频率")
         ftd_button.clicked.connect(lambda: self._with_selected(self.controller.set_ftd_frequency, self.ftd_spin.value(), show_result=True))
         ftd_row.addWidget(self.ftd_spin)
@@ -309,9 +310,9 @@ class DeviceDetailPage(QWidget):
 
         avg_row = QHBoxLayout()
         self.avg_co2_spin = QSpinBox()
-        self.avg_co2_spin.setRange(1, 256)
+        self.avg_co2_spin.setRange(1, 399)
         self.avg_h2o_spin = QSpinBox()
-        self.avg_h2o_spin.setRange(1, 256)
+        self.avg_h2o_spin.setRange(1, 399)
         avg_button = QPushButton("应用平均参数")
         avg_button.clicked.connect(self._apply_average)
         avg_row.addWidget(QLabel("二氧化碳"))
@@ -323,7 +324,7 @@ class DeviceDetailPage(QWidget):
 
         filter_row = QHBoxLayout()
         self.filter_spin = QSpinBox()
-        self.filter_spin.setRange(1, 999)
+        self.filter_spin.setRange(1, 399)
         filter_button = QPushButton("应用滤波参数")
         filter_button.clicked.connect(lambda: self._with_selected(self.controller.set_filter_params, window_n=self.filter_spin.value(), show_result=True))
         filter_row.addWidget(self.filter_spin)
@@ -354,7 +355,7 @@ class DeviceDetailPage(QWidget):
 
         group_row = QHBoxLayout()
         self.coeff_group_spin = QSpinBox()
-        self.coeff_group_spin.setRange(0, 9)
+        self.coeff_group_spin.setRange(1, 9)
         self.coeff_values_input = QLineEdit("1.0, 0.0, 0.0, 0.0, 0.0, 0.0")
         read_button = QPushButton("读取系数")
         read_button.clicked.connect(self._read_coefficients)

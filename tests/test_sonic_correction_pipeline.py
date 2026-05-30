@@ -75,6 +75,32 @@ def test_apply_sonic_corrections_applies_gill_wboost_offsets_and_aoa_gain() -> N
     assert result.detail["source_reference"]["eddypro_engine_files"][0].endswith("adjust_sonic_coordinates.f90")
 
 
+def test_apply_sonic_corrections_applies_nakai_aoa_auto_for_windmaster() -> None:
+    u = np.array([2.0, 1.8, 2.2, 2.1], dtype=float)
+    v = np.array([0.1, -0.2, 0.3, -0.1], dtype=float)
+    w = np.array([0.42, -0.35, 0.18, -0.08], dtype=float)
+
+    result = apply_sonic_corrections(
+        u,
+        v,
+        w,
+        {
+            "enabled": True,
+            "sonic_model": "WindMaster Pro",
+            "angle_of_attack": {"enabled": True, "method": "auto"},
+        },
+    )
+
+    step_names = [step["name"] for step in result.detail["steps"]]
+    assert "nakai_2012_angle_of_attack" in step_names
+    assert result.detail["angle_of_attack_status"] == "applied"
+    assert result.detail["angle_of_attack_method"] == "nakai_2012"
+    assert result.detail["angle_of_attack_summary"]["coefficient_set"] == "nakai_shimoyama_2012_polynomial"
+    assert np.all(np.isfinite(result.u))
+    assert np.all(np.isfinite(result.w))
+    assert not np.allclose(result.w, w)
+
+
 def test_pipeline_exports_sonic_correction_provenance(tmp_path: Path) -> None:
     rows = _make_rows()
     metadata = MetadataBundle(
@@ -149,3 +175,33 @@ def test_pipeline_exports_sonic_correction_provenance(tmp_path: Path) -> None:
     assert full_rows[0]["sonic_correction_method"] == "eddypro_sonic_coordinate_v1"
     assert "Gill WindMaster" in full_rows[0]["sonic_correction_provenance"]
     assert "sonic_correction_method" in manifest["method_provenance_fields"]
+
+
+def test_pipeline_exports_nakai_angle_of_attack_summary(tmp_path: Path) -> None:
+    rows = _make_rows()
+    metadata = MetadataBundle(
+        project=ProjectProfile(code="SONIC-NAKAI", name="Nakai AoA"),
+        site=SiteProfile(station_code="NAKAI", station_name="Nakai Tower"),
+    )
+    config = {
+        "sample_hz": 10.0,
+        "block_minutes": 0.5,
+        "rotation_mode": "none",
+        "sonic_correction": {
+            "enabled": True,
+            "sonic_model": "WindMaster Pro",
+            "angle_of_attack": {"enabled": True, "method": "auto"},
+        },
+    }
+
+    result = ECRPPipeline().run(rows=rows, project=metadata.project, site=metadata.site, config=config)
+    diagnostics = result.windows[0].diagnostics
+    assert diagnostics["sonic_angle_of_attack_status"] == "applied"
+    assert diagnostics["sonic_angle_of_attack_method"] == "nakai_2012"
+    assert diagnostics["sonic_angle_of_attack_summary"]["iteration_count"] >= 1
+
+    exporter = ResultExporter(tmp_path)
+    full_row = exporter._full_output_rows(rp_result=result, spectral_result=None, mode="full_output")[0]
+    rp_row = exporter._rp_row(result.windows[0])
+    assert full_row["sonic_angle_of_attack_method"] == "nakai_2012"
+    assert rp_row["sonic_angle_of_attack_status"] == "applied"

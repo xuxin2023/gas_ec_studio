@@ -127,6 +127,39 @@ def test_runtime_service_quarantines_bad_input_and_records_retry(tmp_path: Path)
     assert service["latest_batch"]["rp_result"].summary["runtime_service_status"] == "degraded"
 
 
+def test_runtime_service_quarantines_failed_clock_quality_gate(tmp_path: Path) -> None:
+    rows = _make_rows()
+    start = rows[0].timestamp
+    config = _config()
+    config["clock_sync"].update(
+        {
+            "jitter_threshold_seconds": 0.1,
+            "events": [
+                {"timestamp": start.isoformat(), "offset_seconds": 0.0},
+                {"timestamp": (start + timedelta(seconds=60)).isoformat(), "offset_seconds": 1.0},
+            ],
+        }
+    )
+    config["runtime_profile"]["require_clock_sync_quality"] = True
+
+    service = run_runtime_service_batches(
+        config=config,
+        metadata=_metadata(),
+        batches=[{"input_id": "bad-clock-quality", "rows": rows, "time_range": "clock-quality"}],
+        runtime_root=tmp_path,
+    )
+    manifest = service["service_manifest"]
+    latest = service["latest_batch"]
+
+    assert manifest["status"] == "degraded"
+    assert manifest["watchdog_failure_count"] == 1
+    assert manifest["batch_records"][0]["status"] == "watchdog_fail"
+    assert manifest["quarantine_records"][0]["reason"] == "runtime_watchdog_fail"
+    assert latest["runtime_watchdog_summary"]["status"] == "fail"
+    checks = {check["check_id"]: check for check in latest["runtime_watchdog_summary"]["checks"]}
+    assert checks["clock_sync_quality"]["status"] == "fail"
+
+
 def test_runtime_service_export_and_delivery_chain(tmp_path: Path) -> None:
     metadata = _metadata()
     config = _config()

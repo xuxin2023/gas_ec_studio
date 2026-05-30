@@ -4,6 +4,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
+    QComboBox,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -159,8 +160,13 @@ class DeviceCenterPage(QWidget):
         self.baudrate_spin.setRange(1200, 921600)
         self.baudrate_spin.setValue(115200)
         self.device_id_input = QLineEdit("002")
+        self.analyzer_profile_combo = QComboBox()
+        for profile in self.controller.available_gas_analyzer_profiles():
+            self.analyzer_profile_combo.addItem(str(profile["label"]), str(profile["profile_id"]))
+        self.analyzer_profile_combo.setCurrentIndex(max(0, self.analyzer_profile_combo.findData("ygas_irga")))
         for title, widget in (
             ("设备名称", self.label_input),
+            ("气体分析仪型号", self.analyzer_profile_combo),
             ("COM 口 / 模拟端口", self.port_input),
             ("波特率", self.baudrate_spin),
             ("设备 ID", self.device_id_input),
@@ -254,7 +260,7 @@ class DeviceCenterPage(QWidget):
             layout.addLayout(title_row)
 
             meta = QLabel(
-                f"{data['port']} · {data['baudrate']} bps · 设备 ID {data['device_id']} · "
+                f"{data['analyzer_profile_label']} · {data['port']} · {data['baudrate']} bps · 设备 ID {data['device_id']} · "
                 f"MODE{data['mode']} · {'主动输出' if data['active_send'] else '按需读取'}"
             )
             meta.setObjectName("subtitle")
@@ -335,6 +341,7 @@ class DeviceCenterPage(QWidget):
                 port=self.port_input.text(),
                 baudrate=self.baudrate_spin.value(),
                 device_id=self.device_id_input.text(),
+                analyzer_profile=str(self.analyzer_profile_combo.currentData() or "ygas_irga"),
             )
             self.controller.select_device(uid)
             QMessageBox.information(self, "设备已添加", "设备卡片已经创建，现在可以直接连接或进入详情页继续配置。")

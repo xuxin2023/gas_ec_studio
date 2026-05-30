@@ -25,6 +25,7 @@ def classify_window_qc(
     turbulence_detail: dict[str, Any],
     ustar: float | None,
     advanced_tests: dict[str, dict[str, Any]] | None = None,
+    eddypro_qc_method: str = "",
 ) -> dict[str, Any]:
     qc_matrix: dict[str, dict[str, Any]] = {}
 
@@ -119,6 +120,20 @@ def classify_window_qc(
     attention_flags = [name for name in qc_flags if qc_matrix[name]["status"] == "attention"]
     if "signal_validity" in failure_flags:
         qc_grade = "C"
+    eddypro_quality = _eddypro_quality_flag(
+        method=eddypro_qc_method,
+        stationarity_detail=stationarity_detail,
+        turbulence_detail=turbulence_detail,
+    )
+    if eddypro_quality:
+        qc_matrix["eddypro_quality_flag"] = eddypro_quality
+        qc_grade = str(eddypro_quality["grade"])
+        qc_score = min(qc_score, float(eddypro_quality["normalized_score"]))
+        if eddypro_quality["status"] != "pass":
+            qc_flags.append("eddypro_quality_flag")
+            qc_reasons.append(str(eddypro_quality["reason"]))
+    failure_flags = [name for name in qc_flags if qc_matrix[name]["status"] == "fail"]
+    attention_flags = [name for name in qc_flags if qc_matrix[name]["status"] == "attention"]
     anomaly_type = failure_flags[0] if failure_flags else (attention_flags[0] if attention_flags else "none")
     signal_issues = qc_matrix.get("signal_validity", {}).get("issues", [])
     if any(str(issue).endswith("_constant") for issue in signal_issues):
@@ -134,6 +149,61 @@ def classify_window_qc(
         "qc_reasons": qc_reasons,
         "qc_matrix": qc_matrix,
     }
+
+
+def _eddypro_quality_flag(
+    *,
+    method: str,
+    stationarity_detail: dict[str, Any],
+    turbulence_detail: dict[str, Any],
+) -> dict[str, Any] | None:
+    normalized = str(method or "").strip().lower()
+    if normalized not in {"mauder_foken_04", "mauder-foken-04", "mauder_foken", "eddypro_mauder_foken_04"}:
+        return None
+    stationarity_flag = _bounded_int(stationarity_detail.get("eddypro_partial_flag_lf"), default=9)
+    turbulence_flag = _bounded_int(
+        turbulence_detail.get("eddypro_partial_flag_lf", turbulence_detail.get("itc_partial_flag")),
+        default=1,
+    )
+    if stationarity_flag <= 2 and turbulence_flag <= 2:
+        flag = 0
+    elif stationarity_flag <= 5 and turbulence_flag <= 5:
+        flag = 1
+    else:
+        flag = 2
+    grade = {0: "A", 1: "B", 2: "C"}[flag]
+    status = "pass" if flag == 0 else ("attention" if flag == 1 else "fail")
+    normalized_score = {0: 100.0, 1: 70.0, 2: 35.0}[flag]
+    return _matrix_item(
+        name="eddypro_quality_flag",
+        status=status,
+        normalized_score=normalized_score,
+        weight=0.0,
+        reason=(
+            f"EddyPro Mauder-Foken 2004 QC flag={flag} "
+            f"(stationarity_flag={stationarity_flag}, turbulence_flag={turbulence_flag})"
+        ),
+        value=flag,
+        detail={
+            "method": "mauder_foken_04",
+            "flag": flag,
+            "grade": grade,
+            "stationarity_flag": stationarity_flag,
+            "turbulence_flag": turbulence_flag,
+            "provenance": "EddyPro QualityFlags/GTK2Flag mapping: 0=A, 1=B, 2=C.",
+            "limitations": [
+                "Turbulence partial flag falls back to the internal turbulence detail when exact EddyPro ITC metadata are unavailable.",
+            ],
+        },
+    ) | {"grade": grade}
+
+
+def _bounded_int(value: Any, *, default: int) -> int:
+    try:
+        numeric = int(float(value))
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(9, numeric))
 
 
 def _issue_bucket(name: str, issues: list[str], fail_weight: float, attention_weight: float) -> dict[str, Any]:

@@ -51,6 +51,7 @@ class DeviceConnectionConfig:
     baudrate: int
     device_id: str
     software_profile: str = "standard"
+    analyzer_profile: str = "ygas_irga"
 
 
 @dataclass(slots=True)

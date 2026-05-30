@@ -1,0 +1,32 @@
+{
+  "project": {
+    "code": "RTF-SYN",
+    "name": "Raw To Final Synthetic Fixture"
+  },
+  "site": {
+    "station_code": "RTF-SYN",
+    "station_name": "Raw To Final Synthetic Site"
+  },
+  "raw_file_description": {
+    "source_name": "synthetic_raw_csv_001",
+    "source_type": "csv",
+    "timestamp_column": "timestamp",
+    "timezone": "UTC",
+    "notes": "Deterministic synthetic raw CSV fixture for raw-to-final parity harness."
+  },
+  "raw_file_settings": {
+    "sample_hz": 10.0,
+    "delimiter": ",",
+    "header_rows": 1,
+    "encoding": "utf-8",
+    "missing_tokens": [
+      "",
+      "NA",
+      "NaN"
+    ]
+  },
+  "metadata_version": "ec_core_metadata_v1",
+  "notes": [
+    "Synthetic fixture, not an official EddyPro raw dataset."
+  ]
+}

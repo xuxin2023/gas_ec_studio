@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
+import struct
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from core.ec_rp.analysis import compute_footprint_2d_grid, run_method_compare
 from core.ec_rp.pipeline import ECRPPipeline
@@ -64,6 +68,11 @@ def _v3i_config(rows: list[NormalizedHFFrame]) -> dict[str, object]:
             "grid_enabled": True,
             "grid_x_bins": 16,
             "grid_y_bins": 11,
+            "land_cover_grid": [
+                ["crop" if col < 8 else "forest" for col in range(16)]
+                for _ in range(11)
+            ],
+            "land_cover_legend": {"crop": "cropland", "forest": "forest_edge"},
         },
         "uncertainty": {
             "method": "mann_lenschow",
@@ -103,6 +112,112 @@ def _v3i_config(rows: list[NormalizedHFFrame]) -> dict[str, object]:
         },
         "network_output": {"schema_target": "FLUXNET", "timestamp_refers_to": "start"},
     }
+
+
+def _web_mercator_xy(lon: float, lat: float) -> tuple[float, float]:
+    radius_m = 6_378_137.0
+    clamped_lat = max(min(float(lat), 85.05112878), -85.05112878)
+    x = radius_m * math.radians(float(lon))
+    y = radius_m * math.log(math.tan(math.pi / 4.0 + math.radians(clamped_lat) / 2.0))
+    return x, y
+
+
+def _rasterio_project_xy(src_crs: str, dst_crs: str, x: float, y: float) -> tuple[float, float]:
+    script = r'''
+import json
+import os
+import sys
+
+try:
+    import rasterio
+    from rasterio.warp import transform
+except Exception as exc:
+    print(json.dumps({"status": "not_available", "error": str(exc)}))
+    sys.stdout.flush()
+    os._exit(0)
+
+try:
+    out_x, out_y = transform(sys.argv[1], sys.argv[2], [float(sys.argv[3])], [float(sys.argv[4])])
+    print(json.dumps({"status": "ok", "x": float(out_x[0]), "y": float(out_y[0])}))
+except Exception as exc:
+    print(json.dumps({"status": "error", "error": str(exc)}))
+sys.stdout.flush()
+os._exit(0)
+'''
+    completed = subprocess.run(
+        [sys.executable, "-c", script, src_crs, dst_crs, str(float(x)), str(float(y))],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    stdout = (completed.stdout or "").strip()
+    if not stdout:
+        pytest.skip(f"rasterio transform unavailable: {(completed.stderr or '').strip()}")
+    payload = json.loads(stdout.splitlines()[-1])
+    if payload.get("status") != "ok":
+        pytest.skip(f"rasterio transform unavailable: {payload.get('error', payload.get('status'))}")
+    return float(payload["x"]), float(payload["y"])
+
+
+def _write_rasterio_land_cover_geotiff(
+    *,
+    path: Path,
+    crs: str,
+    transform: list[float],
+    rows: list[list[int]],
+    nodata: int = -9999,
+) -> None:
+    script = r'''
+import json
+import os
+import sys
+
+payload = json.loads(sys.stdin.read() or "{}")
+try:
+    import numpy as np
+    import rasterio
+    from affine import Affine
+except Exception as exc:
+    print(json.dumps({"status": "not_available", "error": str(exc)}))
+    sys.stdout.flush()
+    os._exit(0)
+
+try:
+    rows = payload["rows"]
+    array = np.asarray(rows, dtype=np.int16)
+    transform = Affine(*[float(value) for value in payload["transform"]])
+    with rasterio.open(
+        payload["path"],
+        "w",
+        driver="GTiff",
+        height=int(array.shape[0]),
+        width=int(array.shape[1]),
+        count=1,
+        dtype=str(array.dtype),
+        crs=payload["crs"],
+        transform=transform,
+        nodata=int(payload["nodata"]),
+    ) as dataset:
+        dataset.write(array, 1)
+    print(json.dumps({"status": "ok"}))
+except Exception as exc:
+    print(json.dumps({"status": "error", "error": str(exc)}))
+sys.stdout.flush()
+os._exit(0)
+'''
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        input=json.dumps({"path": str(path), "crs": crs, "transform": transform, "rows": rows, "nodata": nodata}),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    stdout = (completed.stdout or "").strip()
+    if not stdout:
+        pytest.skip(f"rasterio GeoTIFF writer unavailable: {(completed.stderr or '').strip()}")
+    payload = json.loads(stdout.splitlines()[-1])
+    if payload.get("status") != "ok":
+        pytest.skip(f"rasterio GeoTIFF writer unavailable: {payload.get('error', payload.get('status'))}")
 
 
 def test_footprint_2d_grid_is_normalized_and_exportable() -> None:
@@ -185,38 +300,405 @@ def test_pipeline_exports_footprint_2d_method_compare_and_cospectrum_match(tmp_p
     assert result.artifacts["method_rollup"]["method_compare_summary"]["status"] == "enabled"
 
     exporter = ResultExporter(runtime_root=tmp_path)
+    site = SiteProfile(station_code="SITE-V3I", station_name="V3I Site", latitude=35.1234, longitude=-97.5678)
     bundle = exporter.export_minimal_bundle(
         rp_result=result,
         spectral_result=None,
         rp_config_snapshot=config,
         spectral_config_snapshot={},
         project=ProjectProfile(code="PRJ-V3I", name="v3i"),
-        site=SiteProfile(station_code="SITE-V3I", station_name="V3I Site"),
+        site=site,
         report_payload={"title": "v3i"},
         report_key="method_provenance",
         full_output_mode="standard_schema",
     )
     files = bundle["files"]
     footprint_path = Path(files["footprint_2d_artifact"])
+    geojson_path = Path(files["footprint_geojson_artifact"])
+    geotiff_path = Path(files["footprint_geotiff_artifact"])
+    overlay_path = Path(files["footprint_land_cover_overlay_artifact"])
+    gis_validation_path = Path(files["footprint_gis_validation_artifact"])
     compare_path = Path(files["method_compare_artifact"])
     manifest_path = Path(files["export_manifest"])
     full_output_path = Path(files["full_output"])
 
     footprint_payload = json.loads(footprint_path.read_text(encoding="utf-8"))
+    geojson_payload = json.loads(geojson_path.read_text(encoding="utf-8"))
+    geotiff_bytes = geotiff_path.read_bytes()
+    overlay_payload = json.loads(overlay_path.read_text(encoding="utf-8"))
+    gis_validation = json.loads(gis_validation_path.read_text(encoding="utf-8"))
     compare_payload = json.loads(compare_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     full_output_csv = full_output_path.read_text(encoding="utf-8")
 
     assert footprint_payload["artifact_type"] == "footprint_2d_grid"
     assert footprint_payload["windows"][0]["grid"]["detail"]["grid_shape"] == [11, 16]
+    assert geojson_payload["artifact_type"] == "footprint_geojson_v1"
+    assert geojson_payload["status"] == "ok"
+    assert geojson_payload["coordinate_reference_system"] == "EPSG:4326"
+    assert geojson_payload["site"]["latitude"] == 35.1234
+    assert geojson_payload["feature_count"] > 16
+    assert geojson_payload["features"][0]["geometry"]["type"] == "Polygon"
+    assert geotiff_bytes[:4] == b"II*\x00"
+    assert struct.pack("<H", 322) in geotiff_bytes
+    assert struct.pack("<H", 323) in geotiff_bytes
+    assert struct.pack("<H", 324) in geotiff_bytes
+    assert struct.pack("<H", 325) in geotiff_bytes
+    assert struct.pack("<H", 33550) in geotiff_bytes
+    assert struct.pack("<H", 34735) in geotiff_bytes
+    assert overlay_payload["artifact_type"] == "footprint_land_cover_overlay_v1"
+    assert overlay_payload["status"] == "ok"
+    assert overlay_payload["classification_source"] == "grid"
+    assert {row["land_cover"] for row in overlay_payload["classes"]} == {"cropland", "forest_edge"}
+    assert math.isclose(sum(row["fraction"] for row in overlay_payload["classes"]), 1.0, rel_tol=1e-6)
+    assert gis_validation["artifact_type"] == "footprint_gis_validation_v1"
+    assert gis_validation["status"] == "ok_with_limitations"
+    assert gis_validation["geotiff"]["status"] == "ok"
+    assert gis_validation["geotiff"]["layout"] == "tiled"
+    assert gis_validation["geotiff"]["tile_width"] >= 16
+    assert gis_validation["geotiff"]["tile_length"] >= 16
+    assert gis_validation["geotiff"]["has_internal_overviews"] is True
+    assert gis_validation["geotiff"]["cog_readiness"] == "candidate"
+    assert gis_validation["geotiff"]["range_readiness"] == "ok"
+    assert gis_validation["geotiff"]["range_validation"]["ifd_count"] >= 2
+    assert gis_validation["geotiff"]["range_validation"]["tile_data_after_metadata"] is True
+    assert gis_validation["geotiff"]["range_validation"]["tile_offsets_monotonic"] is True
+    assert gis_validation["geotiff"]["range_validation"]["tile_ranges_in_file"] is True
+    assert gis_validation["geotiff"]["range_validation"]["reduced_image_count"] >= 1
+    reader_validation = gis_validation["geotiff"]["external_reader_validation"]
+    assert reader_validation["status"] in {"ok", "not_available"}
+    if reader_validation["status"] == "ok":
+        assert reader_validation["driver"] == "GTiff"
+        assert reader_validation["crs"] == "EPSG:4326"
+        assert reader_validation["width"] == 16
+        assert reader_validation["height"] == 11
+        assert reader_validation["overviews_band1"] == [2]
+        assert math.isclose(reader_validation["data_sum_band1"], 1.0, rel_tol=1e-5, abs_tol=1e-5)
+    cog_validator = gis_validation["geotiff"]["cog_validator_validation"]
+    assert cog_validator["status"] in {"valid", "invalid", "not_available"}
+    if cog_validator["status"] in {"valid", "invalid"}:
+        assert cog_validator["package"] == "rio-cogeo"
+        assert cog_validator["strict"] is True
+    assert gis_validation["land_cover_overlay"]["classification_source"] == "grid"
+    assert gis_validation["land_cover_raster"]["status"] == "not_configured"
     assert compare_payload["artifact_type"] == "method_compare"
     assert compare_payload["summary"]["status"] == "enabled"
     assert manifest["footprint_2d_artifact"] == str(footprint_path)
+    assert manifest["footprint_geojson_artifact"] == str(geojson_path)
+    assert manifest["footprint_geotiff_artifact"] == str(geotiff_path)
+    assert manifest["footprint_land_cover_overlay_artifact"] == str(overlay_path)
+    assert manifest["footprint_gis_validation_artifact"] == str(gis_validation_path)
+    assert manifest["footprint_gis_validation"]["status"] == "ok_with_limitations"
     assert manifest["method_compare_artifact"] == str(compare_path)
     assert manifest["method_compare_summary"]["status"] == "enabled"
     assert "footprint_2d_grid_status" in full_output_csv
     assert "method_compare_summary" in full_output_csv
     assert "spectral_correction_cospectrum_match" in full_output_csv
+
+
+def test_footprint_land_cover_overlay_samples_esri_ascii_raster(tmp_path: Path) -> None:
+    rows = _make_rows()
+    config = _v3i_config(rows)
+    raster_path = tmp_path / "land_cover.asc"
+    ncols = 80
+    nrows = 80
+    xll = -97.5688
+    yll = 35.1230
+    cellsize = 0.00002
+    raster_rows: list[str] = []
+    for row_index in range(nrows):
+        row_from_bottom = nrows - 1 - row_index
+        code = "2" if row_from_bottom >= 22 else "1"
+        raster_rows.append(" ".join([code] * ncols))
+    raster_path.write_text(
+        "\n".join(
+            [
+                f"ncols {ncols}",
+                f"nrows {nrows}",
+                f"xllcorner {xll}",
+                f"yllcorner {yll}",
+                f"cellsize {cellsize}",
+                "NODATA_value -9999",
+                *raster_rows,
+            ]
+        ),
+        encoding="utf-8",
+    )
+    footprint_config = dict(config["footprint"])
+    footprint_config.pop("land_cover_grid", None)
+    footprint_config["land_cover_raster"] = {"path": str(raster_path), "crs": "EPSG:4326"}
+    footprint_config["land_cover_legend"] = {"1": "cropland", "2": "forest_edge"}
+    config["footprint"] = footprint_config
+
+    result = ECRPPipeline().run(
+        rows=rows,
+        project=ProjectProfile(code="PRJ-V3I-RASTER", name="v3i raster"),
+        site=SiteProfile(station_code="SITE-V3I", station_name="V3I Site"),
+        config=config,
+        data_source="unit-test",
+        time_range="2026-04-18 09:00~09:01",
+    )
+    bundle = ResultExporter(runtime_root=tmp_path).export_minimal_bundle(
+        rp_result=result,
+        spectral_result=None,
+        rp_config_snapshot=config,
+        spectral_config_snapshot={},
+        project=ProjectProfile(code="PRJ-V3I-RASTER", name="v3i raster"),
+        site=SiteProfile(station_code="SITE-V3I", station_name="V3I Site", latitude=35.1234, longitude=-97.5678),
+        report_payload={"title": "raster overlay"},
+        report_key="method_compare",
+        full_output_mode="standard_schema",
+    )
+
+    overlay = json.loads(Path(bundle["files"]["footprint_land_cover_overlay_artifact"]).read_text(encoding="utf-8"))
+    gis_validation = json.loads(Path(bundle["files"]["footprint_gis_validation_artifact"]).read_text(encoding="utf-8"))
+    assert overlay["status"] == "ok"
+    assert overlay["classification_source"] == "raster"
+    assert overlay["summary"]["raster_source"] == str(raster_path)
+    assert overlay["summary"]["raster_crs"] == "EPSG:4326"
+    assert {row["land_cover"] for row in overlay["classes"]} == {"cropland", "forest_edge"}
+    assert math.isclose(sum(row["fraction"] for row in overlay["classes"]), 1.0, rel_tol=1e-6)
+    detail = overlay["windows"][0]["overlay_detail"]
+    assert detail["raster_format"] == "esri_ascii_grid"
+    assert detail["sampled_cell_count"] > 0
+    assert detail["unsampled_cell_count"] == 0
+    assert gis_validation["land_cover_raster"]["status"] == "ok"
+    assert gis_validation["land_cover_raster"]["footprint_overlap_fraction"] == 1.0
+    assert gis_validation["land_cover_overlay"]["classification_source"] == "raster"
+    assert gis_validation["geotiff"]["cog_readiness"] == "candidate"
+    assert gis_validation["geotiff"]["range_readiness"] == "ok"
+    reader_validation = gis_validation["geotiff"]["external_reader_validation"]
+    assert reader_validation["status"] in {"ok", "not_available"}
+    if reader_validation["status"] == "ok":
+        assert reader_validation["read_status"] == "ok"
+        assert reader_validation["block_shapes"][0] == [16, 16]
+    assert gis_validation["status"] in {"ok", "ok_with_limitations"}
+
+
+def test_footprint_land_cover_overlay_reprojects_epsg3857_ascii_raster(tmp_path: Path) -> None:
+    rows = _make_rows()
+    config = _v3i_config(rows)
+    raster_path = tmp_path / "land_cover_3857.asc"
+    site_lon = -97.5678
+    site_lat = 35.1234
+    site_x, site_y = _web_mercator_xy(site_lon, site_lat)
+    ncols = 32
+    nrows = 44
+    cellsize = 2.0
+    xll = site_x - 28.0
+    yll = site_y - 10.0
+    raster_rows: list[str] = []
+    for row_index in range(nrows):
+        row_from_bottom = nrows - 1 - row_index
+        code = "2" if row_from_bottom >= 7 else "1"
+        raster_rows.append(" ".join([code] * ncols))
+    raster_path.write_text(
+        "\n".join(
+            [
+                f"ncols {ncols}",
+                f"nrows {nrows}",
+                f"xllcorner {xll}",
+                f"yllcorner {yll}",
+                f"cellsize {cellsize}",
+                "NODATA_value -9999",
+                *raster_rows,
+            ]
+        ),
+        encoding="utf-8",
+    )
+    footprint_config = dict(config["footprint"])
+    footprint_config.pop("land_cover_grid", None)
+    footprint_config["land_cover_raster"] = {"path": str(raster_path), "crs": "EPSG:3857"}
+    footprint_config["land_cover_legend"] = {"1": "near_field", "2": "far_field"}
+    config["footprint"] = footprint_config
+
+    result = ECRPPipeline().run(
+        rows=rows,
+        project=ProjectProfile(code="PRJ-V3I-3857", name="v3i 3857 raster"),
+        site=SiteProfile(station_code="SITE-V3I", station_name="V3I Site"),
+        config=config,
+        data_source="unit-test",
+        time_range="2026-04-18 09:00~09:01",
+    )
+    bundle = ResultExporter(runtime_root=tmp_path).export_minimal_bundle(
+        rp_result=result,
+        spectral_result=None,
+        rp_config_snapshot=config,
+        spectral_config_snapshot={},
+        project=ProjectProfile(code="PRJ-V3I-3857", name="v3i 3857 raster"),
+        site=SiteProfile(station_code="SITE-V3I", station_name="V3I Site", latitude=site_lat, longitude=site_lon),
+        report_payload={"title": "raster overlay 3857"},
+        report_key="method_compare",
+        full_output_mode="standard_schema",
+    )
+
+    overlay = json.loads(Path(bundle["files"]["footprint_land_cover_overlay_artifact"]).read_text(encoding="utf-8"))
+    gis_validation = json.loads(Path(bundle["files"]["footprint_gis_validation_artifact"]).read_text(encoding="utf-8"))
+    assert overlay["status"] == "ok"
+    assert overlay["classification_source"] == "raster"
+    assert overlay["summary"]["raster_crs"] == "EPSG:3857"
+    assert {row["land_cover"] for row in overlay["classes"]} == {"far_field", "near_field"}
+    detail = overlay["windows"][0]["overlay_detail"]
+    assert detail["coordinate_transform"] == "builtin_epsg4326_to_epsg3857"
+    assert detail["sampled_cell_count"] > 0
+    assert detail["unsampled_cell_count"] == 0
+    assert detail["unsupported_crs_cell_count"] == 0
+    assert gis_validation["land_cover_raster"]["status"] == "ok"
+    assert gis_validation["land_cover_raster"]["crs"] == "EPSG:3857"
+    assert gis_validation["land_cover_raster"]["coordinate_transform"] == "builtin_epsg4326_to_epsg3857"
+    assert gis_validation["land_cover_raster"]["footprint_overlap_fraction"] == 1.0
+
+
+def test_footprint_land_cover_overlay_reprojects_arbitrary_epsg_ascii_raster(tmp_path: Path) -> None:
+    rows = _make_rows()
+    config = _v3i_config(rows)
+    raster_path = tmp_path / "land_cover_utm14.asc"
+    site_lon = -97.5678
+    site_lat = 35.1234
+    site_x, site_y = _rasterio_project_xy("EPSG:4326", "EPSG:32614", site_lon, site_lat)
+    ncols = 32
+    nrows = 44
+    cellsize = 2.0
+    xll = site_x - 28.0
+    yll = site_y - 10.0
+    raster_rows: list[str] = []
+    for row_index in range(nrows):
+        row_from_bottom = nrows - 1 - row_index
+        code = "2" if row_from_bottom >= 7 else "1"
+        raster_rows.append(" ".join([code] * ncols))
+    raster_path.write_text(
+        "\n".join(
+            [
+                f"ncols {ncols}",
+                f"nrows {nrows}",
+                f"xllcorner {xll}",
+                f"yllcorner {yll}",
+                f"cellsize {cellsize}",
+                "NODATA_value -9999",
+                *raster_rows,
+            ]
+        ),
+        encoding="utf-8",
+    )
+    footprint_config = dict(config["footprint"])
+    footprint_config.pop("land_cover_grid", None)
+    footprint_config["land_cover_raster"] = {"path": str(raster_path), "crs": "EPSG:32614"}
+    footprint_config["land_cover_legend"] = {"1": "near_field", "2": "far_field"}
+    config["footprint"] = footprint_config
+
+    result = ECRPPipeline().run(
+        rows=rows,
+        project=ProjectProfile(code="PRJ-V3I-UTM", name="v3i utm raster"),
+        site=SiteProfile(station_code="SITE-V3I", station_name="V3I Site"),
+        config=config,
+        data_source="unit-test",
+        time_range="2026-04-18 09:00~09:01",
+    )
+    bundle = ResultExporter(runtime_root=tmp_path).export_minimal_bundle(
+        rp_result=result,
+        spectral_result=None,
+        rp_config_snapshot=config,
+        spectral_config_snapshot={},
+        project=ProjectProfile(code="PRJ-V3I-UTM", name="v3i utm raster"),
+        site=SiteProfile(station_code="SITE-V3I", station_name="V3I Site", latitude=site_lat, longitude=site_lon),
+        report_payload={"title": "raster overlay utm"},
+        report_key="method_compare",
+        full_output_mode="standard_schema",
+    )
+
+    overlay = json.loads(Path(bundle["files"]["footprint_land_cover_overlay_artifact"]).read_text(encoding="utf-8"))
+    gis_validation = json.loads(Path(bundle["files"]["footprint_gis_validation_artifact"]).read_text(encoding="utf-8"))
+    assert overlay["status"] == "ok"
+    assert overlay["classification_source"] == "raster"
+    assert overlay["summary"]["raster_crs"] == "EPSG:32614"
+    assert {row["land_cover"] for row in overlay["classes"]} == {"far_field", "near_field"}
+    detail = overlay["windows"][0]["overlay_detail"]
+    assert detail["coordinate_transform"] == "rasterio_epsg4326_to_epsg32614"
+    assert detail["coordinate_transform_detail"]["engine"] == "rasterio"
+    assert detail["coordinate_transform_detail"]["status"] == "ok"
+    assert detail["sampled_cell_count"] > 0
+    assert detail["unsampled_cell_count"] == 0
+    assert detail["unsupported_crs_cell_count"] == 0
+    assert gis_validation["land_cover_raster"]["status"] == "ok"
+    assert gis_validation["land_cover_raster"]["crs"] == "EPSG:32614"
+    assert gis_validation["land_cover_raster"]["coordinate_transform"] == "rasterio_epsg4326_to_epsg32614"
+    assert gis_validation["land_cover_raster"]["coordinate_transform_detail"]["engine"] == "rasterio"
+    assert gis_validation["land_cover_raster"]["footprint_overlap_fraction"] == 1.0
+
+
+def test_footprint_land_cover_overlay_samples_rotated_geotiff_raster(tmp_path: Path) -> None:
+    rows = _make_rows()
+    config = _v3i_config(rows)
+    raster_path = tmp_path / "land_cover_rotated_utm14.tif"
+    site_lon = -97.5678
+    site_lat = 35.1234
+    site_x, site_y = _rasterio_project_xy("EPSG:4326", "EPSG:32614", site_lon, site_lat)
+    ncols = 64
+    nrows = 64
+    cellsize = 2.0
+    center_col = 24.0
+    center_row = 40.0
+    angle = math.radians(12.0)
+    a = cellsize * math.cos(angle)
+    b = cellsize * math.sin(angle)
+    d = cellsize * math.sin(angle)
+    e = -cellsize * math.cos(angle)
+    c = site_x - a * center_col - b * center_row
+    f = site_y - d * center_col - e * center_row
+    raster_rows = [[1 if col_index % 2 else 2 for col_index in range(ncols)] for _ in range(nrows)]
+    _write_rasterio_land_cover_geotiff(
+        path=raster_path,
+        crs="EPSG:32614",
+        transform=[a, b, c, d, e, f],
+        rows=raster_rows,
+    )
+    footprint_config = dict(config["footprint"])
+    footprint_config.pop("land_cover_grid", None)
+    footprint_config["land_cover_raster"] = {"path": str(raster_path)}
+    footprint_config["land_cover_legend"] = {"1": "near_field", "2": "far_field"}
+    config["footprint"] = footprint_config
+
+    result = ECRPPipeline().run(
+        rows=rows,
+        project=ProjectProfile(code="PRJ-V3I-GEOTIFF", name="v3i geotiff raster"),
+        site=SiteProfile(station_code="SITE-V3I", station_name="V3I Site"),
+        config=config,
+        data_source="unit-test",
+        time_range="2026-04-18 09:00~09:01",
+    )
+    bundle = ResultExporter(runtime_root=tmp_path).export_minimal_bundle(
+        rp_result=result,
+        spectral_result=None,
+        rp_config_snapshot=config,
+        spectral_config_snapshot={},
+        project=ProjectProfile(code="PRJ-V3I-GEOTIFF", name="v3i geotiff raster"),
+        site=SiteProfile(station_code="SITE-V3I", station_name="V3I Site", latitude=site_lat, longitude=site_lon),
+        report_payload={"title": "raster overlay geotiff"},
+        report_key="method_compare",
+        full_output_mode="standard_schema",
+    )
+
+    overlay = json.loads(Path(bundle["files"]["footprint_land_cover_overlay_artifact"]).read_text(encoding="utf-8"))
+    gis_validation = json.loads(Path(bundle["files"]["footprint_gis_validation_artifact"]).read_text(encoding="utf-8"))
+    assert overlay["status"] == "ok"
+    assert overlay["classification_source"] == "raster"
+    assert overlay["summary"]["raster_crs"] == "EPSG:32614"
+    assert {row["land_cover"] for row in overlay["classes"]} == {"far_field", "near_field"}
+    detail = overlay["windows"][0]["overlay_detail"]
+    assert detail["raster_format"] == "geotiff_land_cover"
+    assert detail["raster_sampling_engine"] == "rasterio"
+    assert detail["coordinate_transform"] == "rasterio_epsg4326_to_epsg32614"
+    assert detail["coordinate_transform_detail"]["raster_sampling_detail"]["rotated_transform"] is True
+    assert detail["sampled_cell_count"] > 0
+    assert detail["unsupported_crs_cell_count"] == 0
+    raster_validation = gis_validation["land_cover_raster"]
+    assert raster_validation["status"] == "ok"
+    assert raster_validation["format"] == "geotiff_land_cover"
+    assert raster_validation["crs"] == "EPSG:32614"
+    assert raster_validation["native_extent_source"] == "geotiff_bounds"
+    assert raster_validation["metadata_reader"]["rotated_transform"] is True
+    assert raster_validation["coordinate_transform_detail"]["engine"] == "rasterio"
+    assert raster_validation["footprint_overlap_fraction"] == 1.0
 
 
 def test_v3j_exports_method_parity_contour_and_performance_profile(tmp_path: Path) -> None:
@@ -260,7 +742,7 @@ def test_v3j_exports_method_parity_contour_and_performance_profile(tmp_path: Pat
         rp_config_snapshot=config,
         spectral_config_snapshot={},
         project=ProjectProfile(code="PRJ-V3J", name="v3j"),
-        site=SiteProfile(station_code="SITE-V3J", station_name="V3J Site"),
+        site=SiteProfile(station_code="SITE-V3J", station_name="V3J Site", latitude=35.1234, longitude=-97.5678),
         report_payload={"title": "v3j"},
         report_key="method_compare",
         full_output_mode="standard_schema",
@@ -271,6 +753,10 @@ def test_v3j_exports_method_parity_contour_and_performance_profile(tmp_path: Pat
         "method_parity_matrix_csv",
         "footprint_2d_contour_svg",
         "footprint_2d_grid_csv",
+        "footprint_geojson_artifact",
+        "footprint_geotiff_artifact",
+        "footprint_land_cover_overlay_artifact",
+        "footprint_gis_validation_artifact",
         "performance_profile_artifact",
         "benchmark_summary_artifact",
         "parity_artifact",
@@ -299,9 +785,28 @@ def test_v3j_exports_method_parity_contour_and_performance_profile(tmp_path: Pat
 
     contour_svg = Path(files["footprint_2d_contour_svg"]).read_text(encoding="utf-8")
     grid_csv = Path(files["footprint_2d_grid_csv"]).read_text(encoding="utf-8")
+    geojson = json.loads(Path(files["footprint_geojson_artifact"]).read_text(encoding="utf-8"))
+    geotiff_bytes = Path(files["footprint_geotiff_artifact"]).read_bytes()
+    overlay = json.loads(Path(files["footprint_land_cover_overlay_artifact"]).read_text(encoding="utf-8"))
+    gis_validation = json.loads(Path(files["footprint_gis_validation_artifact"]).read_text(encoding="utf-8"))
     assert "<svg" in contour_svg
     assert ">x90</text>" in contour_svg
     assert "window_id,method,x_m,y_m,contribution" in grid_csv
+    assert geojson["status"] == "ok"
+    assert any(feature["properties"]["feature_type"] == "footprint_peak" for feature in geojson["features"])
+    assert geotiff_bytes[:4] == b"II*\x00"
+    assert overlay["status"] == "ok"
+    assert overlay["summary"]["class_count"] == 2
+    assert gis_validation["geotiff"]["status"] == "ok"
+    assert gis_validation["geotiff"]["layout"] == "tiled"
+    assert gis_validation["geotiff"]["has_internal_overviews"] is True
+    assert gis_validation["geotiff"]["cog_readiness"] == "candidate"
+    assert gis_validation["geotiff"]["range_validation"]["tile_data_after_metadata"] is True
+    reader_validation = gis_validation["geotiff"]["external_reader_validation"]
+    assert reader_validation["status"] in {"ok", "not_available"}
+    cog_validator = gis_validation["geotiff"]["cog_validator_validation"]
+    assert cog_validator["status"] in {"valid", "invalid", "not_available"}
+    assert gis_validation["status"] == "ok_with_limitations"
 
     performance = json.loads(Path(files["performance_profile_artifact"]).read_text(encoding="utf-8"))
     assert performance["artifact_type"] == "performance_profile"
@@ -314,6 +819,10 @@ def test_v3j_exports_method_parity_contour_and_performance_profile(tmp_path: Pat
     assert manifest["method_parity_matrix_csv"] == files["method_parity_matrix_csv"]
     assert manifest["footprint_2d_contour_svg"] == files["footprint_2d_contour_svg"]
     assert manifest["footprint_2d_grid_csv"] == files["footprint_2d_grid_csv"]
+    assert manifest["footprint_geojson_artifact"] == files["footprint_geojson_artifact"]
+    assert manifest["footprint_geotiff_artifact"] == files["footprint_geotiff_artifact"]
+    assert manifest["footprint_land_cover_overlay_artifact"] == files["footprint_land_cover_overlay_artifact"]
+    assert manifest["footprint_gis_validation_artifact"] == files["footprint_gis_validation_artifact"]
     assert manifest["performance_profile_artifact"] == files["performance_profile_artifact"]
     assert manifest["method_parity_matrix"]["reference_profile"]["status"] == "ready"
 

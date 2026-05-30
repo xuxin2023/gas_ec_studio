@@ -1,0 +1,57 @@
+{
+  "reference_id": "synthetic_li7700_trace_gas_001_manual_oracle",
+  "source": "Manual gas_ec_studio LI-7700 raw-to-final synthetic oracle",
+  "description": "Reference window derived from deterministic synthetic CH4 raw CSV using independent manual covariance and LI-7700 level calculations.",
+  "created_at": "2026-05-27T10:00:00",
+  "processing_settings": {
+    "averaging_period_min": 1.0,
+    "rotation_mode": "none",
+    "density_correction": "none",
+    "lag_determination": "constant",
+    "detrend_method": "block_mean",
+    "trace_gas": "LI-7700 CH4 synthetic level sequence"
+  },
+  "qc_mapping_strategy": "No EddyPro QC mapping: synthetic manual CH4 oracle keeps QC optional.",
+  "windows": [
+    {
+      "window_id": "manual_oracle_li7700_w001",
+      "start_time": "2026-05-27T10:00:00",
+      "end_time": "2026-05-27T10:00:23.900000",
+      "primary_flux": 18.80581306648805,
+      "primary_flux_source": "none",
+      "lag_seconds": 0.0,
+      "lag_strategy": "constant",
+      "rotation_mode": "none",
+      "applied_rotation_impl": "none",
+      "qc_grade": "",
+      "ch4_method": "li_7700_correction_sequence_v1",
+      "ch4_correction_sequence": {
+        "status": "computed",
+        "levels": {
+          "level0": {
+            "flux_nmol_m2_s": 120.35720362552337
+          },
+          "level1": {
+            "flux_nmol_m2_s": 125.1714917705443
+          },
+          "level2": {
+            "flux_nmol_m2_s": 126.82096212296254
+          },
+          "level3": {
+            "flux_nmol_m2_s": 130.41241854874534
+          }
+        }
+      },
+      "ch4_flux_level0_nmol_m2_s": 120.35720362552337,
+      "ch4_flux_level1_spectral_nmol_m2_s": 125.1714917705443,
+      "ch4_flux_level2_density_nmol_m2_s": 126.82096212296254,
+      "ch4_flux_corrected_nmol_m2_s": 130.41241854874534,
+      "ch4_flux_nmol_m2_s": 130.41241854874534,
+      "notes": "Synthetic CH4 raw-to-final oracle window; not an official EddyPro output."
+    }
+  ],
+  "known_limitations": [
+    "Synthetic manual oracle; does not claim official EddyPro numeric parity.",
+    "Raw WMS line-shape fitting is not represented."
+  ]
+}

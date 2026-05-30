@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
@@ -33,6 +35,7 @@ EC_STEPS = [
     ("screening", "统计筛选", "配置偏度、峰度、dropout 等统计筛选阈值，控制 QC 诊断灵敏度。"),
     ("lag", "lag", "让用户看到时滞搜索范围与协方差曲线，不把 lag 做成黑箱。"),
     ("rotation", "坐标旋转", "明确使用哪种旋转方法以及适用场景。"),
+    ("crosswind_correction", "Crosswind", "Configure sonic-temperature crosswind correction with explicit manufacturer/model provenance."),
     ("detrend", "去趋势", "说明使用哪种去趋势策略，避免隐藏对结果的影响。"),
     ("covariance", "协方差", "把核心协方差估计方式显式展示出来。"),
     ("density_correction", "密度/混合比修正", "展示修正前后变化，避免只给最终结果。"),
@@ -124,6 +127,16 @@ class ECProcessingPage(QWidget):
         self._set_combo_text(self.lag_strategy_combo, str(lag_step.get("lag_strategy", "协方差最大")))
 
         self._set_combo_text(self.rotation_mode_combo, str(steps["rotation"].get("rotation_mode", "双旋转")))
+        crosswind_step = steps.get("crosswind_correction", {})
+        self.crosswind_enable_combo.setCurrentIndex(0 if crosswind_step.get("enabled", False) else 1)
+        self._set_combo_text(self.crosswind_method_combo, str(crosswind_step.get("method", "liu_2001_crosswind_v1")))
+        self._set_combo_text(self.crosswind_manufacturer_combo, str(crosswind_step.get("sonic_manufacturer", "gill")))
+        self._set_combo_text(self.crosswind_model_combo, str(crosswind_step.get("sonic_model", "wm")))
+        self.crosswind_temp_divisor_spin.setValue(float(crosswind_step.get("temperature_divisor", 1209.0) or 1209.0))
+        coefficients_text = str(crosswind_step.get("coefficients_text", "") or "").strip()
+        if not coefficients_text and isinstance(crosswind_step.get("coefficients"), dict):
+            coefficients_text = json.dumps(crosswind_step.get("coefficients"), ensure_ascii=False)
+        self.crosswind_coefficients_edit.setPlainText(coefficients_text)
         self._set_combo_text(self.detrend_mode_combo, str(steps["detrend"].get("detrend_mode", "块均值")))
         self._set_combo_text(self.covariance_mode_combo, str(steps["covariance"].get("covariance_mode", "标准协方差")))
         self._set_combo_text(self.density_correction_combo, str(steps["density_correction"].get("correction_mode", "WPL")))
@@ -171,6 +184,7 @@ class ECProcessingPage(QWidget):
         self._refresh_covariance_preview()
         self._refresh_density_preview()
         self._refresh_rotation_preview()
+        self._refresh_crosswind_preview()
         self._refresh_detrend_preview()
         self._refresh_steadiness_preview()
         self._refresh_turbulence_preview()
@@ -435,6 +449,65 @@ class ECProcessingPage(QWidget):
         self.rotation_preview_label.setObjectName("subtitle")
         self.rotation_preview_label.setWordWrap(True)
         preview_layout.addWidget(self.rotation_preview_label)
+        row.addWidget(preview_card, 3)
+
+    def _build_crosswind_correction_page(self, layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(row)
+
+        param_card = CardFrame()
+        param_layout = QVBoxLayout(param_card)
+        param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        param_layout.setSpacing(TOKENS.spacing_md)
+        param_layout.addWidget(
+            section_title(
+                "Crosswind Correction",
+                "EddyPro-style sonic-temperature correction before thermodynamic flux calculations.",
+            )
+        )
+        form = QFormLayout()
+        form.setHorizontalSpacing(TOKENS.spacing_md)
+        form.setVerticalSpacing(TOKENS.spacing_md)
+
+        self.crosswind_enable_combo = QComboBox()
+        self.crosswind_enable_combo.addItems(["enabled", "disabled"])
+        self.crosswind_method_combo = QComboBox()
+        self.crosswind_method_combo.addItems(["liu_2001_crosswind_v1"])
+        self.crosswind_manufacturer_combo = QComboBox()
+        self.crosswind_manufacturer_combo.setEditable(True)
+        self.crosswind_manufacturer_combo.addItems(["gill", "metek", "campbell_scientific", "r_m_young"])
+        self.crosswind_model_combo = QComboBox()
+        self.crosswind_model_combo.setEditable(True)
+        self.crosswind_model_combo.addItems(["wm", "wmpro", "r3", "r2", "usa1", "csat3", "81000"])
+        self.crosswind_temp_divisor_spin = self._double_spin(100.0, 5000.0, 1)
+        self.crosswind_coefficients_edit = QTextEdit()
+        self.crosswind_coefficients_edit.setPlaceholderText('{"u": 0.0, "v": 0.0, "uv": 0.0}')
+        self.crosswind_coefficients_edit.setMaximumHeight(86)
+
+        form.addRow("enabled", self.crosswind_enable_combo)
+        form.addRow("method", self.crosswind_method_combo)
+        form.addRow("sonic_manufacturer", self.crosswind_manufacturer_combo)
+        form.addRow("sonic_model", self.crosswind_model_combo)
+        form.addRow("temperature_divisor", self.crosswind_temp_divisor_spin)
+        form.addRow("coefficients JSON", self.crosswind_coefficients_edit)
+        param_layout.addLayout(form)
+        row.addWidget(param_card, 2)
+
+        preview_card = CardFrame(muted=True)
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.addWidget(
+            section_title(
+                "Provenance",
+                "Shows selected sonic family, custom coefficient status, and run-level correction diagnostics.",
+            )
+        )
+        self.crosswind_preview_label = QLabel("--")
+        self.crosswind_preview_label.setObjectName("subtitle")
+        self.crosswind_preview_label.setWordWrap(True)
+        preview_layout.addWidget(self.crosswind_preview_label)
         row.addWidget(preview_card, 3)
 
     def _build_detrend_page(self, layout: QVBoxLayout) -> None:
@@ -800,6 +873,12 @@ class ECProcessingPage(QWidget):
         self.covariance_mode_combo.currentIndexChanged.connect(self._refresh_covariance_preview)
         self.density_correction_combo.currentIndexChanged.connect(self._refresh_density_preview)
         self.rotation_mode_combo.currentIndexChanged.connect(self._refresh_rotation_preview)
+        self.crosswind_enable_combo.currentIndexChanged.connect(self._refresh_crosswind_preview)
+        self.crosswind_method_combo.currentIndexChanged.connect(self._refresh_crosswind_preview)
+        self.crosswind_manufacturer_combo.currentTextChanged.connect(self._refresh_crosswind_preview)
+        self.crosswind_model_combo.currentTextChanged.connect(self._refresh_crosswind_preview)
+        self.crosswind_temp_divisor_spin.valueChanged.connect(self._refresh_crosswind_preview)
+        self.crosswind_coefficients_edit.textChanged.connect(self._refresh_crosswind_preview)
         self.detrend_mode_combo.currentIndexChanged.connect(self._refresh_detrend_preview)
         self.steadiness_rule_combo.currentIndexChanged.connect(self._refresh_steadiness_preview)
         self.ustar_rule_combo.currentIndexChanged.connect(self._refresh_turbulence_preview)
@@ -904,6 +983,7 @@ class ECProcessingPage(QWidget):
                     "recommended": "默认使用双旋转；存在明显侧向偏置时可切到三重旋转，复杂地形再考虑平面拟合。",
                     "rotation_mode": self.rotation_mode_combo.currentText().strip(),
                 },
+                "crosswind_correction": self._collect_crosswind_payload(),
                 "detrend": {
                     "title": "去趋势",
                     "method": self.detrend_mode_combo.currentText().strip(),
@@ -1001,6 +1081,27 @@ class ECProcessingPage(QWidget):
                 },
             },
         }
+
+    def _collect_crosswind_payload(self) -> dict:
+        coefficients_text = self.crosswind_coefficients_edit.toPlainText().strip()
+        payload = {
+            "title": "Crosswind",
+            "method": self.crosswind_method_combo.currentText().strip() or "liu_2001_crosswind_v1",
+            "applicable": "Applies sonic-temperature crosswind correction before density and flux calculations.",
+            "recommended": "Enable when the sonic/anemometer family requires crosswind temperature correction; keep disabled otherwise.",
+            "enabled": self.crosswind_enable_combo.currentText().strip() == "enabled",
+            "sonic_manufacturer": self.crosswind_manufacturer_combo.currentText().strip(),
+            "sonic_model": self.crosswind_model_combo.currentText().strip(),
+            "temperature_divisor": self.crosswind_temp_divisor_spin.value(),
+            "coefficients_text": coefficients_text,
+            "preview": self.crosswind_preview_label.text().strip(),
+        }
+        if coefficients_text:
+            try:
+                payload["coefficients"] = json.loads(coefficients_text)
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                payload["coefficients_parse_error"] = str(exc)
+        return payload
 
     def _run_processing(self, *, precheck_only: bool) -> None:
         if not self._save_processing(show_message=False):
@@ -1133,6 +1234,37 @@ class ECProcessingPage(QWidget):
             self.rotation_preview_label.setText("暂无真实 RP 结果，运行处理后显示旋转模式与回退原因。")
             return
         self.rotation_preview_label.setText(str(section.get("real_summary", "旋转摘要不可用。")))
+
+    def _refresh_crosswind_preview(self, *_args) -> None:
+        enabled = self.crosswind_enable_combo.currentText().strip() == "enabled"
+        method = self.crosswind_method_combo.currentText().strip() or "liu_2001_crosswind_v1"
+        manufacturer = self.crosswind_manufacturer_combo.currentText().strip() or "unknown"
+        model = self.crosswind_model_combo.currentText().strip() or "unknown"
+        coefficients_text = self.crosswind_coefficients_edit.toPlainText().strip()
+        coefficient_status = "custom coefficients" if coefficients_text else "built-in coefficients"
+        config_summary = (
+            f"enabled={enabled} / method={method} / sonic={manufacturer}/{model} / "
+            f"temperature_divisor={self.crosswind_temp_divisor_spin.value():.1f} / {coefficient_status}"
+        )
+        current = self._current_window()
+        if current is None:
+            self.crosswind_preview_label.setText(
+                f"{config_summary}\nNo RP result yet; run processing to inspect correction status and temperature delta."
+            )
+            return
+        diagnostics = current.diagnostics or {}
+        status = diagnostics.get("crosswind_correction_status", "not_available")
+        run_method = diagnostics.get("crosswind_correction_method", method)
+        mean_delta = diagnostics.get("crosswind_correction_mean_delta_c")
+        max_delta = diagnostics.get("crosswind_correction_max_abs_delta_c")
+        delta_text = (
+            f"mean_delta_c={float(mean_delta):.6f}, max_abs_delta_c={float(max_delta or 0.0):.6f}"
+            if isinstance(mean_delta, (int, float))
+            else "delta not available"
+        )
+        self.crosswind_preview_label.setText(
+            f"{config_summary}\nrun_status={status} / run_method={run_method} / {delta_text}"
+        )
 
     def _refresh_detrend_preview(self, *_args) -> None:
         section = self._section_workspace("detrend")

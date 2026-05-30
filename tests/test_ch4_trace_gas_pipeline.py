@@ -7,8 +7,9 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import numpy as np
+import pytest
 
-from core.ec_rp.analysis import compute_li7700_correction_sequence
+from core.ec_rp.analysis import compute_li7700_correction_sequence, compute_li7700_status_diagnostics
 from core.ec_rp.pipeline import _extract_trace_gas_config
 from core.exports.result_exporter import ResultExporter
 from core.headless_batch_runner import load_input_rows, run_headless_batch
@@ -47,7 +48,20 @@ def _make_ch4_rows(*, sample_hz: float = 10.0, samples: int = 600) -> list[Norma
                 ch4_ppb=float(1900.0 + 35.0 * w[index]),
                 pressure_kpa=101.3,
                 chamber_temp_c=24.8,
-                raw_text=json.dumps({"u": float(u[index]), "v": float(v[index]), "w": float(w[index])}),
+                raw_text=json.dumps(
+                    {
+                        "u": float(u[index]),
+                        "v": float(v[index]),
+                        "w": float(w[index]),
+                        "li7700_rssi": float(66.0 + 2.0 * np.sin(2.0 * np.pi * 0.02 * time_axis[index])),
+                        "signal_strength": float(72.0 + 1.5 * np.cos(2.0 * np.pi * 0.03 * time_axis[index])),
+                        "mirror_rssi": float(82.0),
+                        "mirror_dirty": "clean",
+                        "pll_locked": True,
+                        "diagnostic_status": "ok",
+                        "li7700_status_word": 0,
+                    }
+                ),
             )
         )
     return rows
@@ -67,8 +81,8 @@ def test_headless_json_loader_preserves_ch4_ppb(tmp_path: Path) -> None:
 def test_raw_text_importer_maps_ch4_with_unit_conversion(tmp_path: Path) -> None:
     raw_path = tmp_path / "raw_ch4.csv"
     raw_path.write_text(
-        "DateTime,CO2_molmol,H2O_molmol,CH4_molmol,PressurePa,TempK,Ux,Vy,Wz\n"
-        "2026-05-22T10:00:00,0.000410,0.012,0.00000191,101300,298.15,2.0,0.1,0.2\n",
+        "DateTime,CO2_molmol,H2O_molmol,CH4_molmol,PressurePa,TempK,Ux,Vy,Wz,RSS_77,DiagnosticCode,MirrorDirty,PLLLocked\n"
+        "2026-05-22T10:00:00,0.000410,0.012,0.00000191,101300,298.15,2.0,0.1,0.2,0.72,0x04,clean,yes\n",
         encoding="utf-8",
     )
     metadata = MetadataBundle(
@@ -95,7 +109,12 @@ def test_raw_text_importer_maps_ch4_with_unit_conversion(tmp_path: Path) -> None
 
     assert len(rows) == 1
     assert rows[0].ch4_ppb == 1910.0
-    assert json.loads(rows[0].raw_text)["ch4_ppb"] == 1910.0
+    raw_payload = json.loads(rows[0].raw_text)
+    assert raw_payload["ch4_ppb"] == 1910.0
+    assert raw_payload["li7700_rssi"] == 72.0
+    assert raw_payload["li7700_status_word"] == 4
+    assert raw_payload["mirror_dirty"] == "clean"
+    assert raw_payload["pll_locked"] == "yes"
 
     alias_path = tmp_path / "raw_ch4_alias.csv"
     alias_path.write_text(
@@ -158,6 +177,131 @@ def test_li7700_correction_sequence_applies_configured_levels() -> None:
     assert sequence["spectroscopic_correction_factor"] != 1.0
     assert sequence["self_heating_correction_factor"] > 1.0
     assert sequence["final_flux_nmol_m2_s"] != sequence["level0_flux_nmol_m2_s"]
+
+
+def test_li7700_correction_sequence_applies_wms_line_shape_scan() -> None:
+    scan_axis = np.linspace(-1.0, 1.0, 41)
+    absorbance = 0.02 + 0.8 * np.exp(-0.5 * (scan_axis / 0.24) ** 2)
+    edge_count = max(1, min(5, int(scan_axis.size // 10) or 1))
+    baseline = np.interp(
+        scan_axis,
+        [scan_axis[0], scan_axis[-1]],
+        [float(np.mean(absorbance[:edge_count])), float(np.mean(absorbance[-edge_count:]))],
+    )
+    fitted_area = float(np.trapezoid(np.maximum(absorbance - baseline, 0.0), scan_axis))
+
+    sequence = compute_li7700_correction_sequence(
+        ch4_metrics={
+            "status": "computed",
+            "ch4_flux_nmol_m2_s": 10.0,
+            "selected_method": "li_7700_level0_covariance",
+        },
+        mean_h2o_mmol=18.0,
+        mean_pressure_kpa=100.0,
+        mean_temp_c=25.0,
+        spectral_correction_factor=1.0,
+        config={
+            "spectroscopic_correction": {
+                "mode": "wms_line_shape",
+                "scan_axis": scan_axis.tolist(),
+                "absorbance": absorbance.tolist(),
+                "reference_area": fitted_area * 1.08,
+            },
+        },
+    )
+
+    spectroscopic = sequence["components"]["spectroscopic"]
+    assert sequence["status"] == "computed"
+    assert sequence["spectroscopic_correction_factor"] == pytest.approx(1.08, rel=1e-3)
+    assert spectroscopic["mode"] == "wms_line_shape"
+    assert spectroscopic["status"] == "applied_wms_line_shape"
+    assert spectroscopic["fitted_area"] == pytest.approx(fitted_area)
+    assert spectroscopic["peak_center"] == pytest.approx(0.0)
+    assert spectroscopic["fwhm"] > 0.0
+    assert spectroscopic["fit_quality_status"] == "pass"
+    assert spectroscopic["fit_diagnostics"]["artifact_type"] == "li7700_wms_line_shape_fit_v1"
+    assert spectroscopic["fit_diagnostics"]["selected_model"] in {"gaussian", "lorentzian"}
+    assert {item["model"] for item in spectroscopic["fit_diagnostics"]["candidate_fits"]} == {"gaussian", "lorentzian"}
+    assert "WMS line-shape" in " ".join(sequence["limitations"])
+
+
+def test_li7700_wms_line_shape_can_use_selected_fit_area() -> None:
+    scan_axis = np.linspace(-1.2, 1.2, 81)
+    absorbance = 0.01 + 0.65 * np.exp(-0.5 * ((scan_axis - 0.08) / 0.21) ** 2)
+    sequence = compute_li7700_correction_sequence(
+        ch4_metrics={
+            "status": "computed",
+            "ch4_flux_nmol_m2_s": 8.0,
+            "selected_method": "li_7700_level0_covariance",
+        },
+        mean_h2o_mmol=16.0,
+        mean_pressure_kpa=101.0,
+        mean_temp_c=23.0,
+        spectral_correction_factor=1.0,
+        config={
+            "spectroscopic_correction": {
+                "mode": "wms_line_shape",
+                "scan_axis": scan_axis.tolist(),
+                "absorbance": absorbance.tolist(),
+                "reference_area": 0.42,
+                "area_source": "selected_fit",
+            },
+        },
+    )
+
+    spectroscopic = sequence["components"]["spectroscopic"]
+
+    assert spectroscopic["status"] == "applied_wms_line_shape"
+    assert spectroscopic["area_source"] == "selected_fit"
+    assert spectroscopic["correction_area"] == pytest.approx(spectroscopic["fit_diagnostics"]["selected_fit"]["area"])
+    assert spectroscopic["fit_quality_status"] == "pass"
+    assert spectroscopic["fit_diagnostics"]["selected_fit"]["normalized_rmse"] < 0.05
+
+
+def test_li7700_status_diagnostics_parses_rssi_mirror_and_faults() -> None:
+    rows = _make_ch4_rows(samples=24)
+
+    status = compute_li7700_status_diagnostics(
+        rows=rows,
+        config={"min_rssi_fail_pct": 15.0, "min_rssi_warning_pct": 25.0, "require_lock": True},
+    )
+
+    assert status["status"] == "pass"
+    assert status["rssi_mean_pct"] > 60.0
+    assert status["mirror_dirty_count"] == 0
+    assert status["unlocked_count"] == 0
+
+    bad_rows = _make_ch4_rows(samples=12)
+    payload = json.loads(bad_rows[0].raw_text)
+    payload.update(
+        {
+            "li7700_rssi": 8.0,
+            "signal_strength": 12.0,
+            "mirror_dirty": "dirty",
+            "pll_locked": False,
+            "diagnostic_status": "mirror_dirty_fault",
+            "li7700_status_word": 5,
+        }
+    )
+    bad_rows[0].raw_text = json.dumps(payload)
+
+    bad_status = compute_li7700_status_diagnostics(
+        rows=bad_rows,
+        config={
+            "min_rssi_fail_pct": 15.0,
+            "min_rssi_warning_pct": 25.0,
+            "require_lock": True,
+            "status_bit_map": {0: "laser_unlocked", 2: "mirror_dirty"},
+        },
+    )
+
+    assert bad_status["status"] == "fail"
+    assert bad_status["mirror_dirty_count"] == 1
+    assert bad_status["unlocked_count"] == 1
+    assert bad_status["status_word_nonzero_count"] == 1
+    assert any("mirror_dirty_fault" in flag for flag in bad_status["diagnostic_flags"])
+    assert any("laser_unlocked" in flag for flag in bad_status["diagnostic_flags"])
+    assert any("mirror_dirty" in flag for flag in bad_status["diagnostic_flags"])
 
 
 def test_li7700_coefficient_registry_profile_merges_before_pipeline() -> None:
@@ -260,10 +404,14 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert diagnostics["ch4_correction_sequence"]["components"]["coefficient_profile"]["profile_id"] == "tower_li7700_2026"
     assert diagnostics["ch4_correction_sequence"]["components"]["spectroscopic"]["mode"] == "empirical"
     assert diagnostics["ch4_correction_sequence"]["components"]["self_heating"]["mode"] == "empirical"
+    assert diagnostics["li7700_diagnostics_status"] == "pass"
+    assert diagnostics["li7700_rssi_mean_pct"] > 60.0
+    assert diagnostics["ch4_correction_sequence"]["components"]["li7700_status_diagnostics"]["status"] == "pass"
     assert "Spectroscopic" in " ".join(diagnostics["ch4_limitations"])
     assert result["rp_result"].summary["trace_gas_summary"]["ch4_computed_window_count"] == len(result["rp_result"].windows)
     assert result["rp_result"].summary["trace_gas_summary"]["average_ch4_level0_flux_nmol_m2_s"] is not None
     assert result["rp_result"].summary["trace_gas_summary"]["coefficient_profile_id"] == "tower_li7700_2026"
+    assert result["rp_result"].summary["trace_gas_summary"]["li7700_diagnostics_status"] == "pass"
     assert result["manifest"]["trace_gas_summary"]["status"] == "computed"
 
     exporter = ResultExporter(tmp_path)
@@ -293,14 +441,101 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert "LI-7700" in full_rows[0]["ch4_provenance"]
     assert full_rows[0]["ch4_coefficient_profile_id"] == "tower_li7700_2026"
     assert full_rows[0]["ch4_coefficient_registry_status"] == "resolved"
+    assert full_rows[0]["li7700_diagnostics_status"] == "pass"
+    assert float(full_rows[0]["li7700_rssi_mean_pct"]) > 60.0
     assert rp_rows[0]["ch4_method"] == "li_7700_correction_sequence_v1"
     assert rp_rows[0]["ch4_coefficient_profile_id"] == "tower_li7700_2026"
+    assert rp_rows[0]["li7700_diagnostics_status"] == "pass"
     assert float(rp_rows[0]["ch4_flux_corrected_nmol_m2_s"]) == float(rp_rows[0]["ch4_flux_nmol_m2_s"])
     assert "FCH4" in fluxnet["rows"][0]
     assert fluxnet["rows"][0]["FCH4"] != -9999.0
     assert manifest["trace_gas_summary"]["status"] == "computed"
     assert manifest["trace_gas_summary"]["coefficient_profile_id"] == "tower_li7700_2026"
+    assert manifest["trace_gas_summary"]["li7700_diagnostics_status"] == "pass"
     assert "ch4_flux_nmol_m2_s" in manifest["trace_gas_fields"]
     assert "ch4_coefficient_profile_id" in manifest["trace_gas_fields"]
+    assert "li7700_diagnostics_status" in manifest["trace_gas_fields"]
     assert "FCH4" in manifest["network_trace_gas_fields"]
     assert summary["trace_gas_summary"]["ch4_computed_window_count"] == len(result["rp_result"].windows)
+
+
+def test_rp_pipeline_preserves_ch4_wms_line_shape_components(tmp_path: Path) -> None:
+    rows = _make_ch4_rows()
+    metadata = MetadataBundle(
+        project=ProjectProfile(code="CH4-WMS", name="CH4 WMS Trace Gas"),
+        site=SiteProfile(station_code="CH4-WMS", station_name="LI-7700 WMS Tower"),
+    )
+    scan_axis = np.linspace(-1.0, 1.0, 41)
+    absorbance = 0.02 + 0.7 * np.exp(-0.5 * ((scan_axis - 0.05) / 0.26) ** 2)
+    edge_count = max(1, min(5, int(scan_axis.size // 10) or 1))
+    baseline = np.interp(
+        scan_axis,
+        [scan_axis[0], scan_axis[-1]],
+        [float(np.mean(absorbance[:edge_count])), float(np.mean(absorbance[-edge_count:]))],
+    )
+    fitted_area = float(np.trapezoid(np.maximum(absorbance - baseline, 0.0), scan_axis))
+
+    result = run_headless_batch(
+        config={
+            "sample_hz": 10.0,
+            "block_minutes": 0.5,
+            "rotation_mode": "none",
+            "trace_gas": {
+                "ch4": {
+                    "spectroscopic_correction": {
+                        "mode": "wms_line_shape",
+                        "scan_axis": scan_axis.tolist(),
+                        "absorbance": absorbance.tolist(),
+                        "reference_area": fitted_area * 0.96,
+                    }
+                }
+            },
+        },
+        metadata=metadata,
+        rows=rows,
+        data_source="ch4-wms-fixture",
+    )
+    diagnostics = result["rp_result"].windows[0].diagnostics
+    spectroscopic = diagnostics["ch4_correction_sequence"]["components"]["spectroscopic"]
+
+    assert diagnostics["ch4_status"] == "computed"
+    assert diagnostics["ch4_spectroscopic_correction_factor"] == pytest.approx(0.96, rel=1e-3)
+    assert spectroscopic["status"] == "applied_wms_line_shape"
+    assert spectroscopic["fit_quality_status"] == "pass"
+    assert spectroscopic["fit_diagnostics"]["selected_model"] in {"gaussian", "lorentzian"}
+    assert spectroscopic["peak_center"] == pytest.approx(0.05)
+    assert diagnostics["ch4_correction_sequence"]["components"]["li7700_status_diagnostics"]["status"] == "pass"
+    assert diagnostics["li7700_wms_fit_quality_status"] == "pass"
+    assert diagnostics["li7700_wms_selected_fit_model"] in {"gaussian", "lorentzian"}
+    assert "WMS line-shape" in " ".join(diagnostics["ch4_limitations"])
+
+    exporter = ResultExporter(tmp_path)
+    exported = exporter.export_minimal_bundle(
+        rp_result=result["rp_result"],
+        spectral_result=result["spectral_result"],
+        rp_config_snapshot={"trace_gas": {"ch4": {"spectroscopic_correction": {"mode": "wms_line_shape"}}}},
+        spectral_config_snapshot={},
+        project=metadata.project,
+        site=metadata.site,
+        report_payload={"title": "CH4 WMS"},
+        report_key="run_summary",
+        full_output_mode="standard_schema",
+    )
+    with Path(exported["files"]["full_output"]).open("r", encoding="utf-8", newline="") as handle:
+        full_rows = list(csv.DictReader(handle))
+    manifest = json.loads(Path(exported["files"]["export_manifest"]).read_text(encoding="utf-8"))
+    summary = json.loads(Path(exported["files"]["summary"]).read_text(encoding="utf-8"))
+    acceptance = json.loads(Path(exported["files"]["li7700_wms_fit_acceptance_artifact"]).read_text(encoding="utf-8"))
+
+    assert full_rows[0]["li7700_wms_fit_quality_status"] == "pass"
+    assert full_rows[0]["li7700_wms_selected_fit_model"] in {"gaussian", "lorentzian"}
+    assert "li7700_wms_fit_quality_status" in manifest["trace_gas_fields"]
+    assert manifest["trace_gas_summary"]["li7700_wms_fit_quality_status"] == "pass"
+    assert manifest["li7700_wms_fit_acceptance"]["status"] == "pass"
+    assert Path(manifest["li7700_wms_fit_acceptance_artifact"]).name == "li7700_wms_fit_acceptance.json"
+    assert summary["li7700_wms_fit_acceptance"]["evaluated_window_count"] == len(result["rp_result"].windows)
+    assert acceptance["artifact_type"] == "li7700_wms_fit_acceptance_v1"
+    assert acceptance["status"] == "pass"
+    assert acceptance["pass_count"] == len(result["rp_result"].windows)
+    assert acceptance["windows"][0]["selected_model"] in {"gaussian", "lorentzian"}
+    assert "src/src_rp/m_li7700.f90" in acceptance["eddypro_source_anchors"]["engine_modules"]

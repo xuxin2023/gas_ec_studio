@@ -10,6 +10,7 @@ from core.ec_rp.analysis import (
     normalize_detrend_mode,
     normalize_lag_strategy,
     normalize_rotation_mode,
+    pick_window_slices,
     run_statistical_screening,
     _detrend,
 )
@@ -124,6 +125,12 @@ class TestDetrend:
         values = np.ones(100) * 42.0
         result = _detrend(values, mode="block_mean")
         assert abs(float(np.mean(result))) < 1e-10
+
+
+def test_pick_window_slices_keeps_exact_averaging_period_as_one_window() -> None:
+    slices = pick_window_slices(total_samples=18_000, sample_rate_hz=10.0, block_minutes=30.0)
+
+    assert slices == [(0, 18_000)]
 
 
 # ---------------------------------------------------------------------------

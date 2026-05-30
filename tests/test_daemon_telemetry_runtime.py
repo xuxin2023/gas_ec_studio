@@ -9,6 +9,7 @@ import numpy as np
 
 from core.acquisition.daemon_telemetry import (
     build_daemon_telemetry_artifact,
+    build_target_host_telemetry_validation_artifact,
     parse_clock_discipline_log,
     parse_gps_pps_log,
     parse_hardware_watchdog_log,
@@ -166,6 +167,40 @@ def _config(tmp_path: Path, *, watchdog_timeout: bool = False) -> dict:
     }
 
 
+def _with_target_host_validation(config: dict, *, max_ptp_offset_ns: float = 120.0) -> dict:
+    config["daemon_telemetry"]["target_host_validation"] = {
+        "profile_id": "target_host_telemetry_validation_v1",
+        "fixture_id": "smartflux-target-host-good-001",
+        "target_host_id": "smartflux-node-001",
+        "expected": {
+            "status": "pass",
+            "supervisor": {"state": "running", "max_restart_count": 1},
+            "ptp_servo": {
+                "status": "locked",
+                "required_dialects": ["ptp4l"],
+                "max_abs_offset_ns_lte": max_ptp_offset_ns,
+            },
+            "gps_pps": {
+                "status": "locked",
+                "required_dialects": ["pps"],
+                "max_jitter_ns_lte": 70.0,
+            },
+            "clock_discipline": {
+                "status": "locked",
+                "clock_source": "PPS",
+                "max_abs_offset_ns_lte": 80.0,
+                "max_abs_frequency_ppm_lte": 12.5,
+            },
+            "hardware_watchdog": {
+                "status": "active",
+                "min_kick_count": 1,
+                "max_timeout_count": 0,
+            },
+        },
+    }
+    return config
+
+
 def test_daemon_telemetry_parses_supervisor_clock_and_watchdog_logs(tmp_path: Path) -> None:
     artifact = build_daemon_telemetry_artifact(config=_config(tmp_path), runtime_root=tmp_path)
 
@@ -180,6 +215,40 @@ def test_daemon_telemetry_parses_supervisor_clock_and_watchdog_logs(tmp_path: Pa
     assert artifact["clock_discipline"]["max_abs_frequency_ppm"] == 12.5
     assert artifact["hardware_watchdog"]["status"] == "active"
     assert artifact["process_telemetry"]["pid"]
+
+
+def test_target_host_telemetry_validation_passes_against_golden_snapshot(tmp_path: Path) -> None:
+    config = _with_target_host_validation(_config(tmp_path))
+
+    artifact = build_daemon_telemetry_artifact(config=config, runtime_root=tmp_path)
+    validation = artifact["target_host_validation"]
+    standalone = build_target_host_telemetry_validation_artifact(
+        config=config,
+        runtime_root=tmp_path,
+        telemetry_artifact=artifact,
+    )
+
+    assert artifact["status"] == "pass"
+    assert validation["status"] == "pass"
+    assert validation["gate_status"] == "pass"
+    assert validation["fixture_id"] == "smartflux-target-host-good-001"
+    assert validation["target_host_id"] == "smartflux-node-001"
+    assert validation["fail_count"] == 0
+    assert standalone["status"] == "pass"
+    assert any(check["check_id"] == "target_host.ptp_servo.required_dialects" for check in validation["checks"])
+
+
+def test_target_host_telemetry_validation_blocks_mismatched_snapshot(tmp_path: Path) -> None:
+    config = _with_target_host_validation(_config(tmp_path), max_ptp_offset_ns=10.0)
+
+    artifact = build_daemon_telemetry_artifact(config=config, runtime_root=tmp_path)
+    validation = artifact["target_host_validation"]
+
+    assert artifact["status"] == "fail"
+    assert validation["status"] == "fail"
+    assert validation["gate_status"] == "blocked"
+    assert validation["fail_count"] >= 1
+    assert any(check["check_id"] == "target_host_validation" for check in artifact["checks"])
 
 
 def test_daemon_telemetry_parses_target_host_daemon_dialects(tmp_path: Path) -> None:
@@ -289,7 +358,7 @@ def test_daemon_telemetry_parses_target_host_daemon_dialects(tmp_path: Path) -> 
 
 def test_daemon_telemetry_reaches_export_network_and_delivery(tmp_path: Path) -> None:
     metadata = _metadata()
-    config = _config(tmp_path)
+    config = _with_target_host_validation(_config(tmp_path))
     service = run_runtime_service_batches(
         config=config,
         metadata=metadata,
@@ -302,6 +371,8 @@ def test_daemon_telemetry_reaches_export_network_and_delivery(tmp_path: Path) ->
     assert service["service_manifest"]["daemon_telemetry"]["status"] == "pass"
     assert rp_result.artifacts["daemon_telemetry"]["hardware_watchdog"]["status"] == "active"
     assert rp_result.windows[0].diagnostics["daemon_telemetry_status"] == "pass"
+    assert rp_result.windows[0].diagnostics["target_host_validation_status"] == "pass"
+    assert rp_result.windows[0].diagnostics["target_host_validation_gate_status"] == "pass"
     assert rp_result.windows[0].diagnostics["ptp_lock_status"] == "locked"
     assert rp_result.windows[0].diagnostics["clock_discipline_status"] == "locked"
 
@@ -324,13 +395,21 @@ def test_daemon_telemetry_reaches_export_network_and_delivery(tmp_path: Path) ->
     full_rows = list(csv.DictReader(Path(files["full_output"]).open(encoding="utf-8")))
 
     assert export_manifest["daemon_telemetry_summary"]["status"] == "pass"
+    assert export_manifest["daemon_telemetry_summary"]["target_host_validation"]["status"] == "pass"
     assert export_manifest["daemon_telemetry_artifact"] == files["daemon_telemetry_artifact"]
     assert "DAEMON_TELEMETRY_STATUS" in export_manifest["network_method_fields"]
+    assert "TARGET_HOST_VALIDATION_STATUS" in export_manifest["network_method_fields"]
     assert daemon_artifact["summary"]["ptp_servo"]["status"] == "locked"
+    assert daemon_artifact["summary"]["target_host_validation"]["gate_status"] == "pass"
     assert daemon_artifact["summary"]["clock_discipline"]["status"] == "locked"
     assert full_rows[0]["daemon_telemetry_status"] == "pass"
+    assert full_rows[0]["target_host_validation_status"] == "pass"
+    assert full_rows[0]["target_host_validation_target_host_id"] == "smartflux-node-001"
     assert full_rows[0]["clock_discipline_status"] == "locked"
     assert network_payload["rows"][0]["DAEMON_TELEMETRY_STATUS"] == "pass"
+    assert network_payload["rows"][0]["TARGET_HOST_VALIDATION_STATUS"] == "pass"
+    assert network_payload["rows"][0]["TARGET_HOST_VALIDATION_GATE_STATUS"] == "pass"
+    assert network_payload["rows"][0]["TARGET_HOST_ID"] == "smartflux-node-001"
     assert network_payload["rows"][0]["PTP_LOCK_STATUS"] == "locked"
     assert network_payload["rows"][0]["CLOCK_DISCIPLINE_STATUS"] == "locked"
     assert network_payload["rows"][0]["CLOCK_DISCIPLINE_OFFSET_NS"] == 80.0
@@ -348,6 +427,7 @@ def test_daemon_telemetry_reaches_export_network_and_delivery(tmp_path: Path) ->
     package_manifest = json.loads(Path(delivery["files"]["package_manifest"]).read_text(encoding="utf-8"))
 
     assert package_manifest["daemon_telemetry_summary"]["status"] == "pass"
+    assert package_manifest["daemon_telemetry_summary"]["target_host_validation"]["status"] == "pass"
     assert package_manifest["result_manifest_summary"]["daemon_telemetry_status"] == "pass"
     assert package_manifest["artifact_index"]["daemon_telemetry_artifact"]["packaged"] is True
 

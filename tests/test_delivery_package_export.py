@@ -125,14 +125,83 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert "network_validation_summary" in manifest
         assert manifest["artifact_index"]["export_manifest"]["packaged"] is True
         assert manifest["artifact_index"]["network_validation_summary"]["packaged"] is True
+        assert manifest["artifact_index"]["spectral_assessment_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["spectral_binned_ensemble_csv"]["packaged"] is True
+        assert manifest["artifact_index"]["spectral_full_windows_csv"]["packaged"] is True
+        assert manifest["artifact_index"]["spectral_ogive_ensemble_csv"]["packaged"] is True
+        assert manifest["artifact_index"]["spectral_assessment_library_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["spectral_assessment_library_bins_csv"]["packaged"] is True
+        assert manifest["artifact_index"]["fixture_pack_summary_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["public_eddypro_fixture_catalog_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["official_raw_fixture_manifest_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["official_raw_closure_run_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["official_raw_repair_plan_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["official_raw_fixture_detail_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["official_raw_evidence_pack_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["eddypro_source_inventory_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["eddypro_coverage_audit_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["eddypro_release_gate_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["flux_correction_ledger_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["method_rollup_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["method_parity_matrix_artifact"]["packaged"] is True
+        assert manifest["fixture_pack_summary"]["status"] == "pass"
+        assert manifest["public_eddypro_fixture_catalog"]["status"] == "pass"
+        assert manifest["public_eddypro_fixture_catalog"]["fixture_count"] == 6
+        assert manifest["official_raw_fixture_manifest"]["status"] == "needs_official_raw_fixtures"
+        assert manifest["official_raw_closure_run"]["artifact_type"] == "official_raw_closure_run_v1"
+        assert manifest["official_raw_closure_run"]["status"] == "not_available"
+        assert manifest["official_raw_repair_plan"]["artifact_type"] == "official_raw_fixture_repair_plan_v1"
+        assert manifest["official_raw_repair_plan"]["status"] == "not_available"
+        assert manifest["official_raw_fixture_detail"]["artifact_type"] == "official_raw_fixture_detail_v1"
+        assert manifest["official_raw_acquisition_validation"]["artifact_type"] == "official_raw_fixture_acquisition_validation_v1"
+        assert manifest["official_raw_evidence_pack"]["artifact_type"] == "official_raw_fixture_evidence_pack_v1"
+        assert manifest["official_eddypro_run"]["status"] == "not_available"
+        assert manifest["eddypro_source_inventory"]["inventory_id"] == "eddypro_official_source_inventory_v1"
+        assert manifest["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
+        assert manifest["eddypro_release_gate"]["artifact_type"] == "eddypro_release_gate_v1"
+        assert manifest["result_manifest_summary"]["can_claim_full_eddypro_parity"] is False
+        assert manifest["result_manifest_summary"]["can_release_full_eddypro_parity"] is False
+        assert manifest["result_manifest_summary"]["eddypro_release_gate_status"] == "blocked"
+        assert manifest["eddypro_closure_gate"]["artifact_type"] == "eddypro_closure_gate_v1"
+        assert manifest["result_manifest_summary"]["eddypro_closure_gate_status"] == "blocked"
+        assert manifest["result_manifest_summary"]["eddypro_closure_open_item_count"] >= 1
+        assert manifest["flux_correction_ledger_summary"]["status"] == "ok"
+        assert manifest["result_manifest_summary"]["fixture_pack_status"] == "pass"
+        assert manifest["result_manifest_summary"]["registered_raw_to_final_fixture_count"] == 3
+        assert manifest["result_manifest_summary"]["official_raw_fixture_detail_id"]
+        assert manifest["result_manifest_summary"]["official_raw_fixture_detail_id"] == "synthetic_li7700_trace_gas_001"
+        assert "official_raw_acquisition_status" in manifest["result_manifest_summary"]
+        assert manifest["result_manifest_summary"]["official_raw_closure_run_status"] == "not_available"
+        assert manifest["result_manifest_summary"]["official_raw_repair_plan_status"] == "not_available"
+        assert manifest["result_manifest_summary"]["official_raw_repair_item_count"] == 0
+        assert "official_raw_evidence_pack_status" in manifest["result_manifest_summary"]
+        assert manifest["result_manifest_summary"]["official_raw_evidence_pack_acceptance_status"] == "not_run"
+        assert manifest["result_manifest_summary"]["official_eddypro_run_status"] == "not_available"
+        assert manifest["result_manifest_summary"]["official_eddypro_run_gate_status"] == "blocked"
+        assert manifest["result_manifest_summary"]["official_raw_normalization_status"] in {"present", "ready"}
+        assert manifest["result_manifest_summary"]["official_raw_qc_mapping_strategy"]
+        assert manifest["result_manifest_summary"]["official_raw_official_run_normalization_status"] == "normalized"
+        assert manifest["result_manifest_summary"]["official_raw_official_run_qc_mapping_strategy"] == "EddyPro 0/1/2 -> gas_ec_studio A/B/C"
+        assert manifest["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
+        assert manifest["official_raw_fixture_detail"]["trace_gas_parity_status"] == "pass"
+        assert manifest["result_manifest_summary"]["eddypro_source_inventory_feature_count"] >= 10
+        assert manifest["result_manifest_summary"]["flux_correction_ledger_status"] == "ok"
+        assert manifest["result_manifest_summary"]["spectral_assessment_status"] == "ok"
+        assert manifest["result_manifest_summary"]["spectral_assessment_library_status"] == "ok"
+        assert manifest["result_manifest_summary"]["public_eddypro_fixture_catalog_status"] == "pass"
+        assert manifest["result_manifest_summary"]["public_eddypro_fixture_count"] == 6
+        assert manifest["result_manifest_summary"]["public_eddypro_valid_fixture_count"] == 6
+        assert manifest["result_manifest_summary"]["public_eddypro_can_support_raw_to_final_claim"] is False
+        assert manifest["spectral_assessment"]["artifact_type"] == "spectral_assessment_export_v1"
+        assert manifest["spectral_assessment_library"]["artifact_type"] == "spectral_assessment_library_v1"
         assert audit["missing_declared_files"] == []
         assert audit["missing_manifest_files"] == []
         assert manifest["file_list"]
         assert any("缺少 compare" in note or "缺少 attribution" in note for note in manifest["notes"])
         assert "formal_report.html" in readme
         assert "fallback_html_only" in readme
+        assert "official_raw_closure_run" in readme
+        assert "official_raw_repair_plan" in readme
         assert (delivery_dir / "formal_report.html").exists()
         assert (delivery_dir / "rp_results.csv").exists()
         assert (delivery_dir / "spectral_qc_results.csv").exists()
@@ -141,6 +210,19 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert any(name.endswith("package_manifest.json") for name in names)
         assert any(name.endswith("delivery_audit.json") for name in names)
         assert any(name.endswith("network_validation_summary.json") for name in names)
+        assert any(name.endswith("spectral_assessment.json") for name in names)
+        assert any(name.endswith("spectral_assessment_library.json") for name in names)
+        assert any(name.endswith("spectral_binned_ensemble.csv") for name in names)
+        assert any(name.endswith("fixture_pack_summary.json") for name in names)
+        assert any(name.endswith("public_eddypro_fixture_catalog.json") for name in names)
+        assert any(name.endswith("official_raw_fixture_manifest.json") for name in names)
+        assert any(name.endswith("official_raw_closure_run.json") for name in names)
+        assert any(name.endswith("official_raw_repair_plan.json") for name in names)
+        assert any(name.endswith("official_raw_evidence_pack.json") for name in names)
+        assert any(name.endswith("eddypro_source_inventory.json") for name in names)
+        assert any(name.endswith("eddypro_coverage_audit.json") for name in names)
+        assert any(name.endswith("eddypro_release_gate.json") for name in names)
+        assert any(name.endswith("flux_correction_ledger.json") for name in names)
     finally:
         controller.shutdown()
 

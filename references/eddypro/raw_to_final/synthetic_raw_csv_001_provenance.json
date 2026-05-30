@@ -1,0 +1,15 @@
+{
+  "fixture_id": "synthetic_raw_csv_001",
+  "source_file": "references/eddypro/raw_to_final/synthetic_raw_csv_001.csv",
+  "metadata_file": "references/eddypro/raw_to_final/synthetic_raw_csv_001_metadata.json",
+  "reference_file": "references/eddypro/raw_to_final/synthetic_raw_csv_001_reference.json",
+  "generation_time": "2026-05-27T00:00:00",
+  "generation_method": "Deterministic sinusoidal wind/scalar signals plus independent manual covariance oracle.",
+  "normalization_script": "tests/test_raw_to_final_parity.py::_raw_fixture mirrors this fixture generator.",
+  "qc_mapping_strategy": "No official EddyPro QC flags in this synthetic raw fixture.",
+  "known_limitations": [
+    "Synthetic raw CSV fixture validates harness plumbing and numeric guardrails only.",
+    "Not an official EddyPro raw-to-final golden output.",
+    "Real .ghg, TOB1/SLT/binary, LI-7700, AoA/crosswind, and spectra/cospectra fixtures are still required."
+  ]
+}

@@ -86,6 +86,11 @@ def apply_clock_sync_to_rows(
             )
         )
 
+    quality_summary = _clock_sync_quality_summary(
+        offsets=offsets,
+        events=sorted_events,
+        clock_config=clock_config,
+    )
     summary = {
         "artifact_type": "acquisition_clock_sync",
         "status": "applied",
@@ -105,6 +110,7 @@ def apply_clock_sync_to_rows(
         "max_offset_seconds": round(max(offsets), 9),
         "mean_offset_seconds": round(sum(offsets) / len(offsets), 9),
         "jitter_threshold_seconds": _optional_float(clock_config.get("jitter_threshold_seconds"), None),
+        **quality_summary,
         "source_file": source_file,
         "correction_sign": "corrected_timestamp = raw_timestamp + offset_seconds",
         "event_interpolation": "linear_clamped" if sorted_events else "offset_plus_linear_drift",
@@ -176,6 +182,12 @@ def clock_sync_diagnostics(summary: dict[str, Any] | None) -> dict[str, Any]:
         "clock_sync_max_offset_s": payload.get("max_offset_seconds"),
         "clock_sync_event_count": payload.get("event_count", 0),
         "clock_sync_reference_time": payload.get("reference_time", ""),
+        "clock_sync_quality_status": payload.get("quality_status", "not_configured"),
+        "clock_sync_quality_gate_status": payload.get("quality_gate_status", "not_configured"),
+        "clock_sync_quality_metric_s": payload.get("quality_metric_seconds"),
+        "clock_sync_quality_threshold_s": payload.get("quality_threshold_seconds"),
+        "clock_sync_max_event_step_s": payload.get("max_event_step_seconds"),
+        "clock_sync_offset_span_s": payload.get("offset_span_seconds"),
         "clock_sync_provenance": payload.get("provenance", ""),
         "clock_sync_detail": payload,
     }
@@ -239,6 +251,95 @@ def _offset_for_timestamp(
     return float(events[-1]["offset_seconds"])
 
 
+def _clock_sync_quality_summary(
+    *,
+    offsets: list[float],
+    events: list[dict[str, Any]],
+    clock_config: dict[str, Any],
+) -> dict[str, Any]:
+    if not offsets:
+        return {
+            "quality_status": "not_evaluated",
+            "quality_gate_status": "not_evaluated",
+            "quality_checks": [],
+        }
+    event_steps = [
+        abs(float(right["offset_seconds"]) - float(left["offset_seconds"]))
+        for left, right in zip(events, events[1:])
+    ]
+    max_event_step = max(event_steps) if event_steps else 0.0
+    offset_span = max(offsets) - min(offsets)
+    metric = max(max_event_step, offset_span if not events else 0.0)
+    threshold = _first_float(
+        clock_config,
+        (
+            "quality_threshold_seconds",
+            "jitter_threshold_seconds",
+            "max_jitter_seconds",
+            "max_offset_step_seconds",
+            "max_event_offset_step_seconds",
+            "clock_quality_max_jitter_s",
+        ),
+    )
+    require_gate = _truthy(
+        clock_config.get(
+            "require_quality_gate",
+            clock_config.get("require_jitter_gate", clock_config.get("quality_required", False)),
+        )
+    )
+    checks: list[dict[str, Any]] = [
+        {
+            "check_id": "clock_sync.offset_span",
+            "measured_seconds": round(float(offset_span), 9),
+            "status": "tracked",
+            "threshold_seconds": None,
+        },
+        {
+            "check_id": "clock_sync.max_event_step",
+            "measured_seconds": round(float(max_event_step), 9),
+            "status": "tracked",
+            "threshold_seconds": None,
+        },
+    ]
+    if threshold is None:
+        status = "not_configured"
+        gate_status = "not_configured"
+    elif metric <= threshold:
+        status = "pass"
+        gate_status = "pass"
+    else:
+        status = "fail" if require_gate else "warning"
+        gate_status = "fail" if require_gate else "warning"
+    if threshold is not None:
+        checks.append(
+            {
+                "check_id": "clock_sync.quality_threshold",
+                "measured_seconds": round(float(metric), 9),
+                "threshold_seconds": round(float(threshold), 9),
+                "status": status,
+                "required": require_gate,
+            }
+        )
+    return {
+        "quality_status": status,
+        "quality_gate_status": gate_status,
+        "quality_metric_seconds": round(float(metric), 9),
+        "quality_threshold_seconds": round(float(threshold), 9) if threshold is not None else None,
+        "quality_required": require_gate,
+        "max_event_step_seconds": round(float(max_event_step), 9),
+        "offset_span_seconds": round(float(offset_span), 9),
+        "quality_checks": checks,
+        "quality_provenance": (
+            "Clock quality is evaluated from applied correction offsets before RP/FCC windowing; "
+            "event runs use maximum adjacent event-offset step, while drift-only runs use total offset span."
+        ),
+        "quality_limitations": [
+            "This is a post-acquisition correction quality gate and does not discipline the hardware clock.",
+            "Broad target-host GPS/PTP fixture breadth is still required before closing full SmartFlux-style timing parity.",
+        ],
+    }
+
+
 def _parse_clock_events(config: dict[str, Any], *, row_reference: datetime) -> list[dict[str, Any]]:
     raw_events = config.get("events", config.get("clock_events", []))
     if isinstance(raw_events, str):
@@ -293,6 +394,14 @@ def _optional_float(value: Any, default: float | None) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _first_float(payload: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        value = _optional_float(payload.get(key), None)
+        if value is not None:
+            return value
+    return None
 
 
 def _copy_frame_with_clock_sync(

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +44,8 @@ class WindowPreparedResult:
     ch4_ppb: np.ndarray
     pressure_kpa: np.ndarray
     temp_c: np.ndarray
+    cell_pressure_kpa: np.ndarray
+    cell_temp_c: np.ndarray
     sample_count: int
     valid_sample_count: int
     continuity_ratio: float
@@ -98,6 +101,8 @@ class UncertaintyMetrics:
 
 
 _DEFAULT_UNCERTAINTY_CONFIDENCE_LEVEL = 0.95
+_DRY_AIR_MOLAR_MASS_KG_MOL = 0.02896546
+_WATER_MOLAR_MASS_KG_MOL = 0.01801528
 _CONFIDENCE_Z_LOOKUP: tuple[tuple[float, float], ...] = (
     (0.68, 1.0),
     (0.80, 1.2816),
@@ -263,7 +268,7 @@ def pick_window_slices(total_samples: int, sample_rate_hz: float, block_minutes:
     if total_samples < min_samples:
         return []
     target_samples = int(max(min_samples, block_minutes * 60.0 * sample_rate_hz))
-    if total_samples < target_samples * 2 and total_samples >= min_samples * 3:
+    if total_samples < target_samples and total_samples >= min_samples * 3:
         desired_windows = min(8, max(3, total_samples // min_samples))
         target_samples = max(min_samples, total_samples // desired_windows)
     elif total_samples < target_samples:
@@ -293,9 +298,17 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
             co2_ppm=np.array([], dtype=float), h2o_mmol=np.array([], dtype=float),
             ch4_ppb=np.array([], dtype=float),
             pressure_kpa=np.array([], dtype=float), temp_c=np.array([], dtype=float),
+            cell_pressure_kpa=np.array([], dtype=float), cell_temp_c=np.array([], dtype=float),
             sample_count=0, valid_sample_count=0, continuity_ratio=0.0, missing_ratio=1.0,
             max_gap_seconds=0.0, issues=["empty_window"], qc_reasons=["window has no usable samples"],
-            diagnostics={"u_valid_ratio": 0.0, "v_valid_ratio": 0.0, "w_raw_valid_ratio": 0.0},
+            diagnostics={
+                "u_valid_ratio": 0.0,
+                "v_valid_ratio": 0.0,
+                "w_raw_valid_ratio": 0.0,
+                "cell_pressure_valid_ratio": 0.0,
+                "cell_temp_valid_ratio": 0.0,
+                "cell_thermodynamics_status": "not_available",
+            },
         )
 
     co2_raw = np.array([np.nan if r.co2_ppm is None else float(r.co2_ppm) for r in rows], dtype=float)
@@ -305,12 +318,15 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
     temp_raw = np.array([np.nan if r.chamber_temp_c is None else float(r.chamber_temp_c) for r in rows], dtype=float)
 
     u_raw, v_raw, w_raw, has_w = _extract_wind_components(rows)
+    cell_pressure_raw, cell_temp_raw = _extract_cell_thermodynamics(rows)
 
     co2 = _fill_missing(co2_raw)
     h2o = _fill_missing(h2o_raw)
     ch4 = _fill_missing(ch4_raw)
     pressure = _fill_missing(pres_raw)
     temp = _fill_missing(temp_raw)
+    cell_pressure = _fill_missing(cell_pressure_raw) if np.any(~np.isnan(cell_pressure_raw)) else np.array([], dtype=float)
+    cell_temp = _fill_missing(cell_temp_raw) if np.any(~np.isnan(cell_temp_raw)) else np.array([], dtype=float)
     u = _fill_missing(u_raw)
     v = _fill_missing(v_raw)
     w = _fill_missing(w_raw)
@@ -334,18 +350,27 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
     v_valid_ratio = float(np.sum(~np.isnan(v_raw)) / max(1, n))
     w_valid_ratio = float(np.sum(~np.isnan(w_raw)) / max(1, n))
     ch4_valid_ratio = float(np.sum(~np.isnan(ch4_raw)) / max(1, n))
+    cell_pressure_valid_ratio = float(np.sum(~np.isnan(cell_pressure_raw)) / max(1, n))
+    cell_temp_valid_ratio = float(np.sum(~np.isnan(cell_temp_raw)) / max(1, n))
+    cell_thermodynamics_status = (
+        "available" if cell_pressure_valid_ratio > 0.0 or cell_temp_valid_ratio > 0.0 else "not_available"
+    )
 
     diagnostics: dict[str, Any] = {
         "u_valid_ratio": u_valid_ratio,
         "v_valid_ratio": v_valid_ratio,
         "w_raw_valid_ratio": w_valid_ratio,
         "ch4_valid_ratio": ch4_valid_ratio,
+        "cell_pressure_valid_ratio": cell_pressure_valid_ratio,
+        "cell_temp_valid_ratio": cell_temp_valid_ratio,
+        "cell_thermodynamics_status": cell_thermodynamics_status,
     }
 
     return WindowPreparedResult(
         u=u, v=v, w=w, co2_ppm=co2, h2o_mmol=h2o,
         ch4_ppb=ch4,
         pressure_kpa=pressure, temp_c=temp,
+        cell_pressure_kpa=cell_pressure, cell_temp_c=cell_temp,
         sample_count=n, valid_sample_count=valid_count,
         continuity_ratio=continuity_ratio, missing_ratio=missing_ratio,
         max_gap_seconds=max_gap_seconds, issues=issues, qc_reasons=qc_reasons,
@@ -371,6 +396,58 @@ def _extract_wind_components(rows: list[NormalizedHFFrame]) -> tuple[np.ndarray,
     return np.array(u_vals, dtype=float), np.array(v_vals, dtype=float), np.array(w_vals, dtype=float), has_w
 
 
+_CELL_PRESSURE_ALIASES = (
+    "cell_pressure_kpa",
+    "sample_cell_pressure_kpa",
+    "analyzer_pressure_kpa",
+    "cell_pressure",
+    "cell_p_kpa",
+    "p_cell_kpa",
+    "cell_press",
+    "p_cell",
+    "cell_pressure_pa",
+)
+_CELL_TEMP_ALIASES = (
+    "cell_temperature_c",
+    "cell_temp_c",
+    "sample_cell_temperature_c",
+    "analyzer_temperature_c",
+    "cell_temperature",
+    "cell_temp",
+    "t_cell_c",
+    "t_cell",
+    "cell_temperature_k",
+)
+
+
+def _extract_cell_thermodynamics(rows: list[NormalizedHFFrame]) -> tuple[np.ndarray, np.ndarray]:
+    pressure_vals: list[float] = []
+    temp_vals: list[float] = []
+    for row in rows:
+        payload = _load_payload(row.raw_text) or _load_payload(row.status_text or "")
+        pressure_vals.append(_coerce_cell_pressure_kpa(_payload_value(payload, _CELL_PRESSURE_ALIASES)))
+        temp_vals.append(_coerce_cell_temp_c(_payload_value(payload, _CELL_TEMP_ALIASES)))
+    return np.array(pressure_vals, dtype=float), np.array(temp_vals, dtype=float)
+
+
+def _coerce_cell_pressure_kpa(value: float) -> float:
+    if np.isnan(value):
+        return np.nan
+    magnitude = abs(float(value))
+    if magnitude > 2000.0:
+        return float(value) / 1000.0
+    if magnitude > 200.0:
+        return float(value) / 10.0
+    return float(value)
+
+
+def _coerce_cell_temp_c(value: float) -> float:
+    if np.isnan(value):
+        return np.nan
+    numeric = float(value)
+    return numeric - 273.15 if numeric > 150.0 else numeric
+
+
 def _load_payload(payload: str) -> dict[str, Any] | None:
     if not payload:
         return None
@@ -381,6 +458,15 @@ def _load_payload(payload: str) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+def _merged_frame_payload(row: NormalizedHFFrame) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for payload_text in (row.raw_text, row.status_text or ""):
+        payload = _load_payload(payload_text)
+        if payload:
+            merged.update(payload)
+    return merged
+
+
 def _payload_value(payload: dict[str, Any] | None, keys: tuple[str, ...]) -> float:
     if not payload:
         return np.nan
@@ -388,6 +474,209 @@ def _payload_value(payload: dict[str, Any] | None, keys: tuple[str, ...]) -> flo
         if payload.get(key) is not None:
             return float(payload[key])
     return np.nan
+
+
+def _payload_metric_series(payloads: list[dict[str, Any]], aliases: tuple[str, ...]) -> list[float]:
+    values: list[float] = []
+    for payload in payloads:
+        value = _payload_lookup(payload, aliases)
+        if value is None:
+            continue
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(numeric):
+            values.append(numeric)
+    return values
+
+
+def _payload_int_series(payloads: list[dict[str, Any]], aliases: tuple[str, ...]) -> list[int]:
+    values: list[int] = []
+    for payload in payloads:
+        value = _payload_lookup(payload, aliases)
+        if value is None:
+            continue
+        try:
+            values.append(int(str(value).strip(), 0))
+            continue
+        except (TypeError, ValueError):
+            pass
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(numeric):
+            values.append(int(numeric))
+    return values
+
+
+def _payload_bool_series(
+    payloads: list[dict[str, Any]],
+    aliases: tuple[str, ...],
+    *,
+    true_tokens: set[str] | None = None,
+    false_tokens: set[str] | None = None,
+) -> list[bool]:
+    values: list[bool] = []
+    for payload in payloads:
+        value = _payload_lookup(payload, aliases)
+        if value is None:
+            continue
+        values.append(_coerce_payload_bool(value, true_tokens=true_tokens, false_tokens=false_tokens))
+    return values
+
+
+def _payload_lookup(payload: Any, aliases: tuple[str, ...]) -> Any:
+    normalized_aliases = {_normalize_payload_key(alias) for alias in aliases}
+    for key, value in _flatten_payload(payload):
+        if _normalize_payload_key(key) in normalized_aliases:
+            return value
+    return None
+
+
+def _flatten_payload(payload: Any, prefix: str = "") -> list[tuple[str, Any]]:
+    if isinstance(payload, dict):
+        items: list[tuple[str, Any]] = []
+        for key, value in payload.items():
+            joined = f"{prefix}_{key}" if prefix else str(key)
+            items.extend(_flatten_payload(value, joined))
+        return items
+    if isinstance(payload, list):
+        items: list[tuple[str, Any]] = []
+        for index, value in enumerate(payload):
+            joined = f"{prefix}_{index}" if prefix else str(index)
+            items.extend(_flatten_payload(value, joined))
+        return items
+    return [(prefix, payload)]
+
+
+def _normalize_payload_key(key: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(key).strip().lower()).strip("_")
+
+
+def _coerce_payload_bool(
+    value: Any,
+    *,
+    true_tokens: set[str] | None = None,
+    false_tokens: set[str] | None = None,
+) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if false_tokens and text in false_tokens:
+        return False
+    if true_tokens:
+        return text in true_tokens
+    return text in {"1", "true", "yes", "y", "ok", "pass", "locked", "clean"}
+
+
+def _payload_status_flags(payloads: list[dict[str, Any]]) -> list[str]:
+    flags: list[str] = []
+    status_aliases = {
+        "li7700_status",
+        "li7700_diagnostic_status",
+        "diagnostic_status",
+        "instrument_status",
+        "ch4_status_code",
+        "status_code",
+        "diagnostic_flag",
+        "diagnostic_flags",
+    }
+    fault_tokens = ("fault", "fail", "error", "blocked", "dirty", "unlocked", "not_locked", "no_lock", "bad")
+    for payload in payloads:
+        for key, value in _flatten_payload(payload):
+            normalized = _normalize_payload_key(key)
+            if normalized not in status_aliases and not normalized.endswith("_status"):
+                continue
+            text = str(value).strip().lower()
+            if not text or text in {"ok", "pass", "passed", "normal", "locked", "clean", "0"}:
+                continue
+            if any(token in text for token in fault_tokens):
+                flags.append(f"{normalized}:{text}")
+    return flags
+
+
+def _li7700_status_word_flags(status_words: list[int], config: dict[str, Any]) -> list[str]:
+    if not status_words:
+        return []
+    raw_allowed = config.get("allowed_status_words", config.get("allowed_diagnostic_words", [0]))
+    if isinstance(raw_allowed, (str, int, float)):
+        raw_allowed = [raw_allowed]
+    allowed: set[int] = set()
+    for value in raw_allowed or [0]:
+        try:
+            allowed.add(int(str(value).strip(), 0))
+        except (TypeError, ValueError):
+            continue
+    bit_map = _li7700_status_bit_map(config)
+    flags: list[str] = []
+    for word in status_words:
+        if word in allowed:
+            continue
+        if word == 0:
+            continue
+        bits = [bit for bit in range(0, max(1, int(word).bit_length())) if int(word) & (1 << bit)]
+        if not bits:
+            flags.append(f"status_word:{word}")
+            continue
+        for bit in bits:
+            label = bit_map.get(bit, f"bit_{bit}")
+            flags.append(f"status_word:{word}:{label}")
+    return flags
+
+
+def _li7700_status_bit_map(config: dict[str, Any]) -> dict[int, str]:
+    raw_map = config.get("status_bit_map", config.get("diagnostic_bit_map", {}))
+    if isinstance(raw_map, str):
+        parsed: dict[int, str] = {}
+        for part in raw_map.replace(",", "|").split("|"):
+            if not part.strip() or ":" not in part:
+                continue
+            key, value = part.split(":", 1)
+            try:
+                parsed[int(key.strip().removeprefix("bit"), 0)] = value.strip()
+            except ValueError:
+                continue
+        return parsed
+    if not isinstance(raw_map, dict):
+        return {}
+    parsed = {}
+    for key, value in raw_map.items():
+        try:
+            parsed[int(str(key).strip().removeprefix("bit"), 0)] = str(value)
+        except (TypeError, ValueError):
+            continue
+    return parsed
+
+
+def _series_mean(values: list[float]) -> float | None:
+    return float(sum(values) / len(values)) if values else None
+
+
+def _series_min(values: list[float]) -> float | None:
+    return float(min(values)) if values else None
+
+
+def _li7700_status_check(
+    check_id: str,
+    passed: bool,
+    *,
+    measured: Any,
+    threshold: Any,
+    severity: str,
+    failure_message: str,
+) -> dict[str, Any]:
+    return {
+        "check_id": check_id,
+        "status": "pass" if passed else ("fail" if severity == "fail" else "warn"),
+        "severity": severity,
+        "measured": measured,
+        "threshold": threshold,
+        "message": "LI-7700 status diagnostic check passed." if passed else failure_message,
+    }
 
 
 def _fill_missing(values: np.ndarray) -> np.ndarray:
@@ -461,7 +750,7 @@ def apply_sonic_corrections(
     w_corr = np.array(w, dtype=float, copy=True)
     steps: list[dict[str, Any]] = []
     limitations = [
-        "Nakai angle-of-attack lookup tables are not reproduced; calibrated angle gain is applied only when explicit coefficients are configured.",
+        "Nakai 2006 and Nakai-Shimoyama 2012 angle-of-attack coefficient paths are implemented for supported Gill sonic families; official field fixture parity is still required.",
         "Model orientation rules cover common EddyPro sonic coordinate cases and should be validated against site metadata.",
     ]
 
@@ -531,10 +820,17 @@ def apply_sonic_corrections(
 
     aoa_cfg = cfg.get("angle_of_attack", {})
     if isinstance(aoa_cfg, dict) and bool(aoa_cfg.get("enabled", False)):
-        u_corr, v_corr, w_corr, aoa_step = _apply_calibrated_angle_of_attack_gain(u_corr, v_corr, w_corr, aoa_cfg)
+        u_corr, v_corr, w_corr, aoa_step = _apply_angle_of_attack_correction(
+            u_corr,
+            v_corr,
+            w_corr,
+            aoa_cfg,
+            model=model,
+        )
         steps.append(aoa_step)
 
     applied = bool(steps)
+    aoa_steps = [step for step in steps if str(step.get("family", "")) == "angle_of_attack"]
     detail = {
         "status": "applied" if applied else "no_effect",
         "applied": applied,
@@ -546,6 +842,9 @@ def apply_sonic_corrections(
         "north_offset_deg": north_offset_deg,
         "effective_north_offset_deg": effective_north_offset,
         "steps": steps,
+        "angle_of_attack_status": str(aoa_steps[-1].get("status", "not_configured")) if aoa_steps else "not_configured",
+        "angle_of_attack_method": str(aoa_steps[-1].get("method", "")) if aoa_steps else "",
+        "angle_of_attack_summary": dict(aoa_steps[-1]) if aoa_steps else {},
         "mean_w_before": _nanmean_or_none(w),
         "mean_w_after": _nanmean_or_none(w_corr),
         "std_w_before": _nanstd_or_none(w),
@@ -560,6 +859,7 @@ def apply_sonic_corrections(
                 "src/src_rp/adjust_sonic_coordinates.f90",
                 "src/src_rp/gill_wm_w_boost.f90",
                 "src/src_rp/aoa_calibration.f90",
+                "src/src_rp/aoa_cal_nakai_2012.f90",
             ],
         },
         "limitations": limitations if applied else [],
@@ -645,6 +945,272 @@ def _apply_gill_wm_w_boost(w: np.ndarray, *, mode: str) -> np.ndarray:
     return corrected
 
 
+def _apply_angle_of_attack_correction(
+    u: np.ndarray,
+    v: np.ndarray,
+    w: np.ndarray,
+    config: dict[str, Any],
+    *,
+    model: str = "",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    method = _normalize_sonic_text(config.get("method", config.get("aoa_method", "calibrated_gain")))
+    if method in {"auto", "model_default", "eddypro_default"}:
+        method = _infer_nakai_angle_of_attack_method(model)
+    if method in {"nakai_06", "nakai_2006", "nakai_et_al_2006"}:
+        return _apply_nakai_2006_angle_of_attack(u, v, w, config)
+    if method in {"nakai_12", "nakai_2012", "nakai_shimoyama_2012"}:
+        return _apply_nakai_2012_angle_of_attack(u, v, w, config)
+    return _apply_calibrated_angle_of_attack_gain(u, v, w, config)
+
+
+def _infer_nakai_angle_of_attack_method(model: str) -> str:
+    normalized = _normalize_sonic_text(model)
+    if normalized in {"wm", "wm_pro", "wmpro", "windmaster", "windmaster_pro", "windmasterpro"}:
+        return "nakai_2012"
+    if normalized in {"r2", "r3", "r3_50", "r3_100", "r3a_100"}:
+        return "nakai_2006"
+    return "calibrated_gain"
+
+
+def _angle_and_direction(u: np.ndarray, v: np.ndarray, w: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    horizontal = np.sqrt(u ** 2 + v ** 2)
+    attack_deg = np.where(
+        horizontal > 1e-12,
+        np.degrees(np.arctan2(w, horizontal)),
+        np.where(w >= 0.0, 90.0, -90.0),
+    )
+    wind_direction_deg = np.degrees(np.arctan2(v, u)) % 360.0
+    ratio = np.divide(w, horizontal, out=np.zeros_like(w, dtype=float), where=horizontal > 1e-12)
+    return attack_deg, wind_direction_deg, ratio
+
+
+def _steffensen_angle(
+    initial_deg: np.ndarray,
+    wind_direction_deg: np.ndarray,
+    ratio: np.ndarray,
+    gx_func: Any,
+    *,
+    max_iterations: int = 12,
+) -> tuple[np.ndarray, int]:
+    x0 = np.array(initial_deg, dtype=float, copy=True)
+    iterations = 0
+    for iterations in range(1, max_iterations + 1):
+        x1 = gx_func(x0, wind_direction_deg, ratio)
+        x2 = gx_func(x1, wind_direction_deg, ratio)
+        denominator = x2 - 2.0 * x1 + x0
+        x3 = np.where(np.abs(denominator) < 0.01, x2, x0 - ((x1 - x0) ** 2) / denominator)
+        if np.all(np.abs(x3 - x0) < 1e-5):
+            return x3, iterations
+        x0 = x3
+    return x0, iterations
+
+
+def _safe_divide_or_keep(values: np.ndarray, denominator: np.ndarray) -> np.ndarray:
+    return np.divide(
+        values,
+        denominator,
+        out=np.array(values, dtype=float, copy=True),
+        where=np.isfinite(denominator) & (np.abs(denominator) > 1e-9),
+    )
+
+
+def _apply_nakai_2012_angle_of_attack(
+    u: np.ndarray,
+    v: np.ndarray,
+    w: np.ndarray,
+    config: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    attack_deg, wind_direction_deg, ratio = _angle_and_direction(u, v, w)
+    max_angle = _safe_float(config.get("max_abs_angle_deg", 90.0), default=90.0)
+    attack_limited = np.clip(attack_deg, -abs(max_angle), abs(max_angle))
+    solved_deg, iterations = _steffensen_angle(attack_limited, wind_direction_deg, ratio, _nakai_2012_gx)
+    solved_deg = np.clip(solved_deg, -abs(max_angle), abs(max_angle))
+    sinerr = _nakai_2012_sinerr(solved_deg, wind_direction_deg)
+    coserr = _nakai_2012_coserr(solved_deg, wind_direction_deg)
+    u_corr = _safe_divide_or_keep(u, coserr)
+    v_corr = _safe_divide_or_keep(v, coserr)
+    w_corr = _safe_divide_or_keep(w, sinerr)
+    return (
+        u_corr,
+        v_corr,
+        w_corr,
+        _angle_of_attack_step(
+            name="nakai_2012_angle_of_attack",
+            method="nakai_2012",
+            before_attack_deg=attack_deg,
+            solved_attack_deg=solved_deg,
+            u_before=u,
+            v_before=v,
+            w_before=w,
+            u_after=u_corr,
+            v_after=v_corr,
+            w_after=w_corr,
+            iterations=iterations,
+            coefficient_set="nakai_shimoyama_2012_polynomial",
+        ),
+    )
+
+
+def _apply_nakai_2006_angle_of_attack(
+    u: np.ndarray,
+    v: np.ndarray,
+    w: np.ndarray,
+    config: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    attack_deg, wind_direction_deg, ratio = _angle_and_direction(u, v, w)
+    max_angle = _safe_float(config.get("max_abs_angle_deg", 90.0), default=90.0)
+    attack_limited = np.clip(attack_deg, -abs(max_angle), abs(max_angle))
+    solved_deg, iterations = _steffensen_angle(attack_limited, wind_direction_deg, ratio, _nakai_2006_gx)
+    solved_deg = np.clip(solved_deg, -abs(max_angle), abs(max_angle))
+    sinerr = np.sin(np.radians(solved_deg)) * _nakai_2006_sinerr(solved_deg) + 0.0195
+    coserr = _nakai_2006_coserr(solved_deg, wind_direction_deg)
+    horizontal_factor = np.divide(
+        np.cos(np.radians(solved_deg)),
+        coserr,
+        out=np.ones_like(solved_deg, dtype=float),
+        where=np.isfinite(coserr) & (np.abs(coserr) > 1e-9),
+    )
+    u_corr = u * horizontal_factor
+    v_corr = v * horizontal_factor
+    horizontal_after = np.sqrt(u_corr ** 2 + v_corr ** 2)
+    w_from_horizontal = np.tan(np.radians(solved_deg)) * horizontal_after
+    w_from_sinerr = np.divide(
+        w * np.sin(np.radians(solved_deg)),
+        sinerr,
+        out=np.array(w, dtype=float, copy=True),
+        where=np.isfinite(sinerr) & (np.abs(sinerr) > 1e-9),
+    )
+    horizontal_before = np.sqrt(u ** 2 + v ** 2)
+    w_corr = np.where(horizontal_before > 1e-12, w_from_horizontal, w_from_sinerr)
+    return (
+        u_corr,
+        v_corr,
+        w_corr,
+        _angle_of_attack_step(
+            name="nakai_2006_angle_of_attack",
+            method="nakai_2006",
+            before_attack_deg=attack_deg,
+            solved_attack_deg=solved_deg,
+            u_before=u,
+            v_before=v,
+            w_before=w,
+            u_after=u_corr,
+            v_after=v_corr,
+            w_after=w_corr,
+            iterations=iterations,
+            coefficient_set="nakai_2006_polynomial",
+        ),
+    )
+
+
+def _nakai_2012_sinerr(aoa_deg: np.ndarray, wind_direction_deg: np.ndarray) -> np.ndarray:
+    aoa = np.array(aoa_deg, dtype=float, copy=True)
+    wd = np.array(wind_direction_deg, dtype=float, copy=True)
+    positive = aoa > 0.0
+    aoa[positive] = -aoa[positive]
+    wd[positive] = wd[positive] + 180.0
+    a = (-3.19818998552857e-10, -2.69824417931343e-8, 4.16728613218081e-6, 4.85252964763967e-4, 1.67354200080193e-2)
+    b = (5.92731123831391e-10, 1.44129103378194e-7, 1.20670183305798e-5, 3.92584527104954e-4, 3.82901759130896e-3)
+    a_aoa = a[0] * aoa**5 + a[1] * aoa**4 + a[2] * aoa**3 + a[3] * aoa**2 + a[4] * aoa + 1.0
+    b_aoa = b[0] * aoa**5 + b[1] * aoa**4 + b[2] * aoa**3 + b[3] * aoa**2 + b[4] * aoa
+    return a_aoa - b_aoa * np.sin(np.radians(3.0 * wd))
+
+
+def _nakai_2012_coserr(aoa_deg: np.ndarray, wind_direction_deg: np.ndarray) -> np.ndarray:
+    aoa = np.array(aoa_deg, dtype=float, copy=True)
+    wd = np.array(wind_direction_deg, dtype=float, copy=True)
+    positive = aoa > 0.0
+    aoa[positive] = -aoa[positive]
+    wd[positive] = wd[positive] + 180.0
+    aoa = np.maximum(aoa, -70.0)
+    c = (-1.20804470033571e-9, -1.58051314507891e-7, -4.95504975706944e-6, 1.60799801968464e-5, 1.28143810766839e-3)
+    d = (2.27154016448720e-9, 3.85646200219364e-7, 2.03402753902096e-5, 3.94248403622007e-4, 9.18428193641156e-4)
+    c_aoa = c[0] * aoa**5 + c[1] * aoa**4 + c[2] * aoa**3 + c[3] * aoa**2 + c[4] * aoa + 1.0
+    d_aoa = d[0] * aoa**5 + d[1] * aoa**4 + d[2] * aoa**3 + d[3] * aoa**2 + d[4] * aoa
+    return c_aoa + d_aoa * np.sin(np.radians(3.0 * wd))
+
+
+def _nakai_2012_gx(aoa_deg: np.ndarray, wind_direction_deg: np.ndarray, ratio: np.ndarray) -> np.ndarray:
+    sinerr = _nakai_2012_sinerr(aoa_deg, wind_direction_deg)
+    coserr = _nakai_2012_coserr(aoa_deg, wind_direction_deg)
+    return np.degrees(np.arctan(np.divide(ratio * coserr, sinerr, out=np.zeros_like(ratio), where=np.abs(sinerr) > 1e-9)))
+
+
+def _nakai_2006_sinerr(aoa_deg: np.ndarray) -> np.ndarray:
+    aoa = np.asarray(aoa_deg, dtype=float)
+    negative = aoa < 0.0
+    pn = (0.428727148, 55.59348879, 0.222867784, 0.4882)
+    pp = (0.570590482, 1610.881585, 0.111150653, 0.972080458)
+    return np.where(
+        negative,
+        pn[0] / (1.0 + pn[1] * np.exp(-pn[2] * (aoa + 90.0))) + pn[3],
+        -pp[0] / (1.0 + pp[1] * np.exp(-pp[2] * aoa)) + pp[3],
+    )
+
+
+def _nakai_2006_coserr(aoa_deg: np.ndarray, wind_direction_deg: np.ndarray) -> np.ndarray:
+    original = np.asarray(aoa_deg, dtype=float)
+    clipped = np.clip(original, -70.0, 70.0)
+    q = (1.41546e-6, 8.51092e-4, 1.00672)
+    f_aoa = q[0] * clipped**3 + q[1] * clipped**2 + q[2] * clipped + 6.28032 * np.sin(np.radians(3.0 * wind_direction_deg))
+    f_aoa = np.where(original < -70.0, -90.0 * (1.0 - (90.0 + original) / 20.0) + (90.0 + original) / 20.0 * f_aoa, f_aoa)
+    f_aoa = np.where(original > 70.0, 90.0 * (1.0 - (90.0 - original) / 20.0) + (90.0 - original) / 20.0 * f_aoa, f_aoa)
+    return np.cos(np.radians(f_aoa))
+
+
+def _nakai_2006_gx(aoa_deg: np.ndarray, wind_direction_deg: np.ndarray, ratio: np.ndarray) -> np.ndarray:
+    sinerr = _nakai_2006_sinerr(aoa_deg)
+    coserr = _nakai_2006_coserr(aoa_deg, wind_direction_deg)
+    denominator = sinerr * np.cos(np.radians(aoa_deg))
+    return np.degrees(
+        np.arctan(
+            np.divide(
+                ratio * coserr - 0.0195,
+                denominator,
+                out=np.zeros_like(ratio),
+                where=np.abs(denominator) > 1e-9,
+            )
+        )
+    )
+
+
+def _angle_of_attack_step(
+    *,
+    name: str,
+    method: str,
+    before_attack_deg: np.ndarray,
+    solved_attack_deg: np.ndarray,
+    u_before: np.ndarray,
+    v_before: np.ndarray,
+    w_before: np.ndarray,
+    u_after: np.ndarray,
+    v_after: np.ndarray,
+    w_after: np.ndarray,
+    iterations: int,
+    coefficient_set: str,
+) -> dict[str, Any]:
+    before_horizontal = np.sqrt(u_before ** 2 + v_before ** 2)
+    after_horizontal = np.sqrt(u_after ** 2 + v_after ** 2)
+    horizontal_factor = np.divide(after_horizontal, before_horizontal, out=np.ones_like(after_horizontal), where=before_horizontal > 1e-12)
+    vertical_factor = np.divide(w_after, w_before, out=np.ones_like(w_after), where=np.abs(w_before) > 1e-12)
+    return {
+        "name": name,
+        "family": "angle_of_attack",
+        "status": "applied",
+        "method": method,
+        "coefficient_set": coefficient_set,
+        "sample_count": int(before_attack_deg.size),
+        "iteration_count": int(iterations),
+        "max_abs_attack_angle_deg": float(np.max(np.abs(before_attack_deg))) if before_attack_deg.size else 0.0,
+        "mean_abs_attack_angle_deg": float(np.mean(np.abs(before_attack_deg))) if before_attack_deg.size else 0.0,
+        "mean_abs_solved_attack_angle_deg": float(np.mean(np.abs(solved_attack_deg))) if solved_attack_deg.size else 0.0,
+        "mean_horizontal_factor": float(np.mean(horizontal_factor)) if horizontal_factor.size else 1.0,
+        "mean_vertical_factor": float(np.mean(vertical_factor)) if vertical_factor.size else 1.0,
+        "provenance": f"{method} angle-of-attack correction using EddyPro public source coefficient equations.",
+        "limitations": ["Numeric parity should be verified with sonic-family-specific EddyPro official fixtures."],
+    }
+
+
 def _apply_calibrated_angle_of_attack_gain(
     u: np.ndarray,
     v: np.ndarray,
@@ -665,11 +1231,17 @@ def _apply_calibrated_angle_of_attack_gain(
         w * w_factor,
         {
             "name": "calibrated_angle_of_attack_gain",
+            "family": "angle_of_attack",
+            "status": "applied",
+            "method": "calibrated_gain",
             "max_abs_attack_angle_deg": float(np.max(clipped)) if clipped.size else 0.0,
             "mean_abs_attack_angle_deg": float(np.mean(clipped)) if clipped.size else 0.0,
             "horizontal_gain_per_reference_angle": horizontal_gain,
             "vertical_gain_per_reference_angle": vertical_gain,
             "reference_angle_deg": _safe_float(config.get("reference_angle_deg", 45.0), default=45.0),
+            "mean_horizontal_factor": float(np.mean(h_factor)) if h_factor.size else 1.0,
+            "mean_vertical_factor": float(np.mean(w_factor)) if w_factor.size else 1.0,
+            "provenance": "Configured angle-of-attack gain path retained for custom calibration coefficients.",
         },
     )
 
@@ -1224,11 +1796,15 @@ def compute_flux_metrics(
     h2o_mmol: np.ndarray,
     pressure_kpa: np.ndarray,
     temp_c: np.ndarray,
+    cell_pressure_kpa: np.ndarray | None = None,
+    cell_temp_c: np.ndarray | None = None,
     detrend_mode: str = "block_mean",
     density_correction_mode: str = "wpl",
-) -> dict[str, float]:
+    ambient_overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     mode = normalize_detrend_mode(detrend_mode)
     correction_mode = normalize_density_correction_mode(density_correction_mode)
+    ambient_overrides = dict(ambient_overrides or {})
     w_det = _detrend(w_series, mode)
     co2_det = _detrend(co2_ppm, mode)
     h2o_det = _detrend(h2o_mmol, mode)
@@ -1236,28 +1812,106 @@ def compute_flux_metrics(
     cov_w_co2 = float(np.mean(w_det * co2_det))
     cov_w_h2o = float(np.mean(w_det * h2o_det))
 
-    mean_p = float(np.mean(pressure_kpa)) * 1000.0  # Pa
-    mean_t = float(np.mean(temp_c)) + 273.15  # K
+    def _mean_or_override(name: str, fallback: float) -> float:
+        value = ambient_overrides.get(name)
+        if value in (None, ""):
+            return fallback
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return fallback
+        return numeric if math.isfinite(numeric) else fallback
+
+    mean_pressure_kpa = _mean_or_override("mean_pressure_kpa", float(np.mean(pressure_kpa)))
+    mean_temp_c = _mean_or_override("mean_temp_c", float(np.mean(temp_c)))
+    mean_h2o = _mean_or_override("mean_h2o_mmol", float(np.mean(h2o_mmol)))
+    mean_p = mean_pressure_kpa * 1000.0  # Pa
+    mean_t = mean_temp_c + 273.15  # K
     r = 8.314  # J/(mol·K)
     cp = 29.07  # J/(mol·K) approximate for dry air
     air_molar_density = mean_p / (r * mean_t) if mean_t > 0 else 0.0
 
-    mean_h2o = float(np.mean(h2o_mmol))
-    dry_air_molar_density = max(0.0, air_molar_density - mean_h2o)
+    h2o_mol_fraction = max(0.0, mean_h2o * 1.0e-3)
+    dry_air_molar_density = (
+        air_molar_density / (1.0 + h2o_mol_fraction)
+        if air_molar_density > 0 and math.isfinite(h2o_mol_fraction)
+        else max(0.0, air_molar_density)
+    )
+    water_vapor_molar_density = max(0.0, air_molar_density - dry_air_molar_density)
 
     raw_flux = air_molar_density * cov_w_co2
-    mean_co2 = float(np.mean(co2_ppm)) * 1e-6
+    mean_co2_ppm = float(np.mean(co2_ppm))
     mean_w = float(np.mean(w_series))
-    mixing_ratio_flux = dry_air_molar_density * (cov_w_co2 + mean_co2 * cov_w_h2o)
+    mixing_ratio_flux = dry_air_molar_density * (cov_w_co2 + (mean_co2_ppm * 1.0e-3) * cov_w_h2o)
 
-    # WPL correction: water vapor term + sensible heat term
-    wpl_water_vapor_term = mean_co2 * air_molar_density * cov_w_h2o
+    def _optional_series(values: np.ndarray | None, expected_size: int) -> np.ndarray:
+        if values is None:
+            return np.array([], dtype=float)
+        arr = np.asarray(values, dtype=float)
+        if arr.size == 0 or expected_size <= 0:
+            return np.array([], dtype=float)
+        arr = arr[: min(arr.size, expected_size)]
+        if not np.any(np.isfinite(arr)):
+            return np.array([], dtype=float)
+        return _fill_missing(np.where(np.isfinite(arr), arr, np.nan))
+
+    cell_pressure_series = _optional_series(cell_pressure_kpa, w_series.size)
+    cell_temp_series = _optional_series(cell_temp_c, w_series.size)
+    cell_pressure_available = cell_pressure_series.size > 0
+    cell_temp_available = cell_temp_series.size > 0
+    cell_thermodynamics_status = "available" if cell_pressure_available or cell_temp_available else "not_available"
+    cell_thermodynamics_source = "raw_payload" if cell_thermodynamics_status == "available" else ""
+
+    # WPL correction: water vapor term + temperature-density term. H2O is
+    # represented as mmol/mol, so conversion to mol/mol is explicit here.
+    water_vapor_flux = dry_air_molar_density * cov_w_h2o
+    wpl_water_vapor_term = mean_co2_ppm * water_vapor_flux * 1.0e-3
     temp_det = _detrend(temp_c, mode)
     cov_w_t = float(np.mean(w_det * temp_det)) if temp_det.size > 0 else 0.0
-    wpl_sensible_heat_term = mean_co2 * (1.0 + mean_co2) * (1.0 + mean_h2o / air_molar_density) if air_molar_density > 0 else 0.0
-    wpl_sensible_heat_term *= (air_molar_density / mean_t) * cov_w_t if mean_t > 0 else 0.0
-    density_corrected_flux = raw_flux + wpl_water_vapor_term + wpl_sensible_heat_term
-    water_vapor_flux = air_molar_density * cov_w_h2o
+    cov_w_cell_temp_c: float | None = None
+    if cell_temp_available:
+        n_cell_t = min(w_det.size, cell_temp_series.size)
+        cell_temp_det = _detrend(cell_temp_series[:n_cell_t], mode)
+        cov_w_cell_temp_c = float(np.mean(w_det[:n_cell_t] * cell_temp_det)) if cell_temp_det.size > 0 else 0.0
+        sensible_heat_cov = cov_w_cell_temp_c
+        sensible_heat_source = "cell_temperature"
+    else:
+        sensible_heat_cov = cov_w_t
+        sensible_heat_source = "ambient_temperature"
+
+    sensible_heat_coefficient = (
+        mean_co2_ppm * air_molar_density * (1.0 + h2o_mol_fraction)
+        if air_molar_density > 0
+        else 0.0
+    )
+    wpl_sensible_heat_term = sensible_heat_coefficient * (sensible_heat_cov / mean_t if mean_t > 0 else 0.0)
+
+    cov_w_cell_pressure_kpa: float | None = None
+    closed_path_cell_pressure_term = 0.0
+    if cell_pressure_available:
+        n_cell_p = min(w_det.size, cell_pressure_series.size)
+        cell_pressure_det = _detrend(cell_pressure_series[:n_cell_p], mode)
+        cov_w_cell_pressure_kpa = (
+            float(np.mean(w_det[:n_cell_p] * cell_pressure_det)) if cell_pressure_det.size > 0 else 0.0
+        )
+        pressure_scale = air_molar_density / max(abs(mean_pressure_kpa), 1e-9)
+        closed_path_cell_pressure_term = mean_co2_ppm * pressure_scale * cov_w_cell_pressure_kpa
+
+    closed_path_cell_temperature_term = wpl_sensible_heat_term if cell_temp_available else 0.0
+    closed_path_density_term = closed_path_cell_temperature_term + closed_path_cell_pressure_term
+    closed_path_density_correction_applied = bool(
+        cell_thermodynamics_status == "available"
+        and correction_mode == "wpl"
+        and (abs(closed_path_cell_temperature_term) > 1e-15 or abs(closed_path_cell_pressure_term) > 1e-15)
+    )
+
+    density_corrected_flux = raw_flux + wpl_water_vapor_term + wpl_sensible_heat_term + closed_path_cell_pressure_term
+    air_density_kg_m3 = air_molar_density * _DRY_AIR_MOLAR_MASS_KG_MOL
+    latent_heat_vaporization_j_kg = max(2.0e6, (2.501 - 0.00237 * mean_temp_c) * 1.0e6)
+    water_vapor_mol_flux = water_vapor_flux * 1.0e-3
+    latent_heat_flux_w_m2 = water_vapor_mol_flux * _WATER_MOLAR_MASS_KG_MOL * latent_heat_vaporization_j_kg
+    evapotranspiration_rate_mm_h = water_vapor_mol_flux * _WATER_MOLAR_MASS_KG_MOL * 3600.0
+    sensible_heat_flux_w_m2 = air_molar_density * cp * cov_w_t
 
     if correction_mode == "mixing_ratio":
         primary_flux = mixing_ratio_flux
@@ -1272,8 +1926,40 @@ def compute_flux_metrics(
             wpl_parts.append(f"water_vapor_term={wpl_water_vapor_term:.6e}")
         if abs(wpl_sensible_heat_term) > 1e-15:
             wpl_parts.append(f"sensible_heat_term={wpl_sensible_heat_term:.6e}")
+        if abs(closed_path_cell_pressure_term) > 1e-15:
+            wpl_parts.append(f"cell_pressure_term={closed_path_cell_pressure_term:.6e}")
         parts_str = ", ".join(wpl_parts) if wpl_parts else "no significant correction terms"
         correction_reason = f"wpl: Webb-Pearman-Leuning density correction applied ({parts_str})"
+        if cell_thermodynamics_status == "available":
+            correction_reason = (
+                f"{correction_reason}; closed-path cell thermodynamics from raw payload "
+                f"(sensible_heat_source={sensible_heat_source})"
+            )
+    if ambient_overrides:
+        correction_reason = f"{correction_reason}; ambient thermodynamics from {ambient_overrides.get('source', 'configured overrides')}"
+
+    closed_path_cell_detail = {
+        "status": cell_thermodynamics_status,
+        "source": cell_thermodynamics_source,
+        "sensible_heat_source": sensible_heat_source,
+        "mean_cell_pressure_kpa": float(np.mean(cell_pressure_series)) if cell_pressure_available else None,
+        "mean_cell_temp_c": float(np.mean(cell_temp_series)) if cell_temp_available else None,
+        "cov_w_cell_pressure_kpa": cov_w_cell_pressure_kpa,
+        "cov_w_cell_temp_c": cov_w_cell_temp_c,
+        "cell_temperature_term": closed_path_cell_temperature_term,
+        "cell_pressure_term": closed_path_cell_pressure_term,
+        "density_term": closed_path_density_term,
+        "applied_to_density_corrected_flux": closed_path_density_correction_applied,
+        "provenance": (
+            "Cell pressure/temperature were parsed from high-frequency raw payload fields and detrended with the window."
+            if cell_thermodynamics_status == "available"
+            else "No high-frequency cell pressure/temperature payload fields were available for this window."
+        ),
+        "limitations": [
+            "Cell thermodynamic covariance support is a first-order closed-path density correction path.",
+            "Numeric parity still requires official EddyPro raw-to-final closed-path fixtures.",
+        ],
+    }
 
     return {
         "cov_w_co2": cov_w_co2,
@@ -1283,12 +1969,36 @@ def compute_flux_metrics(
         "density_corrected_flux": density_corrected_flux,
         "primary_flux": primary_flux,
         "water_vapor_flux": water_vapor_flux,
+        "sensible_heat_flux_w_m2": sensible_heat_flux_w_m2,
+        "latent_heat_flux_w_m2": latent_heat_flux_w_m2,
+        "evapotranspiration_rate_mm_h": evapotranspiration_rate_mm_h,
+        "latent_heat_vaporization_j_kg": latent_heat_vaporization_j_kg,
+        "air_density_kg_m3": air_density_kg_m3,
         "air_molar_density": air_molar_density,
         "dry_air_molar_density": dry_air_molar_density,
+        "water_vapor_molar_density": water_vapor_molar_density,
+        "mean_pressure_kpa": mean_pressure_kpa,
+        "mean_temp_c": mean_temp_c,
+        "mean_h2o_mmol": mean_h2o,
+        "mean_h2o_mol_fraction": h2o_mol_fraction,
+        "ambient_override_status": "applied" if ambient_overrides else "not_configured",
+        "ambient_override_source": str(ambient_overrides.get("source", "")) if ambient_overrides else "",
         "density_correction_mode": correction_mode,
         "density_correction_reason": correction_reason,
         "wpl_water_vapor_term": wpl_water_vapor_term,
         "wpl_sensible_heat_term": wpl_sensible_heat_term,
+        "wpl_sensible_heat_source": sensible_heat_source,
+        "cell_thermodynamics_status": cell_thermodynamics_status,
+        "cell_thermodynamics_source": cell_thermodynamics_source,
+        "cell_mean_pressure_kpa": closed_path_cell_detail["mean_cell_pressure_kpa"],
+        "cell_mean_temp_c": closed_path_cell_detail["mean_cell_temp_c"],
+        "cov_w_cell_pressure_kpa": cov_w_cell_pressure_kpa,
+        "cov_w_cell_temp_c": cov_w_cell_temp_c,
+        "closed_path_cell_temperature_term": closed_path_cell_temperature_term,
+        "closed_path_cell_pressure_term": closed_path_cell_pressure_term,
+        "closed_path_density_term": closed_path_density_term,
+        "closed_path_density_correction_applied": closed_path_density_correction_applied,
+        "closed_path_cell_detail": closed_path_cell_detail,
     }
 
 
@@ -1332,6 +2042,172 @@ def compute_ch4_flux_metrics(
     }
 
 
+def compute_li7700_status_diagnostics(
+    *,
+    rows: list[NormalizedHFFrame],
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    cfg = dict(config or {})
+    payloads = [_merged_frame_payload(row) for row in rows]
+    payloads = [payload for payload in payloads if payload]
+    rssi = _payload_metric_series(payloads, ("li7700_rssi", "rssi", "rssi_pct", "rss_pct", "received_signal_strength"))
+    signal = _payload_metric_series(
+        payloads,
+        ("li7700_signal_strength", "signal_strength", "signal_strength_pct", "ch4_signal_strength", "optical_signal"),
+    )
+    mirror_rssi = _payload_metric_series(payloads, ("mirror_rssi", "mirror_signal", "mirror_signal_strength", "mirror_rssi_pct"))
+    locked = _payload_bool_series(payloads, ("pll_lock", "pll_locked", "laser_lock", "laser_locked", "reference_lock", "reference_locked"))
+    mirror_dirty = _payload_bool_series(
+        payloads,
+        ("mirror_dirty", "mirror_contaminated", "dirty_mirror", "mirror_warning"),
+        true_tokens={"1", "true", "yes", "y", "dirty", "contaminated", "warning", "warn", "bad"},
+        false_tokens={"0", "false", "no", "n", "clean", "ok", "pass", "normal"},
+    )
+    status_words = _payload_int_series(
+        payloads,
+        (
+            "li7700_status_word",
+            "li_7700_status_word",
+            "li7700_diagnostic_word",
+            "diagnostic_word",
+            "diagnostic_code",
+            "status_code",
+            "diag_code",
+        ),
+    )
+    fault_flags = _payload_status_flags(payloads)
+    status_word_flags = _li7700_status_word_flags(status_words, cfg)
+    fault_flags = [*fault_flags, *status_word_flags]
+    status_sample_count = max(
+        len(rssi),
+        len(signal),
+        len(mirror_rssi),
+        len(locked),
+        len(mirror_dirty),
+        len(status_words),
+        len(fault_flags),
+    )
+
+    if status_sample_count == 0:
+        return {
+            "artifact_type": "li7700_status_diagnostics_v1",
+            "status": "not_available",
+            "sample_count": len(rows),
+            "status_sample_count": 0,
+            "checks": [],
+            "diagnostic_flags": [],
+            "provenance": "No LI-7700 status/RSSI/diagnostic payload fields were found in raw_text or status_text.",
+            "limitations": ["Provide LI-7700 diagnostic fields in row raw_text/status_text to enable status screening."],
+        }
+
+    min_rssi_fail = float(cfg.get("min_rssi_fail_pct", 10.0) or 10.0)
+    min_rssi_warning = float(cfg.get("min_rssi_warning_pct", 20.0) or 20.0)
+    min_signal_warning = float(cfg.get("min_signal_strength_warning_pct", min_rssi_warning) or min_rssi_warning)
+    max_dirty_fraction = float(cfg.get("max_mirror_dirty_fraction", 0.0) or 0.0)
+    require_lock = bool(cfg.get("require_lock", False))
+    dirty_fraction = float(sum(1 for value in mirror_dirty if value) / max(1, len(mirror_dirty))) if mirror_dirty else 0.0
+    unlocked_count = sum(1 for value in locked if not value)
+    rssi_min = _series_min(rssi)
+    rssi_mean = _series_mean(rssi)
+    signal_min = _series_min(signal)
+    signal_mean = _series_mean(signal)
+    mirror_rssi_mean = _series_mean(mirror_rssi)
+    fault_count = len(fault_flags)
+    status_word_nonzero_count = sum(1 for word in status_words if word != 0)
+    checks = [
+        _li7700_status_check(
+            "li7700_rssi_fail_threshold",
+            rssi_min is None or rssi_min >= min_rssi_fail,
+            measured=rssi_min,
+            threshold=f">={min_rssi_fail} %",
+            severity="fail",
+            failure_message="LI-7700 RSSI fell below the configured fail threshold.",
+        ),
+        _li7700_status_check(
+            "li7700_rssi_warning_threshold",
+            rssi_min is None or rssi_min >= min_rssi_warning,
+            measured=rssi_min,
+            threshold=f">={min_rssi_warning} %",
+            severity="warn",
+            failure_message="LI-7700 RSSI fell below the configured warning threshold.",
+        ),
+        _li7700_status_check(
+            "li7700_signal_strength",
+            signal_min is None or signal_min >= min_signal_warning,
+            measured=signal_min,
+            threshold=f">={min_signal_warning} %",
+            severity="warn",
+            failure_message="LI-7700 signal strength fell below the configured warning threshold.",
+        ),
+        _li7700_status_check(
+            "li7700_mirror_clean",
+            dirty_fraction <= max_dirty_fraction,
+            measured=dirty_fraction,
+            threshold=f"<={max_dirty_fraction}",
+            severity="fail",
+            failure_message="LI-7700 mirror contamination/dirty flag exceeded policy.",
+        ),
+        _li7700_status_check(
+            "li7700_lock",
+            unlocked_count == 0 if require_lock else True,
+            measured=unlocked_count,
+            threshold="0 unlocked samples" if require_lock else "not required",
+            severity="fail" if require_lock else "warn",
+            failure_message="LI-7700 lock status reported unlocked samples.",
+        ),
+        _li7700_status_check(
+            "li7700_fault_flags",
+            fault_count == 0,
+            measured=sorted(set(fault_flags)),
+            threshold="no fault/error/blocked flags",
+            severity="fail",
+            failure_message="LI-7700 diagnostic payload contained fault/error flags.",
+        ),
+        _li7700_status_check(
+            "li7700_status_word",
+            not status_word_flags,
+            measured=sorted(set(status_words)),
+            threshold="allowed_status_words",
+            severity="fail",
+            failure_message="LI-7700 numeric status/diagnostic word reported non-allowed bits.",
+        ),
+    ]
+    fail_count = sum(1 for item in checks if item["status"] == "fail")
+    warn_count = sum(1 for item in checks if item["status"] == "warn")
+    status = "fail" if fail_count else ("warning" if warn_count else "pass")
+    return {
+        "artifact_type": "li7700_status_diagnostics_v1",
+        "status": status,
+        "sample_count": len(rows),
+        "status_sample_count": status_sample_count,
+        "rssi_mean_pct": rssi_mean,
+        "rssi_min_pct": rssi_min,
+        "signal_strength_mean_pct": signal_mean,
+        "signal_strength_min_pct": signal_min,
+        "mirror_rssi_mean_pct": mirror_rssi_mean,
+        "mirror_dirty_count": sum(1 for value in mirror_dirty if value),
+        "mirror_dirty_fraction": dirty_fraction,
+        "unlocked_count": unlocked_count,
+        "diagnostic_fault_count": fault_count,
+        "diagnostic_flags": sorted(set(fault_flags)),
+        "status_word_count": len(status_words),
+        "status_word_nonzero_count": status_word_nonzero_count,
+        "status_word_unique_values": sorted(set(status_words)),
+        "status_word_flags": sorted(set(status_word_flags)),
+        "checks": checks,
+        "fail_count": fail_count,
+        "warn_count": warn_count,
+        "provenance": (
+            "LI-7700 status diagnostics v1 parsed RSSI/signal/mirror/lock/fault fields from "
+            "NormalizedHFFrame raw_text/status_text JSON payloads, including numeric status-word fields when present."
+        ),
+        "limitations": [
+            "Diagnostic thresholds are configurable policy checks and do not reproduce proprietary LI-7700 firmware internals.",
+            "Real LI-7700 status-record fixtures with EddyPro outputs are still required for numeric parity closure.",
+        ],
+    }
+
+
 def compute_li7700_correction_sequence(
     *,
     ch4_metrics: dict[str, Any],
@@ -1358,6 +2234,7 @@ def compute_li7700_correction_sequence(
         )
         or ""
     )
+    status_diagnostics = dict(config.get("li7700_status_diagnostics", {}) or {})
     if ch4_metrics.get("status") != "computed" or not isinstance(ch4_metrics.get("ch4_flux_nmol_m2_s"), (int, float)):
         return {
             "status": "not_available",
@@ -1370,6 +2247,7 @@ def compute_li7700_correction_sequence(
             "coefficient_source_file": coefficient_source_file,
             "coefficient_normalization_command": coefficient_normalization_command,
             "coefficient_profile": coefficient_profile,
+            "li7700_status_diagnostics": status_diagnostics,
             "provenance": "LI-7700 correction sequence was skipped because the CH4 covariance input is missing.",
             "limitations": ["No LI-7700 correction sequence can be evaluated without a CH4 covariance flux."],
         }
@@ -1404,8 +2282,16 @@ def compute_li7700_correction_sequence(
     ]
     if spectroscopic_status == "applied_empirical":
         limitations[0] = "Spectroscopic correction uses configured empirical coefficients; raw WMS line-shape fitting is not reproduced."
+    if spectroscopic_status == "applied_wms_line_shape":
+        limitations[0] = (
+            "Spectroscopic correction uses configured WMS line-shape scan fitting; "
+            "public real LI-7700 WMS fixture parity is still required."
+        )
     if self_heating_status == "applied_empirical":
         limitations[1] = "Self-heating correction uses configured empirical proxy parameters; instrument energy balance is not reproduced."
+    status_diag_status = str(status_diagnostics.get("status", "") or "")
+    if status_diag_status in {"warning", "fail"}:
+        limitations.append(f"LI-7700 status diagnostics reported {status_diag_status}; inspect RSSI, mirror, lock, and diagnostic flags before publication-grade CH4 parity.")
     profile_label = str(config.get("coefficient_profile_label", coefficient_profile.get("label", "")) or "")
     if coefficient_provenance:
         limitations.extend(str(item) for item in config.get("coefficient_profile_limitations", []) if str(item))
@@ -1482,6 +2368,7 @@ def compute_li7700_correction_sequence(
                 "normalization_command": coefficient_normalization_command,
                 "provenance": coefficient_provenance,
             },
+            "li7700_status_diagnostics": status_diagnostics,
         },
         "provenance": (
             "LI-7700 correction sequence v1: Level 0 covariance; Level 1 spectral attenuation; "
@@ -1511,6 +2398,8 @@ def _li7700_spectroscopic_factor(
     h2o_molfrac: float,
 ) -> tuple[float, str, dict[str, Any]]:
     mode = str(config.get("mode", "input_corrected")).strip().lower()
+    if mode in {"wms_line_shape", "line_shape", "raw_wms", "wms"}:
+        return _li7700_wms_line_shape_factor(config)
     if mode not in {"empirical", "configured"}:
         return (
             1.0,
@@ -1544,6 +2433,229 @@ def _li7700_spectroscopic_factor(
             },
         },
     )
+
+
+def _li7700_wms_line_shape_factor(config: dict[str, Any]) -> tuple[float, str, dict[str, Any]]:
+    line_shape = dict(config.get("wms_line_shape", config.get("line_shape", {})) or {})
+    if not line_shape:
+        line_shape = dict(config)
+    axis_values = (
+        line_shape.get("scan_axis")
+        or line_shape.get("axis")
+        or line_shape.get("wavelength_nm")
+        or line_shape.get("frequency")
+        or []
+    )
+    signal_values = (
+        line_shape.get("absorbance")
+        or line_shape.get("signal")
+        or line_shape.get("normalized_absorbance")
+        or line_shape.get("wms_signal")
+        or []
+    )
+    try:
+        axis = np.asarray([float(item) for item in axis_values], dtype=float)
+        signal = np.asarray([float(item) for item in signal_values], dtype=float)
+    except (TypeError, ValueError):
+        axis = np.asarray([], dtype=float)
+        signal = np.asarray([], dtype=float)
+    if axis.size != signal.size or axis.size < 5:
+        return (
+            1.0,
+            "wms_line_shape_unavailable",
+            {
+                "mode": "wms_line_shape",
+                "factor": 1.0,
+                "reason": "WMS line-shape correction requires at least five paired scan_axis/signal samples.",
+            },
+        )
+    finite = np.isfinite(axis) & np.isfinite(signal)
+    axis = axis[finite]
+    signal = signal[finite]
+    if axis.size < 5 or float(np.ptp(axis)) <= 0.0:
+        return (
+            1.0,
+            "wms_line_shape_unavailable",
+            {
+                "mode": "wms_line_shape",
+                "factor": 1.0,
+                "reason": "WMS line-shape samples are not finite or do not span a scan interval.",
+            },
+        )
+    order = np.argsort(axis)
+    axis = axis[order]
+    signal = signal[order]
+    edge_count = max(1, min(5, int(axis.size // 10) or 1))
+    left_baseline = float(np.mean(signal[:edge_count]))
+    right_baseline = float(np.mean(signal[-edge_count:]))
+    baseline = np.interp(axis, [axis[0], axis[-1]], [left_baseline, right_baseline])
+    absorption = signal - baseline
+    if abs(float(np.min(absorption))) > abs(float(np.max(absorption))):
+        absorption = -absorption
+    positive = np.maximum(absorption, 0.0)
+    area = float(np.trapezoid(positive, axis))
+    peak_index = int(np.argmax(positive))
+    peak_height = float(positive[peak_index])
+    center = float(axis[peak_index])
+    half_max = peak_height / 2.0
+    above_half = np.where(positive >= half_max)[0] if peak_height > 0.0 else np.asarray([], dtype=int)
+    fwhm = float(axis[above_half[-1]] - axis[above_half[0]]) if above_half.size >= 2 else 0.0
+    fit_diagnostics = _li7700_wms_fit_diagnostics(axis=axis, absorption=positive, integrated_area=area, fwhm=fwhm)
+    area_source = str(config.get("area_source", line_shape.get("area_source", "integrated_absorption")) or "integrated_absorption").strip().lower()
+    selected_fit = dict(fit_diagnostics.get("selected_fit", {}) or {})
+    selected_fit_area = _safe_float(selected_fit.get("area"), default=math.nan)
+    correction_area = selected_fit_area if area_source in {"selected_fit", "fit", "model_fit"} and math.isfinite(selected_fit_area) else area
+    fit_quality_status = str(fit_diagnostics.get("quality_status", "not_available"))
+    reference_area = _safe_float(config.get("reference_area", line_shape.get("reference_area")), default=math.nan)
+    if not math.isfinite(reference_area):
+        reference_area = _safe_float(config.get("calibration_area", line_shape.get("calibration_area")), default=math.nan)
+    if not math.isfinite(reference_area) or reference_area <= 0.0 or correction_area <= 0.0:
+        factor = 1.0
+        status = "diagnostic_only"
+        reason = "No positive reference_area and fitted_area pair was available; no multiplicative factor was applied."
+    else:
+        factor = _bounded_float(reference_area / correction_area, default=1.0, lower=0.5, upper=1.5)
+        status = "applied_wms_line_shape"
+        reason = ""
+    return (
+        factor,
+        status,
+        {
+            "mode": "wms_line_shape",
+            "factor": factor,
+            "status": status,
+            "fitted_area": area,
+            "correction_area": correction_area,
+            "area_source": area_source,
+            "reference_area": reference_area,
+            "peak_center": center,
+            "peak_height": peak_height,
+            "fwhm": fwhm,
+            "fit_quality_status": fit_quality_status,
+            "fit_diagnostics": fit_diagnostics,
+            "baseline": {
+                "left": left_baseline,
+                "right": right_baseline,
+                "edge_sample_count": edge_count,
+            },
+            "sample_count": int(axis.size),
+            "reason": reason,
+            "provenance": "Configured LI-7700 WMS line-shape v1 from paired scan-axis and absorbance/signal samples.",
+            "limitations": [
+                "This is an auditable configured line-shape correction, not a claim of LI-7700 firmware-equivalent WMS fitting.",
+                "Public real LI-7700 WMS scans with EddyPro golden outputs are still required for numeric parity.",
+            ],
+        },
+    )
+
+
+def _li7700_wms_fit_diagnostics(
+    *,
+    axis: np.ndarray,
+    absorption: np.ndarray,
+    integrated_area: float,
+    fwhm: float,
+) -> dict[str, Any]:
+    if axis.size < 5 or absorption.size != axis.size or integrated_area <= 0.0:
+        return {
+            "artifact_type": "li7700_wms_line_shape_fit_v1",
+            "status": "not_available",
+            "quality_status": "not_available",
+            "candidate_fits": [],
+            "selected_fit": {},
+            "reason": "At least five positive line-shape samples and a positive integrated area are required.",
+        }
+    weight_sum = float(np.sum(absorption))
+    centroid = float(np.sum(axis * absorption) / weight_sum) if weight_sum > 0.0 else float(axis[int(np.argmax(absorption))])
+    variance = float(np.sum(absorption * (axis - centroid) ** 2) / weight_sum) if weight_sum > 0.0 else 0.0
+    sigma = math.sqrt(max(variance, 0.0))
+    if not math.isfinite(sigma) or sigma <= 0.0:
+        sigma = abs(float(fwhm)) / 2.355 if fwhm > 0.0 else float(np.ptp(axis)) / 8.0
+    sigma = max(float(sigma), max(float(np.ptp(axis)) / max(axis.size * 4, 1), 1.0e-9))
+    gamma = max(abs(float(fwhm)) / 2.0 if fwhm > 0.0 else sigma, 1.0e-9)
+    candidates = [
+        _li7700_wms_candidate_fit(axis=axis, absorption=absorption, model="gaussian", center=centroid, width=sigma),
+        _li7700_wms_candidate_fit(axis=axis, absorption=absorption, model="lorentzian", center=centroid, width=gamma),
+    ]
+    candidates = [candidate for candidate in candidates if candidate.get("status") == "fit"]
+    if not candidates:
+        return {
+            "artifact_type": "li7700_wms_line_shape_fit_v1",
+            "status": "not_available",
+            "quality_status": "not_available",
+            "candidate_fits": [],
+            "selected_fit": {},
+            "reason": "No finite Gaussian/Lorentzian candidate fit could be evaluated.",
+        }
+    selected = min(candidates, key=lambda item: float(item.get("rmse", math.inf)))
+    normalized_rmse = float(selected.get("normalized_rmse", math.inf))
+    area_ratio = float(selected.get("area", 0.0) / integrated_area) if integrated_area > 0.0 else math.inf
+    quality_status = "pass" if normalized_rmse <= 0.15 and 0.65 <= area_ratio <= 1.35 else ("warning" if normalized_rmse <= 0.35 else "fail")
+    asymmetry = _li7700_wms_asymmetry(axis=axis, absorption=absorption, center=centroid)
+    return {
+        "artifact_type": "li7700_wms_line_shape_fit_v1",
+        "status": "fit",
+        "quality_status": quality_status,
+        "selected_model": selected.get("model", ""),
+        "selected_fit": selected,
+        "candidate_fits": candidates,
+        "integrated_area": integrated_area,
+        "selected_to_integrated_area_ratio": area_ratio,
+        "centroid": centroid,
+        "moment_sigma": sigma,
+        "asymmetry": asymmetry,
+        "provenance": "LI-7700 WMS line-shape fit v1 evaluates Gaussian and Lorentzian candidates using deterministic least-squares amplitude estimates.",
+        "limitations": [
+            "This fit is an auditable open implementation and does not claim proprietary LI-7700 firmware equivalence.",
+            "Real LI-7700 WMS scan fixtures with EddyPro golden outputs are required to tune acceptance thresholds.",
+        ],
+    }
+
+
+def _li7700_wms_candidate_fit(
+    *,
+    axis: np.ndarray,
+    absorption: np.ndarray,
+    model: str,
+    center: float,
+    width: float,
+) -> dict[str, Any]:
+    if width <= 0.0 or not math.isfinite(width):
+        return {"model": model, "status": "invalid_width"}
+    if model == "gaussian":
+        shape = np.exp(-0.5 * ((axis - center) / width) ** 2)
+    elif model == "lorentzian":
+        shape = 1.0 / (1.0 + ((axis - center) / width) ** 2)
+    else:
+        return {"model": model, "status": "unknown_model"}
+    denom = float(np.dot(shape, shape))
+    if denom <= 0.0 or not math.isfinite(denom):
+        return {"model": model, "status": "singular"}
+    amplitude = max(float(np.dot(absorption, shape) / denom), 0.0)
+    fitted = amplitude * shape
+    residual = absorption - fitted
+    rmse = float(math.sqrt(float(np.mean(residual ** 2))))
+    peak = max(float(np.max(absorption)), 1.0e-12)
+    return {
+        "model": model,
+        "status": "fit",
+        "center": center,
+        "width": width,
+        "amplitude": amplitude,
+        "area": float(np.trapezoid(fitted, axis)),
+        "rmse": rmse,
+        "normalized_rmse": rmse / peak,
+        "max_abs_residual": float(np.max(np.abs(residual))),
+    }
+
+
+def _li7700_wms_asymmetry(*, axis: np.ndarray, absorption: np.ndarray, center: float) -> float:
+    left = absorption[axis < center]
+    right = absorption[axis > center]
+    left_area = float(np.trapezoid(left, axis[axis < center])) if left.size >= 2 else 0.0
+    right_area = float(np.trapezoid(right, axis[axis > center])) if right.size >= 2 else 0.0
+    denom = max(abs(left_area) + abs(right_area), 1.0e-12)
+    return float((right_area - left_area) / denom)
 
 
 def _li7700_self_heating_factor(
@@ -1583,13 +2695,38 @@ def _li7700_self_heating_factor(
 # Stationarity metrics
 # ---------------------------------------------------------------------------
 
+def _eddypro_partial_flag_lf(value: float | int | None) -> int:
+    try:
+        val = float(value)
+    except (TypeError, ValueError):
+        return 9
+    if not math.isfinite(val):
+        return 9
+    if 0 <= val <= 15:
+        return 1
+    if val <= 30:
+        return 2
+    if val <= 50:
+        return 3
+    if val <= 75:
+        return 4
+    if val <= 100:
+        return 5
+    if val <= 250:
+        return 6
+    if val <= 500:
+        return 7
+    if val <= 1000:
+        return 8
+    return 9
+
+
 def compute_stationarity_metrics(
     *,
     w_series: np.ndarray,
     scalar_series: np.ndarray,
     detrend_mode: str = "block_mean",
 ) -> StationarityMetrics:
-    mode = normalize_detrend_mode(detrend_mode)
     n = min(w_series.size, scalar_series.size)
     if n < 120:
         return StationarityMetrics(
@@ -1597,10 +2734,10 @@ def compute_stationarity_metrics(
             detail={"status": "insufficient_data", "reason": "not enough samples for stationarity test", "sample_count": n},
         )
 
-    w = _detrend(w_series[:n], mode)
-    s = _detrend(scalar_series[:n], mode)
+    w = np.asarray(w_series[:n], dtype=float)
+    s = np.asarray(scalar_series[:n], dtype=float)
 
-    n_sub = max(4, n // 6)
+    n_sub = 6
     sub_len = n // n_sub
     if sub_len < 6:
         return StationarityMetrics(
@@ -1608,12 +2745,14 @@ def compute_stationarity_metrics(
             detail={"status": "insufficient_data", "reason": "sub-window too short", "sample_count": n, "sub_windows": n_sub},
         )
 
-    full_cov = float(np.mean(w * s))
+    full_cov = float(np.mean((w - float(np.mean(w))) * (s - float(np.mean(s)))))
     sub_covs: list[float] = []
     for i in range(n_sub):
         start = i * sub_len
         end = start + sub_len
-        sub_covs.append(float(np.mean(w[start:end] * s[start:end])))
+        sub_w = w[start:end]
+        sub_s = s[start:end]
+        sub_covs.append(float(np.mean((sub_w - float(np.mean(sub_w))) * (sub_s - float(np.mean(sub_s))))))
 
     sub_mean = float(np.mean(sub_covs))
     sub_std = float(np.std(sub_covs))
@@ -1624,6 +2763,7 @@ def compute_stationarity_metrics(
     else:
         ratio = abs(sub_mean - full_cov) / max(abs(full_cov), 1e-9)
         score = float(np.clip(100.0 * (1.0 - min(ratio, 1.0)), 0.0, 100.0))
+    percent_difference = abs(sub_mean - full_cov) * 100.0 / max(abs(full_cov), 1e-9)
 
     return StationarityMetrics(
         score=score,
@@ -1634,6 +2774,9 @@ def compute_stationarity_metrics(
             "sub_window_std": sub_std,
             "n_sub_windows": n_sub,
             "sub_window_length": sub_len,
+            "percent_difference": percent_difference,
+            "eddypro_partial_flag_lf": _eddypro_partial_flag_lf(percent_difference),
+            "provenance": "EddyPro-style stationarity test: full-window covariance compared with the mean of six sub-window covariances.",
         },
     )
 
@@ -3063,6 +4206,73 @@ def _resample_measured_cospectrum(
 # Spectral correction family
 # ---------------------------------------------------------------------------
 
+def compute_spectral_correction_moncrieff(
+    *,
+    sensor_sep_m: float,
+    response_time_s: float,
+    sample_rate_hz: float,
+    averaging_period_s: float,
+    wind_speed: float,
+) -> dict[str, Any]:
+    if wind_speed < 0.1 or sample_rate_hz < 1.0 or averaging_period_s <= 0:
+        return {
+            "method": "moncrieff_97",
+            "status": "insufficient_data",
+            "correction_factor": 1.0,
+            "components": {},
+            "provenance": "Moncrieff et al. 1997; EddyPro hf_meth=1 analytical spectral correction",
+            "limitations": ["Wind speed, sample rate, or averaging period too low"],
+            "provenance_detail": {
+                "reference": "Moncrieff et al. 1997",
+                "eddypro_project_mapping": {"hf_meth": "1", "lf_meth": "analytic"},
+            },
+        }
+    f_nyquist = sample_rate_hz / 2.0
+    n_freq = min(512, max(64, int(sample_rate_hz * 16)))
+    freqs = np.geomspace(1.0 / averaging_period_s, f_nyquist, n_freq)
+    tau_sep = sensor_sep_m / max(wind_speed, 0.1)
+    tau_resp = response_time_s
+    tau_block = averaging_period_s / (2.0 * math.pi)
+    low_frequency_transfer = 1.0 / (1.0 + (1.0 / np.maximum(freqs * averaging_period_s, 1.0e-9)) ** 2)
+    separation_transfer = np.exp(-2.0 * math.pi * freqs * tau_sep * 0.5)
+    response_transfer = 1.0 / (1.0 + (2.0 * math.pi * freqs * tau_resp) ** 2)
+    cospectral_weight = 1.0 / (1.0 + (freqs * tau_block) ** (5.0 / 3.0))
+    cospectral_weight = cospectral_weight / max(float(np.sum(cospectral_weight)), 1.0e-12)
+    total_transfer = low_frequency_transfer * separation_transfer * response_transfer
+    weighted_transfer = float(np.sum(cospectral_weight * total_transfer))
+    correction_factor = 1.0 / max(weighted_transfer, 0.01)
+    return {
+        "method": "moncrieff_97",
+        "status": "ok",
+        "correction_factor": round(correction_factor, 4),
+        "components": {
+            "weighted_transfer": round(weighted_transfer, 4),
+            "low_frequency_transfer_mean": round(float(np.mean(low_frequency_transfer)), 4),
+            "separation_transfer_mean": round(float(np.mean(separation_transfer)), 4),
+            "response_transfer_mean": round(float(np.mean(response_transfer)), 4),
+            "tau_sep_s": round(tau_sep, 4),
+            "tau_resp_s": round(tau_resp, 4),
+            "n_freq": n_freq,
+        },
+        "provenance": "Moncrieff et al. 1997; analytical high/low-pass transfer function approximation",
+        "limitations": [
+            "Approximates EddyPro Moncrieff 1997 transfer functions without the full Fortran cospectral stack",
+            "Uses a generic cospectral weighting curve when measured cospectra are unavailable",
+        ],
+        "provenance_detail": {
+            "reference": "Moncrieff et al. 1997",
+            "eddypro_project_mapping": {"hf_meth": "1", "lf_meth": "analytic"},
+            "inputs": {
+                "sensor_sep_m": round(sensor_sep_m, 4),
+                "response_time_s": round(response_time_s, 4),
+                "sample_rate_hz": round(sample_rate_hz, 4),
+                "averaging_period_s": round(averaging_period_s, 4),
+                "wind_speed": round(wind_speed, 4),
+            },
+        },
+    }
+
+
 def compute_spectral_correction_massman(
     *,
     path_length_m: float,
@@ -3378,6 +4588,13 @@ def compute_spectral_correction(
     measured_cospectrum_freq: np.ndarray | None = None,
     measured_cospectrum_value: np.ndarray | None = None,
 ) -> dict[str, Any]:
+    method = str(method or "massman").strip().lower()
+    if method in {"moncrieff", "moncrieff_97", "moncrieff97"}:
+        return compute_spectral_correction_moncrieff(
+            sensor_sep_m=sensor_sep_m, response_time_s=response_time_s,
+            sample_rate_hz=sample_rate_hz, averaging_period_s=averaging_period_s,
+            wind_speed=wind_speed,
+        )
     if method == "horst":
         return compute_spectral_correction_horst(
             path_length_m=path_length_m, wind_speed=wind_speed, z_m=z_m, ustar=ustar,
@@ -3416,7 +4633,7 @@ def run_method_compare(
     defaults = {
         "footprint": ["kljun", "kormann_meixner", "hsieh"],
         "uncertainty": ["mann_lenschow", "finkelstein_sims"],
-        "spectral_correction": ["massman", "horst", "ibrom", "fratini"],
+        "spectral_correction": ["moncrieff_97", "massman", "horst", "ibrom", "fratini"],
     }
     methods = list(dict.fromkeys(str(item).strip() for item in (methods_to_run or defaults.get(family, [])) if str(item).strip()))
     selected = str(selected_method or window_params.get("selected_method", "") or "").strip()

@@ -1,0 +1,87 @@
+{
+  "artifact_type": "public_raw_binary_tob1_slt_search_manifest_v1",
+  "manifest_id": "public_raw_binary_tob1_slt_search_v1",
+  "dataset_id": "public_raw_binary_tob1_slt_search_ledger",
+  "title": "Public TOB1/SLT/native-binary raw fixture search ledger",
+  "source_url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+  "license": "Mixed upstream sources; review each lead before download or redistribution",
+  "source_note": "This ledger records public leads for closing raw_binary_tob1_slt. Documentation-only leads explain format support but are not parity fixtures.",
+  "normalization_time": "2026-05-30T00:00:00+08:00",
+  "normalization_command": "gas-ec-headless --build-public-eddypro-fixture-catalog --workspace-root . --output artifacts/eddypro_public_raw/public_fixture_catalog.json",
+  "qc_mapping": {
+    "strategy": "not_applicable_search_ledger",
+    "reason": "Search leads do not contain normalized EddyPro flux outputs."
+  },
+  "known_limitations": [
+    "No lead in this manifest is promoted to a raw-to-final fixture.",
+    "Documentation-only leads cannot satisfy high-frequency raw input, EddyPro project/settings, official Full_Output, normalized reference, or closure-acceptance evidence.",
+    "Downloadable public TOB1/SLT/native-binary data still needs hash validation, metadata inference, EddyPro output normalization, registration, and acceptance before it can change the parity claim gate."
+  ],
+  "leads": [
+    {
+      "lead_id": "campbellsci_loggernet_tob1_format_doc",
+      "source_name": "Campbell Scientific LoggerNet TOB1 file-format documentation",
+      "source_url": "https://help.campbellsci.com/loggernet-manual/ln_manual/campbell_scientific_file_formats/tob1.htm",
+      "license": "Campbell Scientific documentation; review upstream terms",
+      "raw_formats": [
+        "tob1"
+      ],
+      "evidence_type": "format_documentation",
+      "candidate_status": "documentation_only",
+      "source_reference": {
+        "used_for": "TOB1 header and binary-layout compatibility search lead"
+      },
+      "notes": "Useful for validating TOB1 layout behavior; does not provide a downloadable EC raw fixture."
+    },
+    {
+      "lead_id": "licor_eddypro_raw_format_doc",
+      "source_name": "LI-COR EddyPro raw-file and project interface documentation",
+      "source_url": "https://www.licor.com/env/support/EddyPro/home.html",
+      "license": "LI-COR documentation; review upstream terms",
+      "raw_formats": [
+        "tob1",
+        "slt",
+        "binary",
+        "ghg"
+      ],
+      "evidence_type": "software_documentation",
+      "candidate_status": "documentation_only",
+      "source_reference": {
+        "used_for": "EddyPro-supported raw-format feature-surface search lead"
+      },
+      "notes": "Documents EddyPro processing concepts and user-facing setup; not a standalone raw fixture."
+    },
+    {
+      "lead_id": "doe_wfip2_eddypro_manual",
+      "source_name": "DOE WFIP2 EddyPro manual copy",
+      "source_url": "https://a2e.energy.gov/data/wfip2/met.z10.c0/eddypro-manual-12025.pdf",
+      "license": "Public DOE A2e data portal document; review upstream terms",
+      "raw_formats": [
+        "tob1",
+        "slt",
+        "binary"
+      ],
+      "evidence_type": "software_manual",
+      "candidate_status": "documentation_only",
+      "source_reference": {
+        "used_for": "Independent public manual lead for raw-format and filename-template parity work"
+      },
+      "notes": "Manual evidence only; no high-frequency raw input or EddyPro Full_Output is attached."
+    },
+    {
+      "lead_id": "swiss_fluxnet_binary_raw_doc",
+      "source_name": "Swiss FluxNet eddy-covariance raw-data binary-file documentation",
+      "source_url": "https://www.swissfluxnet.ethz.ch/index.php/documentation/eddy-covariance-raw-data-binary-files/",
+      "license": "Swiss FluxNet public documentation; review upstream terms",
+      "raw_formats": [
+        "binary"
+      ],
+      "evidence_type": "raw_format_documentation",
+      "candidate_status": "documentation_only",
+      "source_reference": {
+        "used_for": "Native binary raw-format fixture-search lead"
+      },
+      "notes": "Documents binary raw data handling, but this manifest does not include a downloadable raw fixture plus EddyPro output pair."
+    }
+  ]
+}

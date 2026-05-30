@@ -90,6 +90,28 @@ def test_run_result_store_save_load_and_list_recent(tmp_path) -> None:
     assert [item["run_id"] for item in index_payload] == ["run-new", "run-old"]
 
 
+def test_run_result_store_builds_and_persists_spectral_library(tmp_path) -> None:
+    store = RunResultStore(tmp_path / "run_results")
+    store.save_spectral_run(_sample_run("run-2026-04", datetime(2026, 4, 18, 10, 0, 0)))
+    store.save_spectral_run(_sample_run("run-2026-05", datetime(2026, 5, 18, 10, 0, 0)))
+
+    library = store.build_spectral_assessment_library(
+        dataset_id="stored-library",
+        target_bins=4,
+        group_by=["month", "qc_grade"],
+        min_windows_per_group=1,
+    )
+    path = store.save_spectral_assessment_library(library)
+    loaded = store.latest_spectral_assessment_library()
+
+    assert path.exists()
+    assert library["artifact_type"] == "spectral_assessment_library_v1"
+    assert library["library_id"] == "stored-library"
+    assert library["status"] == "ok"
+    assert loaded is not None
+    assert loaded["library_id"] == "stored-library"
+
+
 def test_evidence_exporter_writes_bundle_to_disk(tmp_path) -> None:
     exporter = EvidenceExporter(tmp_path)
     run = _sample_run("run-export", datetime.now() - timedelta(minutes=5))

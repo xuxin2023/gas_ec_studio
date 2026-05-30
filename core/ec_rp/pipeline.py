@@ -21,6 +21,7 @@ from core.ec_rp.analysis import (
     build_uncertainty_band,
     compute_ch4_flux_metrics,
     compute_flux_metrics,
+    compute_li7700_status_diagnostics,
     compute_li7700_correction_sequence,
     compute_footprint,
     compute_footprint_2d_grid,
@@ -116,6 +117,7 @@ class ECRPPipeline:
         screening_config = _extract_screening_config(config)
         advanced_test_config = _extract_advanced_test_config(config)
         benchmark_config = _extract_benchmark_config(config)
+        qc_config = _extract_qc_config(config)
         network_output_config = _extract_network_output_config(config)
         footprint_config = _extract_footprint_config(config)
         uncertainty_method_config = _extract_uncertainty_method_config(config)
@@ -125,6 +127,7 @@ class ECRPPipeline:
         crosswind_correction_config = _extract_crosswind_correction_config(config)
         method_compare_config = _extract_method_compare_config(config)
         biomet_context = _build_biomet_context(config)
+        configured_ambient_context = _build_configured_ambient_context(config)
         benchmark_summary = _default_benchmark_summary(benchmark_config=benchmark_config, window_count=0)
         reference_provenance = _build_reference_provenance_artifact(benchmark_config.get("reference_id", ""))
         method_summary = _summarize_method_outputs(
@@ -161,6 +164,7 @@ class ECRPPipeline:
                 ),
                 windows=[],
                 artifacts=_artifacts(
+                    windows=[],
                     project=project,
                     site=site,
                     config=config,
@@ -197,6 +201,7 @@ class ECRPPipeline:
                             screening_config=screening_config,
                             advanced_test_config=advanced_test_config,
                             benchmark_config=benchmark_config,
+                            qc_config=qc_config,
                             network_output_config=network_output_config,
                             footprint_config=footprint_config,
                             uncertainty_method_config=uncertainty_method_config,
@@ -207,6 +212,7 @@ class ECRPPipeline:
                             method_compare_config=method_compare_config,
                             clock_sync_summary=clock_sync_summary,
                             biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
+                            configured_ambient_context=configured_ambient_context,
                         )
                     )
                 except Exception:
@@ -245,6 +251,7 @@ class ECRPPipeline:
                         planar_fit_coefficients=planar_fit_coefficients,
                         advanced_test_config=advanced_test_config,
                         benchmark_config=benchmark_config,
+                        qc_config=qc_config,
                         network_output_config=network_output_config,
                         footprint_config=footprint_config,
                         uncertainty_method_config=uncertainty_method_config,
@@ -255,6 +262,7 @@ class ECRPPipeline:
                         method_compare_config=method_compare_config,
                         clock_sync_summary=clock_sync_summary,
                         biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
+                        configured_ambient_context=configured_ambient_context,
                     )
                 )
             except Exception as exc:  # pragma: no cover
@@ -307,6 +315,7 @@ class ECRPPipeline:
             ),
             windows=windows,
             artifacts=_artifacts(
+                windows=windows,
                 project=project,
                 site=site,
                 config=config,
@@ -338,6 +347,7 @@ class ECRPPipeline:
         planar_fit_coefficients: dict[str, Any] | None = None,
         advanced_test_config: dict[str, Any] | None = None,
         benchmark_config: dict[str, Any] | None = None,
+        qc_config: dict[str, Any] | None = None,
         network_output_config: dict[str, Any] | None = None,
         footprint_config: dict[str, Any] | None = None,
         uncertainty_method_config: dict[str, Any] | None = None,
@@ -348,12 +358,16 @@ class ECRPPipeline:
         method_compare_config: dict[str, Any] | None = None,
         clock_sync_summary: dict[str, Any] | None = None,
         biomet_override: dict[str, Any] | None = None,
+        configured_ambient_context: dict[str, Any] | None = None,
     ) -> WindowRPResult:
         window_timer_start = time.perf_counter()
         performance_sections: dict[str, float] = {}
         prepared, sonic_correction_detail = _prepare_window_series(rows, sample_rate_hz, sonic_correction_config)
         if biomet_override:
             _apply_biomet_override(prepared, biomet_override)
+        if configured_ambient_context:
+            _apply_configured_ambient_override(prepared, configured_ambient_context)
+        ambient_overrides = _ambient_overrides_from_prepared(prepared)
         crosswind_result = apply_crosswind_correction(
             u=prepared.u,
             v=prepared.v,
@@ -385,7 +399,18 @@ class ECRPPipeline:
         lag_result = analyze_lag(rotation.w, prepared.co2_ppm, prepared.h2o_mmol, sample_rate_hz=sample_rate_hz, search_window_s=search_window_s, lag_strategy=lag_strategy, expected_lag_s=expected_lag_s)
         lagged_co2 = apply_lag(prepared.co2_ppm, lag_result.co2_lag_seconds, sample_rate_hz)
         lagged_h2o = apply_lag(prepared.h2o_mmol, lag_result.h2o_lag_seconds, sample_rate_hz)
-        flux_metrics = compute_flux_metrics(w_series=rotation.w, co2_ppm=lagged_co2, h2o_mmol=lagged_h2o, pressure_kpa=prepared.pressure_kpa, temp_c=prepared.temp_c, detrend_mode=detrend_mode, density_correction_mode=density_correction_mode)
+        flux_metrics = compute_flux_metrics(
+            w_series=rotation.w,
+            co2_ppm=lagged_co2,
+            h2o_mmol=lagged_h2o,
+            pressure_kpa=prepared.pressure_kpa,
+            temp_c=prepared.temp_c,
+            cell_pressure_kpa=prepared.cell_pressure_kpa,
+            cell_temp_c=prepared.cell_temp_c,
+            detrend_mode=detrend_mode,
+            density_correction_mode=density_correction_mode,
+            ambient_overrides=ambient_overrides,
+        )
         ch4_metrics = compute_ch4_flux_metrics(
             w_series=rotation.w,
             ch4_ppb=prepared.ch4_ppb,
@@ -452,7 +477,38 @@ class ECRPPipeline:
             turbulence_detail=turbulence.detail,
             ustar=turbulence.ustar,
             advanced_tests=advanced_tests,
+            eddypro_qc_method=str((qc_config or {}).get("method", "")),
         )
+        window_id = f"{run_id}_w{window_index:03d}"
+        air_density_kg_m3 = float(flux_metrics.get("air_density_kg_m3", 0.0) or 0.0)
+        momentum_flux_kg_m_s2 = (
+            air_density_kg_m3 * float(turbulence.ustar or 0.0) ** 2
+            if turbulence.ustar is not None
+            else None
+        )
+        window_duration_s = (
+            prepared.sample_count / max(float(sample_rate_hz), 1.0)
+            if prepared.sample_count > 0
+            else max((rows[-1].timestamp - rows[0].timestamp).total_seconds(), 0.0)
+        )
+        evapotranspiration_window_mm = float(flux_metrics.get("evapotranspiration_rate_mm_h", 0.0) or 0.0) * window_duration_s / 3600.0
+        energy_flux_detail = {
+            "artifact_type": "energy_flux_detail_v1",
+            "sensible_heat_flux_w_m2": flux_metrics.get("sensible_heat_flux_w_m2"),
+            "latent_heat_flux_w_m2": flux_metrics.get("latent_heat_flux_w_m2"),
+            "evapotranspiration_rate_mm_h": flux_metrics.get("evapotranspiration_rate_mm_h"),
+            "evapotranspiration_window_mm": evapotranspiration_window_mm,
+            "momentum_flux_kg_m_s2": momentum_flux_kg_m_s2,
+            "air_density_kg_m3": air_density_kg_m3,
+            "water_vapor_flux_mmol_m2_s": flux_metrics.get("water_vapor_flux"),
+            "latent_heat_vaporization_j_kg": flux_metrics.get("latent_heat_vaporization_j_kg"),
+            "sensible_heat_covariance_source": "sonic_temperature",
+            "provenance": "Derived from rotated/detrended wind-temperature and wind-H2O covariances using molar heat capacity and temperature-dependent latent heat of vaporization.",
+            "limitations": [
+                "LE assumes H2O covariance is represented as mmol mol-1 against dry/air molar density, matching the internal RP water_vapor_flux convention.",
+                "Momentum flux is reported as shear-stress magnitude from air_density * ustar^2.",
+            ],
+        }
         diagnostics = {
             **prepared.diagnostics,
             **clock_sync_diagnostics(clock_sync_summary),
@@ -474,9 +530,51 @@ class ECRPPipeline:
             "density_correction_factor": float(density_correction_factor),
             "density_correction_mode": flux_metrics.get("density_correction_mode", "wpl"),
             "density_correction_reason": flux_metrics.get("density_correction_reason", ""),
+            "ambient_override_status": flux_metrics.get("ambient_override_status", "not_configured"),
+            "ambient_override_source": flux_metrics.get("ambient_override_source", ""),
+            "biomet_ambient_status": prepared.diagnostics.get("biomet_ambient_status", ""),
+            "biomet_ambient_applied_fields": prepared.diagnostics.get("biomet_ambient_applied_fields", []),
+            "biomet_ambient_source_mode": prepared.diagnostics.get("biomet_ambient_source_mode", ""),
+            "biomet_ambient_source_path": prepared.diagnostics.get("biomet_ambient_source_path", ""),
+            "biomet_ambient_aggregation_method": prepared.diagnostics.get("biomet_ambient_aggregation_method", ""),
+            "biomet_ambient_values": prepared.diagnostics.get("biomet_ambient_values", {}),
+            "biomet_ambient_provenance": prepared.diagnostics.get("biomet_ambient_provenance", ""),
+            "biomet_ambient_limitations": prepared.diagnostics.get("biomet_ambient_limitations", []),
+            "configured_ambient_status": prepared.diagnostics.get("configured_ambient_status", ""),
+            "configured_ambient_applied_fields": prepared.diagnostics.get("configured_ambient_applied_fields", []),
+            "configured_ambient_source_mode": prepared.diagnostics.get("configured_ambient_source_mode", ""),
+            "configured_ambient_values": prepared.diagnostics.get("configured_ambient_values", {}),
+            "configured_ambient_provenance": prepared.diagnostics.get("configured_ambient_provenance", ""),
+            "configured_ambient_limitations": prepared.diagnostics.get("configured_ambient_limitations", []),
             "primary_flux_source": flux_metrics.get("density_correction_mode", "wpl"),
+            "sensible_heat_flux_w_m2": flux_metrics.get("sensible_heat_flux_w_m2"),
+            "latent_heat_flux_w_m2": flux_metrics.get("latent_heat_flux_w_m2"),
+            "evapotranspiration_rate_mm_h": flux_metrics.get("evapotranspiration_rate_mm_h"),
+            "evapotranspiration_window_mm": evapotranspiration_window_mm,
+            "momentum_flux_kg_m_s2": momentum_flux_kg_m_s2,
+            "momentum_flux_tau_pa": momentum_flux_kg_m_s2,
+            "air_density_kg_m3": air_density_kg_m3,
+            "latent_heat_vaporization_j_kg": flux_metrics.get("latent_heat_vaporization_j_kg"),
+            "energy_flux_detail": energy_flux_detail,
             "wpl_water_vapor_term": flux_metrics.get("wpl_water_vapor_term", 0.0),
             "wpl_sensible_heat_term": flux_metrics.get("wpl_sensible_heat_term", 0.0),
+            "wpl_sensible_heat_source": flux_metrics.get("wpl_sensible_heat_source", ""),
+            "cell_thermodynamics_status": flux_metrics.get(
+                "cell_thermodynamics_status",
+                prepared.diagnostics.get("cell_thermodynamics_status", "not_available"),
+            ),
+            "cell_thermodynamics_source": flux_metrics.get("cell_thermodynamics_source", ""),
+            "cell_pressure_valid_ratio": prepared.diagnostics.get("cell_pressure_valid_ratio", 0.0),
+            "cell_temp_valid_ratio": prepared.diagnostics.get("cell_temp_valid_ratio", 0.0),
+            "cell_mean_pressure_kpa": flux_metrics.get("cell_mean_pressure_kpa"),
+            "cell_mean_temp_c": flux_metrics.get("cell_mean_temp_c"),
+            "cov_w_cell_pressure_kpa": flux_metrics.get("cov_w_cell_pressure_kpa"),
+            "cov_w_cell_temp_c": flux_metrics.get("cov_w_cell_temp_c"),
+            "closed_path_cell_temperature_term": flux_metrics.get("closed_path_cell_temperature_term", 0.0),
+            "closed_path_cell_pressure_term": flux_metrics.get("closed_path_cell_pressure_term", 0.0),
+            "closed_path_density_term": flux_metrics.get("closed_path_density_term", 0.0),
+            "closed_path_density_correction_applied": flux_metrics.get("closed_path_density_correction_applied", False),
+            "closed_path_cell_detail": flux_metrics.get("closed_path_cell_detail", {}),
             "qc_score": float(qc["qc_score"]),
             "stationarity_detail": stationarity.detail,
             "turbulence_detail": turbulence.detail,
@@ -499,6 +597,9 @@ class ECRPPipeline:
             "sonic_correction_provenance": sonic_correction_detail.get("provenance", ""),
             "sonic_correction_limitations": sonic_correction_detail.get("limitations", []),
             "sonic_correction_source_reference": sonic_correction_detail.get("source_reference", {}),
+            "sonic_angle_of_attack_status": sonic_correction_detail.get("angle_of_attack_status", ""),
+            "sonic_angle_of_attack_method": sonic_correction_detail.get("angle_of_attack_method", ""),
+            "sonic_angle_of_attack_summary": sonic_correction_detail.get("angle_of_attack_summary", {}),
             "crosswind_correction_status": crosswind_correction_detail.get("status", ""),
             "crosswind_correction_method": crosswind_correction_detail.get("method", ""),
             "crosswind_correction_detail": crosswind_correction_detail,
@@ -531,11 +632,19 @@ class ECRPPipeline:
                 "valid_sample_count": prepared.valid_sample_count,
                 "continuity_ratio": float(prepared.continuity_ratio),
                 "mean_co2_ppm": float(np.mean(lagged_co2)),
-                "mean_h2o_mmol": float(np.mean(lagged_h2o)),
+                "mean_h2o_mmol": float(flux_metrics.get("mean_h2o_mmol", float(np.mean(lagged_h2o)))),
                 "mean_ch4_ppb": ch4_metrics.get("mean_ch4_ppb"),
                 "ch4_status": ch4_metrics.get("status", "not_available"),
-                "mean_pressure_kpa": float(np.mean(prepared.pressure_kpa)),
-                "mean_temp_c": float(np.mean(prepared.temp_c)),
+                "mean_pressure_kpa": float(flux_metrics.get("mean_pressure_kpa", float(np.mean(prepared.pressure_kpa)))),
+                "mean_temp_c": float(flux_metrics.get("mean_temp_c", float(np.mean(prepared.temp_c)))),
+                "cell_thermodynamics_status": flux_metrics.get(
+                    "cell_thermodynamics_status",
+                    prepared.diagnostics.get("cell_thermodynamics_status", "not_available"),
+                ),
+                "cell_mean_pressure_kpa": flux_metrics.get("cell_mean_pressure_kpa"),
+                "cell_mean_temp_c": flux_metrics.get("cell_mean_temp_c"),
+                "biomet_ambient_status": prepared.diagnostics.get("biomet_ambient_status", ""),
+                "biomet_ambient_applied_fields": prepared.diagnostics.get("biomet_ambient_applied_fields", []),
             },
             "qc_matrix": qc["qc_matrix"],
             "qc_flags": qc["qc_flags"],
@@ -556,6 +665,9 @@ class ECRPPipeline:
             "fluxnet_gap_fill_value": float(network_output_config.get("gap_fill_value", -9999.0)) if network_output_config else -9999.0,
         }
         if footprint_config and footprint_config.get("enabled", False) and turbulence.ustar is not None and turbulence.ustar > 1e-6:
+            footprint_bearing_deg = math.degrees(
+                math.atan2(float(np.mean(rotation.v)) if rotation.v.size > 0 else 0.0, float(np.mean(rotation.u)) if rotation.u.size > 0 else 0.0)
+            ) % 360.0
             fp = compute_footprint(
                 method=footprint_config.get("method", "kljun"),
                 ustar=turbulence.ustar,
@@ -571,6 +683,7 @@ class ECRPPipeline:
             diagnostics["footprint_offset_distance_m"] = fp.offset_distance_m
             diagnostics["footprint_contribution_distances"] = fp.contribution_distances
             diagnostics["footprint_detail"] = fp.detail
+            diagnostics["footprint_bearing_deg"] = footprint_bearing_deg
             if footprint_config.get("grid_enabled", True):
                 section_start = time.perf_counter()
                 fp_grid = compute_footprint_2d_grid(
@@ -762,6 +875,11 @@ class ECRPPipeline:
             diagnostics["spectral_correction_cospectrum_match"] = dict(sc.get("measured_cospectrum_match", {}))
             performance_sections["spectral_correction_ms"] = round((time.perf_counter() - section_start) * 1000.0, 3)
         ch4_config = dict((trace_gas_config or {}).get("ch4", {}) or {})
+        li7700_status_config = dict(
+            ch4_config.get("status_diagnostics", ch4_config.get("li7700_status_diagnostics", {})) or {}
+        )
+        li7700_status = compute_li7700_status_diagnostics(rows=rows, config=li7700_status_config)
+        ch4_config["li7700_status_diagnostics"] = li7700_status
         diagnostics["ch4_coefficient_profile_id"] = ch4_config.get("coefficient_profile_id", "")
         diagnostics["ch4_coefficient_registry_status"] = ch4_config.get("coefficient_registry_status", "")
         diagnostics["ch4_coefficient_profile_label"] = ch4_config.get("coefficient_profile_label", "")
@@ -771,12 +889,21 @@ class ECRPPipeline:
         diagnostics["ch4_coefficient_profile_provenance"] = ch4_config.get("coefficient_profile_provenance", "")
         diagnostics["ch4_coefficient_profile_limitations"] = list(ch4_config.get("coefficient_profile_limitations", []) or [])
         diagnostics["ch4_coefficient_profile"] = dict(ch4_config.get("coefficient_profile", {}) or {})
+        diagnostics["li7700_status_diagnostics"] = li7700_status
+        diagnostics["li7700_diagnostics_status"] = li7700_status.get("status", "")
+        diagnostics["li7700_rssi_mean_pct"] = li7700_status.get("rssi_mean_pct")
+        diagnostics["li7700_rssi_min_pct"] = li7700_status.get("rssi_min_pct")
+        diagnostics["li7700_signal_strength_mean_pct"] = li7700_status.get("signal_strength_mean_pct")
+        diagnostics["li7700_mirror_dirty_fraction"] = li7700_status.get("mirror_dirty_fraction")
+        diagnostics["li7700_diagnostic_fault_count"] = li7700_status.get("diagnostic_fault_count", 0)
+        diagnostics["li7700_diagnostic_flags"] = list(li7700_status.get("diagnostic_flags", []) or [])
         diagnostics["trace_gas_family"]["ch4"].update(
             {
                 "coefficient_profile_id": diagnostics["ch4_coefficient_profile_id"],
                 "coefficient_registry_status": diagnostics["ch4_coefficient_registry_status"],
                 "coefficient_profile_source_file": diagnostics["ch4_coefficient_source_file"],
                 "coefficient_profile_provenance": diagnostics["ch4_coefficient_profile_provenance"],
+                "li7700_status_diagnostics": li7700_status,
             }
         )
         if ch4_config.get("use_spectral_correction_factor", True):
@@ -785,9 +912,9 @@ class ECRPPipeline:
             ch4_spectral_factor = ch4_config.get("spectral_correction_factor", 1.0)
         ch4_sequence = compute_li7700_correction_sequence(
             ch4_metrics=ch4_metrics,
-            mean_h2o_mmol=float(np.mean(lagged_h2o)),
-            mean_pressure_kpa=float(np.mean(prepared.pressure_kpa)),
-            mean_temp_c=float(np.mean(prepared.temp_c)),
+            mean_h2o_mmol=float(flux_metrics.get("mean_h2o_mmol", float(np.mean(lagged_h2o)))),
+            mean_pressure_kpa=float(flux_metrics.get("mean_pressure_kpa", float(np.mean(prepared.pressure_kpa)))),
+            mean_temp_c=float(flux_metrics.get("mean_temp_c", float(np.mean(prepared.temp_c)))),
             spectral_correction_factor=float(ch4_spectral_factor or 1.0),
             config=ch4_config,
         )
@@ -799,10 +926,20 @@ class ECRPPipeline:
         diagnostics["ch4_coefficient_normalization_command"] = ch4_sequence.get("coefficient_normalization_command", diagnostics["ch4_coefficient_normalization_command"])
         diagnostics["ch4_coefficient_profile_provenance"] = ch4_sequence.get("coefficient_profile_provenance", diagnostics["ch4_coefficient_profile_provenance"])
         diagnostics["ch4_coefficient_profile"] = ch4_sequence.get("coefficient_profile", diagnostics["ch4_coefficient_profile"])
+        spectroscopic_component = dict(ch4_sequence.get("components", {}).get("spectroscopic", {}) or {})
+        wms_fit_diagnostics = dict(spectroscopic_component.get("fit_diagnostics", {}) or {})
+        selected_wms_fit = dict(wms_fit_diagnostics.get("selected_fit", {}) or {})
+        diagnostics["li7700_wms_fit_quality_status"] = spectroscopic_component.get("fit_quality_status", "")
+        diagnostics["li7700_wms_selected_fit_model"] = wms_fit_diagnostics.get("selected_model", "")
+        diagnostics["li7700_wms_fit_normalized_rmse"] = selected_wms_fit.get("normalized_rmse")
+        diagnostics["li7700_wms_area_source"] = spectroscopic_component.get("area_source", "")
+        diagnostics["li7700_wms_fit_diagnostics"] = wms_fit_diagnostics
         diagnostics["ch4_detail"] = {
             **ch4_metrics,
             "coefficient_profile": diagnostics["ch4_coefficient_profile"],
             "li7700_correction_sequence": ch4_sequence,
+            "li7700_status_diagnostics": li7700_status,
+            "li7700_wms_fit_diagnostics": wms_fit_diagnostics,
         }
         if ch4_sequence.get("status") == "computed":
             diagnostics["ch4_status"] = "computed"
@@ -828,10 +965,20 @@ class ECRPPipeline:
                     "coefficient_registry_status": diagnostics["ch4_coefficient_registry_status"],
                     "coefficient_profile_source_file": diagnostics["ch4_coefficient_source_file"],
                     "coefficient_profile_provenance": diagnostics["ch4_coefficient_profile_provenance"],
+                    "li7700_diagnostics_status": diagnostics["li7700_diagnostics_status"],
+                    "li7700_wms_fit_quality_status": diagnostics["li7700_wms_fit_quality_status"],
+                    "li7700_wms_selected_fit_model": diagnostics["li7700_wms_selected_fit_model"],
                     "provenance": diagnostics["ch4_provenance"],
                     "limitations": diagnostics["ch4_limitations"],
                 }
             )
+        diagnostics["flux_correction_ledger"] = _build_flux_correction_ledger(
+            window_id=window_id,
+            flux_metrics=flux_metrics,
+            diagnostics=diagnostics,
+            uncertainty_detail=uncertainty.detail,
+            ch4_sequence=ch4_sequence,
+        )
         if method_compare_config and method_compare_config.get("enabled", False):
             section_start = time.perf_counter()
             compare_payload: dict[str, Any] = {}
@@ -933,7 +1080,7 @@ class ECRPPipeline:
             "footprint_2d_enabled": bool(footprint_config and footprint_config.get("enabled", False) and footprint_config.get("grid_enabled", True)),
         }
         return WindowRPResult(
-            window_id=f"{run_id}_w{window_index:03d}",
+            window_id=window_id,
             start_time=rows[0].timestamp,
             end_time=rows[-1].timestamp,
             sample_count=prepared.sample_count,
@@ -955,9 +1102,9 @@ class ECRPPipeline:
             air_molar_density=float(flux_metrics["air_molar_density"]),
             dry_air_molar_density=float(flux_metrics["dry_air_molar_density"]),
             mean_co2_ppm=float(np.mean(lagged_co2)),
-            mean_h2o_mmol=float(np.mean(lagged_h2o)),
-            mean_pressure_kpa=float(np.mean(prepared.pressure_kpa)),
-            mean_temp_c=float(np.mean(prepared.temp_c)),
+            mean_h2o_mmol=float(flux_metrics.get("mean_h2o_mmol", float(np.mean(lagged_h2o)))),
+            mean_pressure_kpa=float(flux_metrics.get("mean_pressure_kpa", float(np.mean(prepared.pressure_kpa)))),
+            mean_temp_c=float(flux_metrics.get("mean_temp_c", float(np.mean(prepared.temp_c)))),
             qc_score=float(qc["qc_score"]),
             stationarity_score=stationarity.score,
             turbulence_score=turbulence.score,
@@ -1004,6 +1151,9 @@ def _prepare_window_series(
     prepared.diagnostics["sonic_correction_status"] = sonic_result.detail.get("status", "")
     prepared.diagnostics["sonic_correction_method"] = sonic_result.detail.get("method", "")
     prepared.diagnostics["sonic_correction_detail"] = sonic_result.detail
+    prepared.diagnostics["sonic_angle_of_attack_status"] = sonic_result.detail.get("angle_of_attack_status", "")
+    prepared.diagnostics["sonic_angle_of_attack_method"] = sonic_result.detail.get("angle_of_attack_method", "")
+    prepared.diagnostics["sonic_angle_of_attack_summary"] = sonic_result.detail.get("angle_of_attack_summary", {})
     return prepared, sonic_result.detail
 
 
@@ -1011,6 +1161,252 @@ def _density_correction_factor(*, raw_flux: float, density_corrected_flux: float
     if abs(raw_flux) <= 1e-12:
         return 1.0 if abs(density_corrected_flux) <= 1e-12 else 1.5
     return float(density_corrected_flux / raw_flux)
+
+
+def _build_flux_correction_ledger(
+    *,
+    window_id: str,
+    flux_metrics: dict[str, Any],
+    diagnostics: dict[str, Any],
+    uncertainty_detail: dict[str, Any],
+    ch4_sequence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    primary_flux = float(flux_metrics.get("primary_flux", 0.0) or 0.0)
+    density_mode = str(flux_metrics.get("density_correction_mode", diagnostics.get("density_correction_mode", "")))
+    stages = [
+        {
+            "level": "level0",
+            "stage": "raw_covariance",
+            "value": float(flux_metrics.get("raw_flux", 0.0) or 0.0),
+            "units": "umol m-2 s-1",
+            "inputs": {
+                "cov_w_co2": float(flux_metrics.get("cov_w_co2", 0.0) or 0.0),
+                "cov_w_h2o": float(flux_metrics.get("cov_w_h2o", 0.0) or 0.0),
+            },
+            "provenance": "Window covariance after rotation, lag, and detrending.",
+        },
+        {
+            "level": "level0b",
+            "stage": "ambient_thermodynamics",
+            "value": None,
+            "units": "mixed",
+            "inputs": {
+                "mean_pressure_kpa": flux_metrics.get("mean_pressure_kpa"),
+                "mean_temp_c": flux_metrics.get("mean_temp_c"),
+                "mean_h2o_mmol": flux_metrics.get("mean_h2o_mmol"),
+            },
+            "source": diagnostics.get("ambient_override_source", "") or "high_frequency_window_mean",
+            "biomet_status": diagnostics.get("biomet_ambient_status", ""),
+            "biomet_applied_fields": diagnostics.get("biomet_ambient_applied_fields", []),
+            "configured_status": diagnostics.get("configured_ambient_status", ""),
+            "configured_applied_fields": diagnostics.get("configured_ambient_applied_fields", []),
+            "provenance": diagnostics.get("biomet_ambient_provenance")
+            or diagnostics.get("configured_ambient_provenance")
+            or "Ambient means computed from prepared window arrays.",
+        },
+        {
+            "level": "level1",
+            "stage": "mixing_ratio_flux",
+            "value": float(flux_metrics.get("mixing_ratio_flux", 0.0) or 0.0),
+            "units": "umol m-2 s-1",
+            "inputs": {
+                "dry_air_molar_density": float(flux_metrics.get("dry_air_molar_density", 0.0) or 0.0),
+                "air_molar_density": float(flux_metrics.get("air_molar_density", 0.0) or 0.0),
+            },
+            "provenance": "Dry-air mixing-ratio flux path retained for EddyPro parity diagnostics.",
+        },
+        {
+            "level": "level2",
+            "stage": "density_correction",
+            "method": density_mode,
+            "value": float(flux_metrics.get("density_corrected_flux", 0.0) or 0.0),
+            "units": "umol m-2 s-1",
+            "factor": float(diagnostics.get("density_correction_factor", 1.0) or 1.0),
+            "inputs": {
+                "wpl_water_vapor_term": float(flux_metrics.get("wpl_water_vapor_term", 0.0) or 0.0),
+                "wpl_sensible_heat_term": float(flux_metrics.get("wpl_sensible_heat_term", 0.0) or 0.0),
+                "wpl_sensible_heat_source": str(flux_metrics.get("wpl_sensible_heat_source", "")),
+                "closed_path_cell_temperature_term": float(
+                    flux_metrics.get("closed_path_cell_temperature_term", 0.0) or 0.0
+                ),
+                "closed_path_cell_pressure_term": float(
+                    flux_metrics.get("closed_path_cell_pressure_term", 0.0) or 0.0
+                ),
+            },
+            "provenance": str(flux_metrics.get("density_correction_reason", diagnostics.get("density_correction_reason", ""))),
+        },
+    ]
+    if str(flux_metrics.get("cell_thermodynamics_status", "not_available")) == "available":
+        stages.insert(
+            3,
+            {
+                "level": "level1b",
+                "stage": "closed_path_cell_thermodynamics",
+                "method": "cell_pressure_temperature_covariance",
+                "status": str(flux_metrics.get("cell_thermodynamics_status", "")),
+                "value": float(flux_metrics.get("closed_path_density_term", 0.0) or 0.0),
+                "units": "umol m-2 s-1",
+                "inputs": {
+                    "cell_mean_pressure_kpa": flux_metrics.get("cell_mean_pressure_kpa"),
+                    "cell_mean_temp_c": flux_metrics.get("cell_mean_temp_c"),
+                    "cov_w_cell_pressure_kpa": flux_metrics.get("cov_w_cell_pressure_kpa"),
+                    "cov_w_cell_temp_c": flux_metrics.get("cov_w_cell_temp_c"),
+                    "closed_path_cell_temperature_term": flux_metrics.get("closed_path_cell_temperature_term"),
+                    "closed_path_cell_pressure_term": flux_metrics.get("closed_path_cell_pressure_term"),
+                    "applied_to_density_corrected_flux": bool(
+                        flux_metrics.get("closed_path_density_correction_applied", False)
+                    ),
+                },
+                "source": str(flux_metrics.get("cell_thermodynamics_source", "")),
+                "provenance": str(
+                    dict(flux_metrics.get("closed_path_cell_detail", {}) or {}).get(
+                        "provenance",
+                        "High-frequency closed-path cell thermodynamics parsed from raw payload fields.",
+                    )
+                ),
+            },
+        )
+    energy_detail = dict(diagnostics.get("energy_flux_detail", {}) or {})
+    if energy_detail:
+        stages.append(
+            {
+                "level": "energy",
+                "stage": "energy_water_momentum_fluxes",
+                "method": "derived_from_rp_covariances_v1",
+                "units": "mixed",
+                "values": {
+                    "sensible_heat_flux_w_m2": energy_detail.get("sensible_heat_flux_w_m2"),
+                    "latent_heat_flux_w_m2": energy_detail.get("latent_heat_flux_w_m2"),
+                    "evapotranspiration_rate_mm_h": energy_detail.get("evapotranspiration_rate_mm_h"),
+                    "evapotranspiration_window_mm": energy_detail.get("evapotranspiration_window_mm"),
+                    "momentum_flux_kg_m_s2": energy_detail.get("momentum_flux_kg_m_s2"),
+                },
+                "inputs": {
+                    "air_density_kg_m3": energy_detail.get("air_density_kg_m3"),
+                    "water_vapor_flux_mmol_m2_s": energy_detail.get("water_vapor_flux_mmol_m2_s"),
+                    "latent_heat_vaporization_j_kg": energy_detail.get("latent_heat_vaporization_j_kg"),
+                    "sensible_heat_covariance_source": energy_detail.get("sensible_heat_covariance_source"),
+                },
+                "provenance": str(energy_detail.get("provenance", "")),
+            }
+        )
+    spectral_detail = dict(diagnostics.get("spectral_correction_detail", {}) or {})
+    if spectral_detail:
+        stages.append(
+            {
+                "level": "level2b",
+                "stage": "spectral_correction_family",
+                "method": str(spectral_detail.get("method", diagnostics.get("spectral_correction_method", ""))),
+                "value": primary_flux,
+                "units": "umol m-2 s-1",
+                "factor": float(spectral_detail.get("correction_factor", diagnostics.get("spectral_correction_factor", 1.0)) or 1.0),
+                "provenance": str(diagnostics.get("spectral_correction_provenance", spectral_detail.get("provenance", ""))),
+                "measured_cospectrum": {
+                    "enabled": bool(diagnostics.get("spectral_correction_measured_cospectrum_enabled", False)),
+                    "used": bool(diagnostics.get("spectral_correction_measured_cospectrum_used", False)),
+                    "source": str(diagnostics.get("spectral_correction_measured_cospectrum_source", "")),
+                },
+            }
+        )
+    stages.append(
+        {
+            "level": "level3",
+            "stage": "primary_flux_selection",
+            "method": density_mode,
+            "value": primary_flux,
+            "units": "umol m-2 s-1",
+            "uncertainty": {
+                "random_error": uncertainty_detail.get("primary_flux_random_error", uncertainty_detail.get("random_error")),
+                "relative_uncertainty": uncertainty_detail.get("primary_flux_relative_uncertainty", uncertainty_detail.get("relative_uncertainty")),
+                "ci_lower": uncertainty_detail.get("primary_flux_ci_lower"),
+                "ci_upper": uncertainty_detail.get("primary_flux_ci_upper"),
+                "ci_level": uncertainty_detail.get("confidence_level"),
+            },
+            "provenance": "Primary flux selected according to density_correction_mode.",
+        }
+    )
+    if ch4_sequence:
+        stages.append(
+            {
+                "level": "trace_gas",
+                "stage": "ch4_li7700_sequence",
+                "method": str(ch4_sequence.get("selected_method", "")),
+                "status": str(ch4_sequence.get("status", "")),
+                "units": "nmol m-2 s-1",
+                "values": {
+                    "level0": ch4_sequence.get("level0_flux_nmol_m2_s"),
+                    "level1_spectral": ch4_sequence.get("level1_spectral_flux_nmol_m2_s"),
+                    "level2_density": ch4_sequence.get("level2_density_flux_nmol_m2_s"),
+                    "level3_corrected": ch4_sequence.get("level3_corrected_flux_nmol_m2_s"),
+                    "final": ch4_sequence.get("final_flux_nmol_m2_s"),
+                },
+                "provenance": str(ch4_sequence.get("provenance", "")),
+            }
+        )
+    return {
+        "artifact_type": "flux_correction_ledger_window_v1",
+        "window_id": window_id,
+        "status": "ok",
+        "target": "co2_primary_flux",
+        "primary_flux": primary_flux,
+        "primary_flux_source": density_mode,
+        "stage_count": len(stages),
+        "stages": stages,
+        "limitations": [
+            "Ledger records the implemented Gas EC Studio correction path; it does not claim bit-for-bit EddyPro parity without matching raw binary fixtures.",
+            "Spectral correction stage is reported as method provenance unless the selected processing path applies it directly to the RP primary flux.",
+        ],
+    }
+
+
+def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[str, Any]:
+    ledgers = [
+        dict(window.diagnostics.get("flux_correction_ledger", {}) or {})
+        for window in windows
+        if isinstance(window.diagnostics, dict) and window.diagnostics.get("flux_correction_ledger")
+    ]
+    density_modes: dict[str, int] = {}
+    spectral_methods: dict[str, int] = {}
+    ch4_sequence_count = 0
+    closed_path_cell_window_count = 0
+    for ledger in ledgers:
+        source = str(ledger.get("primary_flux_source", "") or "unknown")
+        density_modes[source] = density_modes.get(source, 0) + 1
+        for stage in list(ledger.get("stages", []) or []):
+            stage_payload = dict(stage or {})
+            if stage_payload.get("stage") == "closed_path_cell_thermodynamics":
+                closed_path_cell_window_count += 1
+            if stage_payload.get("stage") == "spectral_correction_family":
+                method = str(stage_payload.get("method", "") or "unknown")
+                spectral_methods[method] = spectral_methods.get(method, 0) + 1
+            if stage_payload.get("stage") == "ch4_li7700_sequence":
+                ch4_sequence_count += 1
+    return {
+        "artifact_type": "flux_correction_ledger_summary_v1",
+        "status": "ok" if ledgers or not windows else "missing_ledgers",
+        "window_count": len(windows),
+        "ledger_window_count": len(ledgers),
+        "primary_flux_source_counts": dict(sorted(density_modes.items())),
+        "closed_path_cell_thermodynamics_window_count": closed_path_cell_window_count,
+        "spectral_correction_method_counts": dict(sorted(spectral_methods.items())),
+        "ch4_sequence_window_count": ch4_sequence_count,
+        "average_raw_flux": float(np.mean([window.raw_flux for window in windows])) if windows else None,
+        "average_mixing_ratio_flux": float(np.mean([window.mixing_ratio_flux for window in windows])) if windows else None,
+        "average_density_corrected_flux": float(np.mean([window.density_corrected_flux for window in windows])) if windows else None,
+        "average_primary_flux": float(np.mean([window.primary_flux for window in windows])) if windows else None,
+    }
+
+
+def _build_flux_correction_ledger_artifact(windows: list[WindowRPResult]) -> dict[str, Any]:
+    return {
+        "artifact_type": "flux_correction_ledger_run_v1",
+        "summary": _summarize_flux_correction_ledgers(windows),
+        "windows": [
+            dict(window.diagnostics.get("flux_correction_ledger", {}) or {})
+            for window in windows
+            if isinstance(window.diagnostics, dict) and window.diagnostics.get("flux_correction_ledger")
+        ],
+    }
 
 
 def _build_biomet_context(config: dict[str, Any]) -> dict[str, Any]:
@@ -1045,6 +1441,17 @@ def _build_biomet_context(config: dict[str, Any]) -> dict[str, Any]:
         "pressure",
         "pa",
         "air_pressure",
+        "rh",
+        "relative_humidity",
+        "relative_humidity_percent",
+        "h2o_mmol",
+        "h2o_mmol_mol",
+        "h2o_mmol_per_mol",
+        "h2o_ppm",
+        "water_vapor_mmol",
+        "water_vapor_ppm",
+        "h2o_mixing_ratio",
+        "water_vapor_mixing_ratio",
     ]
     return {"source": source, "records": records, "fields": fields}
 
@@ -1077,30 +1484,214 @@ def _biomet_override_for_rows(rows: list[NormalizedHFFrame], context: dict[str, 
     }
 
 
+def _build_configured_ambient_context(config: dict[str, Any]) -> dict[str, Any]:
+    values: dict[str, float] = {}
+    explicit = config.get("ambient_overrides", {})
+    if isinstance(explicit, dict):
+        for output_key, aliases in [
+            ("mean_pressure_kpa", ("mean_pressure_kpa", "pressure_kpa", "pressure", "cell_pressure_kpa")),
+            ("mean_temp_c", ("mean_temp_c", "temp_c", "temperature_c", "cell_temperature_c")),
+            ("mean_h2o_mmol", ("mean_h2o_mmol", "h2o_mmol", "h2o")),
+        ]:
+            value = _pick_numeric(explicit, aliases)
+            if value is not None:
+                if output_key == "mean_pressure_kpa":
+                    values[output_key] = _coerce_pressure_kpa(value)
+                elif output_key == "mean_temp_c":
+                    values[output_key] = _coerce_temperature_c(value)
+                elif output_key == "mean_h2o_mmol":
+                    h2o = _coerce_h2o_mmol(value)
+                    if h2o is not None:
+                        values[output_key] = h2o
+    metadata = config.get("metadata_bundle", {})
+    if isinstance(metadata, dict):
+        sampling_chain = metadata.get("sampling_chain", {})
+        if isinstance(sampling_chain, dict):
+            extra = sampling_chain.get("extra", {})
+            if isinstance(extra, dict):
+                pressure = _pick_numeric(extra, ("cell_pressure_kpa", "cell_pressure", "pressure_kpa", "pressure"))
+                temperature = _pick_numeric(extra, ("cell_temperature_c", "cell_temperature", "temperature_c", "temp_c"))
+                if pressure is not None and "mean_pressure_kpa" not in values:
+                    values["mean_pressure_kpa"] = _coerce_pressure_kpa(pressure)
+                if temperature is not None and "mean_temp_c" not in values:
+                    values["mean_temp_c"] = _coerce_temperature_c(temperature)
+    if not values:
+        return {}
+    return {
+        "source_mode": str(config.get("ambient_override_source_mode", "") or "configured_closed_path"),
+        "ambient_values": values,
+        "provenance": (
+            "Configured ambient thermodynamics supplied from RP config / metadata_bundle.sampling_chain.extra "
+            "for density/WPL calculations when external biomet does not provide the same field."
+        ),
+        "limitations": [
+            "Configured closed-path pressure/temperature are run-level constants unless supplied by dynamic or biomet data.",
+            "External biomet values take precedence for fields available in the same window.",
+        ],
+    }
+
+
 def _apply_biomet_override(prepared: Any, override: dict[str, Any]) -> None:
     aggregated = dict(override.get("aggregated", {}) or {})
     pressure = _pick_numeric(aggregated, ("pressure_kpa", "pressure", "pa", "air_pressure"))
     temperature = _pick_numeric(aggregated, ("ta", "air_temperature", "temperature", "temp", "chamber_temp_c"))
     applied_fields: list[str] = []
+    ambient_values: dict[str, float] = {}
     if pressure is not None and prepared.pressure_kpa.size:
-        prepared.pressure_kpa = np.full_like(prepared.pressure_kpa, _coerce_pressure_kpa(pressure), dtype=float)
+        pressure_kpa = _coerce_pressure_kpa(pressure)
+        prepared.pressure_kpa = np.full_like(prepared.pressure_kpa, pressure_kpa, dtype=float)
         _prune_prepared_issue(prepared, "pressure_kpa")
         applied_fields.append("pressure_kpa")
+        ambient_values["mean_pressure_kpa"] = pressure_kpa
     if temperature is not None and prepared.temp_c.size:
-        prepared.temp_c = np.full_like(prepared.temp_c, _coerce_temperature_c(temperature), dtype=float)
+        temp_c = _coerce_temperature_c(temperature)
+        prepared.temp_c = np.full_like(prepared.temp_c, temp_c, dtype=float)
         _prune_prepared_issue(prepared, "temp_c")
         applied_fields.append("temp_c")
-    if applied_fields:
-        prepared.diagnostics["biomet_override"] = {
+        ambient_values["mean_temp_c"] = temp_c
+
+    h2o_alias, h2o_raw = _pick_numeric_with_alias(
+        aggregated,
+        (
+            "h2o_mmol",
+            "h2o_mmol_mol",
+            "h2o_mmol_per_mol",
+            "water_vapor_mmol",
+            "h2o_mixing_ratio",
+            "water_vapor_mixing_ratio",
+            "h2o",
+            "h2o_ppm",
+            "water_vapor_ppm",
+        ),
+    )
+    h2o_source = ""
+    if h2o_raw is not None:
+        h2o_mmol = _coerce_h2o_mmol(h2o_raw, h2o_alias)
+        if h2o_mmol is not None:
+            ambient_values["mean_h2o_mmol"] = h2o_mmol
+            applied_fields.append("mean_h2o_mmol")
+            h2o_source = f"direct:{h2o_alias}"
+    else:
+        rh = _pick_numeric(aggregated, ("rh", "relative_humidity", "relative_humidity_percent"))
+        if rh is not None:
+            mean_temp_c = ambient_values.get("mean_temp_c", float(np.mean(prepared.temp_c)) if prepared.temp_c.size else 20.0)
+            mean_pressure_kpa = ambient_values.get("mean_pressure_kpa", float(np.mean(prepared.pressure_kpa)) if prepared.pressure_kpa.size else 101.325)
+            h2o_mmol = _relative_humidity_to_h2o_mmol(rh, temp_c=mean_temp_c, pressure_kpa=mean_pressure_kpa)
+            if h2o_mmol is not None:
+                ambient_values["mean_h2o_mmol"] = h2o_mmol
+                applied_fields.append("mean_h2o_mmol")
+                h2o_source = "derived:relative_humidity"
+
+    if ambient_values:
+        source_mode = str(override.get("source_mode", ""))
+        source_path = str(override.get("source_path", ""))
+        aggregation_method = str(override.get("aggregation_method", ""))
+        provenance = (
+            f"{source_mode or 'biomet'} aggregation ({aggregation_method or 'mean'}) supplied ambient thermodynamics "
+            "for density/WPL calculations; scalar covariance remains sourced from high-frequency analyzer channels."
+        )
+        limitations = [
+            "Low-frequency biomet H2O/RH is used as an ambient mean for thermodynamic corrections, not as a substitute for high-frequency H2O covariance.",
+            "RH-derived H2O uses a Tetens saturation-vapor-pressure approximation and inherits biomet sensor calibration uncertainty.",
+        ] if "mean_h2o_mmol" in ambient_values else [
+            "Biomet pressure/temperature are window aggregates and inherit external sensor calibration uncertainty."
+        ]
+        detail = {
             "status": "applied",
             "applied_fields": applied_fields,
-            "source_mode": override.get("source_mode", ""),
-            "source_path": override.get("source_path", ""),
-            "aggregation_method": override.get("aggregation_method", ""),
+            "source_mode": source_mode,
+            "source_path": source_path,
+            "aggregation_method": aggregation_method,
             "sample_count": aggregated.get("sample_count", 0),
             "window_start": override.get("window_start", ""),
             "window_end": override.get("window_end", ""),
+            "ambient_values": ambient_values,
+            "h2o_source": h2o_source,
+            "provenance": provenance,
+            "limitations": limitations,
         }
+        prepared.diagnostics["biomet_override"] = detail
+        prepared.diagnostics["biomet_ambient"] = detail
+        prepared.diagnostics["biomet_ambient_status"] = "applied"
+        prepared.diagnostics["biomet_ambient_applied_fields"] = applied_fields
+        prepared.diagnostics["biomet_ambient_source_mode"] = source_mode
+        prepared.diagnostics["biomet_ambient_source_path"] = source_path
+        prepared.diagnostics["biomet_ambient_aggregation_method"] = aggregation_method
+        prepared.diagnostics["biomet_ambient_sample_count"] = aggregated.get("sample_count", 0)
+        prepared.diagnostics["biomet_ambient_values"] = ambient_values
+        prepared.diagnostics["biomet_ambient_h2o_source"] = h2o_source
+        prepared.diagnostics["biomet_ambient_provenance"] = provenance
+        prepared.diagnostics["biomet_ambient_limitations"] = limitations
+
+
+def _apply_configured_ambient_override(prepared: Any, context: dict[str, Any]) -> None:
+    requested_values = dict(context.get("ambient_values", {}) or {})
+    if not requested_values:
+        return
+    existing_values = dict(prepared.diagnostics.get("biomet_ambient_values", {}) or {})
+    applied_fields: list[str] = []
+    ambient_values: dict[str, float] = {}
+
+    if "mean_pressure_kpa" in requested_values and "mean_pressure_kpa" not in existing_values and prepared.pressure_kpa.size:
+        pressure_kpa = _coerce_pressure_kpa(float(requested_values["mean_pressure_kpa"]))
+        prepared.pressure_kpa = np.full_like(prepared.pressure_kpa, pressure_kpa, dtype=float)
+        _prune_prepared_issue(prepared, "pressure_kpa")
+        applied_fields.append("pressure_kpa")
+        ambient_values["mean_pressure_kpa"] = pressure_kpa
+    if "mean_temp_c" in requested_values and "mean_temp_c" not in existing_values and prepared.temp_c.size:
+        temp_c = _coerce_temperature_c(float(requested_values["mean_temp_c"]))
+        prepared.temp_c = np.full_like(prepared.temp_c, temp_c, dtype=float)
+        _prune_prepared_issue(prepared, "temp_c")
+        applied_fields.append("temp_c")
+        ambient_values["mean_temp_c"] = temp_c
+    if "mean_h2o_mmol" in requested_values and "mean_h2o_mmol" not in existing_values:
+        h2o_mmol = _coerce_h2o_mmol(float(requested_values["mean_h2o_mmol"]))
+        if h2o_mmol is not None:
+            applied_fields.append("mean_h2o_mmol")
+            ambient_values["mean_h2o_mmol"] = h2o_mmol
+
+    if not ambient_values:
+        return
+    source_mode = str(context.get("source_mode", "") or "configured_closed_path")
+    provenance = str(context.get("provenance", "") or "Configured ambient thermodynamics supplied by RP config.")
+    limitations = list(context.get("limitations", []) or [])
+    detail = {
+        "status": "applied",
+        "applied_fields": applied_fields,
+        "source_mode": source_mode,
+        "ambient_values": ambient_values,
+        "provenance": provenance,
+        "limitations": limitations,
+    }
+    prepared.diagnostics["configured_ambient"] = detail
+    prepared.diagnostics["configured_ambient_status"] = "applied"
+    prepared.diagnostics["configured_ambient_applied_fields"] = applied_fields
+    prepared.diagnostics["configured_ambient_source_mode"] = source_mode
+    prepared.diagnostics["configured_ambient_values"] = ambient_values
+    prepared.diagnostics["configured_ambient_provenance"] = provenance
+    prepared.diagnostics["configured_ambient_limitations"] = limitations
+
+
+def _ambient_overrides_from_prepared(prepared: Any) -> dict[str, Any]:
+    configured_values = dict(prepared.diagnostics.get("configured_ambient_values", {}) or {})
+    biomet_values = dict(prepared.diagnostics.get("biomet_ambient_values", {}) or {})
+    values = {**configured_values, **biomet_values}
+    if not values:
+        return {}
+    if biomet_values and configured_values:
+        source = f"biomet+{prepared.diagnostics.get('configured_ambient_source_mode', 'configured')}"
+    elif biomet_values:
+        source = "biomet"
+    else:
+        source = str(prepared.diagnostics.get("configured_ambient_source_mode", "") or "configured_closed_path")
+    return {
+        **values,
+        "source": source,
+        "source_mode": prepared.diagnostics.get("biomet_ambient_source_mode", "")
+        or prepared.diagnostics.get("configured_ambient_source_mode", ""),
+        "source_path": prepared.diagnostics.get("biomet_ambient_source_path", ""),
+        "aggregation_method": prepared.diagnostics.get("biomet_ambient_aggregation_method", ""),
+    }
 
 
 def _pick_numeric(payload: dict[str, Any], aliases: tuple[str, ...]) -> float | None:
@@ -1117,6 +1708,23 @@ def _pick_numeric(payload: dict[str, Any], aliases: tuple[str, ...]) -> float | 
     return None
 
 
+def _pick_numeric_with_alias(payload: dict[str, Any], aliases: tuple[str, ...]) -> tuple[str, float | None]:
+    lookup = {str(key).lower(): (str(key), value) for key, value in payload.items()}
+    for alias in aliases:
+        match = lookup.get(alias.lower())
+        if match is None:
+            continue
+        key, value = match
+        if isinstance(value, (int, float)):
+            return key, float(value)
+        if value not in (None, ""):
+            try:
+                return key, float(str(value))
+            except ValueError:
+                continue
+    return "", None
+
+
 def _coerce_pressure_kpa(value: float) -> float:
     if value > 2000.0:
         return value / 1000.0
@@ -1127,6 +1735,31 @@ def _coerce_pressure_kpa(value: float) -> float:
 
 def _coerce_temperature_c(value: float) -> float:
     return value - 273.15 if value > 150.0 else value
+
+
+def _coerce_h2o_mmol(value: float, alias: str = "") -> float | None:
+    if not math.isfinite(value):
+        return None
+    alias_l = alias.lower()
+    if "ppm" in alias_l:
+        value = value / 1000.0
+    elif 0.0 < value < 0.2 and "mmol" not in alias_l:
+        value = value * 1000.0
+    elif value > 1000.0:
+        value = value / 1000.0
+    return max(0.0, float(value))
+
+
+def _relative_humidity_to_h2o_mmol(rh: float, *, temp_c: float, pressure_kpa: float) -> float | None:
+    if not all(math.isfinite(float(value)) for value in (rh, temp_c, pressure_kpa)):
+        return None
+    if pressure_kpa <= 0.0:
+        return None
+    rh_percent = float(rh) * 100.0 if 0.0 <= float(rh) <= 1.5 else float(rh)
+    rh_percent = min(100.0, max(0.0, rh_percent))
+    saturation_vapor_pressure_kpa = 0.6108 * math.exp((17.27 * float(temp_c)) / (float(temp_c) + 237.3))
+    actual_vapor_pressure_kpa = saturation_vapor_pressure_kpa * rh_percent / 100.0
+    return max(0.0, actual_vapor_pressure_kpa / float(pressure_kpa) * 1000.0)
 
 
 def _prune_prepared_issue(prepared: Any, field_prefix: str) -> None:
@@ -1214,6 +1847,8 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
             "coefficient_registry_status": "",
             "coefficient_profile_source_file": "",
             "coefficient_profile_provenance": "",
+            "li7700_diagnostics_status": "not_available",
+            "li7700_status_diagnostics": {},
             "provenance": "",
             "limitations": [],
         }
@@ -1252,6 +1887,8 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
         "coefficient_profile_normalization_command": first.get("ch4_coefficient_normalization_command", ""),
         "coefficient_profile_provenance": first.get("ch4_coefficient_profile_provenance", ""),
         "coefficient_profile_limitations": list(first.get("ch4_coefficient_profile_limitations", []) or []),
+        "li7700_diagnostics_status": first.get("li7700_diagnostics_status", "not_available"),
+        "li7700_status_diagnostics": first.get("li7700_status_diagnostics", {}),
         "provenance": first.get("ch4_provenance", ""),
         "limitations": list(first.get("ch4_limitations", []) or []),
     }
@@ -1294,7 +1931,10 @@ def _empty_summary(
             "coefficient_registry_status": "",
             "coefficient_profile_source_file": "",
             "coefficient_profile_provenance": "",
+            "li7700_diagnostics_status": "not_available",
+            "li7700_status_diagnostics": {},
         },
+        "flux_correction_ledger_summary": _summarize_flux_correction_ledgers([]),
         "project_code": project.code,
         "site_code": site.station_code,
         "config_snapshot": config,
@@ -1354,7 +1994,12 @@ def _build_summary(
         "average_stationarity_score": float(np.mean([window.stationarity_score or 0.0 for window in windows])),
         "average_turbulence_score": float(np.mean([window.turbulence_score or 0.0 for window in windows])),
         "average_ustar": float(np.mean([window.ustar or 0.0 for window in windows])),
+        "average_sensible_heat_flux_w_m2": _mean_window_diagnostic(windows, "sensible_heat_flux_w_m2"),
+        "average_latent_heat_flux_w_m2": _mean_window_diagnostic(windows, "latent_heat_flux_w_m2"),
+        "average_evapotranspiration_rate_mm_h": _mean_window_diagnostic(windows, "evapotranspiration_rate_mm_h"),
+        "average_momentum_flux_kg_m_s2": _mean_window_diagnostic(windows, "momentum_flux_kg_m_s2"),
         "trace_gas_summary": _summarize_trace_gas_windows(windows),
+        "flux_correction_ledger_summary": _summarize_flux_correction_ledgers(windows),
         "project_code": project.code,
         "site_code": site.station_code,
         "config_snapshot": config,
@@ -1372,6 +2017,7 @@ def _build_summary(
 
 def _artifacts(
     *,
+    windows: list[WindowRPResult] | None = None,
     project: ProjectProfile,
     site: SiteProfile,
     config: dict[str, Any],
@@ -1397,6 +2043,7 @@ def _artifacts(
         "method_provenance": method_summary or {},
         "clock_sync": clock_sync_summary or {},
         "performance_profile": performance_profile or {},
+        "flux_correction_ledger": _build_flux_correction_ledger_artifact(windows or []),
     }
 
 
@@ -1477,7 +2124,7 @@ def _extract_method_compare_config(config: dict[str, Any]) -> dict[str, Any]:
         "max_samples": int(mc.get("max_samples", 4096) or 4096),
         "footprint_methods": _method_list("footprint_methods", ["kljun", "kormann_meixner", "hsieh"]),
         "uncertainty_methods": _method_list("uncertainty_methods", ["mann_lenschow", "finkelstein_sims"]),
-        "spectral_correction_methods": _method_list("spectral_correction_methods", ["massman", "horst", "ibrom", "fratini"]),
+        "spectral_correction_methods": _method_list("spectral_correction_methods", ["moncrieff_97", "massman", "horst", "ibrom", "fratini"]),
     }
 
 
@@ -1518,6 +2165,27 @@ def _extract_spectral_correction_config(config: dict[str, Any]) -> dict[str, Any
     return sc
 
 
+def _extract_qc_config(config: dict[str, Any]) -> dict[str, Any]:
+    qc_root = config.get("qc", {}) if isinstance(config.get("qc"), dict) else {}
+    steps = config.get("steps", {}) if isinstance(config.get("steps"), dict) else {}
+    step_qc = steps.get("qc", {}) if isinstance(steps.get("qc"), dict) else {}
+    merged = {**dict(step_qc), **dict(qc_root)}
+    method = _config_value(
+        config,
+        "qc.method",
+        "steps.qc.method",
+        "quality_control.method",
+        "steps.quality_control.method",
+        "qc.qc_method",
+        "steps.qc.qc_method",
+        default=merged.get("method", ""),
+    )
+    return {
+        **merged,
+        "method": str(method or "").strip(),
+    }
+
+
 def _extract_sonic_correction_config(config: dict[str, Any]) -> dict[str, Any]:
     steps = config.get("steps", {}) if isinstance(config.get("steps"), dict) else {}
     sonic = dict(steps.get("sonic_correction", {}) or {}) if isinstance(steps.get("sonic_correction", {}), dict) else {}
@@ -1540,9 +2208,15 @@ def _extract_sonic_correction_config(config: dict[str, Any]) -> dict[str, Any]:
             ("sonic_v_offset_ms", "v_offset_ms"),
             ("sonic_w_offset_ms", "w_offset_ms"),
             ("gill_wm_w_boost", "gill_wm_w_boost"),
+            ("sonic_angle_of_attack_method", "angle_of_attack_method"),
+            ("aoa_method", "angle_of_attack_method"),
         ]:
             if source_key in extra and target_key not in sonic:
                 sonic[target_key] = extra[source_key]
+    if sonic.get("angle_of_attack_method") and "angle_of_attack" not in sonic:
+        sonic["angle_of_attack"] = {"enabled": True, "method": sonic.get("angle_of_attack_method")}
+    elif sonic.get("angle_of_attack_method") and isinstance(sonic.get("angle_of_attack"), dict):
+        sonic["angle_of_attack"].setdefault("method", sonic.get("angle_of_attack_method"))
     sonic.setdefault("enabled", False)
     sonic.setdefault("method", "eddypro_sonic_coordinate_v1")
     sonic.setdefault("wind_format", "cartesian")
@@ -1789,7 +2463,7 @@ def _li7700_profile_to_ch4_config(profile: Any) -> dict[str, Any]:
     for key in ("apply_water_vapor_dilution", "use_spectral_correction_factor", "spectral_correction_factor"):
         if key in profile:
             config[key] = profile[key]
-    for key in ("spectroscopic_correction", "self_heating_correction"):
+    for key in ("spectroscopic_correction", "self_heating_correction", "status_diagnostics"):
         value = profile.get(key)
         if isinstance(value, dict):
             config[key] = dict(value)
@@ -1977,12 +2651,13 @@ def _propagate_uncertainty_to_primary_flux(
     }
 
 
-def _wpl_benchmark_status(flux_metrics: dict[str, float]) -> dict[str, Any]:
+def _wpl_benchmark_status(flux_metrics: dict[str, Any]) -> dict[str, Any]:
     wpl_wv = flux_metrics.get("wpl_water_vapor_term", 0.0)
     wpl_sh = flux_metrics.get("wpl_sensible_heat_term", 0.0)
+    cell_pressure_term = flux_metrics.get("closed_path_cell_pressure_term", 0.0)
     raw = flux_metrics.get("raw_flux", 0.0)
     corrected = flux_metrics.get("density_corrected_flux", 0.0)
-    total_correction = wpl_wv + wpl_sh
+    total_correction = wpl_wv + wpl_sh + cell_pressure_term
     correction_ratio = abs(total_correction / raw) if abs(raw) > 1e-15 else 0.0
     sensible_heat_dominant = abs(wpl_sh) > abs(wpl_wv)
     sensible_heat_same_sign_as_total = (wpl_sh * total_correction) >= 0
@@ -1998,6 +2673,11 @@ def _wpl_benchmark_status(flux_metrics: dict[str, float]) -> dict[str, Any]:
             notes.append(f"total WPL correction ratio is large ({correction_ratio:.3f})")
     else:
         notes.append("sensible_heat_term is negligible")
+    if str(flux_metrics.get("cell_thermodynamics_status", "")) == "available":
+        notes.append(
+            "closed_path_cell_thermodynamics="
+            f"{flux_metrics.get('cell_thermodynamics_source', 'raw_payload')}"
+        )
     if not magnitude_reasonable:
         status = "fail"
         notes.append(f"total WPL correction ratio exceeds 0.5 ({correction_ratio:.3f})")
@@ -2005,6 +2685,8 @@ def _wpl_benchmark_status(flux_metrics: dict[str, float]) -> dict[str, Any]:
         "status": status,
         "wpl_water_vapor_term": wpl_wv,
         "wpl_sensible_heat_term": wpl_sh,
+        "closed_path_cell_pressure_term": cell_pressure_term,
+        "closed_path_density_term": flux_metrics.get("closed_path_density_term", 0.0),
         "total_density_correction": total_correction,
         "correction_ratio": correction_ratio,
         "sensible_heat_dominant": sensible_heat_dominant,
@@ -2251,6 +2933,12 @@ def _with_summary_context(
             "clock_sync_method": clock_sync_summary.get("method", ""),
             "clock_sync_source": clock_sync_summary.get("clock_source", ""),
             "clock_sync_mean_offset_s": clock_sync_summary.get("mean_offset_seconds"),
+            "clock_sync_quality_status": clock_sync_summary.get("quality_status", "not_configured"),
+            "clock_sync_quality_gate_status": clock_sync_summary.get("quality_gate_status", "not_configured"),
+            "clock_sync_quality_metric_s": clock_sync_summary.get("quality_metric_seconds"),
+            "clock_sync_quality_threshold_s": clock_sync_summary.get("quality_threshold_seconds"),
+            "clock_sync_max_event_step_s": clock_sync_summary.get("max_event_step_seconds"),
+            "clock_sync_offset_span_s": clock_sync_summary.get("offset_span_seconds"),
             "performance_profile": performance_profile or {},
         }
     )
@@ -2341,6 +3029,19 @@ def _mean_or_none(values: list[float]) -> float | None:
     if not clean:
         return None
     return round(float(np.mean(clean)), 4)
+
+
+def _mean_window_diagnostic(windows: list[WindowRPResult], key: str) -> float | None:
+    values: list[float] = []
+    for window in windows:
+        if not isinstance(window.diagnostics, dict):
+            continue
+        value = window.diagnostics.get(key)
+        if isinstance(value, (int, float)) and math.isfinite(float(value)):
+            values.append(float(value))
+    if not values:
+        return None
+    return round(float(np.mean(values)), 6)
 
 
 def _aggregate_numeric_mapping(mappings: list[dict[str, Any]]) -> dict[str, float]:
@@ -2753,9 +3454,11 @@ def _build_method_deviation_notes_from_window(window: WindowRPResult) -> list[st
     if clock_status and clock_status not in {"", "disabled"}:
         mean_offset = diagnostics.get("clock_sync_mean_offset_s")
         offset_text = f"; mean_offset_s={float(mean_offset):.6f}" if isinstance(mean_offset, (int, float)) else ""
+        quality_status = diagnostics.get("clock_sync_quality_status", "")
+        quality_text = f"; quality={quality_status}" if quality_status and quality_status != "not_configured" else ""
         notes.append(
             f"clock_sync: {diagnostics.get('clock_sync_method', '')}; "
-            f"source={diagnostics.get('clock_sync_source', '')}; status={clock_status}{offset_text}"
+            f"source={diagnostics.get('clock_sync_source', '')}; status={clock_status}{offset_text}{quality_text}"
         )
     ch4_method = diagnostics.get("ch4_method", "")
     if ch4_method:
@@ -2793,6 +3496,11 @@ def _attach_method_context_to_benchmark(window: WindowRPResult, benchmark_payloa
     benchmark_payload["clock_sync_method"] = diagnostics.get("clock_sync_method", "")
     benchmark_payload["clock_sync_source"] = diagnostics.get("clock_sync_source", "")
     benchmark_payload["clock_sync_mean_offset_s"] = diagnostics.get("clock_sync_mean_offset_s")
+    benchmark_payload["clock_sync_quality_status"] = diagnostics.get("clock_sync_quality_status", "")
+    benchmark_payload["clock_sync_quality_gate_status"] = diagnostics.get("clock_sync_quality_gate_status", "")
+    benchmark_payload["clock_sync_quality_metric_s"] = diagnostics.get("clock_sync_quality_metric_s")
+    benchmark_payload["clock_sync_quality_threshold_s"] = diagnostics.get("clock_sync_quality_threshold_s")
+    benchmark_payload["clock_sync_max_event_step_s"] = diagnostics.get("clock_sync_max_event_step_s")
     benchmark_payload["clock_sync_detail"] = diagnostics.get("clock_sync_detail", {})
     benchmark_payload["ch4_method"] = diagnostics.get("ch4_method", "")
     benchmark_payload["ch4_correction_sequence"] = diagnostics.get("ch4_correction_sequence", {})

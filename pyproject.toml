@@ -22,6 +22,10 @@ dependencies = [
 dev = [
   "pytest>=8.2",
 ]
+gis = [
+  "rasterio>=1.5",
+  "rio-cogeo>=7.0",
+]
 
 [project.scripts]
 gas-ec-headless = "core.headless_batch_runner:run_cli"
@@ -29,6 +33,7 @@ gas-ec-headless = "core.headless_batch_runner:run_cli"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = ["-p", "no:anyio", "-p", "no:anyio.pytest_plugin"]
 
 [tool.setuptools]
 packages = [
@@ -36,6 +41,7 @@ packages = [
   "app.pages",
   "app.widgets",
   "core",
+  "core.comparison",
   "core.protocol",
   "core.adapters",
   "core.acquisition",

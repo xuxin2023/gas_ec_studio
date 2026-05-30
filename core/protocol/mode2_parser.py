@@ -22,7 +22,7 @@ MODE2_KEYS = [
     "case_temp_c",
     "pressure_kpa",
 ]
-MODE2_STANDARD_FIELD_COUNT = 2 + len(MODE2_KEYS) + 1
+MODE2_STANDARD_FIELD_COUNT = 2 + len(MODE2_KEYS)
 
 
 def parse_mode2_frame(text: str) -> dict[str, Any] | None:
@@ -30,7 +30,7 @@ def parse_mode2_frame(text: str) -> dict[str, Any] | None:
     if "YGAS" not in candidate.upper():
         return None
     parts = [_clean_token(part) for part in candidate.split(",")]
-    if len(parts) < 4:
+    if len(parts) < 12:
         return None
     head = parts[0].upper()
     if "YGAS" not in head:
@@ -38,6 +38,10 @@ def parse_mode2_frame(text: str) -> dict[str, Any] | None:
     co2 = _to_float(parts[2]) if len(parts) > 2 else None
     h2o = _to_float(parts[3]) if len(parts) > 3 else None
     if co2 is None or h2o is None:
+        return None
+    if len(parts) > 4 and _to_float(parts[4]) is None:
+        return None
+    if len(parts) > 5 and _to_float(parts[5]) is None:
         return None
     quality = FrameQuality.FULL if len(parts) >= MODE2_STANDARD_FIELD_COUNT else FrameQuality.PARTIAL
     parsed: dict[str, Any] = {

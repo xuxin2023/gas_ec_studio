@@ -93,6 +93,49 @@ def test_clock_sync_events_interpolate_offsets() -> None:
     assert result.summary["max_offset_seconds"] == 1.5
 
 
+def test_clock_sync_quality_gate_tracks_event_step_threshold() -> None:
+    rows = _make_rows(sample_hz=1.0, samples=11)
+    start = rows[0].timestamp
+
+    warning = apply_clock_sync_to_rows(
+        rows,
+        config={
+            "clock_sync": {
+                "enabled": True,
+                "clock_source": "PTP",
+                "jitter_threshold_seconds": 0.25,
+                "events": [
+                    {"timestamp": start.isoformat(), "offset_seconds": 0.0},
+                    {"timestamp": (start + timedelta(seconds=10)).isoformat(), "offset_seconds": 1.0},
+                ],
+            }
+        },
+    )
+    fail = apply_clock_sync_to_rows(
+        rows,
+        config={
+            "clock_sync": {
+                "enabled": True,
+                "clock_source": "PTP",
+                "jitter_threshold_seconds": 0.25,
+                "require_quality_gate": True,
+                "events": [
+                    {"timestamp": start.isoformat(), "offset_seconds": 0.0},
+                    {"timestamp": (start + timedelta(seconds=10)).isoformat(), "offset_seconds": 1.0},
+                ],
+            }
+        },
+    )
+
+    assert warning.summary["quality_status"] == "warning"
+    assert warning.summary["quality_gate_status"] == "warning"
+    assert warning.summary["max_event_step_seconds"] == 1.0
+    assert warning.summary["quality_threshold_seconds"] == 0.25
+    assert any(check["check_id"] == "clock_sync.quality_threshold" for check in warning.summary["quality_checks"])
+    assert fail.summary["quality_status"] == "fail"
+    assert fail.summary["quality_gate_status"] == "fail"
+
+
 def test_rp_pipeline_applies_clock_sync_before_windowing() -> None:
     rows = _make_rows(samples=600)
     result = ECRPPipeline().run(
@@ -107,6 +150,7 @@ def test_rp_pipeline_applies_clock_sync_before_windowing() -> None:
                 "method": "gps_ptp_offset_drift_v1",
                 "clock_source": "GPS",
                 "offset_seconds": 2.0,
+                "jitter_threshold_seconds": 0.1,
             },
         },
         data_source="clock-test",
@@ -121,6 +165,9 @@ def test_rp_pipeline_applies_clock_sync_before_windowing() -> None:
     assert diagnostics["clock_sync_status"] == "applied"
     assert diagnostics["clock_sync_method"] == "gps_ptp_offset_drift_v1"
     assert diagnostics["clock_sync_source"] == "GPS"
+    assert diagnostics["clock_sync_quality_status"] == "pass"
+    assert diagnostics["clock_sync_quality_gate_status"] == "pass"
+    assert diagnostics["clock_sync_quality_metric_s"] == 0.0
 
 
 def test_headless_manifest_and_exporter_carry_clock_sync(tmp_path: Path) -> None:
@@ -137,6 +184,7 @@ def test_headless_manifest_and_exporter_carry_clock_sync(tmp_path: Path) -> None
             "clock_source": "GPS+PTP",
             "offset_seconds": 0.75,
             "drift_ppm": 0.0,
+            "jitter_threshold_seconds": 0.1,
         },
         "network_output": {
             "schema_target": "FLUXNET",
@@ -152,9 +200,12 @@ def test_headless_manifest_and_exporter_carry_clock_sync(tmp_path: Path) -> None
     spectral_result = batch["spectral_result"]
 
     assert batch["clock_sync_summary"]["status"] == "applied"
+    assert batch["clock_sync_summary"]["quality_status"] == "pass"
     assert manifest["clock_sync_summary"]["status"] == "applied"
+    assert manifest["clock_sync_summary"]["quality_gate_status"] == "pass"
     assert manifest["time_range"]["start"] == "2026-05-22T10:00:00.750000"
     assert rp_result.windows[0].diagnostics["clock_sync_mean_offset_s"] == 0.75
+    assert rp_result.windows[0].diagnostics["clock_sync_quality_status"] == "pass"
     assert spectral_result.windows[0].start_time == rows[0].timestamp + timedelta(seconds=0.75)
 
     exporter = ResultExporter(tmp_path)
@@ -175,10 +226,15 @@ def test_headless_manifest_and_exporter_carry_clock_sync(tmp_path: Path) -> None
     network_payload = json.loads(Path(files["fluxnet_half_hourly_artifact"]).read_text(encoding="utf-8"))
 
     assert export_manifest["clock_sync_summary"]["status"] == "applied"
+    assert export_manifest["clock_sync_summary"]["quality_status"] == "pass"
     assert export_manifest["clock_sync_artifact"] == files["clock_sync_artifact"]
     assert "clock_sync_method" in export_manifest["method_provenance_fields"]
+    assert "clock_sync_quality_status" in export_manifest["method_provenance_fields"]
     assert "CLOCK_SYNC_METHOD" in export_manifest["network_method_fields"]
+    assert "CLOCK_SYNC_QUALITY_STATUS" in export_manifest["network_method_fields"]
     assert full_rows[0]["clock_sync_status"] == "applied"
     assert full_rows[0]["clock_sync_source"] == "GPS+PTP"
+    assert full_rows[0]["clock_sync_quality_status"] == "pass"
     assert network_payload["rows"][0]["CLOCK_SYNC_STATUS"] == "applied"
     assert network_payload["rows"][0]["CLOCK_SYNC_METHOD"] == "gps_ptp_offset_drift_v1"
+    assert network_payload["rows"][0]["CLOCK_SYNC_QUALITY_STATUS"] == "pass"

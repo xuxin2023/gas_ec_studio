@@ -16,6 +16,26 @@ from core.acquisition.acquisition_service import AcquisitionService
 from core.acquisition.realtime_buffer import RealtimeBuffer
 from core.adapters.factory import build_adapter
 from core.comparison.eddypro_comparator import EddyProComparator
+from core.comparison.eddypro_coverage_audit import build_eddypro_coverage_audit
+from core.comparison.fixture_pack import (
+    acquire_public_eddypro_fixture_files,
+    build_fixture_pack_summary,
+    build_official_raw_fixture_detail,
+    build_official_raw_fixture_manifest,
+    build_public_eddypro_fixture_catalog,
+)
+from core.comparison.official_raw_fixture_bundle import (
+    build_official_raw_fixture_bundle_manifest,
+    build_official_raw_fixture_bundle_manifest_batch,
+    build_official_raw_fixture_evidence_pack,
+    capture_official_eddypro_run_evidence,
+    discover_official_raw_fixture_bundles,
+    inspect_official_raw_fixture_bundle,
+    register_official_raw_fixture_bundle,
+    register_official_raw_fixture_bundle_batch,
+    run_official_raw_evidence_pack_acceptance,
+    validate_official_raw_fixture_acquisition,
+)
 from core.ec_fcc.pipeline import ECFCCPipeline
 from core.ec_rp.pipeline import ECRPPipeline
 from core.exports.delivery_exporter import export_delivery_package
@@ -24,6 +44,7 @@ from core.exports.report_exporter import export_formal_report, export_report_sna
 from core.exports.result_exporter import ResultExporter
 from core.protocol.coefficient_codec import encode_coefficients, parse_coefficient_line
 from core.protocol.command_builder import CommandBuilder, normalize_device_id
+from core.protocol.gas_analyzer_profiles import get_gas_analyzer_profile, list_gas_analyzer_profiles
 from core.protocol.software_profile import SoftwareProfile
 from core.protocol.transaction_manager import TransactionManager
 from core.storage.hf_data_store import HFDataStore
@@ -211,10 +232,19 @@ class StudioController(QObject):
     def available_batch_labels(self) -> list[str]:
         return [self._batch_label(result) for result in self.spectral_runs]
 
-    def add_device(self, *, label: str, port: str, baudrate: int, device_id: str) -> str:
+    def add_device(
+        self,
+        *,
+        label: str,
+        port: str,
+        baudrate: int,
+        device_id: str,
+        analyzer_profile: str = "ygas_irga",
+    ) -> str:
         uid = uuid4().hex[:8]
         normalized_id = normalize_device_id(device_id)
-        profile = SoftwareProfile.standard()
+        analyzer = get_gas_analyzer_profile(analyzer_profile)
+        profile = SoftwareProfile.for_analyzer_profile(analyzer.profile_id)
         config = DeviceConnectionConfig(
             uid=uid,
             label=label.strip() or f"分析仪 {normalized_id}",
@@ -222,8 +252,11 @@ class StudioController(QObject):
             baudrate=int(baudrate),
             device_id=normalized_id,
             software_profile=profile.name,
+            analyzer_profile=analyzer.profile_id,
         )
         runtime = DeviceRuntimeState(active_send=profile.default_active_send, mode=profile.default_mode)
+        runtime.ftd_hz = min(runtime.ftd_hz, analyzer.max_sample_hz)
+        runtime.extra["gas_analyzer_profile"] = analyzer.to_summary()
         runtime.last_message = "尚未开始采集"
         adapter = build_adapter(port=config.port, baudrate=config.baudrate, device_id=config.device_id)
         entry = ManagedDevice(
@@ -243,6 +276,9 @@ class StudioController(QObject):
         self.devices_changed.emit()
         self.selection_changed.emit()
         return uid
+
+    def available_gas_analyzer_profiles(self) -> list[dict[str, object]]:
+        return [profile.to_summary() for profile in list_gas_analyzer_profiles()]
 
     def connect_device(self, device_uid: str) -> None:
         entry = self._get_device(device_uid)
@@ -1008,6 +1044,995 @@ class StudioController(QObject):
         self.report_changed.emit()
         return {"message": "当前项目与批次视图已刷新。"}
 
+    def refresh_public_eddypro_fixtures_for_report_center(self, *, overwrite: bool = False) -> dict:
+        state = self.report_center_workspace.setdefault("public_eddypro_fixtures", self._default_public_eddypro_fixture_state())
+        fixture_workspace_root = self._active_fixture_pack_workspace_root()
+        artifact_root = self.runtime_root / "exports" / "public_eddypro_fixtures"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+
+        acquisition = acquire_public_eddypro_fixture_files(
+            workspace_root=fixture_workspace_root,
+            overwrite=overwrite,
+            include_remote_originals=False,
+        )
+        acquisition_path = artifact_root / "public_eddypro_fixture_acquisition.json"
+        acquisition_path.write_text(json.dumps(acquisition, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        catalog = dict(acquisition.get("catalog", {}) or build_public_eddypro_fixture_catalog(workspace_root=fixture_workspace_root))
+        catalog_path = artifact_root / "public_eddypro_fixture_catalog.json"
+        catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        state.update(
+            {
+                "status": str(acquisition.get("status", catalog.get("status", "unknown"))),
+                "message": (
+                    f"Public EddyPro fixtures refreshed: {acquisition.get('status', catalog.get('status', 'unknown'))}; "
+                    f"datasets={catalog.get('dataset_count', 0)}; "
+                    f"fixtures={catalog.get('valid_fixture_count', 0)}/{catalog.get('fixture_count', 0)}; "
+                    f"downloaded={acquisition.get('downloaded_count', 0)}; skipped={acquisition.get('skipped_count', 0)}"
+                ),
+                "catalog": catalog,
+                "catalog_artifact": str(catalog_path),
+                "acquisition": acquisition,
+                "acquisition_artifact": str(acquisition_path),
+                "workspace_root": str(fixture_workspace_root),
+                "overwrite": bool(overwrite),
+            }
+        )
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", state["message"])
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": state["status"],
+            "artifact": str(acquisition_path),
+            "catalog_artifact": str(catalog_path),
+            "acquisition": acquisition,
+            "catalog": catalog,
+        }
+
+    def build_official_raw_bundle_manifest_for_report_center(
+        self,
+        bundle_dir: str,
+        *,
+        fixture_id: str = "",
+        site_class: str = "",
+        software_version: str = "",
+        overwrite: bool = False,
+    ) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        bundle_path = bundle_dir.strip() or str(state.get("bundle_dir", "")).strip() or str(state.get("bundle_root", "")).strip()
+        if not bundle_path:
+            state.update({"status": "missing_bundle_path", "message": "Official raw bundle path is required."})
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+        result = build_official_raw_fixture_bundle_manifest(
+            bundle_path,
+            fixture_id=fixture_id,
+            site_class=site_class,
+            software="EddyPro",
+            software_version=software_version,
+            overwrite=overwrite,
+            workspace_root=self.workspace_root,
+        )
+        artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        artifact_path = artifact_root / f"{result.get('fixture_id', 'official_raw_fixture')}_manifest_build.json"
+        artifact_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        acquisition = dict(dict(result.get("inspection", {}) or {}).get("acquisition_validation", {}) or {})
+        acquisition_path = artifact_root / f"{result.get('fixture_id', 'official_raw_fixture')}_acquisition_validation.json"
+        if acquisition:
+            acquisition_path.write_text(json.dumps(acquisition, ensure_ascii=False, indent=2), encoding="utf-8")
+        state.update(
+            {
+                "bundle_dir": bundle_path,
+                "status": str(result.get("status", "")),
+                "manifest_build": result,
+                "manifest_build_artifact": str(artifact_path),
+                "inspection": dict(result.get("inspection", {}) or {}),
+                "acquisition_validation": acquisition,
+                "acquisition_validation_artifact": str(acquisition_path) if acquisition else "",
+                "message": (
+                    f"Official raw bundle manifest build: {result.get('status', 'unknown')}; "
+                    f"fixture={result.get('fixture_id', '') or dict(result.get('inspection', {}) or {}).get('fixture_id', '')}"
+                ),
+            }
+        )
+        if result.get("manifest_path"):
+            state["bundle_dir"] = bundle_path
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw fixture manifest build {result.get('status', 'unknown')}: {bundle_path}")
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": state["status"],
+            "manifest_path": str(result.get("manifest_path", "")),
+            "artifact": str(artifact_path),
+            "fixture_id": str(result.get("fixture_id", "") or dict(result.get("inspection", {}) or {}).get("fixture_id", "")),
+            "normalization_result": dict(result.get("normalization_result", {}) or {}),
+        }
+
+    def inspect_official_raw_bundle_for_report_center(self, bundle_dir: str) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        bundle_path = bundle_dir.strip()
+        if not bundle_path:
+            state.update({"status": "missing_bundle_path", "message": "Official raw bundle path is required."})
+            self._sync_report_center_from_results(mark_refreshed=True)
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+        inspection = inspect_official_raw_fixture_bundle(bundle_path, workspace_root=self.workspace_root)
+        artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        artifact_path = artifact_root / f"{inspection.get('fixture_id', 'official_raw_fixture')}_inspection.json"
+        artifact_path.write_text(json.dumps(inspection, ensure_ascii=False, indent=2), encoding="utf-8")
+        acquisition = dict(inspection.get("acquisition_validation", {}) or {})
+        acquisition_path = artifact_root / f"{inspection.get('fixture_id', 'official_raw_fixture')}_acquisition_validation.json"
+        if acquisition:
+            acquisition_path.write_text(json.dumps(acquisition, ensure_ascii=False, indent=2), encoding="utf-8")
+        state.update(
+            {
+                "bundle_dir": bundle_path,
+                "status": str(inspection.get("status", "")),
+                "inspection": inspection,
+                "inspection_artifact": str(artifact_path),
+                "acquisition_validation": acquisition,
+                "acquisition_validation_artifact": str(acquisition_path) if acquisition else "",
+                "message": f"Official raw bundle inspection: {inspection.get('status', 'unknown')}",
+            }
+        )
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw fixture bundle inspected: {bundle_path}")
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": state["status"],
+            "artifact": str(artifact_path),
+            "acquisition_validation": acquisition,
+            "acquisition_validation_artifact": str(acquisition_path) if acquisition else "",
+        }
+
+    def validate_official_raw_bundle_for_report_center(self, bundle_dir: str = "") -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        bundle_path = bundle_dir.strip() or str(state.get("bundle_dir", "")).strip() or str(state.get("bundle_root", "")).strip()
+        if not bundle_path:
+            state.update({"status": "missing_bundle_path", "message": "Official raw bundle path is required."})
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+        parity = dict(state.get("parity", {}) or {})
+        validation = validate_official_raw_fixture_acquisition(
+            bundle_path,
+            workspace_root=self.workspace_root,
+            parity_payload=parity if parity else None,
+        )
+        artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        artifact_path = artifact_root / f"{validation.get('fixture_id', 'official_raw_fixture')}_acquisition_validation.json"
+        artifact_path.write_text(json.dumps(validation, ensure_ascii=False, indent=2), encoding="utf-8")
+        state.update(
+            {
+                "bundle_dir": bundle_path,
+                "status": str(validation.get("status", "")),
+                "acquisition_validation": validation,
+                "acquisition_validation_artifact": str(artifact_path),
+                "message": (
+                    f"Official raw acquisition validation: {validation.get('status', 'unknown')}; "
+                    f"missing={', '.join(str(item) for item in list(validation.get('missing_requirements', []) or [])[:4]) or 'none'}"
+                ),
+            }
+        )
+        evidence_pack = self._write_official_raw_evidence_pack(bundle_path, acquisition=validation)
+        if evidence_pack:
+            state["evidence_pack"] = evidence_pack
+            state["evidence_pack_artifact"] = str(evidence_pack.get("artifact", ""))
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw acquisition validation {validation.get('status', 'unknown')}: {bundle_path}")
+        self.report_changed.emit()
+        return {"message": state["message"], "status": state["status"], "artifact": str(artifact_path)}
+
+    def capture_official_eddypro_run_for_report_center(
+        self,
+        bundle_dir: str = "",
+        *,
+        command: str = "",
+        software_version: str = "",
+        output_files: str | list[str] | None = None,
+        executable_path: str = "",
+        project_file: str = "",
+        working_directory: str = "",
+        timeout_s: float = 900.0,
+    ) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        bundle_path = bundle_dir.strip() or str(state.get("bundle_dir", "")).strip() or str(state.get("bundle_root", "")).strip()
+        if not bundle_path:
+            state.update({"status": "missing_bundle_path", "message": "Official raw bundle path is required."})
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+        if not command.strip():
+            state.update({"status": "missing_official_run_command", "message": "Official EddyPro run command is required."})
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+
+        capture = capture_official_eddypro_run_evidence(
+            bundle_path,
+            command=command,
+            software_version=software_version,
+            executable_path=executable_path,
+            project_file=project_file,
+            output_files=self._official_run_output_files_from_ui(output_files),
+            working_directory=working_directory or None,
+            timeout_s=float(timeout_s or 900.0),
+            workspace_root=self.workspace_root,
+            write_sidecar=True,
+        )
+        artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        fixture_id = str(dict(capture.get("official_eddypro_run", {}) or {}).get("fixture_id", "") or Path(bundle_path).name)
+        capture_artifact = artifact_root / f"{fixture_id}_official_eddypro_run_capture.json"
+        capture_artifact.write_text(json.dumps(capture, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        inspection = inspect_official_raw_fixture_bundle(bundle_path, workspace_root=self.workspace_root)
+        inspection_artifact = artifact_root / f"{inspection.get('fixture_id', 'official_raw_fixture')}_inspection.json"
+        inspection_artifact.write_text(json.dumps(inspection, ensure_ascii=False, indent=2), encoding="utf-8")
+        parity = dict(state.get("parity", {}) or {})
+        acquisition = validate_official_raw_fixture_acquisition(
+            bundle_path,
+            workspace_root=self.workspace_root,
+            parity_payload=parity if parity else None,
+        )
+        acquisition_artifact = artifact_root / f"{acquisition.get('fixture_id', 'official_raw_fixture')}_acquisition_validation.json"
+        acquisition_artifact.write_text(json.dumps(acquisition, ensure_ascii=False, indent=2), encoding="utf-8")
+        evidence_pack = self._write_official_raw_evidence_pack(
+            bundle_path,
+            parity=parity if parity else None,
+            acquisition=acquisition,
+        )
+        official_run = dict(inspection.get("official_eddypro_run", {}) or capture.get("official_eddypro_run", {}) or {})
+        state.update(
+            {
+                "bundle_dir": bundle_path,
+                "status": str(capture.get("status", "")),
+                "official_run_capture": capture,
+                "official_run_capture_artifact": str(capture_artifact),
+                "official_eddypro_run": official_run,
+                "official_eddypro_run_sidecar": str(capture.get("sidecar_path", "")),
+                "inspection": inspection,
+                "inspection_artifact": str(inspection_artifact),
+                "acquisition_validation": acquisition,
+                "acquisition_validation_artifact": str(acquisition_artifact),
+                "message": (
+                    f"Official EddyPro run capture: {capture.get('status', 'unknown')}; "
+                    f"gate={capture.get('gate_status', 'blocked')}; "
+                    f"sidecar={capture.get('sidecar_path', '')}"
+                ),
+            }
+        )
+        if evidence_pack:
+            state["evidence_pack"] = evidence_pack
+            state["evidence_pack_artifact"] = str(evidence_pack.get("artifact", ""))
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official EddyPro run capture {capture.get('status', 'unknown')}: {bundle_path}")
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": state["status"],
+            "gate_status": str(capture.get("gate_status", "")),
+            "artifact": str(capture_artifact),
+            "sidecar_path": str(capture.get("sidecar_path", "")),
+            "official_eddypro_run": official_run,
+        }
+
+    def register_official_raw_bundle_for_report_center(self, bundle_dir: str, *, replace: bool = False) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        bundle_path = bundle_dir.strip() or str(state.get("bundle_dir", "")).strip()
+        if not bundle_path:
+            state.update({"status": "missing_bundle_path", "message": "Official raw bundle path is required."})
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+        pack_source = self._active_fixture_pack_path()
+        target_root = self.runtime_root / "eddypro_fixture_pack"
+        target_root.mkdir(parents=True, exist_ok=True)
+        target_pack = target_root / "fixture_pack_v1_registered.json"
+        try:
+            registration = register_official_raw_fixture_bundle(
+                bundle_dir=bundle_path,
+                pack_path=pack_source,
+                output_path=target_pack,
+                workspace_root=self._active_fixture_pack_workspace_root(),
+                replace=replace,
+            )
+        except ValueError as exc:
+            registration = {
+                "status": "incomplete",
+                "fixture_id": "",
+                "output_path": "",
+                "errors": [str(exc)],
+            }
+        state.update(
+            {
+                "bundle_dir": bundle_path,
+                "status": str(registration.get("status", "")),
+                "registration": registration,
+                "registered_pack_path": str(target_pack)
+                if registration.get("status") == "registered"
+                else str(state.get("registered_pack_path", "")),
+                "registered_pack_workspace_root": str(self._active_fixture_pack_workspace_root())
+                if registration.get("status") == "registered"
+                else str(state.get("registered_pack_workspace_root", "")),
+                "message": f"Official raw bundle registration: {registration.get('status', 'unknown')}",
+            }
+        )
+        if registration.get("status") == "registered":
+            self.inspect_official_raw_bundle_for_report_center(bundle_path)
+            state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+            state["registration"] = registration
+            state["registered_pack_path"] = str(target_pack)
+            state["registered_pack_workspace_root"] = str(self._active_fixture_pack_workspace_root())
+            state["status"] = "registered"
+            parity = self._official_raw_bundle_parity_payload(str(registration.get("fixture_id", "")), write_artifact=True)
+            state["parity"] = parity
+            state["parity_artifact"] = str(parity.get("artifact", ""))
+            acquisition = validate_official_raw_fixture_acquisition(
+                bundle_path,
+                workspace_root=self.workspace_root,
+                parity_payload=parity,
+            )
+            artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            acquisition_artifact = artifact_root / f"{acquisition.get('fixture_id', registration.get('fixture_id', 'official_raw_fixture'))}_acquisition_validation.json"
+            acquisition_artifact.write_text(json.dumps(acquisition, ensure_ascii=False, indent=2), encoding="utf-8")
+            state["acquisition_validation"] = acquisition
+            state["acquisition_validation_artifact"] = str(acquisition_artifact)
+            detail = self._official_raw_fixture_detail_payload(str(registration.get("fixture_id", "")), write_artifact=True)
+            state["selected_fixture_id"] = str(registration.get("fixture_id", ""))
+            state["selected_fixture_detail"] = detail
+            state["selected_fixture_detail_artifact"] = str(detail.get("artifact", ""))
+            evidence_pack = self._write_official_raw_evidence_pack(
+                bundle_path,
+                parity=parity,
+                acquisition=acquisition,
+                detail=detail,
+            )
+            if evidence_pack:
+                state["evidence_pack"] = evidence_pack
+                state["evidence_pack_artifact"] = str(evidence_pack.get("artifact", ""))
+            state["message"] = (
+                f"Official raw bundle registered: {registration.get('fixture_id', '')}; "
+                f"raw-to-final parity={parity.get('status', 'unknown')} "
+                f"pass_rate={float(parity.get('pass_rate', 0.0) or 0.0):.1%}"
+            )
+            benchmark_state = dict(self.report_center_workspace.get("benchmark", {}) or self._effective_benchmark_config())
+            benchmark_state.update(
+                {
+                    "official_raw_fixture_id": parity.get("fixture_id", registration.get("fixture_id", "")),
+                    "official_raw_parity_status": parity.get("status", ""),
+                    "official_raw_pass_rate": parity.get("pass_rate", 0.0),
+                    "official_raw_failed_fields": list(parity.get("failed_fields", []) or []),
+                    "official_raw_parity_artifact": parity.get("artifact", ""),
+                    "official_raw_fixture_detail_artifact": detail.get("artifact", ""),
+                    "official_raw_fixture_pack_path": parity.get("fixture_pack_path", str(target_pack)),
+                    **self._official_raw_trace_benchmark_fields(parity),
+                }
+            )
+            self.report_center_workspace["benchmark"] = benchmark_state
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw fixture bundle registration {registration.get('status', 'unknown')}: {bundle_path}")
+        self.report_changed.emit()
+        return {"message": state["message"], "status": state["status"], "pack_path": str(target_pack)}
+
+    def export_official_raw_evidence_pack_for_report_center(self, bundle_dir: str = "") -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        bundle_path = bundle_dir.strip() or str(state.get("bundle_dir", "")).strip() or str(state.get("bundle_root", "")).strip()
+        if not bundle_path:
+            state.update({"status": "missing_bundle_path", "message": "Official raw bundle path is required."})
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+        evidence_pack = self._write_official_raw_evidence_pack(bundle_path)
+        if not evidence_pack:
+            state["message"] = "Official raw evidence pack could not be generated."
+            self.report_changed.emit()
+            return {"message": state["message"], "status": "error"}
+        state["status"] = str(evidence_pack.get("status", ""))
+        state["message"] = (
+            f"Official raw evidence pack exported: {evidence_pack.get('status', 'unknown')}; "
+            f"fixture={evidence_pack.get('fixture_id', '')}"
+        )
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw evidence pack exported: {bundle_path}")
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": state["status"],
+            "artifact": str(evidence_pack.get("artifact", "")),
+            "evidence_pack": evidence_pack,
+        }
+
+    def run_official_raw_evidence_acceptance_for_report_center(
+        self,
+        bundle_dir: str = "",
+        *,
+        commands: list[str] | None = None,
+        timeout_s: float = 300.0,
+    ) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        bundle_path = bundle_dir.strip() or str(state.get("bundle_dir", "")).strip() or str(state.get("bundle_root", "")).strip()
+        artifact_path = Path(str(state.get("evidence_pack_artifact", "") or ""))
+        if not artifact_path.exists():
+            if not bundle_path:
+                state.update({"status": "missing_evidence_pack", "message": "Build an official raw evidence pack before running acceptance."})
+                self.report_changed.emit()
+                return {"message": state["message"], "status": state["status"]}
+            evidence_pack = self._write_official_raw_evidence_pack(bundle_path)
+            artifact_path = Path(str(evidence_pack.get("artifact", "") or ""))
+        if not artifact_path.exists():
+            state.update({"status": "missing_evidence_pack", "message": "Official raw evidence pack artifact is missing."})
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+        evidence_pack = run_official_raw_evidence_pack_acceptance(
+            artifact_path,
+            workspace_root=self.workspace_root,
+            commands=commands,
+            timeout_s=float(timeout_s or 300.0),
+            write_back=True,
+        )
+        acceptance_run = dict(evidence_pack.get("acceptance_run", {}) or {})
+        state.update(
+            {
+                "status": str(evidence_pack.get("status", "")),
+                "evidence_pack": evidence_pack,
+                "evidence_pack_artifact": str(artifact_path),
+                "acceptance_run": acceptance_run,
+                "acceptance_status": str(evidence_pack.get("acceptance_status", "")),
+                "message": (
+                    f"Official raw evidence acceptance: {evidence_pack.get('acceptance_status', 'unknown')}; "
+                    f"passed={acceptance_run.get('passed_count', 0)}/{acceptance_run.get('command_count', 0)}; "
+                    f"failed={acceptance_run.get('failed_count', 0)}"
+                ),
+            }
+        )
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw evidence acceptance {state['acceptance_status']}: {artifact_path}")
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": state["status"],
+            "acceptance_status": state["acceptance_status"],
+            "artifact": str(artifact_path),
+            "acceptance_run": acceptance_run,
+        }
+
+    def run_official_raw_closure_for_report_center(
+        self,
+        bundle_dir: str = "",
+        *,
+        command: str = "",
+        software_version: str = "",
+        output_files: str | list[str] | None = None,
+        overwrite_manifest: bool = False,
+        replace: bool = False,
+        run_acceptance: bool = True,
+        acceptance_commands: list[str] | None = None,
+        acceptance_timeout_s: float = 300.0,
+    ) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        bundle_path = bundle_dir.strip() or str(state.get("bundle_dir", "")).strip() or str(state.get("bundle_root", "")).strip()
+        if not bundle_path:
+            state.update({"status": "missing_bundle_path", "message": "Official raw bundle path is required."})
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+
+        steps: list[dict[str, object]] = []
+        if command.strip():
+            capture = self.capture_official_eddypro_run_for_report_center(
+                bundle_path,
+                command=command,
+                software_version=software_version,
+                output_files=output_files,
+            )
+            steps.append(
+                {
+                    "step": "capture_official_eddypro_run",
+                    "status": capture.get("status", ""),
+                    "gate_status": capture.get("gate_status", ""),
+                    "artifact": capture.get("artifact", ""),
+                    "sidecar_path": capture.get("sidecar_path", ""),
+                }
+            )
+
+        manifest_build = self.build_official_raw_bundle_manifest_for_report_center(
+            bundle_path,
+            software_version=software_version,
+            overwrite=overwrite_manifest,
+        )
+        steps.append(
+            {
+                "step": "build_or_refresh_manifest",
+                "status": manifest_build.get("status", ""),
+                "artifact": manifest_build.get("artifact", ""),
+                "manifest_path": manifest_build.get("manifest_path", ""),
+            }
+        )
+
+        registration = self.register_official_raw_bundle_for_report_center(bundle_path, replace=replace)
+        steps.append(
+            {
+                "step": "register_and_run_raw_to_final_parity",
+                "status": registration.get("status", ""),
+                "pack_path": registration.get("pack_path", ""),
+            }
+        )
+
+        acceptance: dict[str, object] = {"status": "not_run", "acceptance_status": "not_run"}
+        if run_acceptance:
+            acceptance = self.run_official_raw_evidence_acceptance_for_report_center(
+                bundle_path,
+                commands=acceptance_commands,
+                timeout_s=acceptance_timeout_s,
+            )
+            steps.append(
+                {
+                    "step": "run_evidence_pack_acceptance",
+                    "status": acceptance.get("status", ""),
+                    "acceptance_status": acceptance.get("acceptance_status", ""),
+                    "artifact": acceptance.get("artifact", ""),
+                }
+            )
+
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        acquisition = dict(state.get("acquisition_validation", {}) or {})
+        parity = dict(state.get("parity", {}) or {})
+        evidence_pack = dict(state.get("evidence_pack", {}) or {})
+        official_run = dict(
+            evidence_pack.get("official_eddypro_run", {})
+            or acquisition.get("official_eddypro_run", {})
+            or state.get("official_eddypro_run", {})
+            or {}
+        )
+        acceptance_gate = str(
+            evidence_pack.get("acceptance_gate_status", dict(evidence_pack.get("acceptance_run", {}) or {}).get("gate_status", "not_run"))
+            or "not_run"
+        )
+        closure_status = "pass"
+        blockers: list[str] = []
+        if str(acquisition.get("gate_status", "")) != "pass":
+            blockers.append("official_raw_acquisition_gate")
+        if str(parity.get("status", "")) != "pass":
+            blockers.append("raw_to_final_parity")
+        if str(official_run.get("gate_status", "")) != "pass":
+            blockers.append("official_eddypro_executable_run")
+        if run_acceptance and acceptance_gate != "pass":
+            blockers.append("official_raw_evidence_pack_acceptance")
+        if blockers:
+            closure_status = "blocked"
+
+        closure_run = {
+            "artifact_type": "official_raw_closure_run_v1",
+            "status": closure_status,
+            "gate_status": "pass" if closure_status == "pass" else "blocked",
+            "generated_at": datetime.now().isoformat(),
+            "bundle_root": bundle_path,
+            "fixture_id": str(parity.get("fixture_id", acquisition.get("fixture_id", ""))),
+            "steps": steps,
+            "blockers": blockers,
+            "official_eddypro_run_gate_status": str(official_run.get("gate_status", "blocked")),
+            "raw_to_final_parity_status": str(parity.get("status", "")),
+            "raw_to_final_pass_rate": float(parity.get("pass_rate", 0.0) or 0.0),
+            "acquisition_status": str(acquisition.get("status", "")),
+            "acquisition_gate_status": str(acquisition.get("gate_status", "")),
+            "acceptance_status": str(evidence_pack.get("acceptance_status", acceptance.get("acceptance_status", "not_run"))),
+            "acceptance_gate_status": acceptance_gate,
+            "evidence_pack_artifact": str(state.get("evidence_pack_artifact", "")),
+            "registered_pack_path": str(state.get("registered_pack_path", "")),
+            "truthfulness_note": (
+                "This closure run is a workflow artifact. It only passes when official run provenance, "
+                "raw-to-final parity, acquisition validation, and requested acceptance gates pass."
+            ),
+        }
+        artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        safe_id = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in (closure_run["fixture_id"] or "official_raw"))
+        closure_artifact = artifact_root / f"{safe_id}_closure_run.json"
+        closure_run["artifact"] = str(closure_artifact)
+        closure_artifact.write_text(json.dumps(closure_run, ensure_ascii=False, indent=2), encoding="utf-8")
+        state.update(
+            {
+                "status": closure_status,
+                "closure_run": closure_run,
+                "closure_run_artifact": str(closure_artifact),
+                "message": (
+                    f"Official raw closure run: {closure_status}; "
+                    f"blockers={('/'.join(blockers) or 'none')}; "
+                    f"acceptance={closure_run['acceptance_status']}"
+                ),
+            }
+        )
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", state["message"])
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": closure_status,
+            "gate_status": closure_run["gate_status"],
+            "artifact": str(closure_artifact),
+            "closure_run": closure_run,
+        }
+
+    def inspect_official_raw_bundle_tree_for_report_center(self, bundle_root: str) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        root_path = bundle_root.strip()
+        if not root_path:
+            state.update({"status": "missing_bundle_root", "message": "Official raw bundle root path is required."})
+            self._sync_report_center_from_results(mark_refreshed=True)
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+        discovery = discover_official_raw_fixture_bundles(root_path, workspace_root=self.workspace_root)
+        artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        artifact_path = artifact_root / "official_raw_bundle_discovery.json"
+        artifact_path.write_text(json.dumps(discovery, ensure_ascii=False, indent=2), encoding="utf-8")
+        state.update(
+            {
+                "bundle_root": root_path,
+                "status": str(discovery.get("status", "")),
+                "discovery": discovery,
+                "discovery_artifact": str(artifact_path),
+                "repair_plan": dict(discovery.get("repair_plan", {}) or {}),
+                "repair_plan_artifact": str(artifact_path),
+                "message": (
+                    f"Official raw bundle discovery: {discovery.get('status', 'unknown')}; "
+                    f"ready={discovery.get('ready_count', 0)}/{discovery.get('bundle_count', 0)}; "
+                    f"repair_items={dict(discovery.get('repair_plan', {}) or {}).get('repair_item_count', 0)}"
+                ),
+            }
+        )
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw fixture bundle tree inspected: {root_path}")
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": state["status"],
+            "artifact": str(artifact_path),
+            "ready_count": int(discovery.get("ready_count", 0) or 0),
+            "bundle_count": int(discovery.get("bundle_count", 0) or 0),
+        }
+
+    def build_official_raw_bundle_tree_manifests_for_report_center(
+        self,
+        bundle_root: str,
+        *,
+        site_class: str = "",
+        software_version: str = "",
+        overwrite: bool = False,
+    ) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        root_path = bundle_root.strip() or str(state.get("bundle_root", "")).strip() or str(state.get("bundle_dir", "")).strip()
+        if not root_path:
+            state.update({"status": "missing_bundle_root", "message": "Official raw bundle tree path is required."})
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+        result = build_official_raw_fixture_bundle_manifest_batch(
+            root_path,
+            site_class=site_class,
+            software_version=software_version,
+            overwrite=overwrite,
+            workspace_root=self.workspace_root,
+        )
+        artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        artifact_path = artifact_root / "official_raw_bundle_manifest_batch_build.json"
+        artifact_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        state.update(
+            {
+                "bundle_root": root_path,
+                "status": str(result.get("status", "")),
+                "manifest_batch_build": result,
+                "manifest_batch_build_artifact": str(artifact_path),
+                "discovery": dict(result.get("discovery", {}) or {}),
+                "repair_plan": dict(result.get("repair_plan", {}) or dict(dict(result.get("discovery", {}) or {}).get("repair_plan", {}) or {})),
+                "repair_plan_artifact": str(artifact_path),
+                "message": (
+                    f"Official raw bundle tree manifest build: {result.get('status', 'unknown')}; "
+                    f"ready={result.get('ready_count', 0)}/{result.get('build_count', 0)}; "
+                    f"repair_items={dict(result.get('repair_plan', {}) or {}).get('repair_item_count', 0)}"
+                ),
+            }
+        )
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw fixture tree manifest build {result.get('status', 'unknown')}: {root_path}")
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": state["status"],
+            "artifact": str(artifact_path),
+            "ready_count": int(result.get("ready_count", 0) or 0),
+            "build_count": int(result.get("build_count", 0) or 0),
+            "generated_count": int(result.get("generated_count", 0) or 0),
+            "existing_count": int(result.get("existing_count", 0) or 0),
+            "manifest_build": result,
+        }
+
+    def register_official_raw_bundle_tree_for_report_center(self, bundle_root: str, *, replace: bool = False) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        root_path = bundle_root.strip() or str(state.get("bundle_root", "")).strip()
+        if not root_path:
+            state.update({"status": "missing_bundle_root", "message": "Official raw bundle root path is required."})
+            self.report_changed.emit()
+            return {"message": state["message"], "status": state["status"]}
+        pack_source = self._active_fixture_pack_path()
+        target_root = self.runtime_root / "eddypro_fixture_pack"
+        target_root.mkdir(parents=True, exist_ok=True)
+        target_pack = target_root / "fixture_pack_v1_registered.json"
+        registration = register_official_raw_fixture_bundle_batch(
+            bundle_root=root_path,
+            pack_path=pack_source,
+            output_path=target_pack,
+            workspace_root=self._active_fixture_pack_workspace_root(),
+            replace=replace,
+        )
+        artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        registration_artifact = artifact_root / "official_raw_bundle_batch_registration.json"
+        registration_artifact.write_text(json.dumps(registration, ensure_ascii=False, indent=2), encoding="utf-8")
+        manifest_build = dict(registration.get("manifest_build", {}) or {})
+        state.update(
+            {
+                "bundle_root": root_path,
+                "status": str(registration.get("status", "")),
+                "manifest_batch_build": manifest_build,
+                "discovery": dict(registration.get("discovery", {}) or {}),
+                "batch_registration": registration,
+                "batch_registration_artifact": str(registration_artifact),
+                "registered_pack_path": str(target_pack)
+                if int(registration.get("registered_count", 0) or 0) > 0
+                else str(state.get("registered_pack_path", "")),
+                "registered_pack_workspace_root": str(self._active_fixture_pack_workspace_root())
+                if int(registration.get("registered_count", 0) or 0) > 0
+                else str(state.get("registered_pack_workspace_root", "")),
+                "message": (
+                    f"Official raw bundle batch registration: {registration.get('status', 'unknown')}; "
+                    f"registered={registration.get('registered_count', 0)}; skipped={registration.get('skipped_count', 0)}"
+                ),
+            }
+        )
+        if int(registration.get("registered_count", 0) or 0) > 0:
+            batch_parity = self._official_raw_bundle_batch_parity_payload(write_artifact=True)
+            selected_fixture = str(
+                next(
+                    (
+                        dict(item or {}).get("fixture_id", "")
+                        for item in list(registration.get("registrations", []) or [])
+                        if dict(item or {}).get("status") == "registered"
+                    ),
+                    "",
+                )
+            )
+            detail = self._official_raw_fixture_detail_payload(selected_fixture, write_artifact=True) if selected_fixture else {}
+            state["batch_parity"] = batch_parity
+            state["batch_parity_artifact"] = str(batch_parity.get("artifact", ""))
+            state["selected_fixture_id"] = selected_fixture
+            state["selected_fixture_detail"] = detail
+            state["selected_fixture_detail_artifact"] = str(detail.get("artifact", "")) if detail else ""
+            benchmark_state = dict(self.report_center_workspace.get("benchmark", {}) or self._effective_benchmark_config())
+            benchmark_state.update(
+                {
+                    "official_raw_fixture_id": selected_fixture,
+                    "official_raw_batch_status": batch_parity.get("status", ""),
+                    "official_raw_batch_registered_count": registration.get("registered_count", 0),
+                    "official_raw_batch_pass_count": batch_parity.get("pass_count", 0),
+                    "official_raw_batch_failed_fields": list(batch_parity.get("failed_fields", []) or []),
+                    "official_raw_batch_parity_artifact": batch_parity.get("artifact", ""),
+                    "official_raw_fixture_detail_artifact": detail.get("artifact", "") if detail else "",
+                    "official_raw_fixture_pack_path": batch_parity.get("fixture_pack_path", str(target_pack)),
+                    **self._official_raw_batch_trace_benchmark_fields(batch_parity),
+                }
+            )
+            self.report_center_workspace["benchmark"] = benchmark_state
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw fixture bundle batch registration {registration.get('status', 'unknown')}: {root_path}")
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": state["status"],
+            "pack_path": str(target_pack),
+            "registered_count": int(registration.get("registered_count", 0) or 0),
+            "skipped_count": int(registration.get("skipped_count", 0) or 0),
+            "manifest_generated_count": int(manifest_build.get("generated_count", 0) or 0),
+            "manifest_ready_count": int(manifest_build.get("ready_count", 0) or 0),
+            "artifact": str(registration_artifact),
+        }
+
+    def set_official_raw_matrix_filters_for_report_center(
+        self,
+        *,
+        raw_format: str = "",
+        site_class: str = "",
+        parity_status: str = "",
+    ) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        filters = {
+            "raw_format": raw_format.strip(),
+            "site_class": site_class.strip(),
+            "parity_status": parity_status.strip(),
+        }
+        state["matrix_filters"] = {key: value for key, value in filters.items() if value}
+        state["message"] = f"Official raw evidence matrix filters updated: {state['matrix_filters'] or 'all'}"
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self.report_changed.emit()
+        return {"message": state["message"], "filters": dict(state["matrix_filters"])}
+
+    def select_official_raw_fixture_for_report_center(self, fixture_id: str) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        selected = fixture_id.strip()
+        row = self._official_raw_matrix_row(selected)
+        detail = self._official_raw_fixture_detail_payload(selected, write_artifact=True) if selected else {}
+        state["selected_fixture_id"] = selected
+        state["selected_matrix_row"] = row
+        state["selected_fixture_detail"] = detail
+        state["selected_fixture_detail_artifact"] = str(detail.get("artifact", "")) if detail else ""
+        state["message"] = f"Official raw fixture selected: {selected or 'none'}"
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "fixture_id": selected,
+            "row": row,
+            "detail": detail,
+            "artifact": str(detail.get("artifact", "")) if detail else "",
+        }
+
+    def inspect_official_raw_fixture_detail_for_report_center(self, fixture_id: str = "") -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        selected = fixture_id.strip() or str(state.get("selected_fixture_id", "")).strip()
+        if not selected:
+            state["message"] = "Select an official raw fixture before opening detail."
+            self.report_changed.emit()
+            return {"message": state["message"], "status": "missing_fixture_id"}
+        detail = self._official_raw_fixture_detail_payload(selected, write_artifact=True)
+        state["selected_fixture_id"] = selected
+        state["selected_fixture_detail"] = detail
+        state["selected_fixture_detail_artifact"] = str(detail.get("artifact", ""))
+        state["selected_matrix_row"] = dict(detail.get("matrix_row", {}) or self._official_raw_matrix_row(selected))
+        state["message"] = (
+            f"Official raw fixture detail refreshed: {selected}; "
+            f"readiness={detail.get('readiness_level', '')}; status={detail.get('status', '')}"
+        )
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw fixture detail artifact refreshed: {selected}")
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": str(detail.get("status", "")),
+            "fixture_id": selected,
+            "artifact": str(detail.get("artifact", "")),
+            "detail": detail,
+        }
+
+    def rerun_official_raw_fixture_for_report_center(self, fixture_id: str = "") -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        selected = fixture_id.strip() or str(state.get("selected_fixture_id", "")).strip()
+        if not selected:
+            state["message"] = "Select an official raw fixture before rerun."
+            self.report_changed.emit()
+            return {"message": state["message"], "status": "missing_fixture_id"}
+        parity = self._official_raw_bundle_parity_payload(selected, write_artifact=True)
+        batch_parity = self._official_raw_bundle_batch_parity_payload(write_artifact=True)
+        state["selected_fixture_id"] = selected
+        state["selected_parity"] = parity
+        state["selected_parity_artifact"] = str(parity.get("artifact", ""))
+        detail = self._official_raw_fixture_detail_payload(selected, write_artifact=True)
+        state["selected_fixture_detail"] = detail
+        state["selected_fixture_detail_artifact"] = str(detail.get("artifact", ""))
+        acquisition = dict(detail.get("acquisition_validation", {}) or {})
+        bundle_path = str(state.get("bundle_dir", "") or "").strip()
+        if bundle_path:
+            acquisition = validate_official_raw_fixture_acquisition(
+                bundle_path,
+                workspace_root=self.workspace_root,
+                parity_payload=parity,
+            )
+            artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            acquisition_artifact = artifact_root / f"{acquisition.get('fixture_id', selected)}_acquisition_validation.json"
+            acquisition_artifact.write_text(json.dumps(acquisition, ensure_ascii=False, indent=2), encoding="utf-8")
+            state["acquisition_validation_artifact"] = str(acquisition_artifact)
+        state["acquisition_validation"] = acquisition
+        evidence_pack = self._write_official_raw_evidence_pack(
+            bundle_path,
+            parity=parity,
+            acquisition=acquisition,
+            detail=detail,
+        ) if bundle_path else {}
+        if evidence_pack:
+            state["evidence_pack"] = evidence_pack
+            state["evidence_pack_artifact"] = str(evidence_pack.get("artifact", ""))
+        state["batch_parity"] = batch_parity
+        state["batch_parity_artifact"] = str(batch_parity.get("artifact", ""))
+        state["message"] = (
+            f"Official raw fixture rerun: {selected}; "
+            f"status={parity.get('status', '')}; pass_rate={float(parity.get('pass_rate', 0.0) or 0.0):.1%}"
+        )
+        benchmark_state = dict(self.report_center_workspace.get("benchmark", {}) or self._effective_benchmark_config())
+        benchmark_state.update(
+            {
+                "official_raw_fixture_id": selected,
+                "official_raw_parity_status": parity.get("status", ""),
+                "official_raw_pass_rate": parity.get("pass_rate", 0.0),
+                "official_raw_failed_fields": list(parity.get("failed_fields", []) or []),
+                "official_raw_parity_artifact": parity.get("artifact", ""),
+                "official_raw_fixture_detail_artifact": detail.get("artifact", ""),
+                "official_raw_batch_status": batch_parity.get("status", ""),
+                "official_raw_batch_pass_count": batch_parity.get("pass_count", 0),
+                "official_raw_batch_failed_fields": list(batch_parity.get("failed_fields", []) or []),
+                "official_raw_batch_parity_artifact": batch_parity.get("artifact", ""),
+                **self._official_raw_trace_benchmark_fields(parity),
+                **self._official_raw_batch_trace_benchmark_fields(batch_parity),
+            }
+        )
+        self.report_center_workspace["benchmark"] = benchmark_state
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw fixture rerun from matrix: {selected}")
+        self.report_changed.emit()
+        return {
+            "message": state["message"],
+            "status": parity.get("status", ""),
+            "artifact": parity.get("artifact", ""),
+            "detail_artifact": detail.get("artifact", ""),
+        }
+
+    def disable_official_raw_fixture_for_report_center(self, fixture_id: str, *, reason: str = "operator_disabled") -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        selected = fixture_id.strip() or str(state.get("selected_fixture_id", "")).strip()
+        if not selected:
+            state["message"] = "Select an official raw fixture before disable."
+            self.report_changed.emit()
+            return {"message": state["message"], "status": "missing_fixture_id"}
+        result = self._write_official_raw_fixture_disabled(selected, reason=reason)
+        if result.get("status") != "disabled":
+            state["message"] = str(result.get("message", "Official raw fixture disable failed."))
+            self.report_changed.emit()
+            return result
+        batch_parity = self._official_raw_bundle_batch_parity_payload(write_artifact=True)
+        state["selected_fixture_id"] = selected
+        state["selected_parity"] = {"status": "disabled", "fixture_id": selected, "pass_rate": 0.0, "failed_fields": []}
+        detail = self._official_raw_fixture_detail_payload(selected, write_artifact=True)
+        state["selected_fixture_detail"] = detail
+        state["selected_fixture_detail_artifact"] = str(detail.get("artifact", ""))
+        state["batch_parity"] = batch_parity
+        state["batch_parity_artifact"] = str(batch_parity.get("artifact", ""))
+        disabled_ids = list(state.get("disabled_fixture_ids", []) or [])
+        if selected not in disabled_ids:
+            disabled_ids.append(selected)
+        state["disabled_fixture_ids"] = disabled_ids
+        state["message"] = f"Official raw fixture disabled: {selected}"
+        benchmark_state = dict(self.report_center_workspace.get("benchmark", {}) or self._effective_benchmark_config())
+        benchmark_state.update(
+            {
+                "official_raw_batch_status": batch_parity.get("status", ""),
+                "official_raw_batch_registered_count": batch_parity.get("registered_count", 0),
+                "official_raw_batch_pass_count": batch_parity.get("pass_count", 0),
+                "official_raw_batch_failed_fields": list(batch_parity.get("failed_fields", []) or []),
+                "official_raw_batch_parity_artifact": batch_parity.get("artifact", ""),
+                "official_raw_fixture_detail_artifact": detail.get("artifact", ""),
+                "official_raw_fixture_pack_path": batch_parity.get("fixture_pack_path", result.get("pack_path", "")),
+                **self._official_raw_batch_trace_benchmark_fields(batch_parity),
+            }
+        )
+        self.report_center_workspace["benchmark"] = benchmark_state
+        self._sync_report_center_from_results(mark_refreshed=True)
+        self._append_log("info", f"Official raw fixture disabled from matrix: {selected}")
+        self.report_changed.emit()
+        return {"message": state["message"], "status": "disabled", "pack_path": result.get("pack_path", "")}
+
+    def replace_official_raw_fixture_for_report_center(self, fixture_id: str, bundle_dir: str, *, replace: bool = True) -> dict:
+        selected = fixture_id.strip()
+        inspection = inspect_official_raw_fixture_bundle(bundle_dir.strip(), workspace_root=self.workspace_root)
+        incoming_id = str(inspection.get("fixture_id", "")).strip()
+        if selected and incoming_id and selected != incoming_id:
+            state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+            state["message"] = f"Replacement bundle fixture_id mismatch: selected={selected}; incoming={incoming_id}"
+            self.report_changed.emit()
+            return {"message": state["message"], "status": "fixture_id_mismatch"}
+        return self.register_official_raw_bundle_for_report_center(bundle_dir, replace=replace)
+
     def generate_report_center_report(self) -> dict:
         self._sync_report_center_from_results(mark_generated=True)
         self._append_log("info", "报告中心已生成新的汇总报告。")
@@ -1048,10 +2073,12 @@ class StudioController(QObject):
         current = reports.get(report_key, {})
         spectral_result = self.current_spectral_run()
         rp_result = self.current_rp_run()
+        rp_config_snapshot = self._rp_config_snapshot(precheck_only=False)
+        spectral_config_snapshot = self._spectral_config_snapshot()
         if spectral_result is not None and not spectral_result.artifacts.get("evidence_bundle"):
             evidence_manifest = self.evidence_exporter.export_spectral_qc_evidence(
                 run_result=spectral_result,
-                config_snapshot=self._spectral_config_snapshot(),
+                config_snapshot=spectral_config_snapshot,
                 project=self.project_profile,
                 site=self.site_profile,
             )
@@ -1068,8 +2095,8 @@ class StudioController(QObject):
         bundle = self.result_exporter.export_minimal_bundle(
             rp_result=rp_result,
             spectral_result=spectral_result,
-            rp_config_snapshot=self._rp_config_snapshot(precheck_only=False),
-            spectral_config_snapshot=self._spectral_config_snapshot(),
+            rp_config_snapshot=rp_config_snapshot,
+            spectral_config_snapshot=spectral_config_snapshot,
             project=self.project_profile,
             site=self.site_profile,
             report_payload=current,
@@ -1096,8 +2123,8 @@ class StudioController(QObject):
             spectral_result=spectral_result,
             eddypro_compare=deepcopy(self.report_center_workspace.get("eddypro_compare", {})),
             attribution_result=deepcopy(self.report_center_workspace.get("eddypro_attribution", {})),
-            rp_config_snapshot=self._rp_config_snapshot(precheck_only=False),
-            spectral_config_snapshot=self._spectral_config_snapshot(),
+            rp_config_snapshot=rp_config_snapshot,
+            spectral_config_snapshot=spectral_config_snapshot,
             latest_export_status=str(self.report_center_workspace.get("export_status", "尚未导出")),
             result_bundle=bundle,
         )
@@ -1312,6 +2339,483 @@ class StudioController(QObject):
                     return window
         return run.windows[0]
 
+    def _default_official_raw_bundle_state(self) -> dict:
+        return {
+            "bundle_dir": "",
+            "status": "not_inspected",
+            "message": "No official raw bundle has been inspected yet.",
+            "manifest_build": {},
+            "manifest_build_artifact": "",
+            "inspection": {},
+            "inspection_artifact": "",
+            "acquisition_validation": {},
+            "acquisition_validation_artifact": "",
+            "official_run_capture": {},
+            "official_run_capture_artifact": "",
+            "official_eddypro_run": {},
+            "official_eddypro_run_sidecar": "",
+            "closure_run": {},
+            "closure_run_artifact": "",
+            "evidence_pack": {},
+            "evidence_pack_artifact": "",
+            "acceptance_run": {},
+            "acceptance_status": "not_run",
+            "registration": {},
+            "registered_pack_path": "",
+            "registered_pack_workspace_root": "",
+            "parity": {},
+            "parity_artifact": "",
+            "bundle_root": "",
+            "discovery": {},
+            "discovery_artifact": "",
+            "repair_plan": {},
+            "repair_plan_artifact": "",
+            "batch_registration": {},
+            "batch_registration_artifact": "",
+            "batch_parity": {},
+            "batch_parity_artifact": "",
+            "matrix_filters": {},
+            "selected_fixture_id": "",
+            "selected_matrix_row": {},
+            "selected_parity": {},
+            "selected_parity_artifact": "",
+            "selected_fixture_detail": {},
+            "selected_fixture_detail_artifact": "",
+            "disabled_fixture_ids": [],
+        }
+
+    def _default_public_eddypro_fixture_state(self) -> dict:
+        return {
+            "status": "not_run",
+            "message": "Public EddyPro fixtures have not been refreshed yet.",
+            "catalog": {},
+            "catalog_artifact": "",
+            "acquisition": {},
+            "acquisition_artifact": "",
+            "workspace_root": "",
+            "overwrite": False,
+        }
+
+    @staticmethod
+    def _official_raw_trace_benchmark_fields(parity_payload: dict) -> dict:
+        trace = dict(parity_payload.get("trace_gas_parity", {}) or {})
+        return {
+            "official_raw_trace_gas_parity_status": str(parity_payload.get("trace_gas_parity_status", trace.get("status", "")) or ""),
+            "official_raw_trace_gas_pass_rate": float(parity_payload.get("trace_gas_pass_rate", trace.get("pass_rate", 0.0)) or 0.0),
+            "official_raw_trace_gas_failed_fields": list(
+                parity_payload.get("trace_gas_failed_fields", trace.get("failed_fields", [])) or []
+            ),
+            "official_raw_trace_gas_coefficient_profile_id": str(
+                parity_payload.get("trace_gas_coefficient_profile_id", trace.get("coefficient_profile_id", "")) or ""
+            ),
+        }
+
+    @staticmethod
+    def _official_raw_batch_trace_benchmark_fields(batch_payload: dict) -> dict:
+        return {
+            "official_raw_batch_trace_gas_pass_count": int(batch_payload.get("trace_gas_pass_count", 0) or 0),
+            "official_raw_batch_trace_gas_failed_count": int(batch_payload.get("trace_gas_failed_count", 0) or 0),
+            "official_raw_batch_trace_gas_failed_fields": list(batch_payload.get("trace_gas_failed_fields", []) or []),
+        }
+
+    @staticmethod
+    def _official_run_output_files_from_ui(value: str | list[str] | None) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        text = str(value or "").strip()
+        if not text:
+            return []
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                parsed = []
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        return [part.strip() for part in text.split(",") if part.strip()]
+
+    def _active_fixture_pack_path(self) -> Path:
+        workspace = getattr(self, "report_center_workspace", {}) or {}
+        state = dict(workspace.get("official_raw_bundle", {}) or {})
+        registered = str(state.get("registered_pack_path", "") or "").strip()
+        if registered and Path(registered).exists():
+            return Path(registered)
+        repo_pack = self.workspace_root / "references" / "eddypro" / "fixture_pack_v1.json"
+        if repo_pack.exists():
+            return repo_pack
+        return Path.cwd() / "references" / "eddypro" / "fixture_pack_v1.json"
+
+    def _active_fixture_pack_workspace_root(self) -> Path:
+        workspace = getattr(self, "report_center_workspace", {}) or {}
+        state = dict(workspace.get("official_raw_bundle", {}) or {})
+        registered_root = str(state.get("registered_pack_workspace_root", "") or "").strip()
+        if registered_root:
+            return Path(registered_root)
+        workspace_pack = self.workspace_root / "references" / "eddypro" / "fixture_pack_v1.json"
+        if workspace_pack.exists():
+            return self.workspace_root
+        return Path.cwd()
+
+    def _official_raw_bundle_parity_payload(self, fixture_id: str = "", *, write_artifact: bool = False) -> dict:
+        workspace = getattr(self, "report_center_workspace", {}) or {}
+        state = dict(workspace.get("official_raw_bundle", {}) or {})
+        cached = dict(state.get("parity", {}) or {})
+        if cached and not write_artifact and (not fixture_id or str(cached.get("fixture_id", "")) == str(fixture_id)):
+            return cached
+        pack_path = self._active_fixture_pack_path()
+        workspace_root = self._active_fixture_pack_workspace_root()
+        target_fixture_id = (
+            str(fixture_id or "").strip()
+            or str(dict(state.get("registration", {}) or {}).get("fixture_id", "")).strip()
+            or str(dict(state.get("inspection", {}) or {}).get("fixture_id", "")).strip()
+        )
+        try:
+            summary = build_fixture_pack_summary(pack_path, workspace_root=workspace_root)
+        except Exception as exc:  # pragma: no cover - defensive UI/report fallback
+            return {
+                "artifact_type": "official_raw_bundle_parity_rollup_v1",
+                "status": "error",
+                "fixture_id": target_fixture_id,
+                "fixture_pack_path": str(pack_path),
+                "fixture_pack_workspace_root": str(workspace_root),
+                "pass_rate": 0.0,
+                "failed_fields": [],
+                "trace_gas_parity": {},
+                "trace_gas_parity_status": "",
+                "trace_gas_pass_rate": 0.0,
+                "trace_gas_failed_fields": [],
+                "trace_gas_coefficient_profile_id": "",
+                "benchmark_summary": {},
+                "raw_to_final_parity": {},
+                "validation_asset": {},
+                "generated_at": datetime.now().isoformat(),
+                "error": str(exc),
+            }
+        assets = [dict(asset or {}) for asset in list(summary.get("assets", []) or [])]
+        raw_assets = [asset for asset in assets if str(asset.get("tier", "")) == "raw_to_final_parity"]
+        selected = next((asset for asset in raw_assets if str(asset.get("fixture_id", "")) == target_fixture_id), None)
+        if selected is None and raw_assets:
+            selected = raw_assets[-1]
+        parity = dict((selected or {}).get("raw_to_final_parity", {}) or {})
+        benchmark_summary = dict(parity.get("benchmark_summary", {}) or {})
+        trace_gas_parity = dict(parity.get("trace_gas_parity", {}) or {})
+        parity_diagnostics = dict(parity.get("parity_diagnostics", {}) or {})
+        failed_fields = list(benchmark_summary.get("failed_fields", []) or [])
+        payload = {
+            "artifact_type": "official_raw_bundle_parity_rollup_v1",
+            "status": str(parity.get("status") or (selected or {}).get("status", "no_registered_raw_fixture")),
+            "fixture_id": str((selected or {}).get("fixture_id", target_fixture_id)),
+            "fixture_pack_path": str(pack_path),
+            "fixture_pack_workspace_root": str(workspace_root),
+            "pass_rate": float(benchmark_summary.get("pass_rate", 0.0) or 0.0),
+            "failed_fields": failed_fields,
+            "trace_gas_parity": trace_gas_parity,
+            "trace_gas_parity_status": str(trace_gas_parity.get("status", "")),
+            "trace_gas_pass_rate": float(trace_gas_parity.get("pass_rate", 0.0) or 0.0),
+            "trace_gas_failed_fields": list(trace_gas_parity.get("failed_fields", []) or []),
+            "trace_gas_coefficient_profile_id": str(trace_gas_parity.get("coefficient_profile_id", "")),
+            "benchmark_summary": benchmark_summary,
+            "parity_diagnostics": parity_diagnostics,
+            "parity_failure_groups": [str(item.get("category", "")) for item in list(parity_diagnostics.get("failure_groups", []) or [])[:4]],
+            "parity_top_failed_fields": list(parity_diagnostics.get("top_failed_fields", []) or []),
+            "raw_to_final_parity": parity,
+            "validation_asset": selected or {},
+            "generated_at": datetime.now().isoformat(),
+            "truthfulness_note": parity.get("truthfulness_note", summary.get("truthfulness_note", "")),
+            "known_limitations": list((selected or {}).get("known_limitations", parity.get("known_limitations", [])) or []),
+        }
+        if write_artifact:
+            artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            safe_id = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in (payload["fixture_id"] or "official_raw_fixture"))
+            artifact_path = artifact_root / f"{safe_id}_raw_to_final_parity.json"
+            artifact_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            payload["artifact"] = str(artifact_path)
+            artifact_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return payload
+
+    def _official_raw_bundle_batch_parity_payload(self, *, write_artifact: bool = False) -> dict:
+        pack_path = self._active_fixture_pack_path()
+        workspace_root = self._active_fixture_pack_workspace_root()
+        try:
+            summary = build_fixture_pack_summary(pack_path, workspace_root=workspace_root)
+            manifest = build_official_raw_fixture_manifest(pack_path, workspace_root=workspace_root, fixture_summary=summary)
+        except Exception as exc:  # pragma: no cover - defensive UI/report fallback
+            return {
+                "artifact_type": "official_raw_batch_parity_rollup_v1",
+                "status": "error",
+                "fixture_pack_path": str(pack_path),
+                "fixture_pack_workspace_root": str(workspace_root),
+                "registered_count": 0,
+                "pass_count": 0,
+                "failed_count": 0,
+                "failed_fields": [],
+                "trace_gas_pass_count": 0,
+                "trace_gas_failed_count": 0,
+                "trace_gas_failed_fields": [],
+                "evidence_matrix": {},
+                "generated_at": datetime.now().isoformat(),
+                "error": str(exc),
+            }
+        matrix = dict(manifest.get("evidence_matrix", {}) or {})
+        raw_rows = [
+            dict(row or {})
+            for row in list(matrix.get("rows", []) or [])
+            if str(dict(row or {}).get("tier", "")) == "raw_to_final_parity"
+            and str(dict(row or {}).get("readiness_level", "")) != "disabled"
+        ]
+        pass_rows = [row for row in raw_rows if str(row.get("parity_status", "")) == "pass"]
+        failed_rows = [row for row in raw_rows if str(row.get("parity_status", "")) not in {"pass", "not_run", ""}]
+        trace_rows = [row for row in raw_rows if str(row.get("trace_gas_parity_status", ""))]
+        trace_pass_rows = [row for row in trace_rows if str(row.get("trace_gas_parity_status", "")) == "pass"]
+        trace_failed_rows = [
+            row
+            for row in trace_rows
+            if str(row.get("trace_gas_parity_status", "")) not in {"pass", "not_available", ""}
+        ]
+        failed_fields = sorted(
+            {
+                str(field)
+                for row in raw_rows
+                for field in list(row.get("failed_fields", []) or [])
+                if str(field)
+            }
+        )
+        failure_groups = sorted(
+            {
+                str(group)
+                for row in raw_rows
+                for group in list(row.get("parity_failure_groups", []) or [])
+                if str(group)
+            }
+        )
+        top_failed_fields = sorted(
+            {
+                str(field)
+                for row in raw_rows
+                for field in list(row.get("parity_top_failed_fields", []) or [])
+                if str(field)
+            }
+        )
+        trace_failed_fields = sorted(
+            {
+                str(field)
+                for row in trace_rows
+                for field in list(row.get("trace_gas_failed_fields", []) or [])
+                if str(field)
+            }
+        )
+        status = "pass" if raw_rows and len(pass_rows) == len(raw_rows) else ("partial" if pass_rows else "not_ready")
+        payload = {
+            "artifact_type": "official_raw_batch_parity_rollup_v1",
+            "status": status,
+            "fixture_pack_path": str(pack_path),
+            "fixture_pack_workspace_root": str(workspace_root),
+            "registered_count": len(raw_rows),
+            "pass_count": len(pass_rows),
+            "failed_count": len(failed_rows),
+            "not_run_count": sum(1 for row in raw_rows if str(row.get("parity_status", "")) in {"", "not_run"}),
+            "official_ready_count": int(manifest.get("official_raw_to_final_ready_count", 0) or 0),
+            "pass_rate": len(pass_rows) / max(1, len(raw_rows)),
+            "failed_fields": failed_fields,
+            "failure_groups": failure_groups,
+            "top_failed_fields": top_failed_fields,
+            "trace_gas_count": len(trace_rows),
+            "trace_gas_pass_count": len(trace_pass_rows),
+            "trace_gas_failed_count": len(trace_failed_rows),
+            "trace_gas_pass_rate": len(trace_pass_rows) / max(1, len(trace_rows)) if trace_rows else 0.0,
+            "trace_gas_failed_fields": trace_failed_fields,
+            "evidence_matrix": matrix,
+            "rows": raw_rows,
+            "generated_at": datetime.now().isoformat(),
+            "truthfulness_note": manifest.get("truthfulness_note", ""),
+        }
+        if write_artifact:
+            artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            artifact_path = artifact_root / "official_raw_batch_parity.json"
+            payload["artifact"] = str(artifact_path)
+            artifact_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return payload
+
+    def _official_raw_fixture_detail_payload(self, fixture_id: str = "", *, write_artifact: bool = False) -> dict:
+        pack_path = self._active_fixture_pack_path()
+        workspace_root = self._active_fixture_pack_workspace_root()
+        try:
+            summary = build_fixture_pack_summary(pack_path, workspace_root=workspace_root)
+            manifest = build_official_raw_fixture_manifest(pack_path, workspace_root=workspace_root, fixture_summary=summary)
+            payload = build_official_raw_fixture_detail(
+                pack_path,
+                fixture_id=fixture_id,
+                workspace_root=workspace_root,
+                fixture_summary=summary,
+                fixture_manifest=manifest,
+            )
+        except Exception as exc:  # pragma: no cover - defensive UI/report fallback
+            payload = {
+                "artifact_type": "official_raw_fixture_detail_v1",
+                "status": "error",
+                "fixture_id": str(fixture_id),
+                "fixture_pack_path": str(pack_path),
+                "fixture_pack_workspace_root": str(workspace_root),
+                "generated_at": datetime.now().isoformat(),
+                "errors": [str(exc)],
+            }
+        if write_artifact:
+            artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            safe_id = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in (str(payload.get("fixture_id", "")) or "official_raw_fixture"))
+            artifact_path = artifact_root / f"{safe_id}_fixture_detail.json"
+            payload["artifact"] = str(artifact_path)
+            artifact_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return payload
+
+    def _write_official_raw_evidence_pack(
+        self,
+        bundle_path: str = "",
+        *,
+        parity: dict | None = None,
+        acquisition: dict | None = None,
+        detail: dict | None = None,
+    ) -> dict:
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        target_bundle = str(bundle_path or state.get("bundle_dir", "") or state.get("bundle_root", "")).strip()
+        if not target_bundle:
+            return {}
+        parity_payload = dict(parity or state.get("parity", {}) or state.get("selected_parity", {}) or {})
+        acquisition_payload = dict(acquisition or state.get("acquisition_validation", {}) or {})
+        detail_payload = dict(detail or state.get("selected_fixture_detail", {}) or {})
+        report = dict(dict(self.report_center_workspace.get("reports", {}) or {}).get("fixture_pack", {}) or {})
+        coverage = dict(report.get("eddypro_coverage_audit", {}) or {})
+        closure_gate = dict(coverage.get("closure_gate", {}) or {})
+        try:
+            evidence_pack = build_official_raw_fixture_evidence_pack(
+                target_bundle,
+                workspace_root=self.workspace_root,
+                parity_payload=parity_payload,
+                acquisition_validation=acquisition_payload if acquisition_payload else None,
+                fixture_detail=detail_payload,
+                closure_gate=closure_gate,
+            )
+        except Exception as exc:  # pragma: no cover - defensive report-center artifact fallback
+            evidence_pack = {
+                "artifact_type": "official_raw_fixture_evidence_pack_v1",
+                "status": "error",
+                "bundle_root": target_bundle,
+                "fixture_id": str(detail_payload.get("fixture_id", "") or parity_payload.get("fixture_id", "")),
+                "errors": [str(exc)],
+            }
+        artifact_root = self.runtime_root / "exports" / "official_raw_fixtures"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        safe_id = "".join(
+            ch if ch.isalnum() or ch in {"-", "_"} else "_"
+            for ch in (str(evidence_pack.get("fixture_id", "")) or "official_raw_fixture")
+        )
+        artifact_path = artifact_root / f"{safe_id}_evidence_pack.json"
+        evidence_pack["artifact"] = str(artifact_path)
+        artifact_path.write_text(json.dumps(evidence_pack, ensure_ascii=False, indent=2), encoding="utf-8")
+        state["evidence_pack"] = evidence_pack
+        state["evidence_pack_artifact"] = str(artifact_path)
+        state["acceptance_run"] = dict(evidence_pack.get("acceptance_run", {}) or {})
+        state["acceptance_status"] = str(evidence_pack.get("acceptance_status", "not_run"))
+        return evidence_pack
+
+    def _official_raw_matrix_row(self, fixture_id: str) -> dict:
+        if not fixture_id:
+            return {}
+        try:
+            summary = build_fixture_pack_summary(self._active_fixture_pack_path(), workspace_root=self._active_fixture_pack_workspace_root())
+            manifest = build_official_raw_fixture_manifest(
+                self._active_fixture_pack_path(),
+                workspace_root=self._active_fixture_pack_workspace_root(),
+                fixture_summary=summary,
+            )
+        except Exception:
+            return {}
+        matrix = dict(manifest.get("evidence_matrix", {}) or {})
+        return next(
+            (dict(row or {}) for row in list(matrix.get("rows", []) or []) if str(dict(row or {}).get("fixture_id", "")) == fixture_id),
+            {},
+        )
+
+    def _write_official_raw_fixture_disabled(self, fixture_id: str, *, reason: str) -> dict:
+        pack_path = self._active_fixture_pack_path()
+        workspace_root = self._active_fixture_pack_workspace_root()
+        try:
+            pack = json.loads(pack_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return {"status": "error", "message": str(exc), "pack_path": str(pack_path)}
+        assets = list(pack.get("assets", []) or [])
+        target_index = next((index for index, asset in enumerate(assets) if str(asset.get("fixture_id", "")) == fixture_id), None)
+        if target_index is None:
+            return {"status": "not_found", "message": f"fixture_id not found: {fixture_id}", "pack_path": str(pack_path)}
+        updated_asset = dict(assets[int(target_index)] or {})
+        updated_asset["disabled"] = True
+        updated_asset["disabled_reason"] = reason
+        updated_asset["disabled_at"] = datetime.now().isoformat()
+        assets[int(target_index)] = updated_asset
+        updated_pack = deepcopy(pack)
+        updated_pack["assets"] = assets
+        target_root = self.runtime_root / "eddypro_fixture_pack"
+        target_root.mkdir(parents=True, exist_ok=True)
+        target_pack = target_root / "fixture_pack_v1_registered.json"
+        target_pack.write_text(json.dumps(updated_pack, ensure_ascii=False, indent=2), encoding="utf-8")
+        state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
+        state["registered_pack_path"] = str(target_pack)
+        state["registered_pack_workspace_root"] = str(workspace_root)
+        return {"status": "disabled", "fixture_id": fixture_id, "pack_path": str(target_pack)}
+
+    def _official_raw_bundle_parity_rows(self) -> list[tuple[str, str, str]]:
+        workspace = getattr(self, "report_center_workspace", {}) or {}
+        state = dict(workspace.get("official_raw_bundle", {}) or {})
+        parity = dict(state.get("parity", {}) or {})
+        if not parity:
+            return []
+        failed_fields = list(parity.get("failed_fields", []) or [])
+        failure_groups = list(parity.get("parity_failure_groups", []) or [])
+        top_failed_fields = list(parity.get("parity_top_failed_fields", []) or [])
+        rows = [
+            ("official_raw.fixture_id", str(parity.get("fixture_id", "--") or "--"), "Registered official raw-to-final fixture."),
+            ("official_raw.parity_status", str(parity.get("status", "--") or "--"), "Raw input was run through the RP pipeline and compared to the normalized reference."),
+            ("official_raw.pass_rate", f"{float(parity.get('pass_rate', 0.0) or 0.0):.1%}", "Field-level raw-to-final parity pass rate."),
+            ("official_raw.failed_fields", " / ".join(str(item) for item in failed_fields) or "none", "Fields failing official raw-to-final parity."),
+        ]
+        if failure_groups:
+            rows.append(
+                (
+                    "official_raw.failure_groups",
+                    " / ".join(str(item) for item in failure_groups) or "none",
+                    "Run-level parity diagnostic groups mapped from failing fields.",
+                )
+            )
+        if top_failed_fields:
+            rows.append(
+                (
+                    "official_raw.top_failed_fields",
+                    " / ".join(str(item) for item in top_failed_fields) or "none",
+                    "Highest-priority fields from the raw-to-final parity heatmap.",
+                )
+            )
+        trace_status = str(parity.get("trace_gas_parity_status", "") or "")
+        if trace_status:
+            trace_failed = " / ".join(str(item) for item in list(parity.get("trace_gas_failed_fields", []) or [])) or "none"
+            rows.append(
+                (
+                    "official_raw.trace_gas_parity",
+                    trace_status,
+                    (
+                        f"pass_rate={float(parity.get('trace_gas_pass_rate', 0.0) or 0.0):.1%}; "
+                        f"profile={parity.get('trace_gas_coefficient_profile_id', '') or '--'}; "
+                        f"failed_fields={trace_failed}"
+                    ),
+                )
+            )
+        if parity.get("artifact"):
+            rows.append(("official_raw.parity_artifact", str(parity.get("artifact", "")), "Persisted raw-to-final parity rollup artifact."))
+        return rows
+
     def _effective_benchmark_config(self) -> dict[str, object]:
         defaults = dict(self._build_default_report_center_workspace()["benchmark"])
         effective = dict(defaults)
@@ -1404,6 +2908,7 @@ class StudioController(QObject):
         footprint_step = dict(config.get("footprint", {}) or {})
         uncertainty_step = dict(config.get("uncertainty", {}) or {})
         spectral_step = dict(config.get("spectral_correction", {}) or {})
+        crosswind_step = dict(config.get("crosswind_correction", {}) or {})
         method_compare_step = dict(config.get("method_compare", {}) or {})
         sample_hz = config.get("window_sampling", {}).get("sample_hz") or timing.get("sample_hz")
         if not sample_hz and selected is not None:
@@ -1473,6 +2978,26 @@ class StudioController(QObject):
             "fcc_source_run_id": str(fcc_cospectrum_snapshot.get("fcc_source_run_id", "")),
             "fcc_measured_cospectra": list(fcc_cospectrum_snapshot.get("fcc_measured_cospectra", [])),
         }
+        crosswind_method = str(crosswind_step.get("method", "liu_2001_crosswind_v1") or "liu_2001_crosswind_v1").strip()
+        config["crosswind_correction"] = {
+            "enabled": bool(crosswind_step.get("enabled", False)),
+            "method": crosswind_method,
+            "sonic_manufacturer": str(crosswind_step.get("sonic_manufacturer", "") or "").strip(),
+            "sonic_model": str(crosswind_step.get("sonic_model", "") or "").strip(),
+            "temperature_divisor": float(crosswind_step.get("temperature_divisor", 1209.0) or 1209.0),
+        }
+        coefficients = crosswind_step.get("coefficients")
+        if isinstance(coefficients, dict):
+            config["crosswind_correction"]["coefficients"] = deepcopy(coefficients)
+        else:
+            coefficients_text = str(crosswind_step.get("coefficients_text", "") or "").strip()
+            if coefficients_text:
+                try:
+                    parsed_coefficients = json.loads(coefficients_text)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    parsed_coefficients = None
+                if isinstance(parsed_coefficients, dict):
+                    config["crosswind_correction"]["coefficients"] = parsed_coefficients
         config["method_compare"] = {
             "enabled": bool(method_compare_step.get("enabled", True)),
             "families": list(method_compare_step.get("families", ["footprint", "uncertainty", "spectral_correction"])),
@@ -1494,9 +3019,78 @@ class StudioController(QObject):
             "wpl_rel_threshold": float(benchmark_config.get("wpl_rel_threshold", 0.20)),
             "qc_grade_must_match": bool(benchmark_config.get("qc_grade_must_match", False)),
         }
+        for key in (
+            "official_raw_fixture_id",
+            "official_raw_parity_status",
+            "official_raw_pass_rate",
+            "official_raw_failed_fields",
+            "official_raw_parity_artifact",
+            "official_raw_fixture_pack_path",
+            "official_raw_trace_gas_parity_status",
+            "official_raw_trace_gas_pass_rate",
+            "official_raw_trace_gas_failed_fields",
+            "official_raw_trace_gas_coefficient_profile_id",
+            "official_raw_batch_status",
+            "official_raw_batch_registered_count",
+            "official_raw_batch_pass_count",
+            "official_raw_batch_failed_fields",
+            "official_raw_batch_parity_artifact",
+            "official_raw_batch_trace_gas_pass_count",
+            "official_raw_batch_trace_gas_failed_count",
+            "official_raw_batch_trace_gas_failed_fields",
+            "official_raw_fixture_detail_artifact",
+        ):
+            if key in benchmark_config:
+                config["benchmark"][key] = deepcopy(benchmark_config.get(key))
         self.report_center_workspace["benchmark"] = dict(config["benchmark"])
+        official_state = dict(self.report_center_workspace.get("official_raw_bundle", {}) or {})
+        config["official_raw_bundle"] = {
+            "bundle_dir": str(official_state.get("bundle_dir", "")),
+            "bundle_root": str(official_state.get("bundle_root", "")),
+            "status": str(official_state.get("status", "not_inspected")),
+            "message": str(official_state.get("message", "")),
+            "manifest_build": deepcopy(official_state.get("manifest_build", {}) or {}),
+            "manifest_build_artifact": str(official_state.get("manifest_build_artifact", "")),
+            "inspection": deepcopy(official_state.get("inspection", {}) or {}),
+            "inspection_artifact": str(official_state.get("inspection_artifact", "")),
+            "acquisition_validation": deepcopy(official_state.get("acquisition_validation", {}) or {}),
+            "acquisition_validation_artifact": str(official_state.get("acquisition_validation_artifact", "")),
+            "official_run_capture": deepcopy(official_state.get("official_run_capture", {}) or {}),
+            "official_run_capture_artifact": str(official_state.get("official_run_capture_artifact", "")),
+            "official_eddypro_run": deepcopy(official_state.get("official_eddypro_run", {}) or {}),
+            "official_eddypro_run_sidecar": str(official_state.get("official_eddypro_run_sidecar", "")),
+            "closure_run": deepcopy(official_state.get("closure_run", {}) or {}),
+            "closure_run_artifact": str(official_state.get("closure_run_artifact", "")),
+            "evidence_pack": deepcopy(official_state.get("evidence_pack", {}) or {}),
+            "evidence_pack_artifact": str(official_state.get("evidence_pack_artifact", "")),
+            "acceptance_run": deepcopy(official_state.get("acceptance_run", {}) or {}),
+            "selected_fixture_id": str(official_state.get("selected_fixture_id", "")),
+            "selected_fixture_detail_artifact": str(official_state.get("selected_fixture_detail_artifact", "")),
+            "acceptance_status": str(official_state.get("acceptance_status", "not_run")),
+            "registration": deepcopy(official_state.get("registration", {}) or {}),
+            "registered_pack_path": str(official_state.get("registered_pack_path", "")),
+            "registered_pack_workspace_root": str(official_state.get("registered_pack_workspace_root", "")),
+            "parity": deepcopy(official_state.get("parity", {}) or {}),
+            "parity_artifact": str(official_state.get("parity_artifact", "")),
+            "discovery": deepcopy(official_state.get("discovery", {}) or {}),
+            "discovery_artifact": str(official_state.get("discovery_artifact", "")),
+            "repair_plan": deepcopy(official_state.get("repair_plan", {}) or {}),
+            "repair_plan_artifact": str(official_state.get("repair_plan_artifact", "")),
+            "batch_registration": deepcopy(official_state.get("batch_registration", {}) or {}),
+            "batch_registration_artifact": str(official_state.get("batch_registration_artifact", "")),
+            "batch_parity": deepcopy(official_state.get("batch_parity", {}) or {}),
+            "batch_parity_artifact": str(official_state.get("batch_parity_artifact", "")),
+            "matrix_filters": dict(official_state.get("matrix_filters", {}) or {}),
+            "selected_matrix_row": deepcopy(official_state.get("selected_matrix_row", {}) or {}),
+            "selected_parity": deepcopy(official_state.get("selected_parity", {}) or {}),
+            "selected_parity_artifact": str(official_state.get("selected_parity_artifact", "")),
+            "selected_fixture_detail": deepcopy(official_state.get("selected_fixture_detail", {}) or {}),
+            "disabled_fixture_ids": list(official_state.get("disabled_fixture_ids", []) or []),
+        }
         config["network_output"] = dict(self._network_output_snapshot())
         self.report_center_workspace["network_output"] = dict(config["network_output"])
+        config["fixture_pack_path"] = str(self._active_fixture_pack_path())
+        config["fixture_pack_workspace_root"] = str(self._active_fixture_pack_workspace_root())
         config["full_output_mode"] = str(config.get("output", {}).get("full_output_mode", "only_available"))
         config["run_mode"] = "precheck" if precheck_only else "standard"
         config["metadata_bundle"] = self.metadata_bundle().to_dict()
@@ -1505,6 +3099,7 @@ class StudioController(QObject):
             "project_code": self.project_profile.code,
             "site_name": self.site_profile.station_name,
             "site_code": self.site_profile.station_code,
+            "land_cover": str(self.project_workspace.get("site_info", {}).get("land_cover", "")),
         }
         return config
 
@@ -1629,6 +3224,25 @@ class StudioController(QObject):
             "rotation_reason": diagnostics.get("rotation_reason", ""),
         }
         steps["rotation"]["risks"] = [str(diagnostics.get("rotation_reason", current_window.reason))]
+
+        if "crosswind_correction" in steps:
+            crosswind_detail = dict(diagnostics.get("crosswind_correction_detail", {}) or {})
+            status = str(diagnostics.get("crosswind_correction_status", "disabled") or "disabled")
+            method = str(diagnostics.get("crosswind_correction_method", "liu_2001_crosswind_v1") or "liu_2001_crosswind_v1")
+            mean_delta = diagnostics.get("crosswind_correction_mean_delta_c")
+            delta_text = f"{float(mean_delta):.6f} C" if isinstance(mean_delta, (int, float)) else "not available"
+            steps["crosswind_correction"]["real_summary"] = (
+                f"method={method}, status={status}, mean_delta_c={delta_text}."
+            )
+            steps["crosswind_correction"]["intermediate"] = {
+                "status": status,
+                "method": method,
+                "mean_delta_c": diagnostics.get("crosswind_correction_mean_delta_c"),
+                "max_abs_delta_c": diagnostics.get("crosswind_correction_max_abs_delta_c"),
+                "provenance": diagnostics.get("crosswind_correction_provenance", ""),
+                "detail": crosswind_detail,
+            }
+            steps["crosswind_correction"]["risks"] = list(diagnostics.get("crosswind_correction_limitations", []))[:3] or [current_window.reason]
 
         steps["detrend"]["real_summary"] = f"当前去趋势模式为 {current_window.detrend_mode}。"
         steps["detrend"]["intermediate"] = {"detrend_mode": current_window.detrend_mode}
@@ -1968,6 +3582,11 @@ class StudioController(QObject):
             "clock_sync_method": "",
             "clock_sync_source": "",
             "clock_sync_mean_offset_s": None,
+            "clock_sync_quality_status": "not_configured",
+            "clock_sync_quality_gate_status": "not_configured",
+            "clock_sync_quality_metric_s": None,
+            "clock_sync_quality_threshold_s": None,
+            "clock_sync_max_event_step_s": None,
             "clock_sync_provenance": "",
             "clock_sync_summary": {},
             "runtime_watchdog_status": "not_run",
@@ -1992,6 +3611,10 @@ class StudioController(QObject):
             "clock_discipline_offset_ns": None,
             "clock_discipline_frequency_ppm": None,
             "hardware_watchdog_status": "",
+            "target_host_validation_status": "",
+            "target_host_validation_gate_status": "",
+            "target_host_validation_fixture_id": "",
+            "target_host_id": "",
             "daemon_telemetry_provenance": "",
             "daemon_telemetry_summary": {},
             "supervisor_integration_status": "not_run",
@@ -2132,9 +3755,18 @@ class StudioController(QObject):
         clock_method = str(summary.get("clock_sync_method") or clock_sync_summary.get("method") or "")
         clock_source = str(summary.get("clock_sync_source") or clock_sync_summary.get("clock_source") or "")
         clock_mean_offset = summary.get("clock_sync_mean_offset_s", clock_sync_summary.get("mean_offset_seconds"))
+        clock_quality_status = str(summary.get("clock_sync_quality_status") or clock_sync_summary.get("quality_status") or "not_configured")
+        clock_quality_gate_status = str(summary.get("clock_sync_quality_gate_status") or clock_sync_summary.get("quality_gate_status") or "not_configured")
+        clock_quality_metric = summary.get("clock_sync_quality_metric_s", clock_sync_summary.get("quality_metric_seconds"))
+        clock_quality_threshold = summary.get("clock_sync_quality_threshold_s", clock_sync_summary.get("quality_threshold_seconds"))
+        clock_max_event_step = summary.get("clock_sync_max_event_step_s", clock_sync_summary.get("max_event_step_seconds"))
         clock_provenance = str(clock_sync_summary.get("provenance", ""))
         if clock_mean_offset is not None:
             clock_provenance = f"{clock_provenance}; mean_offset_s={float(clock_mean_offset):.6f}".strip("; ")
+        if clock_quality_status and clock_quality_status != "not_configured":
+            threshold_text = f"; threshold_s={float(clock_quality_threshold):.6f}" if isinstance(clock_quality_threshold, (int, float)) else ""
+            metric_text = f"; metric_s={float(clock_quality_metric):.6f}" if isinstance(clock_quality_metric, (int, float)) else ""
+            clock_provenance = f"{clock_provenance}; quality={clock_quality_status}; gate={clock_quality_gate_status}{metric_text}{threshold_text}".strip("; ")
         runtime_status = str(summary.get("runtime_watchdog_status") or runtime_watchdog_summary.get("status") or default["runtime_watchdog_status"])
         runtime_profile = str(runtime_watchdog_summary.get("profile_id", ""))
         runtime_fail_count = runtime_watchdog_summary.get("fail_count")
@@ -2168,12 +3800,18 @@ class StudioController(QObject):
         clock_discipline_offset_ns = clock_discipline_summary.get("max_abs_offset_ns")
         clock_discipline_frequency_ppm = clock_discipline_summary.get("max_abs_frequency_ppm")
         hardware_watchdog_status = str(dict(daemon_telemetry_summary.get("hardware_watchdog", {}) or {}).get("status", ""))
+        target_host_validation = dict(daemon_telemetry_summary.get("target_host_validation", {}) or {})
+        target_host_validation_status = str(target_host_validation.get("status", ""))
+        target_host_validation_gate = str(target_host_validation.get("gate_status", ""))
+        target_host_id = str(target_host_validation.get("target_host_id", ""))
+        target_host_fixture_id = str(target_host_validation.get("fixture_id", ""))
         daemon_provenance = str(daemon_telemetry_summary.get("provenance", ""))
         if daemon_telemetry_summary:
             daemon_provenance = (
                 f"{daemon_provenance}; supervisor={supervisor_state or '--'}; "
                 f"ptp={ptp_lock_status or '--'}; gps={gps_pps_lock_status or '--'}; "
-                f"discipline={clock_discipline_status or '--'}; hw_watchdog={hardware_watchdog_status or '--'}"
+                f"discipline={clock_discipline_status or '--'}; hw_watchdog={hardware_watchdog_status or '--'}; "
+                f"target_host_validation={target_host_validation_status or '--'}"
             ).strip("; ")
         supervisor_integration_status = str(supervisor_integration_summary.get("status") or default["supervisor_integration_status"])
         os_supervisor_state = str(dict(supervisor_integration_summary.get("service_status", {}) or {}).get("state", ""))
@@ -2247,6 +3885,11 @@ class StudioController(QObject):
             "clock_sync_method": clock_method,
             "clock_sync_source": clock_source,
             "clock_sync_mean_offset_s": clock_mean_offset,
+            "clock_sync_quality_status": clock_quality_status,
+            "clock_sync_quality_gate_status": clock_quality_gate_status,
+            "clock_sync_quality_metric_s": clock_quality_metric,
+            "clock_sync_quality_threshold_s": clock_quality_threshold,
+            "clock_sync_max_event_step_s": clock_max_event_step,
             "clock_sync_provenance": clock_provenance,
             "clock_sync_summary": clock_sync_summary,
             "runtime_watchdog_status": runtime_status,
@@ -2271,6 +3914,10 @@ class StudioController(QObject):
             "clock_discipline_offset_ns": clock_discipline_offset_ns,
             "clock_discipline_frequency_ppm": clock_discipline_frequency_ppm,
             "hardware_watchdog_status": hardware_watchdog_status,
+            "target_host_validation_status": target_host_validation_status,
+            "target_host_validation_gate_status": target_host_validation_gate,
+            "target_host_validation_fixture_id": target_host_fixture_id,
+            "target_host_id": target_host_id,
             "daemon_telemetry_provenance": daemon_provenance,
             "daemon_telemetry_summary": daemon_telemetry_summary,
             "supervisor_integration_status": supervisor_integration_status,
@@ -2320,6 +3967,7 @@ class StudioController(QObject):
                 ("anomaly_events", "异常事件报告"),
                 ("site_method", "站点方法说明"),
                 ("evidence_pack", "证据包"),
+                ("fixture_pack", "Fixture Pack"),
                 ("benchmark_cockpit", "Benchmark 驾驶舱"),
                 ("method_provenance", "方法溯源"),
                 ("method_compare", "Method Compare"),
@@ -2451,6 +4099,7 @@ class StudioController(QObject):
                 ("时间范围", run_result.time_range, "与谱分析批次一致"),
                 ("数据来源", run_result.data_source, "来自当前高频缓冲/批次"),
                 ("Clock sync", rp_method_summary["clock_sync_status"], rp_method_summary["clock_sync_provenance"]),
+                ("Clock quality", rp_method_summary["clock_sync_quality_status"], f"gate={rp_method_summary['clock_sync_quality_gate_status']}; metric_s={rp_method_summary['clock_sync_quality_metric_s']}; threshold_s={rp_method_summary['clock_sync_quality_threshold_s']}"),
                 ("Runtime watchdog", rp_method_summary["runtime_watchdog_status"], rp_method_summary["runtime_watchdog_provenance"]),
                 ("Runtime service", rp_method_summary["runtime_service_status"], rp_method_summary["runtime_service_provenance"]),
                 ("Daemon telemetry", rp_method_summary["daemon_telemetry_status"], rp_method_summary["daemon_telemetry_provenance"]),
@@ -2490,6 +4139,7 @@ class StudioController(QObject):
                 ("Footprint 方法", rp_method_summary["footprint_method"], rp_method_summary["footprint_provenance"]),
                 ("不确定度方法", rp_method_summary["uncertainty_method"], rp_method_summary["uncertainty_provenance"]),
                 ("谱修正方法", rp_method_summary["spectral_correction_method"], rp_method_summary["spectral_correction_provenance"]),
+                ("Flux correction ledger", str(dict(rp_result.artifacts.get("flux_correction_ledger", {}) if rp_result else {}).get("summary", {}).get("status", "--")), "raw/mixing-ratio/density/primary flux correction chain"),
             ],
             "conclusions": ["此页使用当前谱修正批次汇总出的真实通量前后对比，不再展示占位型 EC 产物。"],
             "export_options": ["导出当前报告", "导出证据包"],
@@ -2592,6 +4242,7 @@ class StudioController(QObject):
                 ("不确定度", rp_method_summary["uncertainty_method"]),
                 ("谱修正", rp_method_summary["spectral_correction_method"]),
                 ("Clock sync", rp_method_summary["clock_sync_status"]),
+                ("Clock quality", rp_method_summary["clock_sync_quality_status"]),
                 ("Runtime", rp_method_summary["runtime_watchdog_status"]),
                 ("Service", rp_method_summary["runtime_service_status"]),
                 ("Daemon", rp_method_summary["daemon_telemetry_status"]),
@@ -2615,6 +4266,7 @@ class StudioController(QObject):
                 ("不确定度带宽", str(rp_method_summary["uncertainty_band"]), "primary flux uncertainty band"),
                 ("FCC cospectrum", rp_method_summary["spectral_correction_measured_cospectrum_source"], "Fratini/FCC 自动注入路径"),
                 ("Clock sync", rp_method_summary["clock_sync_method"], rp_method_summary["clock_sync_provenance"]),
+                ("Clock quality", rp_method_summary["clock_sync_quality_gate_status"], f"metric_s={rp_method_summary['clock_sync_quality_metric_s']}; max_event_step_s={rp_method_summary['clock_sync_max_event_step_s']}"),
                 ("Runtime watchdog", rp_method_summary["runtime_watchdog_profile"], rp_method_summary["runtime_watchdog_provenance"]),
                 ("Runtime service", rp_method_summary["runtime_service_id"], rp_method_summary["runtime_service_provenance"]),
                 ("Daemon telemetry", rp_method_summary["daemon_telemetry_status"], rp_method_summary["daemon_telemetry_provenance"]),
@@ -2643,6 +4295,7 @@ class StudioController(QObject):
                 **({"Runtime Deployment Artifact": str(result_export_files.get("runtime_deployment_artifact"))} if result_export_files.get("runtime_deployment_artifact") else {}),
                 **({"Runtime Deployment Feedback Artifact": str(result_export_files.get("runtime_deployment_feedback_artifact"))} if result_export_files.get("runtime_deployment_feedback_artifact") else {}),
                 **({"Clock Sync Artifact": str(result_export_files.get("clock_sync_artifact"))} if result_export_files.get("clock_sync_artifact") else {}),
+                **({"Flux Correction Ledger": str(result_export_files.get("flux_correction_ledger_artifact"))} if result_export_files.get("flux_correction_ledger_artifact") else {}),
             },
             "versions": [
                 f"运行 ID：{run_result.run_id}",
@@ -2684,6 +4337,8 @@ class StudioController(QObject):
         runtime_service_checks = list(runtime_service_summary.get("checks", []) or [])
         daemon_telemetry_summary = dict(rp_method_summary.get("daemon_telemetry_summary", {}) or {})
         daemon_telemetry_checks = list(daemon_telemetry_summary.get("checks", []) or [])
+        target_host_validation = dict(daemon_telemetry_summary.get("target_host_validation", {}) or {})
+        target_host_validation_checks = list(target_host_validation.get("checks", []) or [])
         supervisor_integration_summary = dict(rp_method_summary.get("supervisor_integration_summary", {}) or {})
         supervisor_integration_checks = list(supervisor_integration_summary.get("checks", []) or [])
         installable_runtime_summary = dict(rp_method_summary.get("installable_runtime_summary", {}) or {})
@@ -2722,6 +4377,15 @@ class StudioController(QObject):
             method_compare_rows.append(
                 (
                     f"daemon:{payload.get('check_id', '')}",
+                    str(payload.get("status", "")),
+                    f"measured={payload.get('measured', '--')}; threshold={payload.get('threshold', '--')}",
+                )
+            )
+        for check in target_host_validation_checks[:8]:
+            payload = dict(check or {})
+            method_compare_rows.append(
+                (
+                    f"target_host:{payload.get('check_id', '')}",
                     str(payload.get("status", "")),
                     f"measured={payload.get('measured', '--')}; threshold={payload.get('threshold', '--')}",
                 )
@@ -2781,6 +4445,10 @@ class StudioController(QObject):
             **({"Method Parity CSV": str(result_export_files.get("method_parity_matrix_csv"))} if result_export_files.get("method_parity_matrix_csv") else {}),
             **({"Footprint 2D Contour": str(result_export_files.get("footprint_2d_contour_svg"))} if result_export_files.get("footprint_2d_contour_svg") else {}),
             **({"Footprint 2D Grid CSV": str(result_export_files.get("footprint_2d_grid_csv"))} if result_export_files.get("footprint_2d_grid_csv") else {}),
+            **({"Footprint GeoJSON": str(result_export_files.get("footprint_geojson_artifact"))} if result_export_files.get("footprint_geojson_artifact") else {}),
+            **({"Footprint GeoTIFF": str(result_export_files.get("footprint_geotiff_artifact"))} if result_export_files.get("footprint_geotiff_artifact") else {}),
+            **({"Footprint Land Cover": str(result_export_files.get("footprint_land_cover_overlay_artifact"))} if result_export_files.get("footprint_land_cover_overlay_artifact") else {}),
+            **({"Footprint GIS Validation": str(result_export_files.get("footprint_gis_validation_artifact"))} if result_export_files.get("footprint_gis_validation_artifact") else {}),
             **({"Performance Profile": str(result_export_files.get("performance_profile_artifact"))} if result_export_files.get("performance_profile_artifact") else {}),
             **({"Runtime Watchdog": str(result_export_files.get("runtime_watchdog_artifact"))} if result_export_files.get("runtime_watchdog_artifact") else {}),
             **({"Runtime Service": str(result_export_files.get("runtime_service_artifact"))} if result_export_files.get("runtime_service_artifact") else {}),
@@ -2789,6 +4457,7 @@ class StudioController(QObject):
             **({"Installable Runtime": str(result_export_files.get("installable_runtime_artifact"))} if result_export_files.get("installable_runtime_artifact") else {}),
             **({"Runtime Deployment": str(result_export_files.get("runtime_deployment_artifact"))} if result_export_files.get("runtime_deployment_artifact") else {}),
             **({"Runtime Deployment Feedback": str(result_export_files.get("runtime_deployment_feedback_artifact"))} if result_export_files.get("runtime_deployment_feedback_artifact") else {}),
+            **({"Flux Correction Ledger": str(result_export_files.get("flux_correction_ledger_artifact"))} if result_export_files.get("flux_correction_ledger_artifact") else {}),
         }
         reports["method_compare"] = {
             "title": "Method Compare",
@@ -2870,9 +4539,704 @@ class StudioController(QObject):
             "usage": ["工程诊断和审计留痕优先导出此项。"],
         }
 
+        reports["fixture_pack"] = self._fixture_pack_report_payload(
+            run_result=run_result,
+            updated_at=updated_at,
+            batch_label=batch_label,
+            result_export_files=result_export_files,
+            file_info_for=file_info_for,
+        )
         reports["benchmark_cockpit"] = self._benchmark_cockpit_payload(run_result)
 
         return reports
+
+    def _fixture_pack_report_payload(
+        self,
+        *,
+        run_result: SpectralRunResult,
+        updated_at: str,
+        batch_label: str,
+        result_export_files: dict,
+        file_info_for,
+    ) -> dict:
+        active_pack_path = self._active_fixture_pack_path()
+        active_pack_root = self._active_fixture_pack_workspace_root()
+        official_bundle_state = dict(self.report_center_workspace.get("official_raw_bundle", {}) or self._default_official_raw_bundle_state())
+        public_fixture_state = dict(
+            self.report_center_workspace.get("public_eddypro_fixtures", {}) or self._default_public_eddypro_fixture_state()
+        )
+        try:
+            summary = build_fixture_pack_summary(active_pack_path, workspace_root=active_pack_root)
+            official_raw_manifest = build_official_raw_fixture_manifest(
+                active_pack_path,
+                workspace_root=active_pack_root,
+                fixture_summary=summary,
+            )
+        except Exception as exc:  # pragma: no cover - defensive UI fallback
+            summary = {
+                "fixture_pack_id": "eddypro_real_fixture_pack_v1",
+                "version": "",
+                "status": "fail",
+                "asset_count": 0,
+                "tier_counts": {},
+                "real_reference_window_count": 0,
+                "protocol_validation_row_count": 0,
+                "assets": [],
+                "coverage_gaps": [],
+                "truthfulness_note": "",
+                "errors": [str(exc)],
+            }
+            official_raw_manifest = {
+                "artifact_type": "official_raw_fixture_pack_manifest_v2",
+                "status": "blocked_by_fixture_errors",
+                "official_raw_to_final_ready_count": 0,
+                "registered_raw_to_final_fixture_count": 0,
+                "synthetic_guardrail_count": 0,
+                "missing_official_bundle_count": 0,
+                "evidence_matrix": {"rows": [], "raw_format_counts": {}, "readiness_counts": {}},
+                "assets": [],
+                "truthfulness_note": str(exc),
+            }
+        public_catalog = dict(
+            public_fixture_state.get("catalog", {})
+            or summary.get("public_eddypro_fixture_catalog", {})
+            or official_raw_manifest.get("public_eddypro_fixture_catalog", {})
+            or build_public_eddypro_fixture_catalog(workspace_root=active_pack_root)
+        )
+        public_acquisition = dict(public_fixture_state.get("acquisition", {}) or {})
+        try:
+            eddypro_coverage_audit = build_eddypro_coverage_audit(
+                fixture_pack_path=active_pack_path,
+                workspace_root=active_pack_root,
+                fixture_summary=summary,
+                official_raw_manifest=official_raw_manifest,
+                official_raw_evidence_pack=dict(official_bundle_state.get("evidence_pack", {}) or {}),
+            )
+        except Exception as exc:  # pragma: no cover - defensive UI fallback
+            eddypro_coverage_audit = {
+                "artifact_type": "eddypro_coverage_audit_v1",
+                "status": "audit_error",
+                "can_claim_full_eddypro_parity": False,
+                "capability_summary": {"completion_score": 0.0, "partial_count": 0, "missing_count": 0},
+                "claim_gate": {"status": "blocked", "blocking_reasons": [str(exc)]},
+                "gap_summary": {"top_gaps": []},
+            }
+
+        rows: list[tuple[str, str, str]] = [
+            (
+                "fixture_pack",
+                str(summary.get("status", "unknown")),
+                f"id={summary.get('fixture_pack_id', '')}; version={summary.get('version', '')}",
+            ),
+            (
+                "real_reference_windows",
+                str(summary.get("real_reference_window_count", 0)),
+                "Sum of validated EddyPro reference windows available for parity checks.",
+            ),
+            (
+                "ygas_protocol_rows",
+                str(summary.get("protocol_validation_row_count", 0)),
+                "Manual YGAS MODE1/MODE2 protocol rows parsed through the production importer.",
+            ),
+            (
+                "official_raw_fixture_status",
+                str(official_raw_manifest.get("status", "unknown")),
+                "Official raw-to-final readiness for EddyPro-compatible parity claims.",
+            ),
+            (
+                "official_raw_ready_count",
+                str(official_raw_manifest.get("official_raw_to_final_ready_count", 0)),
+                "Fixtures with raw input, EddyPro settings, official output, normalized reference and provenance.",
+            ),
+            (
+                "registered_raw_to_final_fixtures",
+                str(official_raw_manifest.get("registered_raw_to_final_fixture_count", 0)),
+                "Raw-to-final harness fixtures registered in the fixture pack.",
+            ),
+            (
+                "missing_official_bundles",
+                str(official_raw_manifest.get("missing_official_bundle_count", 0)),
+                "Registered assets still missing at least one official bundle requirement.",
+            ),
+            (
+                "eddypro_coverage_audit",
+                str(eddypro_coverage_audit.get("status", "unknown")),
+                (
+                    f"score={float(dict(eddypro_coverage_audit.get('capability_summary', {}) or {}).get('completion_score', 0.0) or 0.0):.1%}; "
+                    f"can_claim_full_parity={eddypro_coverage_audit.get('can_claim_full_eddypro_parity', False)}"
+                ),
+            ),
+            (
+                "coverage_claim_gate",
+                str(dict(eddypro_coverage_audit.get("claim_gate", {}) or {}).get("status", "blocked")),
+                "; ".join(str(item) for item in list(dict(eddypro_coverage_audit.get("claim_gate", {}) or {}).get("blocking_reasons", []) or [])[:4]) or "no blockers",
+            ),
+            (
+                "official_raw_acceptance_claim_gate",
+                str(dict(eddypro_coverage_audit.get("official_raw_acceptance_summary", {}) or {}).get("gate_status", "not_run")),
+                (
+                    f"status={dict(eddypro_coverage_audit.get('official_raw_acceptance_summary', {}) or {}).get('status', 'not_run')}; "
+                    f"passed={dict(eddypro_coverage_audit.get('official_raw_acceptance_summary', {}) or {}).get('passed_count', 0)}/"
+                    f"{dict(eddypro_coverage_audit.get('official_raw_acceptance_summary', {}) or {}).get('command_count', 0)}; "
+                    f"fixture={dict(eddypro_coverage_audit.get('official_raw_acceptance_summary', {}) or {}).get('fixture_id', '')}"
+                ),
+            ),
+            (
+                "official_eddypro_executable_run",
+                str(dict(eddypro_coverage_audit.get("official_raw_acceptance_summary", {}) or {}).get("official_eddypro_run_gate_status", "blocked")),
+                (
+                    f"status={dict(eddypro_coverage_audit.get('official_raw_acceptance_summary', {}) or {}).get('official_eddypro_run_status', 'not_available')}; "
+                    f"version={dict(eddypro_coverage_audit.get('official_raw_acceptance_summary', {}) or {}).get('official_eddypro_software_version', '')}; "
+                    f"command={dict(eddypro_coverage_audit.get('official_raw_acceptance_summary', {}) or {}).get('official_eddypro_run_command', '') or '--'}"
+                ),
+            ),
+            (
+                "official_eddypro_run_checklist",
+                str(dict(dict(eddypro_coverage_audit.get("official_raw_acceptance_summary", {}) or {}).get("official_eddypro_run", {}) or {}).get("gate_status", "blocked")),
+                (
+                    f"missing={('/'.join(str(item) for item in list(dict(dict(eddypro_coverage_audit.get('official_raw_acceptance_summary', {}) or {}).get('official_eddypro_run', {}) or {}).get('missing_requirements', []) or [])[:5]) or 'none')}; "
+                    "sidecars=official_eddypro_run.json/eddypro_run.json"
+                ),
+            ),
+            (
+                "official_run_normalization",
+                str(official_raw_manifest.get("official_run_normalization_ready_count", 0)),
+                f"status_counts={official_raw_manifest.get('official_run_normalization_status_counts', {})}",
+            ),
+            (
+                "public_eddypro_fixture_catalog",
+                str(public_catalog.get("status", "unknown")),
+                (
+                    f"datasets={public_catalog.get('dataset_count', 0)}; "
+                    f"fixtures={public_catalog.get('valid_fixture_count', 0)}/{public_catalog.get('fixture_count', 0)}; "
+                    f"spectral={public_catalog.get('spectral_status', '')}:{public_catalog.get('spectral_fixture_count', 0)}; "
+                    f"full_output={public_catalog.get('full_output_status', '')}:{public_catalog.get('full_output_fixture_count', 0)}"
+                ),
+            ),
+            (
+                "public_eddypro_claim_boundary",
+                str(dict(public_catalog.get("claim_boundary", {}) or {}).get("can_support_full_raw_to_final_eddypro_claim", False)),
+                str(dict(public_catalog.get("claim_boundary", {}) or {}).get("reason", "")),
+            ),
+            (
+                "eddypro_closure_gate",
+                str(dict(eddypro_coverage_audit.get("closure_gate", {}) or {}).get("status", "blocked")),
+                (
+                    f"open={dict(eddypro_coverage_audit.get('closure_gate', {}) or {}).get('open_item_count', 0)}; "
+                    f"top_priority={dict(eddypro_coverage_audit.get('closure_gate', {}) or {}).get('top_priority', '--')}; "
+                    f"blocked_claims={('/'.join(str(item) for item in list(dict(eddypro_coverage_audit.get('closure_gate', {}) or {}).get('blocked_claims', []) or [])[:4]) or 'none')}"
+                ),
+            ),
+            (
+                "active_fixture_pack",
+                str(active_pack_path),
+                "Report Center and exporter use this fixture pack path for the current session.",
+            ),
+            (
+                "official_bundle_ui_state",
+                str(official_bundle_state.get("status", "not_inspected")),
+                str(official_bundle_state.get("message", "")),
+            ),
+        ]
+        if public_acquisition:
+            rows.append(
+                (
+                    "public_eddypro_acquisition",
+                    str(public_acquisition.get("status", "unknown")),
+                    (
+                        f"downloaded={public_acquisition.get('downloaded_count', 0)}; "
+                        f"skipped={public_acquisition.get('skipped_count', 0)}; "
+                        f"failed={public_acquisition.get('failed_count', 0)}; "
+                        f"artifact={public_fixture_state.get('acquisition_artifact', '')}"
+                    ),
+                )
+            )
+        for dataset in list(public_catalog.get("datasets", []) or []):
+            payload = dict(dataset or {})
+            rows.append(
+                (
+                    f"public_eddypro_dataset:{payload.get('kind', '')}",
+                    str(payload.get("status", "")),
+                    (
+                        f"id={payload.get('dataset_id', '')}; "
+                        f"fixtures={payload.get('valid_fixture_count', 0)}/{payload.get('fixture_count', 0)}; "
+                        f"source={payload.get('source_url', '')}; "
+                        f"normalization={payload.get('normalization_time', '')}"
+                    ),
+                )
+            )
+        official_run_capture = dict(official_bundle_state.get("official_run_capture", {}) or {})
+        official_run = dict(official_bundle_state.get("official_eddypro_run", {}) or {})
+        if official_run_capture or official_run:
+            run_summary = dict(official_run_capture.get("official_eddypro_run", {}) or official_run)
+            rows.append(
+                (
+                    "official_eddypro_run_capture",
+                    str(official_run_capture.get("status", run_summary.get("status", ""))),
+                    (
+                        f"gate={official_run_capture.get('gate_status', run_summary.get('gate_status', 'blocked'))}; "
+                        f"version={run_summary.get('software_version', '')}; "
+                        f"exit_code={run_summary.get('exit_code', '')}; "
+                        f"sidecar={official_bundle_state.get('official_eddypro_run_sidecar', '')}; "
+                        f"artifact={official_bundle_state.get('official_run_capture_artifact', '')}"
+                    ),
+                )
+            )
+        closure_run = dict(official_bundle_state.get("closure_run", {}) or {})
+        if closure_run:
+            rows.append(
+                (
+                    "official_raw_closure_run",
+                    str(closure_run.get("status", "")),
+                    (
+                        f"gate={closure_run.get('gate_status', '')}; "
+                        f"fixture={closure_run.get('fixture_id', '')}; "
+                        f"parity={closure_run.get('raw_to_final_parity_status', '')}; "
+                        f"acceptance={closure_run.get('acceptance_status', '')}; "
+                        f"blockers={('/'.join(str(item) for item in list(closure_run.get('blockers', []) or [])[:5]) or 'none')}; "
+                        f"artifact={official_bundle_state.get('closure_run_artifact', '')}"
+                    ),
+                )
+            )
+        acquisition_validation = dict(official_bundle_state.get("acquisition_validation", {}) or {})
+        if acquisition_validation:
+            rows.append(
+                (
+                    "official_raw_acquisition_validation",
+                    str(acquisition_validation.get("status", "")),
+                    (
+                        f"gate={acquisition_validation.get('gate_status', '')}; "
+                        f"missing={('/'.join(str(item) for item in list(acquisition_validation.get('missing_requirements', []) or [])[:5]) or 'none')}; "
+                        f"artifact={official_bundle_state.get('acquisition_validation_artifact', '')}"
+                    ),
+                )
+            )
+            run_checklist = dict(acquisition_validation.get("official_eddypro_run_checklist", {}) or {})
+            executable_run = dict(acquisition_validation.get("official_eddypro_run", {}) or {})
+            if run_checklist or executable_run:
+                rows.append(
+                    (
+                        "official_eddypro_run_checklist",
+                        str(run_checklist.get("status", executable_run.get("gate_status", ""))),
+                        (
+                            f"run_status={executable_run.get('status', 'not_available')}; "
+                            f"gate={executable_run.get('gate_status', 'blocked')}; "
+                            f"missing={('/'.join(str(item) for item in list(run_checklist.get('missing_requirements', executable_run.get('missing_requirements', [])) or [])[:5]) or 'none')}; "
+                            f"sidecars={('/'.join(str(item) for item in list(run_checklist.get('accepted_sidecar_filenames', []) or [])[:4]) or '--')}"
+                        ),
+                    )
+                )
+        evidence_pack = dict(official_bundle_state.get("evidence_pack", {}) or {})
+        if evidence_pack:
+            acceptance_run = dict(evidence_pack.get("acceptance_run", {}) or official_bundle_state.get("acceptance_run", {}) or {})
+            rows.append(
+                (
+                    "official_raw_evidence_pack",
+                    str(evidence_pack.get("status", "")),
+                    (
+                        f"files={evidence_pack.get('present_source_file_count', 0)}/{evidence_pack.get('source_file_count', 0)}; "
+                        f"parity={dict(evidence_pack.get('parity_summary', {}) or {}).get('status', '')}; "
+                        f"acceptance={evidence_pack.get('acceptance_status', official_bundle_state.get('acceptance_status', 'not_run'))}; "
+                        f"artifact={official_bundle_state.get('evidence_pack_artifact', evidence_pack.get('artifact', ''))}"
+                    ),
+                )
+            )
+            if acceptance_run:
+                rows.append(
+                    (
+                        "official_raw_acceptance_run",
+                        str(acceptance_run.get("status", "")),
+                        (
+                            f"passed={acceptance_run.get('passed_count', 0)}/{acceptance_run.get('command_count', 0)}; "
+                            f"failed={acceptance_run.get('failed_count', 0)}; skipped={acceptance_run.get('skipped_count', 0)}"
+                        ),
+                    )
+                )
+        matrix_filters = dict(official_bundle_state.get("matrix_filters", {}) or {})
+        manifest_build = dict(official_bundle_state.get("manifest_build", {}) or {})
+        if manifest_build:
+            rows.append(
+                (
+                    "manifest_build",
+                    str(manifest_build.get("status", "")),
+                    (
+                        f"fixture={manifest_build.get('fixture_id', '')}; "
+                        f"manifest={manifest_build.get('manifest_path', '')}; "
+                        f"inferred={','.join(str(item) for item in list(manifest_build.get('inferred_file_roles', []) or [])) or 'none'}"
+                    ),
+                )
+            )
+        manifest_batch_build = dict(official_bundle_state.get("manifest_batch_build", {}) or {})
+        if manifest_batch_build:
+            rows.append(
+                (
+                    "manifest_batch_build",
+                    str(manifest_batch_build.get("status", "")),
+                    (
+                        f"ready={manifest_batch_build.get('ready_count', 0)}/{manifest_batch_build.get('build_count', 0)}; "
+                        f"generated={manifest_batch_build.get('generated_count', 0)}; "
+                        f"existing={manifest_batch_build.get('existing_count', 0)}; "
+                        f"root={manifest_batch_build.get('bundle_root', '')}"
+                    ),
+                )
+            )
+        inspection = dict(official_bundle_state.get("inspection", {}) or {})
+        if inspection:
+            rows.append(
+                (
+                    "inspected_bundle",
+                    str(inspection.get("status", "")),
+                    f"fixture={inspection.get('fixture_id', '')}; missing={', '.join(inspection.get('missing_required_files', []) or []) or 'none'}",
+                )
+            )
+        registration = dict(official_bundle_state.get("registration", {}) or {})
+        if registration:
+            rows.append(
+                (
+                    "registration",
+                    str(registration.get("status", "")),
+                    f"fixture={registration.get('fixture_id', '')}; output={registration.get('output_path', '')}",
+                )
+            )
+        discovery = dict(official_bundle_state.get("discovery", {}) or {})
+        if discovery:
+            rows.append(
+                (
+                    "batch_discovery",
+                    str(discovery.get("status", "")),
+                    f"ready={discovery.get('ready_count', 0)}/{discovery.get('bundle_count', 0)}; root={discovery.get('bundle_root', '')}",
+                )
+            )
+        repair_plan = dict(official_bundle_state.get("repair_plan", {}) or dict(discovery.get("repair_plan", {}) or {}))
+        if repair_plan:
+            missing_counts = dict(repair_plan.get("missing_requirement_counts", {}) or {})
+            rows.append(
+                (
+                    "official_raw_repair_plan",
+                    str(repair_plan.get("status", "")),
+                    (
+                        f"repair_items={repair_plan.get('repair_item_count', 0)}; "
+                        f"ready={repair_plan.get('ready_for_registration_count', 0)}/{repair_plan.get('bundle_count', 0)}; "
+                        f"official_run_pass={repair_plan.get('official_eddypro_run_pass_count', 0)}; "
+                        f"top_missing={('/'.join(str(key) for key in list(missing_counts)[:4]) or 'none')}; "
+                        f"artifact={official_bundle_state.get('repair_plan_artifact', '')}"
+                    ),
+                )
+            )
+            for item in list(repair_plan.get("repair_items", []) or [])[:8]:
+                payload = dict(item or {})
+                rows.append(
+                    (
+                        f"repair:{payload.get('fixture_id', '')}",
+                        str(payload.get("repair_status", "")),
+                        (
+                            f"official_run={payload.get('official_eddypro_run_gate_status', '')}; "
+                            f"missing={('/'.join(str(entry) for entry in list(payload.get('missing_requirements', []) or [])[:5]) or 'none')}; "
+                            f"next={('/'.join(str(action) for action in list(payload.get('next_actions', []) or [])[:2]) or '--')}"
+                        ),
+                    )
+                )
+        batch_registration = dict(official_bundle_state.get("batch_registration", {}) or {})
+        if batch_registration:
+            rows.append(
+                (
+                    "batch_registration",
+                    str(batch_registration.get("status", "")),
+                    (
+                        f"registered={batch_registration.get('registered_count', 0)}; "
+                        f"skipped={batch_registration.get('skipped_count', 0)}; "
+                        f"output={batch_registration.get('output_path', '')}"
+                    ),
+                )
+            )
+        parity = dict(official_bundle_state.get("parity", {}) or {})
+        if parity:
+            failed = " / ".join(str(item) for item in list(parity.get("failed_fields", []) or [])) or "none"
+            failure_groups = " / ".join(str(item) for item in list(parity.get("parity_failure_groups", []) or [])) or "none"
+            top_failed_fields = " / ".join(str(item) for item in list(parity.get("parity_top_failed_fields", []) or [])) or "none"
+            rows.append(
+                (
+                    "official_raw_parity",
+                    str(parity.get("status", "")),
+                    (
+                        f"fixture={parity.get('fixture_id', '')}; "
+                        f"pass_rate={float(parity.get('pass_rate', 0.0) or 0.0):.1%}; "
+                        f"failed_fields={failed}; groups={failure_groups}; top_failed={top_failed_fields}"
+                    ),
+                )
+            )
+            trace_status = str(parity.get("trace_gas_parity_status", "") or "")
+            if trace_status:
+                trace_failed = " / ".join(str(item) for item in list(parity.get("trace_gas_failed_fields", []) or [])) or "none"
+                rows.append(
+                    (
+                        "official_raw_trace_gas_parity",
+                        trace_status,
+                        (
+                            f"pass_rate={float(parity.get('trace_gas_pass_rate', 0.0) or 0.0):.1%}; "
+                            f"profile={parity.get('trace_gas_coefficient_profile_id', '') or '--'}; "
+                            f"failed_fields={trace_failed}"
+                        ),
+                    )
+                )
+        batch_parity = dict(official_bundle_state.get("batch_parity", {}) or {})
+        if batch_parity:
+            failed = " / ".join(str(item) for item in list(batch_parity.get("failed_fields", []) or [])) or "none"
+            failure_groups = " / ".join(str(item) for item in list(batch_parity.get("failure_groups", []) or [])) or "none"
+            top_failed_fields = " / ".join(str(item) for item in list(batch_parity.get("top_failed_fields", []) or [])) or "none"
+            trace_failed = " / ".join(str(item) for item in list(batch_parity.get("trace_gas_failed_fields", []) or [])) or "none"
+            rows.append(
+                (
+                    "official_raw_batch_parity",
+                    str(batch_parity.get("status", "")),
+                    (
+                        f"registered={batch_parity.get('registered_count', 0)}; "
+                        f"pass={batch_parity.get('pass_count', 0)}; "
+                        f"pass_rate={float(batch_parity.get('pass_rate', 0.0) or 0.0):.1%}; "
+                        f"failed_fields={failed}; "
+                        f"groups={failure_groups}; "
+                        f"top_failed={top_failed_fields}; "
+                        f"trace_pass={batch_parity.get('trace_gas_pass_count', 0)}/{batch_parity.get('trace_gas_count', 0)}; "
+                        f"trace_failed_fields={trace_failed}"
+                    ),
+                )
+            )
+        selected_detail = dict(official_bundle_state.get("selected_fixture_detail", {}) or {})
+        if selected_detail:
+            file_checks = dict(selected_detail.get("file_checks", {}) or {})
+            rows.append(
+                (
+                    f"selected_fixture_detail:{selected_detail.get('fixture_id', '')}",
+                    str(selected_detail.get("readiness_level", selected_detail.get("status", ""))),
+                    (
+                        f"files={file_checks.get('present_file_count', 0)}/{file_checks.get('declared_file_count', 0)}; "
+                        f"missing_groups={','.join(str(item) for item in list(file_checks.get('missing_required_groups', []) or [])) or 'none'}; "
+                        f"artifact={official_bundle_state.get('selected_fixture_detail_artifact', '')}"
+                    ),
+                )
+            )
+            normalization = dict(selected_detail.get("normalization", {}) or {})
+            rows.append(
+                (
+                    f"selected_fixture_provenance:{selected_detail.get('fixture_id', '')}",
+                    str(normalization.get("normalization_time", "") or normalization.get("qc_mapping_strategy", "") or "--"),
+                    (
+                        f"source={normalization.get('source_file', '')}; "
+                        f"reference={normalization.get('reference_file', '')}; "
+                        f"qc_mapping={normalization.get('qc_mapping_strategy', '')}; "
+                        f"status={normalization.get('status', '')}; "
+                        f"required_fields={normalization.get('required_fields_present', '')}"
+                    ),
+                )
+            )
+        for tier, count in sorted(dict(summary.get("tier_counts", {}) or {}).items()):
+            rows.append((f"tier:{tier}", str(count), "Fixture count by evidence tier."))
+        for asset in list(summary.get("assets", []) or []):
+            payload = dict(asset or {})
+            limits = "; ".join(str(item) for item in list(payload.get("known_limitations", []) or [])[:2])
+            detail_parts = [
+                f"tier={payload.get('tier', '')}",
+                f"windows={payload.get('window_count', 0)}",
+                f"rows={payload.get('row_count', 0)}",
+                f"missing={len(payload.get('missing_fields', []) or [])}",
+            ]
+            trace_payload = dict(dict(payload.get("raw_to_final_parity", {}) or {}).get("trace_gas_parity", {}) or {})
+            if trace_payload.get("status"):
+                detail_parts.append(
+                    f"trace_gas={trace_payload.get('status')}/{float(trace_payload.get('pass_rate', 0.0) or 0.0):.1%}"
+                )
+            if limits:
+                detail_parts.append(f"limitations={limits}")
+            rows.append((str(payload.get("fixture_id", "")), str(payload.get("status", "")), "; ".join(detail_parts)))
+            provenance = dict(payload.get("provenance", {}) or {})
+            if provenance:
+                rows.append(
+                    (
+                        f"provenance:{payload.get('fixture_id', '')}",
+                        str(provenance.get("normalization_time") or provenance.get("source") or "--"),
+                        (
+                            f"source={provenance.get('original_file', provenance.get('source', ''))}; "
+                            f"script={provenance.get('normalization_script', '')}; "
+                            f"qc_mapping={provenance.get('qc_mapping_strategy', '')}"
+                        ),
+                    )
+                )
+        for item in list(official_raw_manifest.get("assets", []) or []):
+            payload = dict(item or {})
+            missing = ", ".join(str(entry) for entry in list(payload.get("missing_for_official_claim", []) or [])[:4])
+            failure_groups = "/".join(str(entry) for entry in list(payload.get("parity_failure_groups", []) or [])) or "none"
+            top_failed_fields = "/".join(str(entry) for entry in list(payload.get("parity_top_failed_fields", []) or [])) or "none"
+            rows.append(
+                (
+                    f"official_raw:{payload.get('fixture_id', '')}",
+                    str(payload.get("readiness_level", "")),
+                    (
+                        f"role={payload.get('evidence_role', '')}; "
+                        f"parity={payload.get('raw_to_final_status', '') or 'not_run'}; "
+                        f"pass_rate={float(payload.get('pass_rate', 0.0) or 0.0):.1%}; "
+                        f"trace_gas={payload.get('trace_gas_parity_status', '') or 'n/a'}:"
+                        f"{float(payload.get('trace_gas_pass_rate', 0.0) or 0.0):.1%}; "
+                        f"normalization={payload.get('normalization_status', '') or 'unknown'}; "
+                        f"official_run_norm={payload.get('official_run_normalization_status', '') or 'not_available'}; "
+                        f"qc_mapping={payload.get('qc_mapping_strategy', '') or 'n/a'}; "
+                        f"failed={('/'.join(str(item) for item in list(payload.get('failed_fields', []) or [])) or 'none')}; "
+                        f"groups={failure_groups}; "
+                        f"top_failed={top_failed_fields}; "
+                        f"raw={payload.get('has_raw_input', False)}; "
+                        f"official_output={payload.get('has_official_output', False)}; "
+                        f"missing={missing or 'none'}"
+                    ),
+                )
+            )
+        evidence_matrix = dict(official_raw_manifest.get("evidence_matrix", {}) or {})
+        if evidence_matrix:
+            filtered_matrix_rows = self._filter_official_raw_matrix_rows(
+                list(evidence_matrix.get("rows", []) or []),
+                matrix_filters,
+            )
+            rows.append(
+                (
+                    "official_raw_evidence_matrix",
+                    f"{len(filtered_matrix_rows)} / {evidence_matrix.get('row_count', 0)}",
+                    (
+                        f"raw_formats={evidence_matrix.get('raw_format_counts', {})}; "
+                        f"readiness={evidence_matrix.get('readiness_counts', {}) or evidence_matrix.get('status_counts', {})}; "
+                        f"official_run_norm={evidence_matrix.get('official_run_normalization_status_counts', {})}; "
+                        f"filters={matrix_filters or 'all'}"
+                    ),
+                )
+            )
+            for matrix_row in filtered_matrix_rows[:12]:
+                payload = dict(matrix_row or {})
+                failure_groups = "/".join(str(entry) for entry in list(payload.get("parity_failure_groups", []) or [])) or "none"
+                top_failed_fields = "/".join(str(entry) for entry in list(payload.get("parity_top_failed_fields", []) or [])) or "none"
+                rows.append(
+                    (
+                        f"matrix:{payload.get('fixture_id', '')}",
+                        str(payload.get("readiness_level", payload.get("status", ""))),
+                        (
+                            f"format={payload.get('raw_format', '')}; site={payload.get('site_class', '')}; "
+                            f"software={payload.get('software', '')}; parity={payload.get('parity_status', '')}; "
+                            f"trace_gas={payload.get('trace_gas_parity_status', '') or 'n/a'}; "
+                            f"normalization={payload.get('normalization_status', '') or 'unknown'}; "
+                            f"official_run_norm={payload.get('official_run_normalization_status', '') or 'not_available'}; "
+                            f"qc_mapping={payload.get('qc_mapping_strategy', '') or 'n/a'}; "
+                            f"groups={failure_groups}; top_failed={top_failed_fields}"
+                        ),
+                    )
+                )
+        for index, gap in enumerate(list(summary.get("coverage_gaps", []) or [])[:6], start=1):
+            rows.append((f"coverage_gap_{index}", "open", str(gap)))
+        for index, gap in enumerate(list(dict(eddypro_coverage_audit.get("gap_summary", {}) or {}).get("top_gaps", []) or [])[:8], start=1):
+            payload = dict(gap or {})
+            rows.append(
+                (
+                    f"eddypro_gap_{index}:{payload.get('id', '')}",
+                    str(payload.get("status", "open")),
+                    f"source={payload.get('source', '')}; family={payload.get('family', '')}; next={payload.get('next_action', '')}",
+                )
+            )
+        for index, item in enumerate(list(dict(eddypro_coverage_audit.get("closure_plan", {}) or {}).get("next_actions", []) or [])[:8], start=1):
+            payload = dict(item or {})
+            rows.append(
+                (
+                    f"eddypro_closure_{index}:{payload.get('closure_id', '')}",
+                    str(payload.get("priority", "P2")),
+                    (
+                        f"family={payload.get('family', '')}; "
+                        f"next={payload.get('next_action', '')}; "
+                        f"evidence={('/'.join(str(entry) for entry in list(payload.get('required_evidence', []) or [])[:4]) or 'none')}"
+                    ),
+                )
+            )
+        for index, error in enumerate(list(summary.get("errors", []) or [])[:6], start=1):
+            rows.append((f"error_{index}", "fail", str(error)))
+
+        fixture_file_info = {
+            **file_info_for("fixture_pack"),
+            **({"Fixture Pack Artifact": str(result_export_files.get("fixture_pack_summary_artifact"))} if result_export_files.get("fixture_pack_summary_artifact") else {}),
+            **({"Official Raw Fixture Manifest": str(result_export_files.get("official_raw_fixture_manifest_artifact"))} if result_export_files.get("official_raw_fixture_manifest_artifact") else {}),
+            **({"EddyPro Coverage Audit": str(result_export_files.get("eddypro_coverage_audit_artifact"))} if result_export_files.get("eddypro_coverage_audit_artifact") else {}),
+            **({"Public EddyPro Fixture Catalog": str(result_export_files.get("public_eddypro_fixture_catalog_artifact"))} if result_export_files.get("public_eddypro_fixture_catalog_artifact") else {}),
+            "Active Fixture Pack": str(active_pack_path),
+            "Fixture Pack Workspace Root": str(active_pack_root),
+            "Official Raw Manifest Build": str(official_bundle_state.get("manifest_build_artifact", "")),
+            "Official Bundle Inspection": str(official_bundle_state.get("inspection_artifact", "")),
+            "Official EddyPro Run Capture": str(official_bundle_state.get("official_run_capture_artifact", "")),
+            "Official EddyPro Run Sidecar": str(official_bundle_state.get("official_eddypro_run_sidecar", "")),
+            "Official Raw Closure Run": str(official_bundle_state.get("closure_run_artifact", "")),
+            "Registered Fixture Pack": str(official_bundle_state.get("registered_pack_path", "")),
+            "Official Raw Parity": str(official_bundle_state.get("parity_artifact", "")),
+            "Official Raw Discovery": str(official_bundle_state.get("discovery_artifact", "")),
+            "Official Raw Repair Plan": str(official_bundle_state.get("repair_plan_artifact", "")),
+            "Official Raw Batch Registration": str(official_bundle_state.get("batch_registration_artifact", "")),
+            "Official Raw Batch Parity": str(official_bundle_state.get("batch_parity_artifact", "")),
+            "Official Raw Fixture Detail": str(official_bundle_state.get("selected_fixture_detail_artifact", "")),
+            "Official Raw Evidence Pack": str(official_bundle_state.get("evidence_pack_artifact", "")),
+            "Public EddyPro Fixture Catalog Runtime": str(public_fixture_state.get("catalog_artifact", "")),
+            "Public EddyPro Fixture Acquisition": str(public_fixture_state.get("acquisition_artifact", "")),
+        }
+        return {
+            "title": "Fixture Pack",
+            "source": f"{active_pack_path} / {batch_label}",
+            "updated_at": updated_at,
+            "report_key": "fixture_pack",
+            "metrics": [
+                ("status", str(summary.get("status", "unknown"))),
+                ("assets", str(summary.get("asset_count", 0))),
+                ("real_windows", str(summary.get("real_reference_window_count", 0))),
+                ("raw_ready", str(official_raw_manifest.get("official_raw_to_final_ready_count", 0))),
+                ("coverage_score", f"{float(dict(eddypro_coverage_audit.get('capability_summary', {}) or {}).get('completion_score', 0.0) or 0.0):.1%}"),
+            ],
+            "plot_series": [
+                float(summary.get("asset_count", 0) or 0),
+                float(summary.get("real_reference_window_count", 0) or 0),
+                float(official_raw_manifest.get("registered_raw_to_final_fixture_count", 0) or 0),
+                float(official_raw_manifest.get("missing_official_bundle_count", 0) or 0),
+                float(dict(eddypro_coverage_audit.get("capability_summary", {}) or {}).get("completion_score", 0.0) or 0.0) * 10.0,
+            ],
+            "table_headers": ["artifact", "status / value", "detail"],
+            "table_rows": rows,
+            "conclusions": [
+                "Fixture Pack report is generated from the same validated registry used by headless manifests and result exports.",
+                str(eddypro_coverage_audit.get("truthfulness_note", "")),
+                str(official_raw_manifest.get("truthfulness_note", "")),
+                str(summary.get("truthfulness_note", "")) or "Coverage gaps remain explicit until matching real fixtures are added.",
+            ],
+            "export_options": ["导出当前报告", "导出证据包"],
+            "file_info": fixture_file_info,
+            "versions": [
+                f"运行 ID：{run_result.run_id}",
+                f"Registry: {active_pack_path}",
+            ],
+            "usage": [
+                "工程师用此页确认 EddyPro reference fixtures、YGAS protocol fixtures 与 hash/window 校验是否可复现。",
+                "交付时优先引用 fixture_pack_summary.json，而不是只引用界面截图。",
+            ],
+            "official_raw_evidence_matrix": evidence_matrix,
+            "official_raw_matrix_filters": matrix_filters,
+            "official_raw_selected_fixture_id": str(official_bundle_state.get("selected_fixture_id", "")),
+            "official_raw_selected_fixture_detail": selected_detail,
+            "official_raw_selected_fixture_detail_artifact": str(official_bundle_state.get("selected_fixture_detail_artifact", "")),
+            "eddypro_coverage_audit": eddypro_coverage_audit,
+            "public_eddypro_fixture_catalog": public_catalog,
+            "public_eddypro_fixture_acquisition": public_acquisition,
+        }
+
+    def _filter_official_raw_matrix_rows(self, rows: list, filters: dict) -> list[dict]:
+        normalized_filters = {str(key): str(value).strip() for key, value in dict(filters or {}).items() if str(value).strip()}
+        filtered: list[dict] = []
+        for row in list(rows or []):
+            payload = dict(row or {})
+            if normalized_filters.get("raw_format") and str(payload.get("raw_format", "")) != normalized_filters["raw_format"]:
+                continue
+            if normalized_filters.get("site_class") and str(payload.get("site_class", "")) != normalized_filters["site_class"]:
+                continue
+            parity_status = str(payload.get("parity_status", "") or payload.get("status", ""))
+            if normalized_filters.get("parity_status") and parity_status != normalized_filters["parity_status"]:
+                continue
+            filtered.append(payload)
+        return filtered
 
     def _compare_spectral_runs(
         self,
@@ -3126,8 +5490,8 @@ class StudioController(QObject):
     def set_average_params(self, device_uid: str, *, avg_co2: int, avg_h2o: int) -> list[TransactionRecord]:
         entry = self._get_device(device_uid)
         commands = [
-            ("设置水汽平均参数", entry.builder.set_average(1, avg_h2o, target_id=entry.config.device_id)),
-            ("设置二氧化碳平均参数", entry.builder.set_average(2, avg_co2, target_id=entry.config.device_id)),
+            ("设置二氧化碳平均参数", entry.builder.set_average(1, avg_co2, target_id=entry.config.device_id)),
+            ("设置水汽平均参数", entry.builder.set_average(2, avg_h2o, target_id=entry.config.device_id)),
         ]
         records = [self._execute_transaction(entry, label=label, command_text=command) for label, command in commands]
         if all(record.status.value == "SUCCEEDED" for record in records):
@@ -3219,6 +5583,104 @@ class StudioController(QObject):
         self.devices_changed.emit()
         return record
 
+    def configure_serial_params(
+        self,
+        device_uid: str,
+        *,
+        baudrate: int,
+        data_bits: int = 8,
+        parity: str = "N",
+        stop_bits: int = 1,
+    ) -> TransactionRecord:
+        entry = self._get_device(device_uid)
+        record = self._execute_transaction(
+            entry,
+            label="设置串口通讯参数",
+            command_text=entry.builder.set_comm_params(
+                target_id=entry.config.device_id,
+                baudrate=baudrate,
+                data_bits=data_bits,
+                parity=parity,
+                stop_bits=stop_bits,
+            ),
+            dangerous=True,
+            timeout_s=0.5,
+        )
+        if record.status.value == "SUCCEEDED":
+            entry.config.baudrate = int(baudrate)
+            self.metadata_store.upsert_device(entry.config)
+        self.devices_changed.emit()
+        return record
+
+    def reset_device(self, device_uid: str) -> TransactionRecord:
+        entry = self._get_device(device_uid)
+        return self._execute_transaction(
+            entry,
+            label="重启气体分析仪",
+            command_text=entry.builder.reset_device(target_id=entry.config.device_id),
+            dangerous=True,
+            timeout_s=0.5,
+        )
+
+    def set_lamp_power(self, device_uid: str, *, value_mv: int) -> TransactionRecord:
+        entry = self._get_device(device_uid)
+        return self._execute_transaction(
+            entry,
+            label="设置发光管功率电压",
+            command_text=entry.builder.set_lamp_power_mv(value_mv, target_id=entry.config.device_id),
+            dangerous=True,
+            timeout_s=0.5,
+        )
+
+    def capture_illumination_reference(self, device_uid: str) -> TransactionRecord:
+        entry = self._get_device(device_uid)
+        return self._execute_transaction(
+            entry,
+            label="设置当前参考电压为满值",
+            command_text=entry.builder.capture_illumination_reference(target_id=entry.config.device_id),
+            dangerous=True,
+            timeout_s=0.5,
+        )
+
+    def set_reference_signal(self, device_uid: str, *, value_mv: int) -> TransactionRecord:
+        entry = self._get_device(device_uid)
+        return self._execute_transaction(
+            entry,
+            label="设置参考信号满值",
+            command_text=entry.builder.set_reference_signal_mv(value_mv, target_id=entry.config.device_id),
+            dangerous=True,
+            timeout_s=0.5,
+        )
+
+    def set_timeout_compensation(self, device_uid: str, *, value: int) -> TransactionRecord:
+        entry = self._get_device(device_uid)
+        return self._execute_transaction(
+            entry,
+            label="设置定时器补偿",
+            command_text=entry.builder.set_timeout_compensation(value, target_id=entry.config.device_id),
+            timeout_s=0.5,
+        )
+
+    def set_calibration_temperature(self, device_uid: str, *, channel: int, temp_c: float) -> TransactionRecord:
+        entry = self._get_device(device_uid)
+        return self._execute_transaction(
+            entry,
+            label=f"设置校准环境温度点 {channel}",
+            command_text=entry.builder.set_calibration_temperature(channel, temp_c, target_id=entry.config.device_id),
+            dangerous=True,
+            timeout_s=0.5,
+        )
+
+    def clear_coefficients(self, device_uid: str, *, group_index: int) -> TransactionRecord:
+        entry = self._get_device(device_uid)
+        return self._execute_transaction(
+            entry,
+            label=f"清除系数组 {group_index}",
+            command_text=entry.builder.clear_coefficients(group_index, target_id=entry.config.device_id),
+            dangerous=True,
+            timeout_s=0.5,
+        )
+
     def export_realtime_buffer(self, target_path: Path) -> Path:
         if not self.selected_device_uid:
             raise RuntimeError("请先选择设备，再导出缓存。")
@@ -3271,10 +5733,13 @@ class StudioController(QObject):
             for uid, entry in self.devices.items():
                 latest = self._latest_numeric_frame(uid)
                 status_level, status_text = self._device_health(entry, latest)
+                analyzer = get_gas_analyzer_profile(entry.config.analyzer_profile)
                 cards.append(
                     {
                         "uid": uid,
                         "label": entry.config.label,
+                        "analyzer_profile": analyzer.profile_id,
+                        "analyzer_profile_label": analyzer.label,
                         "port": entry.config.port,
                         "baudrate": entry.config.baudrate,
                         "device_id": entry.config.device_id,
@@ -3443,8 +5908,10 @@ class StudioController(QObject):
         entry = self._get_device(device_uid)
         latest_frame = self.recent_raw_frames(device_uid=device_uid, limit=1)
         latest_numeric = self._latest_numeric_frame(device_uid)
+        analyzer = get_gas_analyzer_profile(entry.config.analyzer_profile)
         return {
             "entry": entry,
+            "gas_analyzer_profile": analyzer.to_summary(),
             "latest_frame": latest_frame[0] if latest_frame else None,
             "latest_numeric": latest_numeric,
             "transactions": self.recent_transactions(device_uid=device_uid, limit=24),
@@ -3599,6 +6066,7 @@ class StudioController(QObject):
             "anomaly_events": "异常事件报告",
             "site_method": "站点方法说明",
             "evidence_pack": "证据包",
+            "fixture_pack": "Fixture Pack",
             "eddypro_compare": "EddyPro 对标报告",
             "method_provenance": "方法溯源",
             "method_compare": "Method Compare",
@@ -3891,7 +6359,14 @@ class StudioController(QObject):
                     ref_provenance_map[ref_id] = prov
                 except Exception:
                     pass
+        workspace = getattr(self, "report_center_workspace", {}) or {}
+        official_raw_state = dict(workspace.get("official_raw_bundle", {}) or {})
+        official_raw_parity = dict(official_raw_state.get("parity", {}) or {})
+        official_raw_rows = self._official_raw_bundle_parity_rows()
+
         if rp_result is None or not rp_result.windows:
+            empty_rows = [("status", "no_rp_result", "Run EC processing before viewing RP benchmark parity.")]
+            empty_rows.extend(official_raw_rows)
             return {
                 "report_key": "benchmark_cockpit",
                 "title": "Benchmark 驾驶舱",
@@ -3900,10 +6375,14 @@ class StudioController(QObject):
                 "metrics": [("状态", "无数据"), ("参考", "--"), ("通过率", "--"), ("最大偏差", "--")],
                 "plot_series": [],
                 "table_headers": ["项目", "数值", "说明"],
-                "table_rows": [("状态", "无 RP 结果", "请先运行 EC 处理生成 RP 结果")],
+                "table_rows": empty_rows,
                 "conclusions": ["当前尚无 RP 运行结果，无法展示 benchmark 对标。"],
                 "export_options": ["导出 benchmark summary artifact", "导出 cross-software parity artifact", "导出 reference provenance artifact"],
-                "file_info": {"状态": "无数据"},
+                "file_info": {
+                    "状态": "无数据",
+                    "Official Raw Fixture": str(official_raw_parity.get("fixture_id", "")),
+                    "Official Raw Parity": str(official_raw_parity.get("artifact", "")),
+                },
                 "versions": [],
                 "usage": ["请先运行 EC 处理。"],
                 "available_references": ref_options,
@@ -4014,6 +6493,7 @@ class StudioController(QObject):
             ("max_rel_error", f"{max_rel_error:.4f}", "最大相对偏差"),
             ("failed_fields", " / ".join(failed_fields) if failed_fields else "无", "未通过的字段"),
         ]
+        table_rows.extend(official_raw_rows)
         for key, val in (bm_thresholds or {}).items():
             table_rows.append((f"threshold.{key}", str(val), "benchmark 阈值"))
         if active_provenance:
@@ -4110,7 +6590,14 @@ class StudioController(QObject):
             )
             ref_provenance_map[ref["reference_id"]] = provenance
 
+        workspace = getattr(self, "report_center_workspace", {}) or {}
+        official_raw_state = dict(workspace.get("official_raw_bundle", {}) or {})
+        official_raw_parity = dict(official_raw_state.get("parity", {}) or {})
+        official_raw_rows = self._official_raw_bundle_parity_rows()
+
         if rp_result is None or not rp_result.windows:
+            empty_rows = [("status", "no_rp_result", "Run EC processing before viewing RP benchmark parity.")]
+            empty_rows.extend(official_raw_rows)
             return {
                 "report_key": "benchmark_cockpit",
                 "title": "Benchmark 驾驶舱",
@@ -4119,14 +6606,18 @@ class StudioController(QObject):
                 "metrics": [("状态", "无数据"), ("参考", "--"), ("通过率", "--"), ("最大偏差", "--")],
                 "plot_series": [],
                 "table_headers": ["项目", "数值", "说明"],
-                "table_rows": [("状态", "无 RP 结果", "请先运行 EC 处理生成 RP 结果")],
+                "table_rows": empty_rows,
                 "conclusions": ["当前尚无 RP 运行结果，无法展示 benchmark 对标。"],
                 "export_options": [
                     "导出 benchmark summary artifact",
                     "导出 cross-software parity artifact",
                     "导出 reference provenance artifact",
                 ],
-                "file_info": {"状态": "无数据"},
+                "file_info": {
+                    "状态": "无数据",
+                    "Official Raw Fixture": str(official_raw_parity.get("fixture_id", "")),
+                    "Official Raw Parity": str(official_raw_parity.get("artifact", "")),
+                },
                 "versions": [],
                 "usage": ["请先运行 EC 处理。"],
                 "available_references": ref_options,
@@ -4198,6 +6689,11 @@ class StudioController(QObject):
                         "clock_sync_method": diagnostics.get("clock_sync_method", ""),
                         "clock_sync_source": diagnostics.get("clock_sync_source", ""),
                         "clock_sync_mean_offset_s": diagnostics.get("clock_sync_mean_offset_s"),
+                        "clock_sync_quality_status": diagnostics.get("clock_sync_quality_status", ""),
+                        "clock_sync_quality_gate_status": diagnostics.get("clock_sync_quality_gate_status", ""),
+                        "clock_sync_quality_metric_s": diagnostics.get("clock_sync_quality_metric_s"),
+                        "clock_sync_quality_threshold_s": diagnostics.get("clock_sync_quality_threshold_s"),
+                        "clock_sync_max_event_step_s": diagnostics.get("clock_sync_max_event_step_s"),
                         "ch4_method": diagnostics.get("ch4_method", ""),
                         "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s"),
                         "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s"),
@@ -4268,6 +6764,11 @@ class StudioController(QObject):
                     "clock_sync_method": deviation.get("clock_sync_method", diagnostics.get("clock_sync_method", "")),
                     "clock_sync_source": deviation.get("clock_sync_source", diagnostics.get("clock_sync_source", "")),
                     "clock_sync_mean_offset_s": deviation.get("clock_sync_mean_offset_s", diagnostics.get("clock_sync_mean_offset_s")),
+                    "clock_sync_quality_status": deviation.get("clock_sync_quality_status", diagnostics.get("clock_sync_quality_status", "")),
+                    "clock_sync_quality_gate_status": deviation.get("clock_sync_quality_gate_status", diagnostics.get("clock_sync_quality_gate_status", "")),
+                    "clock_sync_quality_metric_s": deviation.get("clock_sync_quality_metric_s", diagnostics.get("clock_sync_quality_metric_s")),
+                    "clock_sync_quality_threshold_s": deviation.get("clock_sync_quality_threshold_s", diagnostics.get("clock_sync_quality_threshold_s")),
+                    "clock_sync_max_event_step_s": deviation.get("clock_sync_max_event_step_s", diagnostics.get("clock_sync_max_event_step_s")),
                     "ch4_method": deviation.get("ch4_method", diagnostics.get("ch4_method", "")),
                     "ch4_flux_nmol_m2_s": deviation.get("ch4_flux_nmol_m2_s", diagnostics.get("ch4_flux_nmol_m2_s")),
                     "ch4_flux_level0_nmol_m2_s": deviation.get("ch4_flux_level0_nmol_m2_s", diagnostics.get("ch4_flux_level0_nmol_m2_s")),
@@ -4369,6 +6870,7 @@ class StudioController(QObject):
             ("max_rel_error", f"{max_rel_error:.4f}", "最大相对偏差"),
             ("failed_fields", " / ".join(failed_fields) if failed_fields else "无", "未通过的字段"),
         ]
+        table_rows.extend(official_raw_rows)
         for key, value in (bm_thresholds or {}).items():
             table_rows.append((f"threshold.{key}", str(value), "benchmark 阈值"))
         if active_provenance:
@@ -4406,6 +6908,10 @@ class StudioController(QObject):
             table_rows.append(("daemon_telemetry.clock_discipline", clock_discipline.get("status", "--"), "硬件时钟 discipline 状态"))
             table_rows.append(("daemon_telemetry.clock_discipline_offset_ns", str(clock_discipline.get("max_abs_offset_ns", "--")), "硬件时钟最大偏移"))
             table_rows.append(("daemon_telemetry.hw_watchdog", dict(daemon_summary.get("hardware_watchdog", {}) or {}).get("status", "--"), "硬件 watchdog 状态"))
+            target_validation = dict(daemon_summary.get("target_host_validation", {}) or {})
+            table_rows.append(("daemon_telemetry.target_validation", target_validation.get("status", "--"), "target-host snapshot validation"))
+            table_rows.append(("daemon_telemetry.target_gate", target_validation.get("gate_status", "--"), "target-host delivery gate"))
+            table_rows.append(("daemon_telemetry.target_host", target_validation.get("target_host_id", "--"), "target host id"))
         if supervisor_summary:
             table_rows.append(("supervisor_integration.status", supervisor_summary.get("status", "--"), "OS supervisor 集成状态"))
             table_rows.append(("supervisor_integration.os_state", dict(supervisor_summary.get("service_status", {}) or {}).get("state", "--"), "OS service 状态"))
@@ -4451,6 +6957,8 @@ class StudioController(QObject):
             "Install runtime": installable_runtime_summary.get("status", "--") if installable_runtime_summary else "--",
             "Runtime deployment": runtime_deployment_summary.get("status", "--") if runtime_deployment_summary else "--",
             "Runtime deployment feedback": runtime_deployment_feedback_summary.get("status", "--") if runtime_deployment_feedback_summary else "--",
+            "Official Raw Fixture": str(official_raw_parity.get("fixture_id", "")),
+            "Official Raw Parity": str(official_raw_parity.get("artifact", "")),
         }
         for key, label in (
             ("benchmark_summary_artifact", "Benchmark Summary"),
@@ -4911,15 +7419,15 @@ class StudioController(QObject):
                 },
                 "instruments": {
                     "sonic_model": "CSAT3A",
-                    "analyzer_model": "LI-7200RS",
+                    "analyzer_model": "YGAS CO2/H2O infrared gas analyzer",
                     "sonic_serial": "CSAT3A-001",
-                    "analyzer_serial": "LI7200-001",
+                    "analyzer_serial": "YGAS-001",
                     "sonic_manufacturer": "Campbell Scientific",
-                    "analyzer_manufacturer": "LI-COR",
+                    "analyzer_manufacturer": "Project YGAS",
                     "sonic_firmware": "1.2.0",
-                    "analyzer_firmware": "8.0.5",
+                    "analyzer_firmware": "manual-2026-03",
                     "sonic_instrument_id": "sonic-main",
-                    "analyzer_instrument_id": "gas-main",
+                    "analyzer_instrument_id": "ygas-main",
                     "mount_description": "主塔顶端与北侧分析仪机箱一体布设。",
                     "geometry_detail": "sonic 正北朝向，analyzer inlet 与 sonic 距离约 0.4 m。",
                 },
@@ -4951,7 +7459,7 @@ class StudioController(QObject):
                                 "ignore": False,
                                 "numeric": True,
                                 "variable": "co2",
-                                "instrument": "gas-main",
+                                "instrument": "ygas-main",
                                 "measurement_type": "mole_fraction",
                                 "input_unit": "ppm",
                                 "output_unit": "ppm",
@@ -5049,6 +7557,17 @@ class StudioController(QObject):
                     "applicable": "适用于塔基固定、地形相对平坦的常规站点。",
                     "recommended": "默认使用双旋转，复杂地形再评估平面拟合。",
                     "rotation_mode": "双旋转",
+                },
+                "crosswind_correction": {
+                    "title": "Crosswind",
+                    "method": "liu_2001_crosswind_v1",
+                    "applicable": "Applies sonic-temperature crosswind correction before density and flux calculations.",
+                    "recommended": "Enable for sonic families that require crosswind temperature correction; disabled by default to avoid unintended temperature changes.",
+                    "enabled": False,
+                    "sonic_manufacturer": "gill",
+                    "sonic_model": "wm",
+                    "temperature_divisor": 1209.0,
+                    "coefficients_text": "",
                 },
                 "detrend": {
                     "title": "去趋势",
@@ -5282,6 +7801,8 @@ class StudioController(QObject):
             "batch_compare": self._empty_batch_compare_payload(),
             "eddypro_compare": self._empty_eddypro_compare_payload(),
             "eddypro_attribution": self._empty_eddypro_attribution_payload(),
+            "official_raw_bundle": self._default_official_raw_bundle_state(),
+            "public_eddypro_fixtures": self._default_public_eddypro_fixture_state(),
         }
 
     def _append_log(self, level: str, message: str) -> None:

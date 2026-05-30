@@ -1,0 +1,17 @@
+{
+  "fixture_id": "synthetic_li7700_trace_gas_001",
+  "source_file": "references/eddypro/raw_to_final/synthetic_li7700_trace_gas_001.csv",
+  "metadata_file": "references/eddypro/raw_to_final/synthetic_li7700_trace_gas_001_metadata.json",
+  "reference_file": "references/eddypro/raw_to_final/synthetic_li7700_trace_gas_001_reference.json",
+  "generation_time": "2026-05-27T10:00:00",
+  "normalization_time": "2026-05-27T10:00:00",
+  "generation_method": "Deterministic sinusoidal wind/scalar/CH4 signals plus independent manual covariance and LI-7700 correction level oracle.",
+  "normalization_script": "tests/test_raw_to_final_parity.py::_raw_ch4_fixture mirrors this fixture generator.",
+  "normalization_command": "python scripts/generate_synthetic_li7700_fixture.py --fixture synthetic_li7700_trace_gas_001 --oracle manual-li7700-levels",
+  "qc_mapping_strategy": "No official EddyPro QC flags in this synthetic raw fixture.",
+  "known_limitations": [
+    "Synthetic LI-7700 raw CSV fixture validates CH4 level parity plumbing and numeric guardrails only.",
+    "Not an official EddyPro raw-to-final golden output.",
+    "Real LI-7700 .ghg/TOB1/SLT/binary fixtures with matching EddyPro output are still required."
+  ]
+}

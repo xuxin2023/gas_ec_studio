@@ -1,0 +1,32 @@
+{
+  "reference_id": "synthetic_raw_csv_001_manual_oracle",
+  "source": "Manual gas_ec_studio raw-to-final synthetic oracle",
+  "description": "Reference window derived from the deterministic synthetic raw CSV fixture using an independent manual covariance calculation.",
+  "created_at": "2026-05-27T00:00:00",
+  "processing_settings": {
+    "averaging_period_min": 1.0,
+    "rotation_mode": "none",
+    "density_correction": "none",
+    "lag_determination": "constant",
+    "detrend_method": "block_mean"
+  },
+  "qc_mapping_strategy": "No EddyPro QC mapping: synthetic manual oracle keeps QC optional.",
+  "windows": [
+    {
+      "window_id": "manual_oracle_w001",
+      "start_time": "2026-05-27T08:00:00",
+      "end_time": "2026-05-27T08:00:23.900000",
+      "primary_flux": 68.88091707890261,
+      "primary_flux_source": "none",
+      "lag_seconds": 0.0,
+      "lag_strategy": "constant",
+      "rotation_mode": "none",
+      "applied_rotation_impl": "none",
+      "qc_grade": "",
+      "notes": "Synthetic raw-to-final oracle window; not an official EddyPro output."
+    }
+  ],
+  "known_limitations": [
+    "Synthetic manual oracle; does not claim official EddyPro numeric parity."
+  ]
+}

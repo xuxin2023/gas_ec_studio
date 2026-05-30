@@ -11,9 +11,11 @@ class RunResultStore:
         self.root = Path(root)
         self.spectral_root = self.root / "spectral_runs"
         self.evidence_root = self.root / "evidence_manifests"
+        self.spectral_library_root = self.root / "spectral_libraries"
         self.index_path = self.root / "spectral_runs_index.json"
         self.spectral_root.mkdir(parents=True, exist_ok=True)
         self.evidence_root.mkdir(parents=True, exist_ok=True)
+        self.spectral_library_root.mkdir(parents=True, exist_ok=True)
         if not self.index_path.exists():
             self._write_index([])
 
@@ -92,6 +94,44 @@ class RunResultStore:
             return None
         payload = json.loads(manifest_paths[0].read_text(encoding="utf-8"))
         return EvidenceBundleManifest.from_dict(payload)
+
+    def build_spectral_assessment_library(
+        self,
+        *,
+        run_ids: list[str] | None = None,
+        limit: int | None = None,
+        dataset_id: str = "",
+        target_bins: int = 24,
+        group_by: list[str] | None = None,
+        min_windows_per_group: int = 1,
+    ) -> dict:
+        from core.ec_fcc.analysis import build_spectral_assessment_library
+
+        if run_ids:
+            runs = [run for run_id in run_ids for run in [self.load_spectral_run(run_id)] if run is not None]
+        else:
+            runs = self.list_recent_runs(limit=limit)
+        return build_spectral_assessment_library(
+            runs,
+            dataset_id=dataset_id,
+            target_bins=target_bins,
+            group_by=group_by,
+            min_windows_per_group=min_windows_per_group,
+        )
+
+    def save_spectral_assessment_library(self, library: dict, library_id: str | None = None) -> Path:
+        resolved_id = str(library_id or library.get("library_id") or "spectral_library").strip() or "spectral_library"
+        safe_id = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in resolved_id)
+        path = self.spectral_library_root / f"{safe_id}.json"
+        path.write_text(json.dumps(library, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+    def latest_spectral_assessment_library(self) -> dict | None:
+        library_paths = sorted(self.spectral_library_root.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)
+        if not library_paths:
+            return None
+        payload = json.loads(library_paths[0].read_text(encoding="utf-8"))
+        return dict(payload) if isinstance(payload, dict) else None
 
     def _read_index(self) -> list[dict]:
         if not self.index_path.exists():

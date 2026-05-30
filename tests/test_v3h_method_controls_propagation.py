@@ -88,6 +88,12 @@ def test_ec_processing_page_method_controls_roundtrip_to_snapshot(monkeypatch, t
         page.footprint_grid_combo.setCurrentText("enabled")
         page.footprint_grid_x_spin.setValue(24)
         page.footprint_grid_y_spin.setValue(15)
+        page.crosswind_enable_combo.setCurrentText("enabled")
+        page.crosswind_method_combo.setCurrentText("liu_2001_crosswind_v1")
+        page.crosswind_manufacturer_combo.setCurrentText("gill")
+        page.crosswind_model_combo.setCurrentText("wm")
+        page.crosswind_temp_divisor_spin.setValue(1209.0)
+        page.crosswind_coefficients_edit.setPlainText('{"u": 0.02, "v": -0.01, "uv": 0.003}')
         page.uncertainty_mode_combo.setCurrentText("finkelstein_sims")
         page.uncertainty_timescale_spin.setValue(7.5)
         page.uncertainty_confidence_spin.setValue(0.90)
@@ -108,6 +114,12 @@ def test_ec_processing_page_method_controls_roundtrip_to_snapshot(monkeypatch, t
         assert payload["steps"]["footprint"]["grid_enabled"] is True
         assert payload["steps"]["footprint"]["grid_x_bins"] == 24
         assert payload["steps"]["footprint"]["grid_y_bins"] == 15
+        assert payload["steps"]["crosswind_correction"]["enabled"] is True
+        assert payload["steps"]["crosswind_correction"]["method"] == "liu_2001_crosswind_v1"
+        assert payload["steps"]["crosswind_correction"]["sonic_manufacturer"] == "gill"
+        assert payload["steps"]["crosswind_correction"]["sonic_model"] == "wm"
+        assert payload["steps"]["crosswind_correction"]["temperature_divisor"] == 1209.0
+        assert payload["steps"]["crosswind_correction"]["coefficients"]["uv"] == 0.003
         assert payload["steps"]["uncertainty"]["method"] == "finkelstein_sims"
         assert payload["steps"]["uncertainty"]["integral_timescale_s"] == 7.5
         assert payload["steps"]["uncertainty"]["confidence_level"] == 0.9
@@ -123,6 +135,12 @@ def test_ec_processing_page_method_controls_roundtrip_to_snapshot(monkeypatch, t
         assert snapshot["footprint"]["grid_enabled"] is True
         assert snapshot["footprint"]["grid_x_bins"] == 24
         assert snapshot["footprint"]["grid_y_bins"] == 15
+        assert snapshot["crosswind_correction"]["enabled"] is True
+        assert snapshot["crosswind_correction"]["method"] == "liu_2001_crosswind_v1"
+        assert snapshot["crosswind_correction"]["sonic_manufacturer"] == "gill"
+        assert snapshot["crosswind_correction"]["sonic_model"] == "wm"
+        assert snapshot["crosswind_correction"]["temperature_divisor"] == 1209.0
+        assert snapshot["crosswind_correction"]["coefficients"]["u"] == 0.02
         assert snapshot["uncertainty"]["method"] == "finkelstein_sims"
         assert snapshot["uncertainty"]["integral_timescale_s"] == 7.5
         assert snapshot["uncertainty"]["confidence_level"] == 0.9

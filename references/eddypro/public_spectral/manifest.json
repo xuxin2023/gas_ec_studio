@@ -1,0 +1,60 @@
+{
+  "artifact_type": "public_eddypro_spectral_fixture_manifest_v1",
+  "manifest_id": "zenodo_13254312_con_ec_2020_af_spectral_subset",
+  "dataset_id": "10.5281/zenodo.13254312",
+  "title": "Data from: Lower-cost eddy covariance for CO2 and H2O fluxes over grassland and agroforestry",
+  "source_url": "https://zenodo.org/records/13254312",
+  "license": "CC-BY-4.0",
+  "source_note": "Zenodo dataset containing EddyPro-calculated fluxes and average spectra/cospectra from Mariensee measurement campaigns.",
+  "acquired_at": "2026-05-29T01:16:00+08:00",
+  "normalization_time": "2026-05-29T01:16:00+08:00",
+  "normalization_command": "Invoke-WebRequest <Zenodo file download URL> -OutFile references/eddypro/public_spectral/<filename>; Get-FileHash references/eddypro/public_spectral/*.csv -Algorithm MD5,SHA256",
+  "qc_mapping": {
+    "strategy": "not_applicable_spectral_fixture",
+    "reason": "These files are spectra/cospectra fixture artifacts, not per-window Full_Output rows with EddyPro QC flags."
+  },
+  "known_limitations": [
+    "Public Zenodo files are real EddyPro-derived spectral artifacts, but they are not LI-COR official acceptance fixtures.",
+    "This subset validates spectra/cospectra parsing and provenance only; it is not a raw-to-final numerical parity claim.",
+    "Downloaded files are average spectra/cospectra products, not original high-frequency raw data or EddyPro project files.",
+    "The fixture currently covers one conventional EC agroforestry 2020 subset and should be expanded across sites, years, and methods."
+  ],
+  "files": [
+    {
+      "file_id": "con_ec_2020_af_cospectra",
+      "role": "cospectra",
+      "path": "references/eddypro/public_spectral/Cospectra_CON-EC_2020_AF.csv",
+      "source_filename": "Cospectra_CON-EC_2020_AF.csv",
+      "expected_md5": "2ac9c9c3d07cae5e9d84cc8bf7b954e7",
+      "expected_sha256": "E7549A642B2E053DE92C375C6F5C5B4489C703C9658525548C0ED949995C5B02",
+      "expected_size_bytes": 22083,
+      "spectral_family": "cospectrum",
+      "species": ["T", "CO2", "H2O", "CH4", "none"],
+      "source_url": "https://zenodo.org/records/13254312/files/Cospectra_CON-EC_2020_AF.csv?download=1"
+    },
+    {
+      "file_id": "con_ec_2020_af_spectra_co2",
+      "role": "spectra",
+      "path": "references/eddypro/public_spectral/Spectra_CO2_CON-EC_2020_AF.csv",
+      "source_filename": "Spectra_CO2_CON-EC_2020_AF.csv",
+      "expected_md5": "dacd10a0ca51297e2fd934535ce01cf8",
+      "expected_sha256": "DCE586AFE7AA04A83470D58E47C0DF22801E868E485FD491AD0BDA72D4C6B2A6",
+      "expected_size_bytes": 3522,
+      "spectral_family": "spectrum",
+      "species": ["CO2"],
+      "source_url": "https://zenodo.org/records/13254312/files/Spectra_CO2_CON-EC_2020_AF.csv?download=1"
+    },
+    {
+      "file_id": "con_ec_2020_af_spectra_h2o",
+      "role": "spectra",
+      "path": "references/eddypro/public_spectral/Spectra_H2O_CON-EC_2020_AF.csv",
+      "source_filename": "Spectra_H2O_CON-EC_2020_AF.csv",
+      "expected_md5": "72e7a2d9f39fa93f053a1948946e447f",
+      "expected_sha256": "54FE3072BD416DD775871029D5251C5B93B22B17AC3736E2E6E7C7BA9E00C3D1",
+      "expected_size_bytes": 11382,
+      "spectral_family": "spectrum",
+      "species": ["H2O"],
+      "source_url": "https://zenodo.org/records/13254312/files/Spectra_H2O_CON-EC_2020_AF.csv?download=1"
+    }
+  ]
+}

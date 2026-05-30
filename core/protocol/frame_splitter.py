@@ -7,6 +7,7 @@ from core.protocol.ack_parser import parse_ack
 from core.protocol.coefficient_codec import parse_coefficient_line
 from core.protocol.mode1_parser import parse_mode1_frame
 from core.protocol.mode2_parser import parse_mode2_frame
+from core.protocol.parameter_parser import parse_parameter_response
 from models.hf_models import FrameQuality
 
 
@@ -30,6 +31,8 @@ def classify_frame_text(text: str) -> FrameQuality:
     if parse_mode1_frame(candidate):
         return parse_mode1_frame(candidate)["frame_quality"]
     if parse_coefficient_line(candidate):
+        return FrameQuality.FULL
+    if parse_parameter_response(candidate):
         return FrameQuality.FULL
     if "YGAS" in candidate.upper():
         return FrameQuality.CORRUPTED

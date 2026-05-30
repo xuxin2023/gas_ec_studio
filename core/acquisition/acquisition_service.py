@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import atexit
 import asyncio
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime
-from threading import Thread
+from threading import Lock, Thread, current_thread
 from typing import Callable
+import weakref
 
 from core.adapters.base import BaseGasAnalyzerAdapter
 from core.protocol.ack_parser import parse_ack
@@ -13,8 +15,26 @@ from core.protocol.command_builder import CommandBuilder
 from core.protocol.frame_splitter import FrameChunk, FrameSplitter
 from core.protocol.mode1_parser import parse_mode1_frame
 from core.protocol.mode2_parser import parse_mode2_frame
+from core.protocol.parameter_parser import parse_parameter_response
 from core.protocol.software_profile import SoftwareProfile
 from models.hf_models import FrameQuality, ProtocolFrame
+
+
+_REGISTERED_SERVICES: weakref.WeakSet["AcquisitionService"] = weakref.WeakSet()
+_REGISTERED_SERVICES_LOCK = Lock()
+
+
+def shutdown_all_acquisition_services() -> None:
+    with _REGISTERED_SERVICES_LOCK:
+        services = list(_REGISTERED_SERVICES)
+    for service in services:
+        try:
+            service.shutdown()
+        except Exception:
+            continue
+
+
+atexit.register(shutdown_all_acquisition_services)
 
 
 @dataclass(slots=True)
@@ -43,19 +63,51 @@ class AcquisitionService:
         self._sessions: dict[str, AcquisitionSession] = {}
         self._loop = asyncio.new_event_loop()
         self._thread = Thread(target=self._run_loop, name="gas-ec-acquisition", daemon=True)
-        self._thread.start()
+        self._thread_lock = Lock()
+        self._closed = False
+        with _REGISTERED_SERVICES_LOCK:
+            _REGISTERED_SERVICES.add(self)
 
     def _run_loop(self) -> None:
         asyncio.set_event_loop(self._loop)
         self._loop.run_forever()
 
+    def _ensure_loop_thread(self) -> None:
+        if self._closed or self._loop.is_closed():
+            raise RuntimeError("Acquisition service has been shut down.")
+        if self._thread.is_alive():
+            return
+        with self._thread_lock:
+            if not self._thread.is_alive():
+                self._thread.start()
+
     def shutdown(self) -> None:
+        if self._closed:
+            return
         for device_uid in list(self._sessions.keys()):
             try:
                 self.disconnect_session(device_uid)
             except Exception:
                 continue
-        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._closed = True
+        thread_started = self._thread.ident is not None
+        if thread_started and self._loop.is_running():
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        if thread_started and self._thread.is_alive() and current_thread() is not self._thread:
+            self._thread.join(timeout=3.0)
+        if not self._loop.is_closed():
+            try:
+                pending = [task for task in asyncio.all_tasks(self._loop) if not task.done()]
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                self._loop.run_until_complete(self._loop.shutdown_asyncgens())
+                self._loop.run_until_complete(self._loop.shutdown_default_executor())
+            finally:
+                self._loop.close()
+        with _REGISTERED_SERVICES_LOCK:
+            _REGISTERED_SERVICES.discard(self)
 
     def connect_session(
         self,
@@ -199,7 +251,7 @@ class AcquisitionService:
     ) -> ProtocolFrame:
         raw_text = chunk.text.strip()
         ack = parse_ack(raw_text)
-        parsed = parse_mode2_frame(raw_text) or parse_mode1_frame(raw_text) or {}
+        parsed = parse_mode2_frame(raw_text) or parse_mode1_frame(raw_text) or parse_parameter_response(raw_text) or {}
         quality = chunk.quality
         if parsed and "frame_quality" in parsed:
             quality = parsed["frame_quality"]
@@ -230,5 +282,11 @@ class AcquisitionService:
         )
 
     def _call(self, coro: asyncio.Future | asyncio.Task | asyncio.coroutines) -> object:
+        if self._closed or self._loop.is_closed():
+            close = getattr(coro, "close", None)
+            if callable(close):
+                close()
+            raise RuntimeError("Acquisition service has been shut down.")
+        self._ensure_loop_thread()
         future: Future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result()

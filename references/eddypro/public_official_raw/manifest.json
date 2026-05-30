@@ -1,0 +1,60 @@
+{
+  "artifact_type": "public_official_raw_fixture_candidate_manifest_v1",
+  "manifest_id": "licor_box_eddypro_sample_datasets_public_raw_candidate",
+  "dataset_id": "licor_eddypro_sample_datasets_box_2618767615",
+  "title": "EddyPro Sample Datasets",
+  "source_url": "https://app.boxenterprise.net/s/4omma8p9bd3pfhctbqjxhjh04960x06k",
+  "license": "LI-COR public sample data; review upstream terms before redistribution",
+  "source_note": "Official LI-COR EddyPro product page links to this public Box folder as EddyPro Sample Data. The folder contains EddyPro sample data.zip.",
+  "acquired_at": "2026-05-29T17:20:00+08:00",
+  "normalization_time": "2026-05-29T17:20:00+08:00",
+  "normalization_command": "gas-ec-headless --acquire-public-eddypro-fixtures --include-public-remote-originals --workspace-root . --output artifacts/eddypro_public_raw/public_fixture_acquisition.json",
+  "qc_mapping": {
+    "strategy": "not_yet_normalized",
+    "reason": "The public LI-COR archive is retained as an acquisition candidate until it is downloaded, unpacked, inspected, normalized, and registered as an official raw bundle."
+  },
+  "known_limitations": [
+    "The repository records the official public source and download recipe, but does not store the 88.6 MB ZIP in git.",
+    "The archive is not a parity fixture until raw input, EddyPro project/settings, official output, normalized reference, provenance, and closure acceptance are all present in one registered bundle.",
+    "Expected SHA-256 is intentionally blank until the operator downloads the archive and records the local hash in an auditable acquisition artifact."
+  ],
+  "original_files": [
+    {
+      "file_id": "licor_eddypro_sample_data_zip",
+      "role": "remote_official_raw_sample_archive",
+      "remote_original": true,
+      "source_filename": "EddyPro sample data.zip",
+      "source_url": "https://app.boxenterprise.net/s/4omma8p9bd3pfhctbqjxhjh04960x06k",
+      "path": "artifacts/eddypro_public_raw/EddyPro Sample Datasets.zip",
+      "download_method": "box_shared_folder_zip",
+      "box_folder_id": "2618767615",
+      "box_shared_name": "4omma8p9bd3pfhctbqjxhjh04960x06k",
+      "expected_size_bytes": 88589595,
+      "expected_md5": "",
+      "expected_sha256": ""
+    }
+  ],
+  "candidate_bundles": [
+    {
+      "candidate_id": "licor_eddypro_sample_data_zip",
+      "source_name": "EddyPro sample data.zip",
+      "source_url": "https://app.boxenterprise.net/s/4omma8p9bd3pfhctbqjxhjh04960x06k",
+      "path": "artifacts/eddypro_public_raw/EddyPro Sample Datasets.zip",
+      "download_method": "box_shared_folder_zip",
+      "box_folder_id": "2618767615",
+      "box_shared_name": "4omma8p9bd3pfhctbqjxhjh04960x06k",
+      "expected_size_bytes": 88589595,
+      "expected_md5": "",
+      "expected_sha256": "",
+      "license": "LI-COR public sample data; review upstream terms before redistribution",
+      "declared_roles": [
+        "downloadable_public_archive"
+      ],
+      "promotion_blockers": [
+        "Archive contents have not yet been unpacked and mapped to official_raw_fixture_bundle.json roles.",
+        "No normalized reference/provenance pair has been generated from this archive yet.",
+        "No official_raw_closure_run acceptance artifact has been produced from this archive yet."
+      ]
+    }
+  ]
+}

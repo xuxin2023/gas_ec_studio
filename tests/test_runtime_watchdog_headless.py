@@ -109,6 +109,33 @@ def test_runtime_watchdog_flags_acquisition_gap() -> None:
     assert any("acquisition gaps" in action for action in watchdog["recommended_actions"])
 
 
+def test_runtime_watchdog_blocks_failed_clock_quality_gate() -> None:
+    rows = _make_rows()
+    start = rows[0].timestamp
+    config = _config()
+    config["clock_sync"].update(
+        {
+            "jitter_threshold_seconds": 0.1,
+            "events": [
+                {"timestamp": start.isoformat(), "offset_seconds": 0.0},
+                {"timestamp": (start + timedelta(seconds=60)).isoformat(), "offset_seconds": 1.0},
+            ],
+        }
+    )
+    config["runtime_profile"]["require_clock_sync_quality"] = True
+
+    batch = run_headless_batch(config=config, metadata=_metadata(), rows=rows, data_source="runtime-clock-quality")
+    watchdog = batch["runtime_watchdog_summary"]
+    checks = {check["check_id"]: check for check in watchdog["checks"]}
+
+    assert watchdog["status"] == "fail"
+    assert checks["clock_sync_quality"]["status"] == "fail"
+    assert checks["clock_sync_quality"]["measured"]["quality_gate_status"] == "warning"
+    assert checks["clock_sync_quality"]["measured"]["max_event_step_seconds"] == 1.0
+    assert any("GPS/PTP offset events" in action for action in watchdog["recommended_actions"])
+    assert batch["rp_result"].windows[0].diagnostics["runtime_watchdog_status"] == "fail"
+
+
 def test_runtime_watchdog_export_and_delivery_chain(tmp_path: Path) -> None:
     metadata = _metadata()
     config = _config()

@@ -69,6 +69,12 @@ def build_runtime_watchdog_manifest(
     min_window_count = int(_float_first(profile.get("min_window_count"), default=1.0))
     max_runtime_ms = _optional_float(profile.get("max_runtime_ms"))
     require_clock_sync = _truthy(profile.get("require_clock_sync", False))
+    require_clock_quality = _truthy(
+        profile.get(
+            "require_clock_sync_quality",
+            profile.get("require_clock_quality_gate", profile.get("require_clock_sync_quality_pass", False)),
+        )
+    )
     require_network_pass = _truthy(profile.get("require_network_pass", False))
 
     checks: list[dict[str, Any]] = []
@@ -134,6 +140,34 @@ def build_runtime_watchdog_manifest(
             severity="fail" if require_clock_sync else "warn",
             message="Clock synchronization status satisfies runtime policy.",
             failure_message="Runtime profile requires clock synchronization, but it was not applied.",
+        )
+    )
+    clock_quality_gate = str((clock_sync_summary or {}).get("quality_gate_status", "") or (clock_sync_summary or {}).get("quality_status", "") or "not_configured")
+    clock_quality_configured = clock_quality_gate not in {"", "not_configured", "not_evaluated"}
+    clock_quality_ok = (
+        clock_quality_gate == "pass"
+        if require_clock_quality
+        else (clock_quality_gate not in {"fail"} and (clock_quality_gate != "warning" or not clock_quality_configured))
+    )
+    checks.append(
+        _check(
+            "clock_sync_quality",
+            clock_quality_ok,
+            measured={
+                "quality_gate_status": clock_quality_gate,
+                "quality_metric_seconds": (clock_sync_summary or {}).get("quality_metric_seconds"),
+                "quality_threshold_seconds": (clock_sync_summary or {}).get("quality_threshold_seconds"),
+                "max_event_step_seconds": (clock_sync_summary or {}).get("max_event_step_seconds"),
+                "offset_span_seconds": (clock_sync_summary or {}).get("offset_span_seconds"),
+            },
+            threshold="pass" if require_clock_quality else "not fail; warning surfaced when configured",
+            severity="fail" if require_clock_quality else "warn",
+            message="Clock synchronization quality satisfies runtime policy.",
+            failure_message="Clock synchronization quality does not satisfy runtime policy.",
+            detail={
+                "required": require_clock_quality,
+                "quality_checks": list((clock_sync_summary or {}).get("quality_checks", []) or []),
+            },
         )
     )
     rp_count = len(getattr(rp_result, "windows", []) or [])
@@ -330,6 +364,8 @@ def _recommended_actions(checks: list[dict[str, Any]]) -> list[str]:
             actions.append("Inspect acquisition gaps, logger buffering, and upstream clock corrections.")
         elif check_id == "clock_sync":
             actions.append("Enable GPS/PTP clock_sync or relax require_clock_sync for non-SmartFlux replay batches.")
+        elif check_id == "clock_sync_quality":
+            actions.append("Inspect GPS/PTP offset events, jitter threshold, and controller correction steps before unattended SmartFlux delivery.")
         elif check_id in {"rp_window_generation", "spectral_window_generation"}:
             actions.append("Verify sample_hz, block_minutes, and minimum input duration.")
         elif check_id == "network_validation":

@@ -1,0 +1,161 @@
+info	variable	unit	comments	details
+file_info	filename	--
+	date	[yyyy-mm-dd]
+	time	[HH:MM]
+	DOY	[ddd.ddd]
+	daytime	[1=daytime]
+	file_records	[#]
+	used_records	[#]
+corrected_fluxes_and_quality_flags	Tau	[kg+1m-1s-2]
+	qc_Tau	[#]
+	rand_err_Tau	[kg+1m-1s-2]	random flux error (Finkelstein & Sims, 2002)
+	H	[W+1m-2]
+	qc_H	[#]
+	rand_err_H	[W+1m-2]	random flux error (Finkelstein & Sims, 2002)
+	LE	[W+1m-2]
+	qc_LE	[#]
+	rand_err_LE	[W+1m-2]	random flux error (Finkelstein & Sims, 2002)
+	co2_flux	[�mol+1s-1m-2]
+	qc_co2_flux	[#]
+	rand_err_co2_flux	[�mol+1s-1m-2]	random flux error (Finkelstein & Sims, 2002)
+	h2o_flux	[mmol+1s-1m-2]
+	qc_h2o_flux	[#]
+	rand_err_h2o_flux	[mmol+1s-1m-2]	random flux error (Finkelstein & Sims, 2002)
+storage_fluxes	H_strg	[W+1m-2]
+	LE_strg	[W+1m-2]
+	co2_strg	[�mol+1s-1m-2]
+	h2o_strg	[mmol+1s-1m-2]
+vertical_advection_fluxes	co2_v.adv	[�mol+1s-1m-2]
+	h2o_v.adv	[mmol+1s-1m-2]
+gas_densities_concentrations_and_timelags	co2_molar_density	[mmol+1m-3]
+	co2_mole_fraction	[�mol+1mol_a-1]
+	co2_mixing_ratio	[�mol+1mol_d-1]
+	co2_time_lag	[s]
+	co2_def_timelag	[1=default]
+	h2o_molar_density	[mmol+1m-3]
+	h2o_mole_fraction	[mmol+1mol_a-1]
+	h2o_mixing_ratio	[mmol+1mol_d-1]
+	h2o_time_lag	[s]
+	h2o_def_timelag	[1=default]
+air_properties	sonic_temperature	[K]
+	air_temperature	[K]
+	air_pressure	[Pa]
+	air_density	[kg+1m-3]
+	air_heat_capacity	[J+1kg-1K-1]
+	air_molar_volume	[m+3mol-1]
+	ET	[mm+1hour-1]
+	water_vapor_density	[kg+1m-3]
+	e	[Pa]
+	es	[Pa]
+	specific_humidity	[kg+1kg-1]
+	RH	[%]
+	VPD	[Pa]
+	Tdew	[K]
+unrotated_wind	u_unrot	[m+1s-1]
+	v_unrot	[m+1s-1]
+	w_unrot	[m+1s-1]
+rotated_wind	u_rot	[m+1s-1]
+	v_rot	[m+1s-1]
+	w_rot	[m+1s-1]
+	wind_speed	[m+1s-1]
+	max_wind_speed	[m+1s-1]
+	wind_dir	[deg_from_north]
+rotation_angles_for_tilt_correction	yaw	[deg]
+	pitch	[deg]
+turbulence	ustar	[m+1s-1]
+	TKE	[m+2s-2]
+	L	[m]
+	z_d_L	[#]
+	bowen_ratio	[#]
+	tstar	[K]
+footprint	model	[0=KJ/1=KM/2=HS]
+	x_peak	[m]
+	x_offset	[m]
+	x_10	[m]
+	x_30	[m]
+	x_50	[m]
+	x_70	[m]
+	x_90	[m]
+uncorrected_fluxes_and_spectral_correction_factors_(scf)	un_Tau	[kg+1m-1s-2]
+	Tau_scf	[#]
+	un_H	[W+1m-2]
+	H_scf	[#]
+	un_LE	[W+1m-2]
+	LE_scf	[#]
+	un_co2_flux	[�mol+1s-1m-2]
+	co2_scf	[#]
+	un_h2o_flux	[mmol+1s-1m-2]
+	h2o_scf	[#]
+statistical_flags	spikes_hf	8u/v/w/ts/co2/h2o/ch4/none
+	amplitude_resolution_hf	8u/v/w/ts/co2/h2o/ch4/none
+	drop_out_hf	8u/v/w/ts/co2/h2o/ch4/none
+	absolute_limits_hf	8u/v/w/ts/co2/h2o/ch4/none
+	skewness_kurtosis_hf	8u/v/w/ts/co2/h2o/ch4/none
+	skewness_kurtosis_sf	8u/v/w/ts/co2/h2o/ch4/none
+	discontinuities_hf	8u/v/w/ts/co2/h2o/ch4/none
+	discontinuities_sf	8u/v/w/ts/co2/h2o/ch4/none
+	timelag_hf	8co2/h2o/ch4/none
+	timelag_sf	8co2/h2o/ch4/none
+	attack_angle_hf	8aa
+	non_steady_wind_hf	8U
+spikes	u_spikes	[#]
+	v_spikes	[#]
+	w_spikes	[#]
+	ts_spikes	[#]
+	co2_spikes	[#]
+	h2o_spikes	[#]
+variances	u_var	[m+2s-2]
+	v_var	[m+2s-2]
+	w_var	[m+2s-2]
+	ts_var	[K+2]
+	co2_var	--
+	h2o_var	--
+covariances	w.ts_cov	[m+1s-1K+1]
+	w.co2_cov	--
+	w.h2o_cov	--
+custom_variables	air_p_mean	[Pa]
+biomet_variables	Ta	[K]
+	Rh	[%]
+	Ts	[K]
+	Pa	[Pa]
+	SWin	[W/m^2]
+	SWout	[W/m^2]
+	LWin	[W/m^2]
+	LWout	[W/m^2]
+	PPFD	[�mol/m^2/s]
+	Rg	[W/m^2]
+	SMC	[M+3M-3]
+	SHF	[W/m^2]
+High frequency h2o gas densities and concentrations	h2o_molar_density_Li7500	[mmol+1m-3]	high frequency Li-7500 measurement after drift correction	variable 'mean(h2o)' from EddyPro statistics output file after drift correction
+	h2o_mole_fraction_Li7500	[mmol+1mol_a-1]	high frequency Li-7500 measurement after drift correction	calculated from h2o_molar_density_Li7500
+	h2o_mixing_ratio_Li7500	[mmol+1mol_d-1]	high frequency Li-7500 measurement after drift correction	calculated from h2o_molar_density_Li7500
+High frequency co2 and h2o gas densities and concentrations before drift correction	co2_molar_density_ORG	[mmol+1m-3]	high frequency Li-7500 measurement before drift correction
+	co2_mole_fraction_ORG	[�mol+1mol_a-1]	high frequency Li-7500 measurement before drift correction
+	co2_mixing_ratio_ORG	[�mol+1mol_d-1]	high frequency Li-7500 measurement before drift correction
+	h2o_molar_density_Li7500_ORG	[mmol+1m-3]	high frequency Li-7500 measurement before drift correction	variable 'mean(h2o)' from EddyPro statistics output file before drift correction
+	h2o_mole_fraction_Li7500_ORG	[mmol+1mol_a-1]	high frequency Li-7500 measurement before drift correction	calculated from h2o_molar_density_Li7500_ORG
+	h2o_mixing_ratio_Li7500_ORG	[mmol+1mol_d-1]	high frequency Li-7500 measurement before drift correction	calculated from h2o_molar_density_Li7500_ORG
+QC_filtering	qc_wind_dir	[#]	2 = wind direction comes from disturbed wind sectors	disturbed wind sector are back of sonic anemometer, PBL container and main buildings
+	qc_ustar	[#]	2 = ustar > 0.08 m+1s-1	single ustar threshold estimate using REddyProc
+	qc_co2_flux_composite	[#]	"0 = high quality; 1 = intermediate quality; 2 = poor quality"	qc_composite comprised of qc_co2_flux, qc_wind_dir, qc_ustar, check for repeating runs, skw and kur hf, low frequency despiking and qc_co2_molar_density_composite
+	qc_h2o_flux_composite	[#]	"0 = high quality; 1 = intermediate quality; 2 = poor quality"	qc_composite comprised of qc_h2o_flux, qc_wind_dir, qc_ustar, check for repeating runs, skw and kur hf, low frequency despiking and qc_h2o_molar_density_Li7500_composite
+	qc_co2_molar_density_composite	[#]	"0 = high quality; 1 = intermediate quality; 2 = poor quality"	qc_composite comprised of check for repeating runs and low frequency despiking
+	qc_co2_mixing_ratio_composite	[#]	"0 = high quality; 1 = intermediate quality; 2 = poor quality"	qc_composite comprised of check for repeating runs and low frequency despiking
+	qc_h2o_molar_density_composite	[#]	"0 = high quality; 1 = intermediate quality; 2 = poor quality"	qc_composite comprised of check for repeating runs and low frequency despiking
+	qc_h2o_molar_density_Li7500_composite	[#]	"0 = high quality; 1 = intermediate quality; 2 = poor quality"	qc_composite comprised of check for repeating runs and low frequency despiking
+	qc_h2o_mixing_ratio_composite	[#]	"0 = high quality; 1 = intermediate quality; 2 = poor quality"	qc_composite comprised of check for repeating runs and low frequency despiking
+	qc_h2o_mixing_ratio_Li7500_composite	[#]	"0 = high quality; 1 = intermediate quality; 2 = poor quality"	qc_composite comprised of check for repeating runs and low frequency despiking
+sensor_self_heating_correction	F_CO2	[�mol+1s-1m-2]	Original co2_flux values used for sensor self heating correction (after filtering with qc_co2_flux_composite)
+	HC_Burba	[�mol+1s-1m-2]	Sensor self heating correction following Burba (2008)
+	HC_Frank	[�mol+1s-1m-2]	Sensor self heating correction following Frank (2020)
+	F_CO2_HC_Burba	[�mol+1s-1m-2]	co2_flux corrected for sensor self heating following Burba (2008)
+	F_CO2_HC_Frank	[�mol+1s-1m-2]	co2_flux corrected for sensor self heating following Frank (2020)
+gap_filling	NEE_orig	[�mol+1s-1m-2]	co2_flux values used for gap-filling (after filtering with qc_co2_flux_composite, excluding nighttime fluxes < 0.1 �mol+1s-1m-2 and excluding the lower and upper 0.2 %)
+	NEE_f	[�mol+1s-1m-2]	Original values and gaps filled with mean of selected datapoints (condition depending on gap filling method)
+	NEE_fqc	[#]	"Quality flag assigned depending on gap filling method and window length: 0 = original; 1 = most reliable; 2 = medium; 3 = least reliable"
+	NEE_fall	[�mol+1s-1m-2]	All values considered as gaps (for uncertainty estimates)
+	NEE_fall_qc	[#]	All values considered as gaps (for uncertainty estimates)
+	NEE_fnum	[#]	Number of datapoints used for gap filling
+	NEE_fsd	[�mol+1s-1m-2]	Standard deviation of datapoints used for gap filling (uncertainty)
+	NEE_fmeth	[#]	"Method used for gap filling: 1 = similar meteo condition (sFillLUT with Rg, VPD, Tair); 2 = similar meteo (sFillLUT with Rg only); 3 = mean diurnal course (sFillMDC))"
+	NEE_fwin	[#]	Full window length used for gap filling

@@ -5,6 +5,9 @@ __pycache__/
 runtime_data/
 .arts/
 tmp_test_*/
+artifacts/
+.playwright-mcp/
+box_download_*.txt
 
 _v3g*.txt
 test_v3e_output.txt

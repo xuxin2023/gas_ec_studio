@@ -157,6 +157,10 @@ def export_formal_report(
             "runtime_deployment_summary": snapshot.get("delivery_audit", {}).get("runtime_deployment_summary", {}),
             "runtime_deployment_feedback_summary": snapshot.get("delivery_audit", {}).get("runtime_deployment_feedback_summary", {}),
             "clock_sync_summary": snapshot.get("delivery_audit", {}).get("clock_sync_summary", {}),
+            "biomet_ambient_summary": snapshot.get("delivery_audit", {}).get("biomet_ambient_summary", {}),
+            "official_raw_fixture_manifest": snapshot.get("delivery_audit", {}).get("official_raw_fixture_manifest", {}),
+            "official_raw_fixture_detail": snapshot.get("delivery_audit", {}).get("official_raw_fixture_detail", {}),
+            "eddypro_coverage_audit": snapshot.get("delivery_audit", {}).get("eddypro_coverage_audit", {}),
             "benchmark_summary": snapshot.get("delivery_audit", {}).get("benchmark_summary", {}),
         }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -221,6 +225,38 @@ def _build_formal_report_snapshot(
     runtime_deployment_summary = dict(result_manifest.get("runtime_deployment_summary", {}) or {})
     runtime_deployment_feedback_summary = dict(result_manifest.get("runtime_deployment_feedback_summary", {}) or {})
     clock_sync_summary = dict(result_manifest.get("clock_sync_summary", {}) or {})
+    biomet_ambient_summary = dict(result_manifest.get("biomet_ambient_summary", {}) or {})
+    fixture_pack_summary = dict(result_manifest.get("fixture_pack_summary", {}) or {})
+    official_raw_fixture_manifest = dict(result_manifest.get("official_raw_fixture_manifest", {}) or {})
+    official_raw_fixture_detail = dict(result_manifest.get("official_raw_fixture_detail", {}) or {})
+    official_raw_acquisition_validation = dict(
+        result_manifest.get("official_raw_acquisition_validation", {})
+        or official_raw_fixture_detail.get("acquisition_validation", {})
+        or {}
+    )
+    official_raw_evidence_pack = dict(result_manifest.get("official_raw_evidence_pack", {}) or {})
+    official_raw_acceptance_run = dict(official_raw_evidence_pack.get("acceptance_run", {}) or {})
+    official_raw_normalization = dict(official_raw_fixture_detail.get("normalization", {}) or {})
+    official_raw_official_run_normalization = dict(
+        result_manifest.get("official_raw_official_run_normalization", {})
+        or official_raw_fixture_detail.get("official_run_normalization", {})
+        or official_raw_evidence_pack.get("official_run_normalization", {})
+        or {}
+    )
+    eddypro_source_inventory = dict(result_manifest.get("eddypro_source_inventory", {}) or {})
+    eddypro_coverage_audit = dict(result_manifest.get("eddypro_coverage_audit", {}) or {})
+    eddypro_release_gate = dict(result_manifest.get("eddypro_release_gate", {}) or {})
+    eddypro_closure_gate = dict(result_manifest.get("eddypro_closure_gate", {}) or eddypro_coverage_audit.get("closure_gate", {}) or {})
+    eddypro_closure_plan = dict(result_manifest.get("eddypro_closure_plan", {}) or eddypro_coverage_audit.get("closure_plan", {}) or {})
+    raw_to_final_parity = dict(result_manifest.get("raw_to_final_parity", {}) or {})
+    raw_to_final_trace_gas = dict(
+        result_manifest.get("raw_to_final_trace_gas_parity", {})
+        or raw_to_final_parity.get("trace_gas_parity", {})
+        or {}
+    )
+    flux_correction_ledger_summary = dict(result_manifest.get("flux_correction_ledger_summary", {}) or {})
+    spectral_assessment = dict(result_manifest.get("spectral_assessment", {}) or {})
+    spectral_assessment_library = dict(result_manifest.get("spectral_assessment_library", {}) or {})
     delivery_audit = {
         "artifact_type": "formal_report_delivery_audit",
         "result_bundle_root": str(result_bundle.get("export_root", "")),
@@ -230,12 +266,23 @@ def _build_formal_report_snapshot(
             key
             for key in [
                 "method_rollup_artifact",
+                "spectral_assessment_artifact",
+                "spectral_binned_ensemble_csv",
+                "spectral_full_windows_csv",
+                "spectral_ogive_ensemble_csv",
+                "spectral_assessment_library_artifact",
+                "spectral_assessment_library_groups_csv",
+                "spectral_assessment_library_bins_csv",
                 "method_compare_artifact",
                 "method_parity_matrix_artifact",
                 "method_parity_matrix_csv",
                 "footprint_2d_artifact",
                 "footprint_2d_contour_svg",
                 "footprint_2d_grid_csv",
+                "footprint_geojson_artifact",
+                "footprint_geotiff_artifact",
+                "footprint_land_cover_overlay_artifact",
+                "footprint_gis_validation_artifact",
                 "performance_profile_artifact",
                 "runtime_watchdog_artifact",
                 "runtime_service_artifact",
@@ -249,7 +296,16 @@ def _build_formal_report_snapshot(
                 "runtime_deployment_rollback_windows_service_ps1",
                 "runtime_deployment_feedback_artifact",
                 "clock_sync_artifact",
+                "flux_correction_ledger_artifact",
                 "reference_provenance_artifact",
+                "fixture_pack_summary_artifact",
+                "official_raw_fixture_manifest_artifact",
+                "official_raw_fixture_detail_artifact",
+                "official_raw_evidence_pack_artifact",
+                "eddypro_source_inventory_artifact",
+                "eddypro_coverage_audit_artifact",
+                "eddypro_release_gate_artifact",
+                "raw_to_final_parity_artifact",
                 "network_validation_summary",
             ]
             if key in bundle_files
@@ -263,6 +319,83 @@ def _build_formal_report_snapshot(
         "runtime_deployment_summary": runtime_deployment_summary,
         "runtime_deployment_feedback_summary": runtime_deployment_feedback_summary,
         "clock_sync_summary": clock_sync_summary,
+        "biomet_ambient_summary": biomet_ambient_summary,
+        "fixture_pack_summary": fixture_pack_summary,
+        "official_raw_fixture_manifest": official_raw_fixture_manifest,
+        "official_raw_fixture_detail": official_raw_fixture_detail,
+        "official_raw_acquisition_validation": official_raw_acquisition_validation,
+        "official_raw_evidence_pack": official_raw_evidence_pack,
+        "result_manifest_summary": {
+            "schema_target": result_manifest.get("schema_target", ""),
+            "validation_status": result_manifest.get("network_validation_status", ""),
+            "official_raw_fixture_detail_id": official_raw_fixture_detail.get("fixture_id", ""),
+            "official_raw_fixture_detail_status": official_raw_fixture_detail.get("status", ""),
+            "official_raw_fixture_detail_readiness": official_raw_fixture_detail.get("readiness_level", ""),
+            "official_raw_acquisition_status": official_raw_acquisition_validation.get("status", ""),
+            "official_raw_acquisition_gate_status": official_raw_acquisition_validation.get("gate_status", ""),
+            "official_raw_acquisition_missing_requirements": list(official_raw_acquisition_validation.get("missing_requirements", []) or []),
+            "official_raw_evidence_pack_status": official_raw_evidence_pack.get("status", ""),
+            "official_raw_evidence_pack_source_file_count": official_raw_evidence_pack.get("source_file_count", 0),
+            "official_raw_evidence_pack_acceptance_status": result_manifest.get(
+                "official_raw_evidence_pack_acceptance_status",
+                official_raw_evidence_pack.get("acceptance_status", official_raw_acceptance_run.get("status", "not_run")),
+            ),
+            "official_raw_evidence_pack_acceptance_gate_status": result_manifest.get(
+                "official_raw_evidence_pack_acceptance_gate_status",
+                official_raw_evidence_pack.get("acceptance_gate_status", official_raw_acceptance_run.get("gate_status", "not_run")),
+            ),
+            "official_raw_evidence_pack_acceptance_command_count": result_manifest.get(
+                "official_raw_evidence_pack_acceptance_command_count",
+                official_raw_acceptance_run.get("command_count", 0),
+            ),
+            "official_raw_evidence_pack_acceptance_failed_count": result_manifest.get(
+                "official_raw_evidence_pack_acceptance_failed_count",
+                official_raw_acceptance_run.get("failed_count", 0),
+            ),
+            "official_raw_normalization_status": result_manifest.get("official_raw_normalization_status", official_raw_normalization.get("status", "")),
+            "official_raw_normalization_time": result_manifest.get("official_raw_normalization_time", official_raw_normalization.get("normalization_time", "")),
+            "official_raw_normalization_source_file": official_raw_normalization.get("source_file", ""),
+            "official_raw_qc_mapping_strategy": result_manifest.get("official_raw_qc_mapping_strategy", official_raw_normalization.get("qc_mapping_strategy", "")),
+            "official_raw_normalization_required_fields_present": official_raw_normalization.get("required_fields_present"),
+            "official_raw_official_run_normalization_status": result_manifest.get(
+                "official_raw_official_run_normalization_status",
+                official_raw_official_run_normalization.get("status", ""),
+            ),
+            "official_raw_official_run_normalization_time": result_manifest.get(
+                "official_raw_official_run_normalization_time",
+                official_raw_official_run_normalization.get("normalization_time", ""),
+            ),
+            "official_raw_official_run_normalization_source_file": official_raw_official_run_normalization.get("source_file", ""),
+            "official_raw_official_run_reference_json": result_manifest.get(
+                "official_raw_official_run_reference_json",
+                official_raw_official_run_normalization.get("reference_json", ""),
+            ),
+            "official_raw_official_run_provenance_json": result_manifest.get(
+                "official_raw_official_run_provenance_json",
+                official_raw_official_run_normalization.get("provenance_json", ""),
+            ),
+            "official_raw_official_run_qc_mapping_strategy": result_manifest.get(
+                "official_raw_official_run_qc_mapping_strategy",
+                official_raw_official_run_normalization.get("qc_mapping_strategy", ""),
+            ),
+            "can_claim_full_eddypro_parity": eddypro_coverage_audit.get("can_claim_full_eddypro_parity", False),
+            "eddypro_release_gate_status": eddypro_release_gate.get("status", ""),
+            "can_release_full_eddypro_parity": eddypro_release_gate.get("can_release_full_eddypro_parity", False),
+            "eddypro_release_gate_ci_exit_code": eddypro_release_gate.get("ci_exit_code", 2),
+            "eddypro_closure_gate_status": eddypro_closure_gate.get("status", ""),
+            "eddypro_closure_open_item_count": eddypro_closure_gate.get("open_item_count", 0),
+            "eddypro_closure_top_priority": eddypro_closure_gate.get("top_priority", ""),
+        },
+        "eddypro_source_inventory": eddypro_source_inventory,
+        "eddypro_coverage_audit": eddypro_coverage_audit,
+        "eddypro_release_gate": eddypro_release_gate,
+        "eddypro_closure_gate": eddypro_closure_gate,
+        "eddypro_closure_plan": eddypro_closure_plan,
+        "raw_to_final_parity": raw_to_final_parity,
+        "raw_to_final_trace_gas_parity": raw_to_final_trace_gas,
+        "flux_correction_ledger_summary": flux_correction_ledger_summary,
+        "spectral_assessment": spectral_assessment,
+        "spectral_assessment_library": spectral_assessment_library,
         "benchmark_summary": {
             "benchmark_status": result_manifest.get("benchmark_status", ""),
             "benchmark_reference_id": result_manifest.get("benchmark_reference_id", ""),
@@ -521,6 +654,9 @@ def _build_formal_report_snapshot(
                         ["runtime_service_delivery_state", str(runtime_service_summary.get("delivery_state", "--"))],
                         ["runtime_service_quarantine_count", str(len(runtime_service_summary.get("quarantine_records", []) or []))],
                         ["daemon_telemetry_status", str(daemon_telemetry_summary.get("status", "--"))],
+                        ["target_host_validation_status", str(dict(daemon_telemetry_summary.get("target_host_validation", {}) or {}).get("status", "--"))],
+                        ["target_host_validation_gate", str(dict(daemon_telemetry_summary.get("target_host_validation", {}) or {}).get("gate_status", "--"))],
+                        ["target_host_id", str(dict(daemon_telemetry_summary.get("target_host_validation", {}) or {}).get("target_host_id", "--"))],
                         ["supervisor_state", str(dict(daemon_telemetry_summary.get("supervisor", {}) or {}).get("state", "--"))],
                         ["supervisor_integration_status", str(supervisor_integration_summary.get("status", "--"))],
                         ["os_supervisor_state", str(dict(supervisor_integration_summary.get("service_status", {}) or {}).get("state", "--"))],
@@ -536,6 +672,62 @@ def _build_formal_report_snapshot(
                         ["clock_discipline_offset_ns", str(dict(daemon_telemetry_summary.get("clock_discipline", {}) or {}).get("max_abs_offset_ns", "--"))],
                         ["hardware_watchdog_status", str(dict(daemon_telemetry_summary.get("hardware_watchdog", {}) or {}).get("status", "--"))],
                         ["clock_sync_status", str(clock_sync_summary.get("status", "--"))],
+                        ["biomet_ambient_status", str(biomet_ambient_summary.get("status", "--"))],
+                        ["biomet_ambient_applied_windows", str(biomet_ambient_summary.get("applied_window_count", "--"))],
+                        ["biomet_ambient_fields", json.dumps(biomet_ambient_summary.get("applied_fields", {}), ensure_ascii=False)],
+                        ["flux_correction_ledger_status", str(flux_correction_ledger_summary.get("status", "--"))],
+                        ["flux_correction_ledger_windows", str(flux_correction_ledger_summary.get("ledger_window_count", "--"))],
+                        ["spectral_assessment_status", str(spectral_assessment.get("status", "--"))],
+                        ["spectral_assessment_bins", str(dict(spectral_assessment.get("binned_ensemble", {}) or {}).get("bin_count", "--"))],
+                        ["spectral_full_window_rows", str(spectral_assessment.get("full_window_row_count", "--"))],
+                        ["spectral_library_status", str(spectral_assessment_library.get("status", "--"))],
+                        ["spectral_library_groups", str(spectral_assessment_library.get("group_count", "--"))],
+                        ["spectral_library_windows", str(spectral_assessment_library.get("window_count", "--"))],
+                        ["fixture_pack_status", str(fixture_pack_summary.get("status", "--"))],
+                        ["fixture_pack_real_windows", str(fixture_pack_summary.get("real_reference_window_count", "--"))],
+                        ["fixture_pack_protocol_rows", str(fixture_pack_summary.get("protocol_validation_row_count", "--"))],
+                        ["official_raw_fixture_status", str(official_raw_fixture_manifest.get("status", "--"))],
+                        ["official_raw_ready_count", str(official_raw_fixture_manifest.get("official_raw_to_final_ready_count", "--"))],
+                        ["registered_raw_to_final_fixtures", str(official_raw_fixture_manifest.get("registered_raw_to_final_fixture_count", "--"))],
+                        ["missing_official_bundles", str(official_raw_fixture_manifest.get("missing_official_bundle_count", "--"))],
+                        ["official_raw_acquisition_status", str(official_raw_acquisition_validation.get("status", "--"))],
+                        ["official_raw_acquisition_gate_status", str(official_raw_acquisition_validation.get("gate_status", "--"))],
+                        ["official_raw_acquisition_missing", json.dumps(official_raw_acquisition_validation.get("missing_requirements", []), ensure_ascii=False)],
+                        ["official_raw_evidence_pack_status", str(official_raw_evidence_pack.get("status", "--"))],
+                        ["official_raw_evidence_pack_files", f"{official_raw_evidence_pack.get('present_source_file_count', '--')}/{official_raw_evidence_pack.get('source_file_count', '--')}"],
+                        ["official_raw_acceptance_status", str(official_raw_evidence_pack.get("acceptance_status", official_raw_acceptance_run.get("status", "--")))],
+                        ["official_raw_acceptance_commands", f"{official_raw_acceptance_run.get('passed_count', 0)}/{official_raw_acceptance_run.get('command_count', 0)} pass; failed={official_raw_acceptance_run.get('failed_count', 0)}"],
+                        ["official_raw_normalization_status", str(official_raw_normalization.get("status", "--"))],
+                        ["official_raw_normalization_time", str(official_raw_normalization.get("normalization_time", "--"))],
+                        ["official_raw_qc_mapping", str(official_raw_normalization.get("qc_mapping_strategy", "--"))],
+                        ["official_run_normalization_status", str(official_raw_official_run_normalization.get("status", "--"))],
+                        ["official_run_normalization_time", str(official_raw_official_run_normalization.get("normalization_time", "--"))],
+                        ["official_run_qc_mapping", str(official_raw_official_run_normalization.get("qc_mapping_strategy", "--"))],
+                        ["raw_to_final_trace_gas_status", str(raw_to_final_trace_gas.get("status", "--"))],
+                        ["raw_to_final_trace_gas_pass_rate", _fmt(raw_to_final_trace_gas.get("pass_rate"), 3)],
+                        ["raw_to_final_trace_gas_profile", str(raw_to_final_trace_gas.get("coefficient_profile_id", "--"))],
+                        ["eddypro_coverage_audit_status", str(eddypro_coverage_audit.get("status", "--"))],
+                        ["eddypro_coverage_completion_score", _fmt(dict(eddypro_coverage_audit.get("capability_summary", {}) or {}).get("completion_score"), 3)],
+                        ["can_claim_full_eddypro_parity", str(eddypro_coverage_audit.get("can_claim_full_eddypro_parity", False))],
+                        ["eddypro_release_gate_status", str(eddypro_release_gate.get("status", "--"))],
+                        ["can_release_full_eddypro_parity", str(eddypro_release_gate.get("can_release_full_eddypro_parity", False))],
+                        ["eddypro_closure_gate_status", str(eddypro_closure_gate.get("status", "--"))],
+                        ["eddypro_closure_open_items", str(eddypro_closure_gate.get("open_item_count", "--"))],
+                        ["eddypro_closure_top_priority", str(eddypro_closure_gate.get("top_priority", "--"))],
+                        [
+                            "eddypro_closure_next_actions",
+                            json.dumps(
+                                [
+                                    {
+                                        "closure_id": item.get("closure_id", ""),
+                                        "priority": item.get("priority", ""),
+                                        "next_action": item.get("next_action", ""),
+                                    }
+                                    for item in list(eddypro_closure_plan.get("next_actions", []) or [])[:3]
+                                ],
+                                ensure_ascii=False,
+                            ),
+                        ],
                         ["benchmark_status", str(delivery_audit["benchmark_summary"].get("benchmark_status", ""))],
                         ["benchmark_reference_id", str(delivery_audit["benchmark_summary"].get("benchmark_reference_id", ""))],
                         ["method_metadata_coverage", json.dumps(delivery_audit["method_parity_matrix"].get("metadata_coverage", {}), ensure_ascii=False)],
@@ -556,8 +748,19 @@ def _build_formal_report_snapshot(
                             "export_manifest",
                             "method_parity_matrix_artifact",
                             "method_parity_matrix_csv",
+                            "spectral_assessment_artifact",
+                            "spectral_binned_ensemble_csv",
+                            "spectral_full_windows_csv",
+                            "spectral_ogive_ensemble_csv",
+                            "spectral_assessment_library_artifact",
+                            "spectral_assessment_library_groups_csv",
+                            "spectral_assessment_library_bins_csv",
                             "footprint_2d_contour_svg",
                             "footprint_2d_grid_csv",
+                            "footprint_geojson_artifact",
+                            "footprint_geotiff_artifact",
+                            "footprint_land_cover_overlay_artifact",
+                            "footprint_gis_validation_artifact",
                             "performance_profile_artifact",
                             "runtime_watchdog_artifact",
                             "runtime_service_artifact",
@@ -567,6 +770,14 @@ def _build_formal_report_snapshot(
                             "runtime_deployment_artifact",
                             "runtime_deployment_feedback_artifact",
                             "clock_sync_artifact",
+                            "flux_correction_ledger_artifact",
+                            "fixture_pack_summary_artifact",
+                            "official_raw_fixture_manifest_artifact",
+                            "official_raw_evidence_pack_artifact",
+                            "eddypro_source_inventory_artifact",
+                            "eddypro_coverage_audit_artifact",
+                            "eddypro_release_gate_artifact",
+                            "raw_to_final_parity_artifact",
                             "network_validation_summary",
                         }
                     ]

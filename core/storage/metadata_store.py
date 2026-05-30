@@ -52,10 +52,14 @@ class MetadataStore:
                     port text not null,
                     baudrate integer not null,
                     device_id text not null,
-                    software_profile text not null
+                    software_profile text not null,
+                    analyzer_profile text not null default 'ygas_irga'
                 )
                 """
             )
+            columns = {row[1] for row in conn.execute("pragma table_info(devices)").fetchall()}
+            if "analyzer_profile" not in columns:
+                conn.execute("alter table devices add column analyzer_profile text not null default 'ygas_irga'")
             conn.execute(
                 """
                 create table if not exists transactions (
@@ -136,14 +140,15 @@ class MetadataStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                insert into devices(uid, label, port, baudrate, device_id, software_profile)
-                values (?, ?, ?, ?, ?, ?)
+                insert into devices(uid, label, port, baudrate, device_id, software_profile, analyzer_profile)
+                values (?, ?, ?, ?, ?, ?, ?)
                 on conflict(uid) do update set
                     label=excluded.label,
                     port=excluded.port,
                     baudrate=excluded.baudrate,
                     device_id=excluded.device_id,
-                    software_profile=excluded.software_profile
+                    software_profile=excluded.software_profile,
+                    analyzer_profile=excluded.analyzer_profile
                 """,
                 (
                     config.uid,
@@ -152,6 +157,7 @@ class MetadataStore:
                     config.baudrate,
                     config.device_id,
                     config.software_profile,
+                    config.analyzer_profile,
                 ),
             )
 

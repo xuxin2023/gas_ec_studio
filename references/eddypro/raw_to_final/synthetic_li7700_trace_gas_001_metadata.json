@@ -1,0 +1,32 @@
+{
+  "project": {
+    "code": "RTF-CH4",
+    "name": "Raw To Final LI-7700 Parity"
+  },
+  "site": {
+    "station_code": "RTF-CH4",
+    "station_name": "Raw To Final LI-7700 Synthetic"
+  },
+  "raw_file_description": {
+    "source_name": "synthetic_li7700_trace_gas_001",
+    "source_type": "csv",
+    "timestamp_column": "timestamp",
+    "timezone": "UTC",
+    "notes": "Deterministic synthetic LI-7700/CH4 raw CSV fixture for raw-to-final level parity."
+  },
+  "raw_file_settings": {
+    "sample_hz": 10.0,
+    "delimiter": ",",
+    "header_rows": 1,
+    "encoding": "utf-8",
+    "missing_tokens": [
+      "",
+      "NA",
+      "NaN"
+    ]
+  },
+  "metadata_version": "ec_core_metadata_v1",
+  "notes": [
+    "Synthetic LI-7700 fixture, not an official EddyPro raw dataset."
+  ]
+}

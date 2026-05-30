@@ -8,10 +8,13 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
+    QCheckBox,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -36,6 +39,7 @@ REPORT_SECTIONS = [
     ("anomaly_events", "异常事件报告", "把日志与事件整理成可汇报的异常视图。"),
     ("site_method", "站点方法说明", "作为正式报告附录，说明结论来自哪些方法配置。"),
     ("evidence_pack", "证据包", "统一导出图表、表格与日志证据。"),
+    ("fixture_pack", "Fixture Pack", "验证 EddyPro 参考集、raw-to-final readiness、合成回归集与 YGAS 协议样例。"),
     ("eddypro_compare", "EddyPro 对标报告", "集中查看当前结果与 EddyPro 参考结果的对标摘要和窗口差异。"),
     ("benchmark_cockpit", "Benchmark 驾驶舱", "查看 benchmark 参考对标结果：pass rate、阈值、偏差详情。"),
     ("method_provenance", "方法溯源", "查看 Footprint、不确定度、谱修正的方法来源、局限性和溯源信息。"),
@@ -379,6 +383,7 @@ class ReportCenterPage(QWidget):
         )
 
         is_benchmark_cockpit = str(report.get("report_key", "")) == "benchmark_cockpit"
+        is_fixture_pack = str(report.get("report_key", "")) == "fixture_pack"
 
         metrics = list(report.get("metrics", []))
         while len(metrics) < 4:
@@ -425,6 +430,12 @@ class ReportCenterPage(QWidget):
                 self.preview_table.cellClicked.connect(self._on_benchmark_cell_clicked)
                 self._benchmark_cell_connected = True
             self._build_benchmark_controls(report)
+        elif hasattr(self, "_benchmark_controls_card"):
+            self._benchmark_controls_card.setVisible(False)
+        if is_fixture_pack:
+            self._build_official_raw_bundle_controls(report)
+        elif hasattr(self, "_official_bundle_controls_card"):
+            self._official_bundle_controls_card.setVisible(False)
 
         self._clear_layout(self.conclusion_content)
         for text in self._conclusions_for_mode(report, view_mode):
@@ -432,6 +443,8 @@ class ReportCenterPage(QWidget):
             label.setObjectName("subtitle")
             label.setWordWrap(True)
             self.conclusion_content.addWidget(label)
+        if is_fixture_pack:
+            self._append_official_raw_fixture_detail(report)
 
     def _on_benchmark_cell_clicked(self, row: int, col: int) -> None:
         item = self.preview_table.item(row, 0)
@@ -545,6 +558,429 @@ class ReportCenterPage(QWidget):
                     if idx >= 0:
                         parent_layout.insertWidget(idx + 1, self._benchmark_controls_card)
 
+    def _build_official_raw_bundle_controls(self, report: dict) -> None:
+        if not hasattr(self, "_official_bundle_controls_card"):
+            self._official_bundle_controls_card = CardFrame(muted=True)
+            self._official_bundle_controls_layout = QVBoxLayout(self._official_bundle_controls_card)
+            self._official_bundle_controls_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+            self._official_bundle_controls_layout.setSpacing(TOKENS.spacing_sm)
+            self._official_bundle_controls_layout.addWidget(
+                section_title("Official Raw Bundle", "Inspect or register a real EddyPro raw-to-final fixture bundle.")
+            )
+            ctrl_row = QHBoxLayout()
+            ctrl_row.setSpacing(TOKENS.spacing_md)
+            ctrl_row.addWidget(QLabel("Bundle:"))
+            self._official_bundle_path = QLineEdit()
+            self._official_bundle_path.setPlaceholderText("references/eddypro/official_raw/site_001")
+            ctrl_row.addWidget(self._official_bundle_path, 1)
+            self._official_bundle_browse = QPushButton("Browse")
+            self._official_bundle_build_manifest = QPushButton("Build Manifest")
+            self._official_bundle_inspect = QPushButton("Inspect")
+            self._official_bundle_validate = QPushButton("Validate P0")
+            self._official_bundle_evidence_pack = QPushButton("Evidence Pack")
+            self._official_bundle_acceptance = QPushButton("Run Acceptance")
+            self._official_bundle_register = QPushButton("Register")
+            self._official_bundle_register.setProperty("variant", "primary")
+            self._official_bundle_build_tree_manifests = QPushButton("Build Tree Manifests")
+            self._official_bundle_inspect_tree = QPushButton("Inspect Tree")
+            self._official_bundle_register_tree = QPushButton("Register Tree")
+            self._public_fixture_refresh = QPushButton("Refresh Public Fixtures")
+            self._public_fixture_overwrite = QCheckBox("Overwrite Public")
+            self._official_bundle_replace = QCheckBox("Replace")
+            ctrl_row.addWidget(self._official_bundle_browse)
+            ctrl_row.addWidget(self._official_bundle_build_manifest)
+            ctrl_row.addWidget(self._official_bundle_inspect)
+            ctrl_row.addWidget(self._official_bundle_validate)
+            ctrl_row.addWidget(self._official_bundle_evidence_pack)
+            ctrl_row.addWidget(self._official_bundle_acceptance)
+            ctrl_row.addWidget(self._official_bundle_register)
+            ctrl_row.addWidget(self._official_bundle_build_tree_manifests)
+            ctrl_row.addWidget(self._official_bundle_inspect_tree)
+            ctrl_row.addWidget(self._official_bundle_register_tree)
+            ctrl_row.addWidget(self._public_fixture_refresh)
+            ctrl_row.addWidget(self._public_fixture_overwrite)
+            ctrl_row.addWidget(self._official_bundle_replace)
+            self._official_bundle_controls_layout.addLayout(ctrl_row)
+            run_row = QHBoxLayout()
+            run_row.setSpacing(TOKENS.spacing_md)
+            run_row.addWidget(QLabel("EddyPro Run:"))
+            self._official_run_command = QLineEdit()
+            self._official_run_command.setPlaceholderText("eddypro.exe --run eddypro/project.eddypro")
+            self._official_run_version = QLineEdit()
+            self._official_run_version.setPlaceholderText("7.0.9")
+            self._official_run_outputs = QLineEdit()
+            self._official_run_outputs.setPlaceholderText("eddypro/eddypro_full_output.csv")
+            self._official_run_capture = QPushButton("Capture Run")
+            self._official_closure_run = QPushButton("Closure Run")
+            self._official_closure_run.setProperty("variant", "primary")
+            run_row.addWidget(self._official_run_command, 2)
+            run_row.addWidget(QLabel("Version"))
+            run_row.addWidget(self._official_run_version)
+            run_row.addWidget(QLabel("Outputs"))
+            run_row.addWidget(self._official_run_outputs)
+            run_row.addWidget(self._official_run_capture)
+            run_row.addWidget(self._official_closure_run)
+            self._official_bundle_controls_layout.addLayout(run_row)
+            filter_row = QHBoxLayout()
+            filter_row.setSpacing(TOKENS.spacing_md)
+            filter_row.addWidget(QLabel("Matrix:"))
+            self._official_matrix_format = QComboBox()
+            self._official_matrix_site = QComboBox()
+            self._official_matrix_parity = QComboBox()
+            self._official_matrix_fixture = QComboBox()
+            self._official_matrix_apply = QPushButton("Apply Filter")
+            self._official_fixture_detail = QPushButton("Detail")
+            self._official_fixture_rerun = QPushButton("Rerun Fixture")
+            self._official_fixture_disable = QPushButton("Disable Fixture")
+            self._official_fixture_replace = QPushButton("Replace Fixture")
+            filter_row.addWidget(QLabel("Format"))
+            filter_row.addWidget(self._official_matrix_format)
+            filter_row.addWidget(QLabel("Site"))
+            filter_row.addWidget(self._official_matrix_site)
+            filter_row.addWidget(QLabel("Parity"))
+            filter_row.addWidget(self._official_matrix_parity)
+            filter_row.addWidget(QLabel("Fixture"))
+            filter_row.addWidget(self._official_matrix_fixture, 1)
+            filter_row.addWidget(self._official_matrix_apply)
+            filter_row.addWidget(self._official_fixture_detail)
+            filter_row.addWidget(self._official_fixture_rerun)
+            filter_row.addWidget(self._official_fixture_disable)
+            filter_row.addWidget(self._official_fixture_replace)
+            self._official_bundle_controls_layout.addLayout(filter_row)
+            self._official_bundle_status = QLabel("--")
+            self._official_bundle_status.setObjectName("subtitle")
+            self._official_bundle_status.setWordWrap(True)
+            self._official_bundle_controls_layout.addWidget(self._official_bundle_status)
+            self._official_bundle_browse.clicked.connect(self._on_official_bundle_browse)
+            self._official_bundle_build_manifest.clicked.connect(self._on_official_bundle_build_manifest)
+            self._official_bundle_inspect.clicked.connect(self._on_official_bundle_inspect)
+            self._official_bundle_validate.clicked.connect(self._on_official_bundle_validate)
+            self._official_bundle_evidence_pack.clicked.connect(self._on_official_bundle_evidence_pack)
+            self._official_bundle_acceptance.clicked.connect(self._on_official_bundle_acceptance)
+            self._official_bundle_register.clicked.connect(self._on_official_bundle_register)
+            self._official_bundle_build_tree_manifests.clicked.connect(self._on_official_bundle_build_tree_manifests)
+            self._official_bundle_inspect_tree.clicked.connect(self._on_official_bundle_inspect_tree)
+            self._official_bundle_register_tree.clicked.connect(self._on_official_bundle_register_tree)
+            self._public_fixture_refresh.clicked.connect(self._on_public_fixture_refresh)
+            self._official_run_capture.clicked.connect(self._on_official_run_capture)
+            self._official_closure_run.clicked.connect(self._on_official_closure_run)
+            self._official_matrix_apply.clicked.connect(self._on_official_matrix_filter)
+            self._official_fixture_detail.clicked.connect(self._on_official_fixture_detail)
+            self._official_fixture_rerun.clicked.connect(self._on_official_fixture_rerun)
+            self._official_fixture_disable.clicked.connect(self._on_official_fixture_disable)
+            self._official_fixture_replace.clicked.connect(self._on_official_fixture_replace)
+        state = self.controller.report_center_workspace.get("official_raw_bundle", {})
+        current_path = str(state.get("bundle_dir", "") or state.get("bundle_root", "") or self._official_bundle_path.text()).strip()
+        if current_path:
+            self._official_bundle_path.setText(current_path)
+        capture = dict(state.get("official_run_capture", {}) or {})
+        sidecar = dict(capture.get("sidecar", {}) or {})
+        if sidecar.get("command") and not self._official_run_command.text().strip():
+            self._official_run_command.setText(str(sidecar.get("command", "")))
+        if sidecar.get("software_version") and not self._official_run_version.text().strip():
+            self._official_run_version.setText(str(sidecar.get("software_version", "")))
+        if sidecar.get("output_files") and not self._official_run_outputs.text().strip():
+            self._official_run_outputs.setText(",".join(str(item) for item in list(sidecar.get("output_files", []) or [])))
+        matrix = dict(report.get("official_raw_evidence_matrix", {}) or {})
+        matrix_rows = [dict(row or {}) for row in list(matrix.get("rows", []) or [])]
+        filters = dict(report.get("official_raw_matrix_filters", {}) or {})
+        selected_fixture = str(report.get("official_raw_selected_fixture_id", "") or "")
+        self._replace_combo_items(
+            self._official_matrix_format,
+            ["All"] + sorted({str(row.get("raw_format", "")) for row in matrix_rows if row.get("raw_format")}),
+            keep_text=str(filters.get("raw_format", "") or "All"),
+        )
+        self._replace_combo_items(
+            self._official_matrix_site,
+            ["All"] + sorted({str(row.get("site_class", "")) for row in matrix_rows if row.get("site_class")}),
+            keep_text=str(filters.get("site_class", "") or "All"),
+        )
+        self._replace_combo_items(
+            self._official_matrix_parity,
+            ["All"] + sorted({str(row.get("parity_status", "") or row.get("status", "")) for row in matrix_rows if row.get("parity_status") or row.get("status")}),
+            keep_text=str(filters.get("parity_status", "") or "All"),
+        )
+        fixture_ids = [str(row.get("fixture_id", "")) for row in matrix_rows if row.get("fixture_id")]
+        self._replace_combo_items(
+            self._official_matrix_fixture,
+            fixture_ids,
+            keep_text=selected_fixture or (fixture_ids[0] if fixture_ids else ""),
+        )
+        public_state = dict(self.controller.report_center_workspace.get("public_eddypro_fixtures", {}) or {})
+        status_parts = [str(state.get("message", "No official raw bundle has been inspected yet."))]
+        if public_state.get("message"):
+            status_parts.append(str(public_state.get("message")))
+        self._official_bundle_status.setText(" | ".join(status_parts))
+        self._official_bundle_controls_card.setVisible(True)
+        parent = self._official_bundle_controls_card.parent()
+        if parent is None and hasattr(self, "preview_content_card"):
+            parent_layout = self.preview_content_card.parent().layout()
+            if parent_layout:
+                idx = parent_layout.indexOf(self.preview_content_card)
+                if idx >= 0:
+                    parent_layout.insertWidget(idx + 1, self._official_bundle_controls_card)
+
+    def _append_official_raw_fixture_detail(self, report: dict) -> None:
+        detail = dict(report.get("official_raw_selected_fixture_detail", {}) or {})
+        if not detail:
+            selected = str(report.get("official_raw_selected_fixture_id", "") or "").strip()
+            if selected:
+                hint = QLabel(f"Selected fixture: {selected}. Click Detail to generate the single-fixture audit artifact.")
+                hint.setObjectName("subtitle")
+                hint.setWordWrap(True)
+                self.conclusion_content.addWidget(hint)
+            return
+
+        fixture_id = str(detail.get("fixture_id", "") or "--")
+        header = QLabel(f"Official Raw Fixture Detail: {fixture_id}")
+        header.setObjectName("metricValue")
+        header.setWordWrap(True)
+        self.conclusion_content.addWidget(header)
+        status_line = QLabel(
+            f"readiness={detail.get('readiness_level', '--')} | "
+            f"status={detail.get('status', '--')} | "
+            f"site={detail.get('site_class', '--')} | "
+            f"software={detail.get('software', '--')} {detail.get('software_version', '')}"
+        )
+        status_line.setObjectName("subtitle")
+        status_line.setWordWrap(True)
+        self.conclusion_content.addWidget(status_line)
+
+        file_checks = dict(detail.get("file_checks", {}) or {})
+        missing_groups = ", ".join(str(item) for item in list(file_checks.get("missing_required_groups", []) or [])) or "none"
+        file_line = QLabel(
+            f"files={file_checks.get('present_file_count', 0)}/{file_checks.get('declared_file_count', 0)} | "
+            f"file_check={file_checks.get('status', '--')} | missing_groups={missing_groups}"
+        )
+        file_line.setObjectName("subtitle")
+        file_line.setWordWrap(True)
+        self.conclusion_content.addWidget(file_line)
+
+        normalization = dict(detail.get("normalization", {}) or {})
+        provenance_line = QLabel(
+            f"source={normalization.get('source_file', '--')} | "
+            f"normalization_time={normalization.get('normalization_time', '--')} | "
+            f"qc_mapping={normalization.get('qc_mapping_strategy', '--')}"
+        )
+        provenance_line.setObjectName("subtitle")
+        provenance_line.setWordWrap(True)
+        self.conclusion_content.addWidget(provenance_line)
+        if normalization.get("normalization_command"):
+            command_line = QLabel(f"normalization_command={normalization.get('normalization_command', '')}")
+            command_line.setObjectName("subtitle")
+            command_line.setWordWrap(True)
+            self.conclusion_content.addWidget(command_line)
+        official_run_normalization = dict(detail.get("official_run_normalization", {}) or {})
+        if official_run_normalization:
+            run_norm_line = QLabel(
+                f"official_run_normalization={official_run_normalization.get('status', '--')} | "
+                f"time={official_run_normalization.get('normalization_time', '--')} | "
+                f"qc_mapping={official_run_normalization.get('qc_mapping_strategy', '--')}"
+            )
+            run_norm_line.setObjectName("subtitle")
+            run_norm_line.setWordWrap(True)
+            self.conclusion_content.addWidget(run_norm_line)
+            source_line = QLabel(
+                f"official_run_source={official_run_normalization.get('source_file', '--')} | "
+                f"reference={official_run_normalization.get('reference_json', '--')}"
+            )
+            source_line.setObjectName("subtitle")
+            source_line.setWordWrap(True)
+            self.conclusion_content.addWidget(source_line)
+
+        failed_fields = " / ".join(str(item) for item in list(detail.get("failed_fields", []) or [])) or "none"
+        parity_line = QLabel(
+            f"pass_rate={float(detail.get('pass_rate', 0.0) or 0.0):.1%} | "
+            f"failed_fields={failed_fields} | artifact={report.get('official_raw_selected_fixture_detail_artifact', '')}"
+        )
+        parity_line.setObjectName("subtitle")
+        parity_line.setWordWrap(True)
+        self.conclusion_content.addWidget(parity_line)
+
+        parity_diagnostics = dict(detail.get("parity_diagnostics", {}) or {})
+        failure_groups = " / ".join(
+            str(item.get("category", ""))
+            for item in list(parity_diagnostics.get("failure_groups", []) or [])[:4]
+            if str(item.get("category", ""))
+        ) or "none"
+        top_failed_fields = " / ".join(str(item) for item in list(parity_diagnostics.get("top_failed_fields", []) or [])[:8]) or "none"
+        diagnostic_line = QLabel(
+            f"diagnostics={parity_diagnostics.get('status', 'not_available')} | "
+            f"failure_groups={failure_groups} | top_failed_fields={top_failed_fields}"
+        )
+        diagnostic_line.setObjectName("subtitle")
+        diagnostic_line.setWordWrap(True)
+        self.conclusion_content.addWidget(diagnostic_line)
+
+        acquisition = dict(detail.get("acquisition_validation", {}) or {})
+        if acquisition:
+            acquisition_line = QLabel(
+                f"acquisition_gate={acquisition.get('status', '--')} | "
+                f"gate={acquisition.get('gate_status', '--')} | "
+                f"missing={('/'.join(str(item) for item in list(acquisition.get('missing_requirements', []) or [])[:5]) or 'none')}"
+            )
+            acquisition_line.setObjectName("subtitle")
+            acquisition_line.setWordWrap(True)
+            self.conclusion_content.addWidget(acquisition_line)
+
+        trace_gas_parity = dict(detail.get("trace_gas_parity", {}) or {})
+        trace_gas_status = str(detail.get("trace_gas_parity_status", "") or trace_gas_parity.get("status", ""))
+        if trace_gas_status:
+            trace_failed = " / ".join(
+                str(item)
+                for item in list(detail.get("trace_gas_failed_fields", trace_gas_parity.get("failed_fields", [])) or [])
+            ) or "none"
+            trace_line = QLabel(
+                f"trace_gas_parity={trace_gas_status} | "
+                f"trace_pass_rate={float(detail.get('trace_gas_pass_rate', trace_gas_parity.get('pass_rate', 0.0)) or 0.0):.1%} | "
+                f"profile={detail.get('trace_gas_coefficient_profile_id', trace_gas_parity.get('coefficient_profile_id', '--')) or '--'} | "
+                f"trace_failed_fields={trace_failed}"
+            )
+            trace_line.setObjectName("subtitle")
+            trace_line.setWordWrap(True)
+            self.conclusion_content.addWidget(trace_line)
+
+        limitations = list(detail.get("known_limitations", []) or [])
+        for limitation in limitations[:3]:
+            limitation_line = QLabel(f"limitation: {str(limitation)}")
+            limitation_line.setObjectName("subtitle")
+            limitation_line.setWordWrap(True)
+            self.conclusion_content.addWidget(limitation_line)
+
+    def _on_official_bundle_browse(self) -> None:
+        selected = QFileDialog.getExistingDirectory(self, "Select official EddyPro raw bundle")
+        if selected:
+            self._official_bundle_path.setText(selected)
+
+    def _on_official_bundle_inspect(self) -> None:
+        result = self.controller.inspect_official_raw_bundle_for_report_center(self._official_bundle_path.text())
+        QMessageBox.information(self, "Official Raw Bundle", result["message"])
+        self.refresh()
+
+    def _on_official_bundle_validate(self) -> None:
+        result = self.controller.validate_official_raw_bundle_for_report_center(self._official_bundle_path.text())
+        QMessageBox.information(self, "Official Raw P0 Gate", result["message"])
+        self.refresh()
+
+    def _on_official_bundle_evidence_pack(self) -> None:
+        result = self.controller.export_official_raw_evidence_pack_for_report_center(self._official_bundle_path.text())
+        QMessageBox.information(self, "Official Raw Evidence Pack", result["message"])
+        self.refresh()
+
+    def _on_official_bundle_acceptance(self) -> None:
+        result = self.controller.run_official_raw_evidence_acceptance_for_report_center(self._official_bundle_path.text())
+        QMessageBox.information(self, "Official Raw Acceptance", result["message"])
+        self.refresh()
+
+    def _on_official_run_capture(self) -> None:
+        result = self.controller.capture_official_eddypro_run_for_report_center(
+            self._official_bundle_path.text(),
+            command=self._official_run_command.text(),
+            software_version=self._official_run_version.text(),
+            output_files=self._official_run_outputs.text(),
+        )
+        QMessageBox.information(self, "Official EddyPro Run", result["message"])
+        self.refresh()
+
+    def _on_official_closure_run(self) -> None:
+        result = self.controller.run_official_raw_closure_for_report_center(
+            self._official_bundle_path.text(),
+            command=self._official_run_command.text(),
+            software_version=self._official_run_version.text(),
+            output_files=self._official_run_outputs.text(),
+            overwrite_manifest=bool(self._official_bundle_replace.isChecked()),
+            replace=bool(self._official_bundle_replace.isChecked()),
+        )
+        QMessageBox.information(self, "Official Raw Closure", result["message"])
+        self.refresh()
+
+    def _on_official_bundle_build_manifest(self) -> None:
+        result = self.controller.build_official_raw_bundle_manifest_for_report_center(
+            self._official_bundle_path.text(),
+            overwrite=bool(self._official_bundle_replace.isChecked()),
+        )
+        QMessageBox.information(self, "Official Raw Manifest", result["message"])
+        self.refresh()
+
+    def _on_official_bundle_register(self) -> None:
+        result = self.controller.register_official_raw_bundle_for_report_center(
+            self._official_bundle_path.text(),
+            replace=bool(self._official_bundle_replace.isChecked()),
+        )
+        QMessageBox.information(self, "Official Raw Bundle", result["message"])
+        self.refresh()
+
+    def _on_official_bundle_inspect_tree(self) -> None:
+        result = self.controller.inspect_official_raw_bundle_tree_for_report_center(self._official_bundle_path.text())
+        QMessageBox.information(self, "Official Raw Bundle Tree", result["message"])
+        self.refresh()
+
+    def _on_official_bundle_build_tree_manifests(self) -> None:
+        result = self.controller.build_official_raw_bundle_tree_manifests_for_report_center(
+            self._official_bundle_path.text(),
+            overwrite=bool(self._official_bundle_replace.isChecked()),
+        )
+        QMessageBox.information(self, "Official Raw Bundle Tree", result["message"])
+        self.refresh()
+
+    def _on_official_bundle_register_tree(self) -> None:
+        result = self.controller.register_official_raw_bundle_tree_for_report_center(
+            self._official_bundle_path.text(),
+            replace=bool(self._official_bundle_replace.isChecked()),
+        )
+        QMessageBox.information(self, "Official Raw Bundle Tree", result["message"])
+        self.refresh()
+
+    def _on_public_fixture_refresh(self) -> None:
+        result = self.controller.refresh_public_eddypro_fixtures_for_report_center(
+            overwrite=bool(self._public_fixture_overwrite.isChecked())
+        )
+        QMessageBox.information(self, "Public EddyPro Fixtures", result["message"])
+        self.refresh()
+
+    def _on_official_matrix_filter(self) -> None:
+        def value(combo: QComboBox) -> str:
+            text = combo.currentText().strip()
+            return "" if text == "All" else text
+
+        result = self.controller.set_official_raw_matrix_filters_for_report_center(
+            raw_format=value(self._official_matrix_format),
+            site_class=value(self._official_matrix_site),
+            parity_status=value(self._official_matrix_parity),
+        )
+        QMessageBox.information(self, "Official Raw Matrix", result["message"])
+        self.refresh()
+
+    def _selected_official_fixture_id(self) -> str:
+        fixture_id = self._official_matrix_fixture.currentText().strip()
+        if fixture_id:
+            self.controller.select_official_raw_fixture_for_report_center(fixture_id)
+        return fixture_id
+
+    def _on_official_fixture_rerun(self) -> None:
+        result = self.controller.rerun_official_raw_fixture_for_report_center(self._selected_official_fixture_id())
+        QMessageBox.information(self, "Official Raw Fixture", result["message"])
+        self.refresh()
+
+    def _on_official_fixture_detail(self) -> None:
+        result = self.controller.inspect_official_raw_fixture_detail_for_report_center(self._selected_official_fixture_id())
+        QMessageBox.information(self, "Official Raw Fixture Detail", result["message"])
+        self.refresh()
+
+    def _on_official_fixture_disable(self) -> None:
+        result = self.controller.disable_official_raw_fixture_for_report_center(self._selected_official_fixture_id())
+        QMessageBox.information(self, "Official Raw Fixture", result["message"])
+        self.refresh()
+
+    def _on_official_fixture_replace(self) -> None:
+        result = self.controller.replace_official_raw_fixture_for_report_center(
+            self._selected_official_fixture_id(),
+            self._official_bundle_path.text(),
+            replace=bool(self._official_bundle_replace.isChecked()),
+        )
+        QMessageBox.information(self, "Official Raw Fixture", result["message"])
+        self.refresh()
+
     def _on_bm_ref_changed(self, text: str) -> None:
         report = self.controller.report_center_workspace.get("reports", {}).get("benchmark_cockpit", {})
         provenance = report.get("ref_provenance", {})
@@ -642,6 +1078,16 @@ class ReportCenterPage(QWidget):
             self.conclusion_content.addWidget(QLabel(f"Uncertainty: {detail.get('uncertainty_method', '--')}"))
         if detail.get("spectral_correction_method"):
             self.conclusion_content.addWidget(QLabel(f"Spectral correction: {detail.get('spectral_correction_method', '--')}"))
+        if detail.get("clock_sync_quality_status"):
+            self.conclusion_content.addWidget(
+                QLabel(
+                    "Clock quality: "
+                    f"{detail.get('clock_sync_quality_status', '--')} "
+                    f"(gate={detail.get('clock_sync_quality_gate_status', '--')}; "
+                    f"metric_s={detail.get('clock_sync_quality_metric_s', '--')}; "
+                    f"threshold_s={detail.get('clock_sync_quality_threshold_s', '--')})"
+                )
+            )
         for method_note in detail.get("method_deviation_notes", []):
             method_label = QLabel(f"Method note: {method_note}")
             method_label.setObjectName("subtitle")

@@ -125,6 +125,37 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert "export_manifest" in manifest["artifact_index"]
         assert snapshot["header"]["current_batch_id"]
         assert snapshot["delivery_audit"]["artifact_index"]["export_manifest"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["spectral_assessment_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["spectral_binned_ensemble_csv"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["spectral_assessment_library_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["fixture_pack_summary_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["official_raw_fixture_manifest_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["official_raw_fixture_detail_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["official_raw_evidence_pack_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["eddypro_source_inventory_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["eddypro_coverage_audit_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["eddypro_release_gate_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["flux_correction_ledger_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["fixture_pack_summary"]["status"] == "pass"
+        assert snapshot["delivery_audit"]["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 3
+        assert snapshot["delivery_audit"]["official_raw_fixture_detail"]["artifact_type"] == "official_raw_fixture_detail_v1"
+        assert snapshot["delivery_audit"]["official_raw_acquisition_validation"]["artifact_type"] == "official_raw_fixture_acquisition_validation_v1"
+        assert snapshot["delivery_audit"]["official_raw_evidence_pack"]["artifact_type"] == "official_raw_fixture_evidence_pack_v1"
+        assert snapshot["delivery_audit"]["official_raw_fixture_detail"]["trace_gas_parity_status"] == "pass"
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_evidence_pack_acceptance_status"] == "not_run"
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_normalization_status"] in {"present", "ready"}
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_qc_mapping_strategy"]
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_official_run_normalization_status"] == "normalized"
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_official_run_qc_mapping_strategy"] == "EddyPro 0/1/2 -> gas_ec_studio A/B/C"
+        assert snapshot["delivery_audit"]["eddypro_source_inventory"]["inventory_id"] == "eddypro_official_source_inventory_v1"
+        assert snapshot["delivery_audit"]["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
+        assert snapshot["delivery_audit"]["eddypro_release_gate"]["artifact_type"] == "eddypro_release_gate_v1"
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["can_release_full_eddypro_parity"] is False
+        assert snapshot["delivery_audit"]["eddypro_closure_gate"]["artifact_type"] == "eddypro_closure_gate_v1"
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_closure_gate_status"] == "blocked"
+        assert snapshot["delivery_audit"]["spectral_assessment"]["artifact_type"] == "spectral_assessment_export_v1"
+        assert snapshot["delivery_audit"]["spectral_assessment_library"]["artifact_type"] == "spectral_assessment_library_v1"
+        assert snapshot["delivery_audit"]["flux_correction_ledger_summary"]["status"] == "ok"
 
         delivery_dir = _latest_delivery_dir(tmp_path)
         package_manifest = json.loads((delivery_dir / "package_manifest.json").read_text(encoding="utf-8"))
@@ -132,8 +163,31 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert package_manifest["delivery_audit"]["validation_status"] == "ok"
         assert delivery_audit["validation_status"] == "ok"
         assert delivery_audit["artifact_index"]["export_manifest"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["spectral_assessment_artifact"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["spectral_full_windows_csv"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["spectral_assessment_library_bins_csv"]["packaged"] is True
         assert delivery_audit["artifact_index"]["method_parity_matrix_artifact"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["fixture_pack_summary_artifact"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["official_raw_fixture_manifest_artifact"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["official_raw_fixture_detail_artifact"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["official_raw_evidence_pack_artifact"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["eddypro_source_inventory_artifact"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["eddypro_coverage_audit_artifact"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["eddypro_release_gate_artifact"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["flux_correction_ledger_artifact"]["packaged"] is True
         assert delivery_audit["network_validation_summary"]["schema_target"] == "FLUXNET"
+        assert delivery_audit["fixture_pack_summary"]["real_reference_window_count"] == 11
+        assert delivery_audit["official_raw_fixture_manifest"]["status"] == "needs_official_raw_fixtures"
+        assert "official_raw_acquisition_status" in delivery_audit["result_manifest_summary"]
+        assert "official_raw_evidence_pack_status" in delivery_audit["result_manifest_summary"]
+        assert delivery_audit["result_manifest_summary"]["official_raw_evidence_pack_acceptance_status"] == "not_run"
+        assert delivery_audit["eddypro_source_inventory"]["feature_count"] >= 10
+        assert delivery_audit["eddypro_coverage_audit"]["claim_gate"]["status"] == "blocked"
+        assert delivery_audit["eddypro_release_gate"]["status"] == "blocked"
+        assert delivery_audit["eddypro_closure_plan"]["next_action_count"] >= 1
+        assert delivery_audit["spectral_assessment"]["status"] == "ok"
+        assert delivery_audit["spectral_assessment_library"]["status"] == "ok"
+        assert delivery_audit["flux_correction_ledger_summary"]["ledger_window_count"] >= 1
     finally:
         controller.shutdown()
 

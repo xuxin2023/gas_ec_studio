@@ -1,0 +1,116 @@
+name: EddyPro Release Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "eddypro-parity-*"
+  workflow_dispatch:
+    inputs:
+      official_raw_evidence_pack:
+        description: "Path to an accepted official raw evidence-pack JSON in this checkout"
+        required: false
+        default: ""
+      official_raw_closure_run:
+        description: "Path to an official raw closure-run JSON in this checkout"
+        required: false
+        default: ""
+      enforce_full_parity:
+        description: "Fail the workflow unless the full EddyPro parity release gate passes"
+        required: false
+        type: boolean
+        default: false
+      rerun_acceptance:
+        description: "Rerun safe pytest acceptance commands from the evidence pack"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: "1"
+      QT_QPA_PLATFORM: offscreen
+      MPLBACKEND: Agg
+      OFFICIAL_RAW_EVIDENCE_PACK: ${{ github.event_name == 'workflow_dispatch' && inputs.official_raw_evidence_pack || '' }}
+      OFFICIAL_RAW_CLOSURE_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.official_raw_closure_run || '' }}
+      ENFORCE_FULL_PARITY: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforce_full_parity) || startsWith(github.ref, 'refs/tags/eddypro-parity-') }}
+      RERUN_ACCEPTANCE: ${{ github.event_name == 'workflow_dispatch' && inputs.rerun_acceptance || false }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-xinerama0 \
+            libxcb-xfixes0
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -e .
+
+      - name: Run release gate regression tests
+        run: |
+          python -m pytest -q \
+            tests/test_eddypro_release_gate.py \
+            tests/test_eddypro_coverage_audit.py \
+            tests/test_official_raw_fixture_bundle.py::test_run_official_raw_evidence_pack_acceptance_executes_safe_pytest
+
+      - name: Build EddyPro release gate artifact
+        id: gate
+        shell: bash
+        run: |
+          mkdir -p artifacts/eddypro_release_gate
+          args=(
+            --workspace-root .
+            --output artifacts/eddypro_release_gate/eddypro_release_gate.json
+          )
+          if [ -n "$OFFICIAL_RAW_EVIDENCE_PACK" ]; then
+            args+=(--official-raw-evidence-pack "$OFFICIAL_RAW_EVIDENCE_PACK")
+          fi
+          if [ -n "$OFFICIAL_RAW_CLOSURE_RUN" ]; then
+            args+=(--official-raw-closure-run "$OFFICIAL_RAW_CLOSURE_RUN")
+          fi
+          if [ "$RERUN_ACCEPTANCE" != "true" ]; then
+            args+=(--skip-acceptance)
+          fi
+          set +e
+          python scripts/run_eddypro_release_gate.py "${args[@]}"
+          gate_exit=$?
+          set -e
+          echo "gate_exit=$gate_exit" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload release gate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eddypro-release-gate
+          path: artifacts/eddypro_release_gate/
+
+      - name: Enforce full EddyPro parity release gate
+        if: env.ENFORCE_FULL_PARITY == 'true' && steps.gate.outputs.gate_exit != '0'
+        run: |
+          echo "Full EddyPro parity release is blocked. Inspect artifacts/eddypro_release_gate/eddypro_release_gate.json."
+          exit 1

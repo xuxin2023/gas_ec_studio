@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
 import json
+import math
 from typing import Any, Iterable
 
 import numpy as np
@@ -11,6 +14,17 @@ except ModuleNotFoundError:  # pragma: no cover
     signal = None
 
 from models.hf_models import NormalizedHFFrame
+from models.spectral_models import SpectralRunResult, WindowSpectralResult
+
+
+SPECTRAL_LIBRARY_SERIES = [
+    ("power_measured", "power_freq", "power_measured"),
+    ("power_reference", "power_freq", "power_ref"),
+    ("cospectrum", "cross_freq", "cross_value"),
+    ("ogive", "ogive_freq", "ogive_value"),
+    ("transfer_observed", "transfer_freq", "transfer_value"),
+    ("total_transfer_model", "total_transfer_function_freq", "total_transfer_function_value"),
+]
 
 
 @dataclass(slots=True)
@@ -33,6 +47,270 @@ class TransferFunctionProvenance:
     correction_factor_detail: dict[str, Any] = field(default_factory=dict)
     provenance_notes: list[str] = field(default_factory=list)
     model_version: str = "fcc_transfer_components_v1"
+
+
+def build_spectral_assessment_library(
+    spectral_runs: Iterable[SpectralRunResult],
+    *,
+    dataset_id: str = "",
+    target_bins: int = 24,
+    group_by: Iterable[str] | None = None,
+    min_windows_per_group: int = 1,
+) -> dict[str, Any]:
+    """Build a reusable long-period spectra/cospectra assessment library.
+
+    This is an EddyPro-style spectral assessment library artifact, not an
+    official EddyPro numerical parity claim. Original per-window spectral arrays
+    remain in the run results; this artifact provides stratified ensembles.
+    """
+
+    runs = list(spectral_runs or [])
+    grouping = [str(item) for item in (group_by or ("month", "qc_grade", "high_freq_loss_risk")) if str(item)]
+    min_windows = max(1, int(min_windows_per_group))
+    records = [
+        record
+        for run in runs
+        for window in list(run.windows or [])
+        for record in [_spectral_library_window_record(run, window)]
+        if record["has_spectral_values"]
+    ]
+    all_freqs = [
+        freq
+        for record in records
+        for pairs in dict(record.get("series", {}) or {}).values()
+        for freq, _value in list(pairs or [])
+        if freq > 0.0
+    ]
+    edges = _spectral_library_log_edges(all_freqs, target_bins=max(1, int(target_bins)))
+    group_members: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        group_members["all"].append(record)
+        for group_id, _label in _spectral_library_group_keys(record, grouping):
+            group_members[group_id].append(record)
+
+    groups = [
+        _spectral_library_group_payload(
+            group_id=group_id,
+            records=members,
+            edges=edges,
+            min_windows=min_windows,
+        )
+        for group_id, members in sorted(group_members.items(), key=lambda item: item[0])
+    ]
+    status = "ok" if records and any(group.get("status") == "ok" for group in groups) else ("empty" if not records else "needs_more_windows")
+    period_starts = [record["start_time"] for record in records]
+    period_ends = [record["end_time"] for record in records]
+    model_versions = sorted({str(record.get("model_version", "")) for record in records if str(record.get("model_version", ""))})
+    run_ids = sorted({str(record.get("run_id", "")) for record in records if str(record.get("run_id", ""))})
+    return {
+        "artifact_type": "spectral_assessment_library_v1",
+        "library_id": dataset_id or _spectral_library_id(run_ids, period_starts, period_ends),
+        "generated_at": datetime.now().isoformat(),
+        "status": status,
+        "run_count": len(run_ids),
+        "source_run_ids": run_ids,
+        "window_count": len(records),
+        "group_count": len(groups),
+        "group_by": grouping,
+        "target_bin_count": max(1, int(target_bins)),
+        "actual_bin_count": len(edges),
+        "min_windows_per_group": min_windows,
+        "period": {
+            "start": min(period_starts).isoformat() if period_starts else "",
+            "end": max(period_ends).isoformat() if period_ends else "",
+        },
+        "value_families": [item[0] for item in SPECTRAL_LIBRARY_SERIES],
+        "summary": {
+            "qc_grade_counts": dict(sorted(Counter(str(record.get("qc_grade", "")) for record in records).items())),
+            "risk_counts": dict(sorted(Counter(str(record.get("high_freq_loss_risk", "")) for record in records).items())),
+            "mean_correction_factor": _spectral_mean_or_zero([float(record.get("correction_factor", 0.0)) for record in records]),
+            "mean_lag_seconds": _spectral_mean_or_zero([float(record.get("lag_seconds", 0.0)) for record in records]),
+            "model_versions": model_versions,
+        },
+        "groups": groups,
+        "provenance": {
+            "source": "SpectralRunResult WindowSpectralResult spectral arrays",
+            "ensemble_method": "log-frequency interpolation followed by arithmetic mean and sample standard deviation",
+            "stratification": grouping,
+            "model_versions": model_versions,
+        },
+        "known_limitations": [
+            "This library is generated from available gas_ec_studio FCC run results and does not replace official EddyPro spectral golden-output validation.",
+            "Groups with fewer than min_windows_per_group windows are retained but marked needs_more_windows.",
+            "Frequency bins are log-spaced and interpolated for ensemble comparability; original per-window arrays remain the source of truth.",
+        ],
+    }
+
+
+def _spectral_library_window_record(run: SpectralRunResult, window: WindowSpectralResult) -> dict[str, Any]:
+    series: dict[str, list[tuple[float, float]]] = {}
+    for series_name, freq_attr, value_attr in SPECTRAL_LIBRARY_SERIES:
+        series[series_name] = _spectral_pairs(getattr(window, freq_attr, []), getattr(window, value_attr, []))
+    return {
+        "run_id": run.run_id,
+        "data_source": run.data_source,
+        "time_range": run.time_range,
+        "window_id": window.window_id,
+        "start_time": window.start_time,
+        "end_time": window.end_time,
+        "month": window.start_time.strftime("%Y-%m"),
+        "qc_grade": str(window.qc_grade),
+        "high_freq_loss_risk": str(window.high_freq_loss_risk),
+        "model_version": str(window.model_version),
+        "correction_factor": float(window.correction_factor),
+        "lag_seconds": float(window.lag_seconds),
+        "lag_confidence": float(window.lag_confidence),
+        "flux_sign": "positive" if float(window.corrected_flux_after) >= 0.0 else "negative",
+        "series": series,
+        "has_spectral_values": any(bool(pairs) for pairs in series.values()),
+    }
+
+
+def _spectral_library_group_keys(record: dict[str, Any], group_by: list[str]) -> list[tuple[str, str]]:
+    keys: list[tuple[str, str]] = []
+    for field_name in group_by:
+        raw_value = record.get(field_name, "")
+        value = str(raw_value).strip() or "unknown"
+        safe_value = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in value)
+        keys.append((f"{field_name}:{safe_value}", f"{field_name}={value}"))
+    return keys
+
+
+def _spectral_library_group_payload(
+    *,
+    group_id: str,
+    records: list[dict[str, Any]],
+    edges: list[tuple[float, float, float]],
+    min_windows: int,
+) -> dict[str, Any]:
+    rows = _spectral_library_binned_rows(records, edges)
+    run_ids = sorted({str(record.get("run_id", "")) for record in records if str(record.get("run_id", ""))})
+    window_ids = [str(record.get("window_id", "")) for record in records if str(record.get("window_id", ""))]
+    period_starts = [record["start_time"] for record in records]
+    period_ends = [record["end_time"] for record in records]
+    status = "ok" if len(records) >= min_windows and rows else "needs_more_windows"
+    if not records or not rows:
+        status = "empty"
+    return {
+        "group_id": group_id,
+        "group_label": "all_windows" if group_id == "all" else group_id,
+        "status": status,
+        "run_count": len(run_ids),
+        "window_count": len(records),
+        "source_run_ids": run_ids,
+        "source_window_ids": window_ids,
+        "period_start": min(period_starts).isoformat() if period_starts else "",
+        "period_end": max(period_ends).isoformat() if period_ends else "",
+        "qc_grade_counts": dict(sorted(Counter(str(record.get("qc_grade", "")) for record in records).items())),
+        "risk_counts": dict(sorted(Counter(str(record.get("high_freq_loss_risk", "")) for record in records).items())),
+        "mean_correction_factor": _spectral_mean_or_zero([float(record.get("correction_factor", 0.0)) for record in records]),
+        "mean_lag_seconds": _spectral_mean_or_zero([float(record.get("lag_seconds", 0.0)) for record in records]),
+        "binned_ensemble": {
+            "binning": "log_frequency",
+            "bin_count": len(rows),
+            "rows": rows,
+        },
+    }
+
+
+def _spectral_library_binned_rows(
+    records: list[dict[str, Any]],
+    edges: list[tuple[float, float, float]],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, (freq_min, freq_max, center) in enumerate(edges, start=1):
+        row: dict[str, Any] = {
+            "bin_index": index,
+            "freq_min_hz": float(freq_min),
+            "freq_max_hz": float(freq_max),
+            "freq_center_hz": float(center),
+        }
+        for series_name, _freq_attr, _value_attr in SPECTRAL_LIBRARY_SERIES:
+            values: list[float] = []
+            for record in records:
+                pairs = list(dict(record.get("series", {}) or {}).get(series_name, []) or [])
+                interpolated = _spectral_interpolate(pairs, center)
+                if interpolated is not None:
+                    values.append(interpolated)
+            row[f"{series_name}_mean"] = _spectral_mean_or_blank(values)
+            row[f"{series_name}_std"] = _spectral_std_or_blank(values)
+            row[f"{series_name}_window_count"] = len(values)
+        rows.append(row)
+    return rows
+
+
+def _spectral_pairs(freqs: Any, values: Any) -> list[tuple[float, float]]:
+    pairs: list[tuple[float, float]] = []
+    for raw_freq, raw_value in zip(list(freqs or []), list(values or []), strict=False):
+        try:
+            freq = float(raw_freq)
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(freq) and math.isfinite(value):
+            pairs.append((freq, value))
+    pairs.sort(key=lambda item: item[0])
+    return pairs
+
+
+def _spectral_library_log_edges(freqs: list[float], *, target_bins: int) -> list[tuple[float, float, float]]:
+    positive = [float(freq) for freq in freqs if freq > 0.0 and math.isfinite(float(freq))]
+    if not positive:
+        return []
+    low = max(min(positive), 1e-9)
+    high = max(max(positive), low * 1.001)
+    bin_count = max(1, min(int(target_bins), len(set(round(freq, 12) for freq in positive))))
+    log_low = math.log10(low)
+    log_high = math.log10(high)
+    raw_edges = [10.0 ** (log_low + (log_high - log_low) * index / bin_count) for index in range(bin_count + 1)]
+    return [
+        (
+            float(raw_edges[index]),
+            float(raw_edges[index + 1]),
+            float(math.sqrt(max(raw_edges[index], 1e-12) * max(raw_edges[index + 1], 1e-12))),
+        )
+        for index in range(bin_count)
+    ]
+
+
+def _spectral_interpolate(pairs: list[tuple[float, float]], x_value: float) -> float | None:
+    if not pairs or x_value < pairs[0][0] or x_value > pairs[-1][0]:
+        return None
+    if len(pairs) == 1:
+        return float(pairs[0][1]) if abs(float(pairs[0][0]) - x_value) <= 1e-12 else None
+    for (x0, y0), (x1, y1) in zip(pairs[:-1], pairs[1:], strict=False):
+        if x0 == x1:
+            continue
+        if x0 <= x_value <= x1:
+            weight = (x_value - x0) / (x1 - x0)
+            return float(y0 + (y1 - y0) * weight)
+    return None
+
+
+def _spectral_mean_or_blank(values: list[float]) -> float | str:
+    clean = [float(value) for value in values if math.isfinite(float(value))]
+    return float(sum(clean) / len(clean)) if clean else ""
+
+
+def _spectral_std_or_blank(values: list[float]) -> float | str:
+    clean = [float(value) for value in values if math.isfinite(float(value))]
+    if len(clean) < 2:
+        return ""
+    mean = sum(clean) / len(clean)
+    return float(math.sqrt(sum((value - mean) ** 2 for value in clean) / (len(clean) - 1)))
+
+
+def _spectral_mean_or_zero(values: list[float]) -> float:
+    mean = _spectral_mean_or_blank(values)
+    return float(mean) if mean != "" else 0.0
+
+
+def _spectral_library_id(run_ids: list[str], starts: list[datetime], ends: list[datetime]) -> str:
+    if not run_ids:
+        return "spectral_library_empty"
+    start = min(starts).strftime("%Y%m%d%H%M%S") if starts else "unknown"
+    end = max(ends).strftime("%Y%m%d%H%M%S") if ends else "unknown"
+    return f"spectral_library_{start}_{end}_{len(run_ids)}runs"
 
 
 def infer_sample_rate(rows: Iterable[NormalizedHFFrame], fallback_hz: float = 10.0) -> float:

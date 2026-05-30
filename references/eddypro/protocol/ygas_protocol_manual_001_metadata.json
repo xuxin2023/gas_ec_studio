@@ -1,0 +1,50 @@
+{
+  "fixture_id": "ygas_protocol_manual_001",
+  "fixture_tier": "manual_protocol_validation",
+  "source": "D:/手册/气体分析仪指令.docx",
+  "description": "YGAS MODE1 and MODE2 protocol frames transcribed from the project gas-analyzer command manual for parser and raw-import validation.",
+  "raw_file_description": {
+    "source_name": "YGAS manual protocol sample",
+    "source_type": "ygas_protocol",
+    "timestamp_column": "generated_from_start_time"
+  },
+  "raw_file_settings": {
+    "sample_hz": 10.0,
+    "delimiter": ",",
+    "decimal": ".",
+    "header_rows": 0,
+    "encoding": "utf-8",
+    "missing_tokens": [
+      "",
+      "NA",
+      "NaN"
+    ],
+    "extra": {
+      "start_time": "2026-05-25T08:00:00"
+    }
+  },
+  "instruments": {
+    "analyzer_model": "YGAS CO2/H2O infrared gas analyzer",
+    "analyzer_manufacturer": "Project YGAS",
+    "analyzer_instrument_id": "ygas-main",
+    "analyzer_firmware": "manual-2026-03"
+  },
+  "expected": {
+    "row_count": 2,
+    "modes": [
+      1,
+      2
+    ],
+    "device_ids": [
+      "001",
+      "087"
+    ],
+    "first_co2_ppm": 488.879,
+    "first_h2o_mmol": 0.528
+  },
+  "known_limitations": [
+    "This is a protocol validation fixture from the device manual, not a field deployment record.",
+    "Frames do not contain explicit timestamps; import uses configured start_time and sample_hz.",
+    "Checksum is preserved but not validated because the manual does not specify the checksum algorithm."
+  ]
+}
