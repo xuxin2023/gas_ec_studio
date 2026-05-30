@@ -41,6 +41,7 @@ def test_fixture_pack_registry_lists_real_and_ygas_assets() -> None:
     assert "eddypro_source_tob1_seconds_001" in ids
     assert "eddypro_source_slt_edisol_001" in ids
     assert "eddypro_source_slt_eddysoft_001" in ids
+    assert "eddypro_source_native_binary_mixed_001" in ids
     assert "ygas_protocol_manual_001" in ids
     assert "real_reference_output" in tiers
     assert "raw_to_final_parity" in tiers
@@ -51,13 +52,13 @@ def test_fixture_pack_summary_validates_hashes_windows_and_protocol_rows() -> No
     summary = build_fixture_pack_summary()
 
     assert summary["status"] == "pass"
-    assert summary["asset_count"] >= 10
+    assert summary["asset_count"] >= 11
     assert summary["tier_counts"]["real_reference_output"] == 2
-    assert summary["tier_counts"]["raw_to_final_parity"] == 6
+    assert summary["tier_counts"]["raw_to_final_parity"] == 7
     assert summary["real_reference_window_count"] == 11
     assert summary["protocol_validation_row_count"] == 2
-    assert summary["raw_to_final_fixture_count"] == 6
-    assert summary["raw_to_final_pass_count"] == 6
+    assert summary["raw_to_final_fixture_count"] == 7
+    assert summary["raw_to_final_pass_count"] == 7
     assert summary["public_spectral_status"] == "pass"
     assert summary["public_spectral_fixture_count"] == 3
     assert summary["public_full_output_status"] == "pass"
@@ -121,6 +122,26 @@ def test_fixture_pack_summary_validates_hashes_windows_and_protocol_rows() -> No
     assert eddysoft_import["header_detection"]["high_resolution_columns"] == ["H2O", "P", "TA"]
     assert eddysoft_import["source_reference"]["eddypro_engine_files"] == ["src/src_common/import_slt_eddysoft.f90"]
     assert source_slt_eddysoft["raw_to_final_parity"]["benchmark_summary"]["pass_rate"] == 1.0
+
+    source_binary = by_id["eddypro_source_native_binary_mixed_001"]
+    assert source_binary["status"] == "pass"
+    assert source_binary["raw_row_count"] == 600
+    assert source_binary["raw_to_final_parity"]["status"] == "pass"
+    binary_import = source_binary["raw_to_final_parity"]["raw_input"]["import_summary"]
+    assert source_binary["raw_to_final_parity"]["raw_input"]["format"] == "binary"
+    assert binary_import["format"] == "binary"
+    assert binary_import["data_type"] == "mixed"
+    assert binary_import["ascii_header_eol"] == "crlf"
+    assert binary_import["header_rows"] == 2
+    assert binary_import["record_header_bytes"] == 2
+    assert binary_import["record_footer_bytes"] == 2
+    assert binary_import["record_length_bytes"] == 28
+    assert binary_import["column_types"] == ["float32", "float32", "int16", "int16", "float32", "float32", "float32"]
+    assert binary_import["source_reference"]["eddypro_engine_files"] == [
+        "src/src_common/import_binary.f90",
+        "src/src_common/write_processing_project_variables.f90",
+    ]
+    assert source_binary["raw_to_final_parity"]["benchmark_summary"]["pass_rate"] == 1.0
     assert raw_to_final["raw_to_final_parity"]["parity_diagnostics"]["status"] == "ok"
     assert raw_to_final["hashes"]["raw_file"] == "FFE05EEDE5539019F2E38ECEA18A273ECCD6EB470A493066762CB911732E4DDE"
 
@@ -254,6 +275,7 @@ def test_public_raw_binary_search_summary_records_tob1_slt_binary_leads_without_
         "eddypro_source_tob1_seconds_001",
         "eddypro_source_slt_edisol_001",
         "eddypro_source_slt_eddysoft_001",
+        "eddypro_source_native_binary_mixed_001",
     }
     assert summary["raw_format_counts"]["tob1"] >= 3
     assert summary["raw_format_counts"]["slt"] >= 2
@@ -533,9 +555,9 @@ def test_official_raw_fixture_manifest_keeps_synthetic_guardrails_separate() -> 
     assert manifest["artifact_type"] == "official_raw_fixture_pack_manifest_v2"
     assert manifest["status"] == "needs_official_raw_fixtures"
     assert manifest["official_raw_to_final_ready_count"] == 1
-    assert manifest["registered_raw_to_final_fixture_count"] == 6
+    assert manifest["registered_raw_to_final_fixture_count"] == 7
     assert manifest["synthetic_guardrail_count"] == 3
-    assert manifest["readiness_counts"]["source_derived_conformance"] == 3
+    assert manifest["readiness_counts"]["source_derived_conformance"] == 4
     assert manifest["device_protocol_guardrail_count"] == 1
     assert manifest["missing_official_bundle_count"] >= 1
     assert "high_frequency_raw_input" in manifest["required_official_bundle_files"]
@@ -578,6 +600,11 @@ def test_official_raw_fixture_manifest_keeps_synthetic_guardrails_separate() -> 
     assert source_slt["evidence_role"] == "source_derived_raw_import_conformance"
     assert source_slt["raw_to_final_status"] == "pass"
     assert source_slt["parity_diagnostics"]["status"] == "ok"
+    source_binary_detail = by_id["eddypro_source_native_binary_mixed_001"]
+    assert source_binary_detail["readiness_level"] == "source_derived_conformance"
+    assert source_binary_detail["evidence_role"] == "source_derived_raw_import_conformance"
+    assert source_binary_detail["raw_to_final_status"] == "pass"
+    assert source_binary_detail["parity_diagnostics"]["status"] == "ok"
     public_ghg = by_id["ghg_sample_data_2021_licor_public_raw_candidate"]
     assert public_ghg["official_eddypro_run"]["gate_status"] == "pass"
     assert public_ghg["official_run_normalization_status"] == "normalized"
@@ -594,6 +621,8 @@ def test_official_raw_fixture_manifest_keeps_synthetic_guardrails_separate() -> 
     assert matrix_by_id["eddypro_source_slt_edisol_001"]["readiness_level"] == "source_derived_conformance"
     assert matrix_by_id["eddypro_source_slt_edisol_001"]["raw_format"] == "slt"
     assert matrix_by_id["eddypro_source_slt_eddysoft_001"]["raw_format"] == "slt"
+    assert matrix_by_id["eddypro_source_native_binary_mixed_001"]["readiness_level"] == "source_derived_conformance"
+    assert matrix_by_id["eddypro_source_native_binary_mixed_001"]["raw_format"] == "bin"
     assert matrix_by_id["ghg_sample_data_2021_licor_public_raw_candidate"]["official_run_normalization_status"] == "normalized"
     assert matrix_by_id["ghg_sample_data_2021_licor_public_raw_candidate"]["official_run_normalization_required_fields_present"] is True
     detail = build_official_raw_fixture_detail(
@@ -670,12 +699,12 @@ def test_headless_manifest_includes_fixture_pack_summary() -> None:
 
     assert manifest["fixture_pack_summary"]["status"] == "pass"
     assert manifest["fixture_pack_summary"]["real_reference_window_count"] == 11
-    assert manifest["fixture_pack_summary"]["raw_to_final_pass_count"] == 6
+    assert manifest["fixture_pack_summary"]["raw_to_final_pass_count"] == 7
     assert manifest["fixture_pack_summary"]["public_spectral_status"] == "pass"
     assert manifest["fixture_pack_summary"]["public_full_output_status"] == "pass"
     assert manifest["fixture_pack_summary"]["public_eddypro_fixture_catalog_status"] == "pass"
     assert manifest["official_raw_fixture_manifest"]["status"] == "needs_official_raw_fixtures"
-    assert manifest["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 6
+    assert manifest["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 7
     assert manifest["official_raw_fixture_manifest"]["public_spectral_status"] == "pass"
     assert manifest["official_raw_fixture_manifest"]["public_full_output_status"] == "pass"
     assert manifest["official_raw_fixture_manifest"]["public_eddypro_fixture_catalog_status"] == "pass"
@@ -688,8 +717,8 @@ def test_fixture_pack_summary_exposes_manifest_ready_counts() -> None:
 
     assert summary["status"] == "pass"
     assert summary["protocol_validation_row_count"] == 2
-    assert summary["raw_to_final_fixture_count"] == 6
-    assert summary["raw_to_final_pass_count"] == 6
+    assert summary["raw_to_final_fixture_count"] == 7
+    assert summary["raw_to_final_pass_count"] == 7
     assert summary["public_spectral_fixture_count"] == 3
     assert summary["public_full_output_fixture_count"] == 3
     assert summary["public_eddypro_fixture_catalog_status"] == "pass"

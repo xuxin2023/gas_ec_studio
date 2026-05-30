@@ -199,7 +199,7 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["official_raw_qc_mapping_strategy"]
         assert manifest_payload["official_raw_official_run_normalization_status"] == "normalized"
         assert manifest_payload["official_raw_official_run_qc_mapping_strategy"] == "EddyPro 0/1/2 -> gas_ec_studio A/B/C"
-        assert manifest_payload["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 6
+        assert manifest_payload["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 7
         assert manifest_payload["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
         assert manifest_payload["official_raw_fixture_manifest"]["evidence_matrix"]["raw_format_counts"]["csv"] >= 1
         assert manifest_payload["official_raw_fixture_detail"]["trace_gas_parity_status"] == "pass"

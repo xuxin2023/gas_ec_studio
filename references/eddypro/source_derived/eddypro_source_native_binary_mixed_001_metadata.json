@@ -1,0 +1,92 @@
+{
+  "project": {
+    "code": "SRC-BINARY",
+    "name": "EddyPro Source-Derived Native Binary Conformance"
+  },
+  "site": {
+    "station_code": "SRC-BINARY",
+    "station_name": "Source-Derived Native Binary Conformance Site"
+  },
+  "raw_file_description": {
+    "source_name": "eddypro_source_native_binary_mixed_001",
+    "source_type": "binary",
+    "timezone": "UTC",
+    "notes": "Source-derived generic binary fixture based on EddyPro import_binary.f90 fixed-record semantics.",
+    "column_mappings": [
+      {
+        "column_name": "co2_raw",
+        "variable": "co2_ppm",
+        "input_unit": "umol/mol"
+      },
+      {
+        "column_name": "h2o_raw",
+        "variable": "h2o_mmol",
+        "input_unit": "mmol/mol"
+      },
+      {
+        "column_name": "p_raw",
+        "variable": "pressure_kpa",
+        "input_unit": "kPa",
+        "scaling": 0.1
+      },
+      {
+        "column_name": "ta_raw",
+        "variable": "chamber_temp_c",
+        "input_unit": "C",
+        "scaling": 0.1
+      },
+      {
+        "column_name": "u_raw",
+        "variable": "u",
+        "input_unit": "m/s"
+      },
+      {
+        "column_name": "v_raw",
+        "variable": "v",
+        "input_unit": "m/s"
+      },
+      {
+        "column_name": "w_raw",
+        "variable": "w",
+        "input_unit": "m/s"
+      }
+    ]
+  },
+  "raw_file_settings": {
+    "sample_hz": 10.0,
+    "header_rows": 2,
+    "extra": {
+      "native_format": "binary",
+      "data_type": "int16",
+      "columns": [
+        "co2_raw",
+        "h2o_raw",
+        "p_raw",
+        "ta_raw",
+        "u_raw",
+        "v_raw",
+        "w_raw"
+      ],
+      "column_types": {
+        "co2_raw": "float32",
+        "h2o_raw": "float32",
+        "p_raw": "int16",
+        "ta_raw": "int16",
+        "u_raw": "float32",
+        "v_raw": "float32",
+        "w_raw": "float32"
+      },
+      "header_rows": 2,
+      "ascii_header_eol": "CR/LF",
+      "record_header_bytes": 2,
+      "record_footer_bytes": 2,
+      "record_length_bytes": 28,
+      "start_time": "2026-05-30T09:04:00"
+    }
+  },
+  "metadata_version": "ec_core_metadata_v1",
+  "notes": [
+    "Source-derived conformance fixture, not a public field dataset.",
+    "Record timestamps are generated from extra.start_time plus sample_hz because generic binary records do not carry explicit timestamps."
+  ]
+}

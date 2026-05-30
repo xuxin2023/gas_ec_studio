@@ -855,6 +855,62 @@
         "reference_json": "367F91483A75CCEF20B051DC31963C94D57F0B082A893A0CCF4585BDB7486089",
         "provenance_json": "3225337C53F6FD3D4B6F99E0F20726ACB12C14E93A5A7047893749A8E76C1291"
       }
+    },
+    {
+      "fixture_id": "eddypro_source_native_binary_mixed_001",
+      "tier": "raw_to_final_parity",
+      "site_class": "source_derived_native_binary_conformance",
+      "software": "gas_ec_studio source-derived EddyPro engine conformance oracle",
+      "software_version": "eddypro-engine@3cabe637ca38",
+      "source_derived": true,
+      "source_derived_from": {
+        "eddypro_engine_repository": "https://github.com/LI-COR-Environmental/eddypro-engine",
+        "eddypro_engine_commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+        "eddypro_engine_files": [
+          "src/src_common/import_binary.f90",
+          "src/src_common/import_native_data.f90",
+          "src/src_common/write_processing_project_variables.f90"
+        ]
+      },
+      "native_binary_file": "references/eddypro/source_derived/eddypro_source_native_binary_mixed_001.bin",
+      "metadata_json": "references/eddypro/source_derived/eddypro_source_native_binary_mixed_001_metadata.json",
+      "reference_json": "references/eddypro/source_derived/eddypro_source_native_binary_mixed_001_reference.json",
+      "provenance_json": "references/eddypro/source_derived/eddypro_source_native_binary_mixed_001_provenance.json",
+      "rp_config": {
+        "sample_hz": 10.0,
+        "block_minutes": 1.0,
+        "steps": {
+          "window_sampling": {
+            "sample_hz": 10.0,
+            "window_minutes": 1.0
+          }
+        },
+        "rotation_mode": "none",
+        "detrend_mode": "block_mean",
+        "density_correction_mode": "none",
+        "lag_phase": {
+          "strategy": "constant",
+          "expected_lag_s": 0.0,
+          "search_window_s": 1.0
+        }
+      },
+      "thresholds": {
+        "flux_rel_threshold": 1e-09,
+        "lag_abs_threshold_s": 1e-12,
+        "wpl_rel_threshold": 0.2,
+        "qc_grade_must_match": false
+      },
+      "known_limitations": [
+        "Source-derived generic native binary conformance fixture validates importer and raw-to-final harness behavior.",
+        "Reference output is a deterministic source-derived oracle, not an official EddyPro executable output.",
+        "Real TOB1/SLT/native binary field fixtures with matching EddyPro output are still required before claiming broad parity."
+      ],
+      "expected_sha256": {
+        "native_binary_file": "627891FA1013CF85FAB57250E02349C7AD98A4CD2B5EC45C688BD281A41F46F3",
+        "metadata_json": "471A959E9849A006C9CA535773414466DD34BA8A7BFDC73DBDE0CD08728857C0",
+        "reference_json": "3B1399F5A4715A0333BECA214C1324E329DF4F89F1A12C6CF55F27E0FE07D9BA",
+        "provenance_json": "B6FCE76ECA2537B14CDAAF6101C722798E7BEDBC67B7F2D8E0FF870754786EED"
+      }
     }
   ],
   "coverage_gaps": [

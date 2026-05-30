@@ -1,0 +1,57 @@
+{
+  "artifact_type": "source_derived_native_binary_fixture_provenance_v1",
+  "fixture_id": "eddypro_source_native_binary_mixed_001",
+  "source_file": "references/eddypro/source_derived/eddypro_source_native_binary_mixed_001.bin",
+  "metadata_file": "references/eddypro/source_derived/eddypro_source_native_binary_mixed_001_metadata.json",
+  "reference_file": "references/eddypro/source_derived/eddypro_source_native_binary_mixed_001_reference.json",
+  "generation_time": "2026-05-30T00:00:00+08:00",
+  "generation_method": "Deterministic generic binary file generated from EddyPro import_binary.f90 semantics.",
+  "normalization_script": "scripts/generate_source_derived_native_binary_fixture.py",
+  "normalization_command": "python scripts/generate_source_derived_native_binary_fixture.py --register",
+  "qc_mapping_strategy": "Source-derived conformance oracle keeps QC optional; no official EddyPro QC flags are claimed.",
+  "source_repositories": {
+    "eddypro_engine": {
+      "url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+      "commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+      "source_files": [
+        "src/src_common/import_binary.f90",
+        "src/src_common/import_native_data.f90",
+        "src/src_common/write_processing_project_variables.f90"
+      ]
+    }
+  },
+  "raw_columns": [
+    "co2_raw",
+    "h2o_raw",
+    "p_raw",
+    "ta_raw",
+    "u_raw",
+    "v_raw",
+    "w_raw"
+  ],
+  "method_metadata": {
+    "raw_format": "binary",
+    "native_format": "binary",
+    "data_type": "mixed",
+    "column_types": [
+      "float32",
+      "float32",
+      "int16",
+      "int16",
+      "float32",
+      "float32",
+      "float32"
+    ],
+    "ascii_header_eol": "crlf",
+    "header_rows": 2,
+    "record_header_bytes": 2,
+    "record_footer_bytes": 2,
+    "record_length_bytes": 28,
+    "timestamp_source": "extra.start_time",
+    "source_derived": true
+  },
+  "known_limitations": [
+    "This fixture is generated from EddyPro source-code generic binary import rules and deterministic signals.",
+    "It is not a real field native-binary dataset and must not close real-world binary fixture breadth blockers."
+  ]
+}
