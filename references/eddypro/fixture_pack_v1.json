@@ -911,9 +911,179 @@
         "reference_json": "3B1399F5A4715A0333BECA214C1324E329DF4F89F1A12C6CF55F27E0FE07D9BA",
         "provenance_json": "B6FCE76ECA2537B14CDAAF6101C722798E7BEDBC67B7F2D8E0FF870754786EED"
       }
+    },
+    {
+      "fixture_id": "eddypro_source_li7700_wms_001",
+      "tier": "raw_to_final_parity",
+      "site_class": "source_derived_li7700_wms_conformance",
+      "software": "gas_ec_studio source-derived EddyPro LI-7700 WMS conformance oracle",
+      "software_version": "eddypro-engine@3cabe637ca38",
+      "source_derived": true,
+      "source_derived_from": {
+        "eddypro_engine_repository": "https://github.com/LI-COR-Environmental/eddypro-engine",
+        "eddypro_engine_commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+        "eddypro_engine_files": [
+          "src/src_rp/m_li7700.f90",
+          "src/src_common/bpcf_li7700_analog_filters.f90"
+        ]
+      },
+      "raw_file": "references/eddypro/source_derived/eddypro_source_li7700_wms_001.csv",
+      "metadata_json": "references/eddypro/source_derived/eddypro_source_li7700_wms_001_metadata.json",
+      "reference_json": "references/eddypro/source_derived/eddypro_source_li7700_wms_001_reference.json",
+      "provenance_json": "references/eddypro/source_derived/eddypro_source_li7700_wms_001_provenance.json",
+      "rp_config": {
+        "sample_hz": 10.0,
+        "block_minutes": 1.0,
+        "steps": {
+          "window_sampling": {
+            "sample_hz": 10.0,
+            "window_minutes": 1.0
+          }
+        },
+        "rotation_mode": "none",
+        "detrend_mode": "block_mean",
+        "density_correction_mode": "none",
+        "lag_phase": {
+          "strategy": "constant",
+          "expected_lag_s": 0.0,
+          "search_window_s": 1.0
+        },
+        "trace_gas": {
+          "ch4": {
+            "coefficient_profile_id": "source_li7700_wms_profile",
+            "coefficient_registry": {
+              "source_li7700_wms_profile": {
+                "label": "Source-derived LI-7700 WMS conformance profile",
+                "source": "eddypro_engine_source_derived",
+                "source_file": "references/eddypro/source_derived/eddypro_source_li7700_wms_001_reference.json",
+                "normalization_command": "python scripts/generate_source_derived_li7700_wms_fixture.py --register",
+                "spectroscopic_correction": {
+                  "mode": "wms_line_shape",
+                  "scan_axis": [
+                    -1.0,
+                    -0.95,
+                    -0.9,
+                    -0.85,
+                    -0.8,
+                    -0.75,
+                    -0.7,
+                    -0.65,
+                    -0.6,
+                    -0.55,
+                    -0.5,
+                    -0.45,
+                    -0.4,
+                    -0.35,
+                    -0.3,
+                    -0.25,
+                    -0.2,
+                    -0.15,
+                    -0.1,
+                    -0.05,
+                    0.0,
+                    0.05,
+                    0.1,
+                    0.15,
+                    0.2,
+                    0.25,
+                    0.3,
+                    0.35,
+                    0.4,
+                    0.45,
+                    0.5,
+                    0.55,
+                    0.6,
+                    0.65,
+                    0.7,
+                    0.75,
+                    0.8,
+                    0.85,
+                    0.9,
+                    0.95,
+                    1.0
+                  ],
+                  "absorbance": [
+                    0.020201190016096778,
+                    0.020429398722295943,
+                    0.020883189472773185,
+                    0.02175059560314985,
+                    0.02334392552519532,
+                    0.026155540215779403,
+                    0.030919796957010345,
+                    0.038668170848941016,
+                    0.05075585353638519,
+                    0.06883066230915703,
+                    0.09471301442647688,
+                    0.1301637515172371,
+                    0.17653807481685144,
+                    0.23435818604062966,
+                    0.3028778690268006,
+                    0.37974658811233636,
+                    0.46089300569311226,
+                    0.5407251434963525,
+                    0.6126833144890004,
+                    0.6700932655134761,
+                    0.7071751513749208,
+                    0.72,
+                    0.7071751513749208,
+                    0.6700932655134761,
+                    0.6126833144890004,
+                    0.5407251434963525,
+                    0.46089300569311226,
+                    0.37974658811233636,
+                    0.30287786902680053,
+                    0.23435818604062963,
+                    0.17653807481685144,
+                    0.1301637515172371,
+                    0.09471301442647695,
+                    0.0688306623091571,
+                    0.05075585353638522,
+                    0.03866817084894103,
+                    0.030919796957010345,
+                    0.026155540215779406,
+                    0.023343925525195323,
+                    0.021750595603149854,
+                    0.020883189472773185
+                  ],
+                  "reference_area": 0.43433981586716275
+                },
+                "self_heating_correction": {
+                  "mode": "empirical",
+                  "sensor_body_temp_c": 27.0,
+                  "flux_sensitivity_per_c": 0.01
+                },
+                "known_limitations": [
+                  "Source-derived WMS conformance profile; not a firmware-equivalent LI-7700 calibration file."
+                ]
+              }
+            },
+            "spectral_correction_factor": 1.04,
+            "apply_water_vapor_dilution": true
+          }
+        }
+      },
+      "thresholds": {
+        "flux_rel_threshold": 1e-09,
+        "lag_abs_threshold_s": 1e-12,
+        "wpl_rel_threshold": 0.2,
+        "qc_grade_must_match": false,
+        "trace_gas_rel_threshold": 1e-09
+      },
+      "known_limitations": [
+        "Source-derived LI-7700 WMS conformance fixture validates configured WMS propagation through raw-to-final artifacts.",
+        "Reference output is a deterministic source-derived oracle, not an official EddyPro executable output.",
+        "Real LI-7700 WMS/high-frequency field fixtures with matching EddyPro output are still required before claiming CH4 parity."
+      ],
+      "expected_sha256": {
+        "raw_file": "DB7ACBEA5D6FF614BCA1897EA5CEA5D91000652EE9DCDD84AD7BAF4E4DADD99C",
+        "metadata_json": "EA3CC9C2B9E9900A8EA9C9B1F33621B1249C3BB7F37B6455611B83AA998F4E9F",
+        "reference_json": "6581D9878C9CF2EAB426533E1BA07EAAE44C5F9087C91F1B4135980A6A4C7DF3",
+        "provenance_json": "93E8DE51CDE88585749CB78F96B27D64C576B8846E7E96ED6C023BEC60190B88"
+      }
     }
   ],
   "coverage_gaps": [
+    "Need real LI-7700 WMS/high-frequency raw field fixtures with official EddyPro Full_Output parity.",
     "Need real TOB1/SLT/binary field fixtures with official EddyPro Full_Output parity.",
     "Need anonymized raw LI-COR .ghg bundles with official EddyPro outputs.",
     "Need LI-7700 CH4 real numeric parity fixtures including WMS/spectroscopic edge cases.",

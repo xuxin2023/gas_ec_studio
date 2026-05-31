@@ -1,0 +1,37 @@
+{
+  "artifact_type": "source_derived_li7700_wms_fixture_provenance_v1",
+  "fixture_id": "eddypro_source_li7700_wms_001",
+  "source_file": "references/eddypro/source_derived/eddypro_source_li7700_wms_001.csv",
+  "metadata_file": "references/eddypro/source_derived/eddypro_source_li7700_wms_001_metadata.json",
+  "reference_file": "references/eddypro/source_derived/eddypro_source_li7700_wms_001_reference.json",
+  "generation_time": "2026-05-30T00:30:00+08:00",
+  "generation_method": "Deterministic tabular LI-7700 CH4/WMS file generated from EddyPro m_li7700 source anchors.",
+  "normalization_script": "scripts/generate_source_derived_li7700_wms_fixture.py",
+  "normalization_command": "python scripts/generate_source_derived_li7700_wms_fixture.py --register",
+  "qc_mapping_strategy": "Source-derived WMS conformance oracle keeps EddyPro QC optional; no official EddyPro QC flags are claimed.",
+  "source_repositories": {
+    "eddypro_engine": {
+      "url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+      "commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+      "source_files": [
+        "src/src_rp/m_li7700.f90",
+        "src/src_common/bpcf_li7700_analog_filters.f90"
+      ]
+    }
+  },
+  "method_metadata": {
+    "trace_gas": "ch4",
+    "instrument_family": "LI-7700",
+    "spectroscopic_correction_mode": "wms_line_shape",
+    "wms_reference_area": 0.43433981586716275,
+    "wms_fitted_area": 0.4524373081949612,
+    "wms_factor": 0.96,
+    "scan_sample_count": 41,
+    "source_derived": true
+  },
+  "known_limitations": [
+    "This fixture is generated from EddyPro LI-7700 source anchors and deterministic WMS scan signals.",
+    "It validates Gas EC Studio configured WMS line-shape propagation, not LI-7700 firmware-equivalent line-shape fitting.",
+    "Real LI-7700 high-frequency raw data with matching EddyPro Full_Output remains required before claiming official numeric parity."
+  ]
+}

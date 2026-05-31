@@ -1,0 +1,75 @@
+{
+  "reference_id": "eddypro_source_li7700_wms_001_source_derived_wms_oracle",
+  "source": "EddyPro engine source-derived LI-7700 WMS conformance oracle",
+  "description": "Reference window validates configured LI-7700 WMS line-shape scan fitting through the CH4 Level 0/1/2/3 raw-to-final path.",
+  "created_at": "2026-05-30T00:30:00+08:00",
+  "source_repositories": {
+    "eddypro_engine": {
+      "url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+      "commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5",
+      "source_files": [
+        "src/src_rp/m_li7700.f90",
+        "src/src_common/bpcf_li7700_analog_filters.f90"
+      ]
+    }
+  },
+  "processing_settings": {
+    "averaging_period_min": 1.0,
+    "rotation_mode": "none",
+    "density_correction": "none",
+    "lag_determination": "constant",
+    "detrend_method": "block_mean",
+    "trace_gas": "LI-7700 CH4 source-derived WMS line-shape sequence"
+  },
+  "qc_mapping_strategy": "Source-derived WMS conformance oracle keeps EddyPro QC optional; no official EddyPro QC flags are claimed.",
+  "windows": [
+    {
+      "window_id": "eddypro_source_li7700_wms_001_w001",
+      "start_time": "2026-05-30T09:08:00",
+      "end_time": "2026-05-30T09:08:59.900000",
+      "primary_flux": 22.86675460861596,
+      "primary_flux_source": "none",
+      "lag_seconds": 0.0,
+      "lag_strategy": "constant",
+      "rotation_mode": "none",
+      "applied_rotation_impl": "none",
+      "qc_grade": "",
+      "ch4_method": "li_7700_correction_sequence_v1",
+      "ch4_correction_sequence": {
+        "status": "computed",
+        "levels": {
+          "level0": {
+            "flux_nmol_m2_s": 122.62273947455323
+          },
+          "level1": {
+            "flux_nmol_m2_s": 127.52764905353536
+          },
+          "level2": {
+            "flux_nmol_m2_s": 129.23498901559418
+          },
+          "level3": {
+            "spectroscopic_status": "applied_wms_line_shape",
+            "spectroscopic_factor": 0.96,
+            "self_heating_status": "applied_empirical",
+            "self_heating_factor": 1.0229431229738546,
+            "flux_nmol_m2_s": 126.91204153065955
+          }
+        }
+      },
+      "ch4_flux_level0_nmol_m2_s": 122.62273947455323,
+      "ch4_flux_level1_spectral_nmol_m2_s": 127.52764905353536,
+      "ch4_flux_level2_density_nmol_m2_s": 129.23498901559418,
+      "ch4_flux_corrected_nmol_m2_s": 126.91204153065955,
+      "ch4_flux_nmol_m2_s": 126.91204153065955,
+      "li7700_wms_reference_area": 0.43433981586716275,
+      "li7700_wms_fitted_area": 0.4524373081949612,
+      "li7700_wms_factor": 0.96,
+      "notes": "Source-derived LI-7700 WMS conformance oracle; not an official EddyPro executable output."
+    }
+  ],
+  "known_limitations": [
+    "This fixture is generated from EddyPro LI-7700 source anchors and deterministic WMS scan signals.",
+    "It validates Gas EC Studio configured WMS line-shape propagation, not LI-7700 firmware-equivalent line-shape fitting.",
+    "Real LI-7700 high-frequency raw data with matching EddyPro Full_Output remains required before claiming official numeric parity."
+  ]
+}

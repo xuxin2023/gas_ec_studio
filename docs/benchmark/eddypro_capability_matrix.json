@@ -691,7 +691,9 @@
         "core/comparison/official_raw_fixture_bundle.py",
         "core/exports/result_exporter.py",
         "tests/test_ch4_trace_gas_pipeline.py",
-        "tests/test_official_raw_fixture_bundle.py"
+        "tests/test_official_raw_fixture_bundle.py",
+        "scripts/generate_source_derived_li7700_wms_fixture.py",
+        "references/eddypro/source_derived/eddypro_source_li7700_wms_001_provenance.json"
       ],
       "coverage_checklist": [
         {
@@ -745,6 +747,16 @@
           ]
         },
         {
+          "id": "source_derived_li7700_wms_conformance",
+          "label": "Source-derived LI-7700 WMS line-shape fixture validates configured WMS propagation through raw-to-final artifacts.",
+          "status": "done",
+          "evidence": [
+            "scripts/generate_source_derived_li7700_wms_fixture.py",
+            "references/eddypro/source_derived/eddypro_source_li7700_wms_001_provenance.json",
+            "tests/test_eddypro_fixture_pack.py"
+          ]
+        },
+        {
           "id": "dryad_li7700_preview_validation",
           "label": "Public Dryad LI-7500A/LI-7700 preview validates CH4 flux, mixing ratio, and RSSI outputs.",
           "status": "done",
@@ -766,7 +778,7 @@
           "blocker": "Need official LI-7700 WMS/golden-output evidence to tune and prove numeric parity."
         }
       ],
-      "gap": "CH4 can now be ingested from raw/GHG/headless inputs, including preserved LI-7700 RSSI/status-word/mirror/lock diagnostic columns from tabular raw files and epoch-aligned LI-7700 `.status` members inside public LI-COR `.ghg` bundles, imported from EddyPro project `[Methane Analyzer]` / `[Trace Gas]` sections with status-diagnostic threshold policies, processed through an auditable LI-7700 correction sequence v1 with coefficient profile registry provenance, configured WMS line-shape scan correction components with Gaussian/Lorentzian candidate-fit diagnostics, fit-quality export fields, and a run-level `li7700_wms_fit_acceptance_v1` artifact carrying thresholds, per-window acceptance reasons, and EddyPro source anchors, parsed LI-7700 RSSI/signal/mirror/lock/fault/status-word diagnostics propagated through RP diagnostics, full/RP exports, manifest trace summaries, and benchmark per-window artifacts, compared in raw-to-final artifacts across Level 0/1/2/3/final CH4 flux fields, and validated against a public Dryad LI-7500A/LI-7700 EddyPro v7.0.9 preview fixture with `ch4_flux`, `ch4_mixing_ratio`, and `rssi_77_mean`; LI-7700 firmware-equivalent WMS fitting and complete public real LI-7700 raw-to-final numeric parity fixtures are still incomplete.",
+      "gap": "CH4 can now be ingested from raw/GHG/headless inputs, including preserved LI-7700 RSSI/status-word/mirror/lock diagnostic columns from tabular raw files and epoch-aligned LI-7700 `.status` members inside public LI-COR `.ghg` bundles, imported from EddyPro project `[Methane Analyzer]` / `[Trace Gas]` sections with status-diagnostic threshold policies, processed through an auditable LI-7700 correction sequence v1 with coefficient profile registry provenance, configured WMS line-shape scan correction components with Gaussian/Lorentzian candidate-fit diagnostics, fit-quality export fields, and a run-level `li7700_wms_fit_acceptance_v1` artifact carrying thresholds, per-window acceptance reasons, and EddyPro source anchors, parsed LI-7700 RSSI/signal/mirror/lock/fault/status-word diagnostics propagated through RP diagnostics, full/RP exports, manifest trace summaries, and benchmark per-window artifacts, compared in raw-to-final artifacts across Level 0/1/2/3/final CH4 flux fields, covered by a source-derived LI-7700 WMS line-shape conformance fixture (`eddypro_source_li7700_wms_001`) with WMS fitted-area/reference-area provenance, and validated against a public Dryad LI-7500A/LI-7700 EddyPro v7.0.9 preview fixture with `ch4_flux`, `ch4_mixing_ratio`, and `rssi_77_mean`; LI-7700 firmware-equivalent WMS fitting and complete public real LI-7700 raw-to-final numeric parity fixtures are still incomplete.",
       "next_action": "Promote a complete public/anonymized LI-7700 fixture with downloadable high-frequency raw data, EddyPro project/settings, full CH4 output, WMS/status-word evidence, and passing raw-to-final parity."
     },
     {

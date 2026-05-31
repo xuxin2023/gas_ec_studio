@@ -1,0 +1,131 @@
+{
+  "project": {
+    "code": "SRC-WMS",
+    "name": "EddyPro Source-Derived LI-7700 WMS Conformance"
+  },
+  "site": {
+    "station_code": "SRC-WMS",
+    "station_name": "Source-Derived LI-7700 WMS Conformance Site"
+  },
+  "raw_file_description": {
+    "source_name": "eddypro_source_li7700_wms_001",
+    "source_type": "csv",
+    "timestamp_column": "timestamp",
+    "timezone": "UTC",
+    "notes": "Source-derived LI-7700 CH4/WMS fixture based on EddyPro m_li7700 correction-path anchors.",
+    "column_mappings": [
+      {
+        "column_name": "timestamp",
+        "variable": "timestamp",
+        "input_unit": null,
+        "numeric": false
+      },
+      {
+        "column_name": "co2_ppm",
+        "variable": "co2_ppm",
+        "input_unit": "umol/mol",
+        "numeric": true
+      },
+      {
+        "column_name": "h2o_mmol",
+        "variable": "h2o_mmol",
+        "input_unit": "mmol/mol",
+        "numeric": true
+      },
+      {
+        "column_name": "ch4_ppb",
+        "variable": "ch4_ppb",
+        "input_unit": "nmol/mol",
+        "numeric": true
+      },
+      {
+        "column_name": "pressure_kpa",
+        "variable": "pressure_kpa",
+        "input_unit": "kPa",
+        "numeric": true
+      },
+      {
+        "column_name": "chamber_temp_c",
+        "variable": "chamber_temp_c",
+        "input_unit": "C",
+        "numeric": true
+      },
+      {
+        "column_name": "u",
+        "variable": "u",
+        "input_unit": "m/s",
+        "numeric": true
+      },
+      {
+        "column_name": "v",
+        "variable": "v",
+        "input_unit": "m/s",
+        "numeric": true
+      },
+      {
+        "column_name": "w",
+        "variable": "w",
+        "input_unit": "m/s",
+        "numeric": true
+      },
+      {
+        "column_name": "li7700_rssi",
+        "variable": "li7700_rssi",
+        "input_unit": "%",
+        "numeric": true
+      },
+      {
+        "column_name": "signal_strength",
+        "variable": "signal_strength",
+        "input_unit": "%",
+        "numeric": true
+      },
+      {
+        "column_name": "mirror_rssi",
+        "variable": "mirror_rssi",
+        "input_unit": "%",
+        "numeric": true
+      },
+      {
+        "column_name": "mirror_dirty",
+        "variable": "mirror_dirty",
+        "input_unit": null,
+        "numeric": false
+      },
+      {
+        "column_name": "pll_locked",
+        "variable": "pll_locked",
+        "input_unit": null,
+        "numeric": false
+      },
+      {
+        "column_name": "diagnostic_status",
+        "variable": "diagnostic_status",
+        "input_unit": null,
+        "numeric": false
+      },
+      {
+        "column_name": "li7700_status_word",
+        "variable": "li7700_status_word",
+        "input_unit": null,
+        "numeric": true
+      }
+    ]
+  },
+  "raw_file_settings": {
+    "sample_hz": 10.0,
+    "delimiter": ",",
+    "header_rows": 1,
+    "encoding": "utf-8",
+    "missing_tokens": [
+      "",
+      "NA",
+      "NaN"
+    ]
+  },
+  "metadata_version": "ec_core_metadata_v1",
+  "notes": [
+    "Source-derived LI-7700 WMS conformance fixture, not a public field dataset.",
+    "The WMS scan is supplied through the RP config coefficient profile rather than a raw LI-7700 firmware diagnostic file."
+  ]
+}

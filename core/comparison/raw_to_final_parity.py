@@ -612,6 +612,9 @@ def _trace_gas_parity_summary(
     matched_reference_count = 0
     reference_trace_window_count = sum(1 for ref in reference_windows if _reference_has_trace_gas_fields(ref))
     first_diag = next((dict(window.diagnostics or {}) for window in rp_result.windows if dict(window.diagnostics or {}).get("ch4_method")), {})
+    wms_line_shape_window_count = 0
+    wms_statuses: set[str] = set()
+    wms_fit_models: set[str] = set()
 
     for window in rp_result.windows:
         ref, match_strategy = _match_reference_window(
@@ -621,6 +624,15 @@ def _trace_gas_parity_summary(
         )
         diagnostics = dict(window.diagnostics or {})
         sequence = dict(diagnostics.get("ch4_correction_sequence", {}) or {})
+        spectroscopic = dict(sequence.get("components", {}).get("spectroscopic", {}) or {})
+        if spectroscopic.get("mode") == "wms_line_shape" or diagnostics.get("li7700_wms_fit_quality_status"):
+            wms_line_shape_window_count += 1
+            if spectroscopic.get("status"):
+                wms_statuses.add(str(spectroscopic.get("status")))
+            if diagnostics.get("li7700_wms_fit_quality_status"):
+                wms_statuses.add(str(diagnostics.get("li7700_wms_fit_quality_status")))
+            if diagnostics.get("li7700_wms_selected_fit_model"):
+                wms_fit_models.add(str(diagnostics.get("li7700_wms_selected_fit_model")))
         comparisons: list[dict[str, Any]] = []
         if ref is not None and _reference_has_trace_gas_fields(ref):
             matched_reference_count += 1
@@ -678,6 +690,9 @@ def _trace_gas_parity_summary(
                 "ch4_coefficient_profile_id": diagnostics.get("ch4_coefficient_profile_id", ""),
                 "ch4_coefficient_registry_status": diagnostics.get("ch4_coefficient_registry_status", ""),
                 "ch4_correction_sequence_status": sequence.get("status", ""),
+                "ch4_spectroscopic_status": spectroscopic.get("status", ""),
+                "li7700_wms_fit_quality_status": diagnostics.get("li7700_wms_fit_quality_status", ""),
+                "li7700_wms_selected_fit_model": diagnostics.get("li7700_wms_selected_fit_model", ""),
             }
         )
 
@@ -696,10 +711,23 @@ def _trace_gas_parity_summary(
             "method": first_diag.get("ch4_method", ""),
             "coefficient_profile_id": first_diag.get("ch4_coefficient_profile_id", ""),
             "coefficient_registry_status": first_diag.get("ch4_coefficient_registry_status", ""),
+            "wms_line_shape_window_count": wms_line_shape_window_count,
+            "wms_line_shape_statuses": sorted(wms_statuses),
+            "wms_line_shape_fit_models": sorted(wms_fit_models),
             "windows": windows,
         }
     pass_rate = passed_count / comparison_count if comparison_count else 0.0
     status = "pass" if not failed_fields and matched_reference_count == reference_trace_window_count else "fail"
+    known_limitations = [
+        "Missing reference level fields are skipped rather than inferred.",
+    ]
+    if wms_line_shape_window_count:
+        known_limitations.insert(
+            0,
+            "Configured LI-7700 WMS line-shape fitting is exposed in the artifact, but firmware-equivalent WMS numeric parity still requires matching LI-7700 golden output.",
+        )
+    else:
+        known_limitations.insert(0, "Raw WMS line-shape fitting is not reproduced by this parity layer.")
     return {
         "artifact_type": "li7700_trace_gas_parity_v1",
         "status": status,
@@ -716,15 +744,15 @@ def _trace_gas_parity_summary(
         "passed_count": passed_count,
         "pass_rate": pass_rate,
         "failed_fields": sorted(failed_fields),
+        "wms_line_shape_window_count": wms_line_shape_window_count,
+        "wms_line_shape_statuses": sorted(wms_statuses),
+        "wms_line_shape_fit_models": sorted(wms_fit_models),
         "windows": windows,
         "truthfulness_note": (
             "LI-7700 Level 0/1/2/3 parity is evaluated only for supplied CH4 reference fields. "
             "A pass is official EddyPro evidence only when those reference fields originate from the matching EddyPro run."
         ),
-        "known_limitations": [
-            "Raw WMS line-shape fitting is not reproduced by this parity layer.",
-            "Missing reference level fields are skipped rather than inferred.",
-        ],
+        "known_limitations": known_limitations,
     }
 
 
@@ -786,6 +814,11 @@ def _window_summary(window: Any) -> dict[str, Any]:
         "ch4_flux_level2_density_nmol_m2_s": diagnostics.get("ch4_flux_level2_density_nmol_m2_s"),
         "ch4_flux_corrected_nmol_m2_s": diagnostics.get("ch4_flux_corrected_nmol_m2_s"),
         "ch4_coefficient_profile_id": diagnostics.get("ch4_coefficient_profile_id", ""),
+        "ch4_spectroscopic_correction_factor": diagnostics.get("ch4_spectroscopic_correction_factor"),
+        "ch4_correction_sequence_status": dict(diagnostics.get("ch4_correction_sequence", {}) or {}).get("status", ""),
+        "li7700_wms_fit_quality_status": diagnostics.get("li7700_wms_fit_quality_status", ""),
+        "li7700_wms_selected_fit_model": diagnostics.get("li7700_wms_selected_fit_model", ""),
+        "li7700_wms_area_source": diagnostics.get("li7700_wms_area_source", ""),
     }
 
 

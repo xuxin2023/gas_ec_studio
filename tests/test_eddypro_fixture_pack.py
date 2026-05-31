@@ -42,6 +42,7 @@ def test_fixture_pack_registry_lists_real_and_ygas_assets() -> None:
     assert "eddypro_source_slt_edisol_001" in ids
     assert "eddypro_source_slt_eddysoft_001" in ids
     assert "eddypro_source_native_binary_mixed_001" in ids
+    assert "eddypro_source_li7700_wms_001" in ids
     assert "ygas_protocol_manual_001" in ids
     assert "real_reference_output" in tiers
     assert "raw_to_final_parity" in tiers
@@ -52,13 +53,13 @@ def test_fixture_pack_summary_validates_hashes_windows_and_protocol_rows() -> No
     summary = build_fixture_pack_summary()
 
     assert summary["status"] == "pass"
-    assert summary["asset_count"] >= 11
+    assert summary["asset_count"] >= 12
     assert summary["tier_counts"]["real_reference_output"] == 2
-    assert summary["tier_counts"]["raw_to_final_parity"] == 7
+    assert summary["tier_counts"]["raw_to_final_parity"] == 8
     assert summary["real_reference_window_count"] == 11
     assert summary["protocol_validation_row_count"] == 2
-    assert summary["raw_to_final_fixture_count"] == 7
-    assert summary["raw_to_final_pass_count"] == 7
+    assert summary["raw_to_final_fixture_count"] == 8
+    assert summary["raw_to_final_pass_count"] == 8
     assert summary["public_spectral_status"] == "pass"
     assert summary["public_spectral_fixture_count"] == 3
     assert summary["public_full_output_status"] == "pass"
@@ -152,6 +153,18 @@ def test_fixture_pack_summary_validates_hashes_windows_and_protocol_rows() -> No
     assert li7700["raw_to_final_parity"]["trace_gas_parity"]["coefficient_profile_id"] == "synthetic_li7700_profile"
     assert li7700["raw_to_final_parity"]["trace_gas_parity"]["comparison_count"] == 6
     assert li7700["provenance"]["normalization_time"] == "2026-05-27T10:00:00"
+
+    source_wms = by_id["eddypro_source_li7700_wms_001"]
+    assert source_wms["status"] == "pass"
+    assert source_wms["raw_row_count"] == 600
+    assert source_wms["raw_to_final_parity"]["status"] == "pass"
+    source_wms_trace = source_wms["raw_to_final_parity"]["trace_gas_parity"]
+    assert source_wms_trace["status"] == "pass"
+    assert source_wms_trace["coefficient_profile_id"] == "source_li7700_wms_profile"
+    assert source_wms_trace["wms_line_shape_window_count"] == 1
+    assert "applied_wms_line_shape" in source_wms_trace["wms_line_shape_statuses"]
+    assert source_wms_trace["windows"][0]["li7700_wms_fit_quality_status"] == "pass"
+    assert source_wms_trace["windows"][0]["ch4_spectroscopic_status"] == "applied_wms_line_shape"
 
 
 def test_raw_to_final_fixture_allows_embedded_ghg_metadata_without_metadata_json(tmp_path: Path) -> None:
@@ -555,9 +568,9 @@ def test_official_raw_fixture_manifest_keeps_synthetic_guardrails_separate() -> 
     assert manifest["artifact_type"] == "official_raw_fixture_pack_manifest_v2"
     assert manifest["status"] == "needs_official_raw_fixtures"
     assert manifest["official_raw_to_final_ready_count"] == 1
-    assert manifest["registered_raw_to_final_fixture_count"] == 7
+    assert manifest["registered_raw_to_final_fixture_count"] == 8
     assert manifest["synthetic_guardrail_count"] == 3
-    assert manifest["readiness_counts"]["source_derived_conformance"] == 4
+    assert manifest["readiness_counts"]["source_derived_conformance"] == 5
     assert manifest["device_protocol_guardrail_count"] == 1
     assert manifest["missing_official_bundle_count"] >= 1
     assert "high_frequency_raw_input" in manifest["required_official_bundle_files"]
@@ -605,6 +618,12 @@ def test_official_raw_fixture_manifest_keeps_synthetic_guardrails_separate() -> 
     assert source_binary_detail["evidence_role"] == "source_derived_raw_import_conformance"
     assert source_binary_detail["raw_to_final_status"] == "pass"
     assert source_binary_detail["parity_diagnostics"]["status"] == "ok"
+    source_wms_detail = by_id["eddypro_source_li7700_wms_001"]
+    assert source_wms_detail["readiness_level"] == "source_derived_conformance"
+    assert source_wms_detail["evidence_role"] == "source_derived_raw_import_conformance"
+    assert source_wms_detail["trace_gas_parity_status"] == "pass"
+    assert source_wms_detail["trace_gas_coefficient_profile_id"] == "source_li7700_wms_profile"
+    assert source_wms_detail["parity_diagnostics"]["status"] == "ok"
     public_ghg = by_id["ghg_sample_data_2021_licor_public_raw_candidate"]
     assert public_ghg["official_eddypro_run"]["gate_status"] == "pass"
     assert public_ghg["official_run_normalization_status"] == "normalized"
@@ -623,6 +642,9 @@ def test_official_raw_fixture_manifest_keeps_synthetic_guardrails_separate() -> 
     assert matrix_by_id["eddypro_source_slt_eddysoft_001"]["raw_format"] == "slt"
     assert matrix_by_id["eddypro_source_native_binary_mixed_001"]["readiness_level"] == "source_derived_conformance"
     assert matrix_by_id["eddypro_source_native_binary_mixed_001"]["raw_format"] == "bin"
+    assert matrix_by_id["eddypro_source_li7700_wms_001"]["readiness_level"] == "source_derived_conformance"
+    assert matrix_by_id["eddypro_source_li7700_wms_001"]["raw_format"] == "csv"
+    assert matrix_by_id["eddypro_source_li7700_wms_001"]["trace_gas_parity_status"] == "pass"
     assert matrix_by_id["ghg_sample_data_2021_licor_public_raw_candidate"]["official_run_normalization_status"] == "normalized"
     assert matrix_by_id["ghg_sample_data_2021_licor_public_raw_candidate"]["official_run_normalization_required_fields_present"] is True
     detail = build_official_raw_fixture_detail(
@@ -699,12 +721,12 @@ def test_headless_manifest_includes_fixture_pack_summary() -> None:
 
     assert manifest["fixture_pack_summary"]["status"] == "pass"
     assert manifest["fixture_pack_summary"]["real_reference_window_count"] == 11
-    assert manifest["fixture_pack_summary"]["raw_to_final_pass_count"] == 7
+    assert manifest["fixture_pack_summary"]["raw_to_final_pass_count"] == 8
     assert manifest["fixture_pack_summary"]["public_spectral_status"] == "pass"
     assert manifest["fixture_pack_summary"]["public_full_output_status"] == "pass"
     assert manifest["fixture_pack_summary"]["public_eddypro_fixture_catalog_status"] == "pass"
     assert manifest["official_raw_fixture_manifest"]["status"] == "needs_official_raw_fixtures"
-    assert manifest["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 7
+    assert manifest["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 8
     assert manifest["official_raw_fixture_manifest"]["public_spectral_status"] == "pass"
     assert manifest["official_raw_fixture_manifest"]["public_full_output_status"] == "pass"
     assert manifest["official_raw_fixture_manifest"]["public_eddypro_fixture_catalog_status"] == "pass"
@@ -717,8 +739,8 @@ def test_fixture_pack_summary_exposes_manifest_ready_counts() -> None:
 
     assert summary["status"] == "pass"
     assert summary["protocol_validation_row_count"] == 2
-    assert summary["raw_to_final_fixture_count"] == 7
-    assert summary["raw_to_final_pass_count"] == 7
+    assert summary["raw_to_final_fixture_count"] == 8
+    assert summary["raw_to_final_pass_count"] == 8
     assert summary["public_spectral_fixture_count"] == 3
     assert summary["public_full_output_fixture_count"] == 3
     assert summary["public_eddypro_fixture_catalog_status"] == "pass"
