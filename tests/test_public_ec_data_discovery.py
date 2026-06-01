@@ -9,6 +9,7 @@ from pathlib import Path
 from core.comparison import public_ec_data_discovery
 from core.comparison.public_ec_data_discovery import (
     build_public_ec_acquisition_closure,
+    build_public_ec_acquisition_runbook,
     build_public_ec_data_discovery_probe,
     build_public_raw_importer_smoke_plan,
     build_public_raw_sample_importer_smoke,
@@ -441,6 +442,74 @@ def test_public_ec_acquisition_closure_cli_writes_non_blocking_artifact(tmp_path
     assert payload["artifact_type"] == "public_ec_acquisition_closure_v1"
     assert payload["summary"]["can_change_full_parity_gate"] is False
     assert payload["truthfulness_boundary"].startswith("This artifact closes the acquisition/engineering round only.")
+
+
+def test_public_ec_acquisition_runbook_records_safe_and_external_actions(tmp_path: Path) -> None:
+    inputs = _write_acquisition_closure_inputs(tmp_path)
+    closure = build_public_ec_acquisition_closure(
+        discovery_probe_path=inputs["probe"],
+        smoke_plan_path=inputs["plan"],
+        neon_download_path=inputs["neon_download"],
+        neon_validation_package_path=inputs["neon_validation"],
+        public_raw_sample_validation_package_path=inputs["public_raw_validation"],
+        workspace_root=tmp_path,
+    )
+
+    payload = build_public_ec_acquisition_runbook(
+        acquisition_closure=closure,
+        discovery_probe_path=inputs["probe"],
+        workspace_root=tmp_path,
+        max_sample_bytes=2048,
+    )
+
+    actions = {item["source_id"]: item for item in payload["actions"]}
+    assert payload["artifact_type"] == "public_ec_acquisition_runbook_v1"
+    assert payload["status"] == "engineering_validated_registration_pending"
+    assert payload["summary"]["engineering_validated_registration_pending_count"] == 1
+    assert payload["summary"]["external_evidence_required_count"] == 2
+    assert actions["neon_test"]["automation_state"] == "engineering_validated_registration_pending"
+    assert actions["crocus_test"]["automation_state"] == "operator_subset_required"
+    assert actions["icos_test"]["automation_state"] == "license_or_auth_required"
+    assert actions["licor_anchor"]["automation_state"] == "accepted_anchor"
+    assert actions["icos_test"]["requires_external_action"] is True
+    assert any(command["step"] == "validate_operator_supplied_subset" for command in actions["icos_test"]["commands"])
+    assert payload["claim_boundary"]["can_claim_eddypro_raw_to_final_parity"] is False
+    assert payload["automation_policy"]["may_auto_accept_licence_or_create_accounts"] is False
+
+
+def test_public_ec_acquisition_runbook_cli_writes_action_artifact(tmp_path: Path) -> None:
+    inputs = _write_acquisition_closure_inputs(tmp_path)
+    closure_path = tmp_path / "closure.json"
+    closure = build_public_ec_acquisition_closure(
+        discovery_probe_path=inputs["probe"],
+        smoke_plan_path=inputs["plan"],
+        neon_download_path=inputs["neon_download"],
+        neon_validation_package_path=inputs["neon_validation"],
+        public_raw_sample_validation_package_path=inputs["public_raw_validation"],
+        workspace_root=tmp_path,
+    )
+    closure_path.write_text(json.dumps(closure, ensure_ascii=False, indent=2), encoding="utf-8")
+    output = tmp_path / "runbook.json"
+
+    code = run_cli(
+        [
+            "--build-public-ec-acquisition-runbook",
+            "--workspace-root",
+            str(tmp_path),
+            "--public-ec-acquisition-closure",
+            str(closure_path),
+            "--public-ec-discovery-probe",
+            str(inputs["probe"]),
+            "--output",
+            str(output),
+        ]
+    )
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["artifact_type"] == "public_ec_acquisition_runbook_v1"
+    assert payload["summary"]["source_count"] == 4
+    assert payload["truthfulness_boundary"].startswith("This runbook makes acquisition actions explicit")
 
 
 def _write_public_raw_rp_sample(path: Path, *, rows: int) -> Path:

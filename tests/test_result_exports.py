@@ -87,6 +87,7 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
             "eddypro_release_gate.json",
             "eddypro_partial_capability_closure.json",
             "public_ec_acquisition_closure.json",
+            "public_ec_acquisition_runbook.json",
             "network_validation_summary.json",
             "fluxnet_half_hourly_foundation.json",
             "fluxnet_full_submission.json",
@@ -159,6 +160,9 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["eddypro_ready_public_raw_candidate_count"] == 0
         assert summary_payload["public_ec_acquisition_closure"]["artifact_type"] == "public_ec_acquisition_closure_v1"
         assert summary_payload["public_ec_acquisition_closure_artifact"].endswith("public_ec_acquisition_closure.json")
+        assert summary_payload["public_ec_acquisition_runbook"]["artifact_type"] == "public_ec_acquisition_runbook_v1"
+        assert summary_payload["public_ec_acquisition_runbook_artifact"].endswith("public_ec_acquisition_runbook.json")
+        assert summary_payload["public_ec_acquisition_runbook_status"]
         assert summary_payload["public_ec_acquisition_can_claim_eddypro_raw_to_final_parity"] is False
         assert summary_payload["public_ec_acquisition_can_release_full_eddypro_parity"] is False
         assert summary_payload["eddypro_closure_gate"]["artifact_type"] == "eddypro_closure_gate_v1"
@@ -238,6 +242,8 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["eddypro_partial_capability_closure"]["closure_decision"]["current_round_closed"] is True
         assert manifest_payload["public_ec_acquisition_closure_artifact"].endswith("public_ec_acquisition_closure.json")
         assert manifest_payload["public_ec_acquisition_closure"]["artifact_type"] == "public_ec_acquisition_closure_v1"
+        assert manifest_payload["public_ec_acquisition_runbook_artifact"].endswith("public_ec_acquisition_runbook.json")
+        assert manifest_payload["public_ec_acquisition_runbook"]["artifact_type"] == "public_ec_acquisition_runbook_v1"
         assert manifest_payload["public_ec_acquisition_can_claim_eddypro_raw_to_final_parity"] is False
         assert manifest_payload["public_ec_acquisition_can_release_full_eddypro_parity"] is False
         assert manifest_payload["eddypro_closure_gate"]["status"] == "blocked"

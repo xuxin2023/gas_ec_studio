@@ -593,6 +593,114 @@ def build_public_ec_acquisition_closure(
     }
 
 
+def build_public_ec_acquisition_runbook(
+    *,
+    acquisition_closure: dict[str, Any] | None = None,
+    acquisition_closure_path: str | Path | None = None,
+    discovery_probe_path: str | Path | None = None,
+    smoke_plan_path: str | Path | None = None,
+    workspace_root: str | Path | None = None,
+    manifest_path: str | Path | None = None,
+    max_sample_bytes: int = 65536,
+) -> dict[str, Any]:
+    """Render a deterministic action ledger for public real-data acquisition.
+
+    The runbook does not download by itself; it records which actions are safe
+    to automate and which still require external licence, account, or operator
+    evidence so CI/export/report paths can close without over-claiming parity.
+    """
+
+    root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
+    closure_path = _resolve(root, acquisition_closure_path) if acquisition_closure_path not in (None, "") else None
+    closure = dict(acquisition_closure or {})
+    if not closure and closure_path is not None and closure_path.exists():
+        closure = _read_json(closure_path)
+    if not closure or closure.get("artifact_type") != "public_ec_acquisition_closure_v1":
+        closure = build_public_ec_acquisition_closure(
+            discovery_probe_path=discovery_probe_path,
+            smoke_plan_path=smoke_plan_path,
+            workspace_root=root,
+            manifest_path=manifest_path,
+        )
+    actions = [
+        _public_ec_runbook_action(
+            dict(item or {}),
+            workspace_root=root,
+            discovery_probe_path=discovery_probe_path,
+            max_sample_bytes=max_sample_bytes,
+        )
+        for item in list(closure.get("sources", []) or [])
+        if isinstance(item, dict)
+    ]
+    action_counts: dict[str, int] = {}
+    for action in actions:
+        state = str(action.get("automation_state", "unknown"))
+        action_counts[state] = action_counts.get(state, 0) + 1
+    ready_registration = [
+        action for action in actions if bool(action.get("ready_for_registration_attempt", False))
+    ]
+    downloadable = [
+        action for action in actions if str(action.get("automation_state", "")) == "automatic_download_available"
+    ]
+    engineering_validated = [
+        action for action in actions if str(action.get("automation_state", "")) == "engineering_validated_registration_pending"
+    ]
+    external_required = [
+        action
+        for action in actions
+        if str(action.get("automation_state", ""))
+        in {"operator_subset_required", "license_or_auth_required", "missing_eddypro_pair"}
+    ]
+    status = "ready_for_registration_attempt" if ready_registration else (
+        "automatic_download_available" if downloadable else (
+            "engineering_validated_registration_pending" if engineering_validated else (
+                "external_evidence_required" if external_required else "accepted_anchor_only"
+            )
+        )
+    )
+    return {
+        "artifact_type": "public_ec_acquisition_runbook_v1",
+        "generated_at": datetime.now().isoformat(),
+        "status": status,
+        "workspace_root": str(root),
+        "closure_artifact": str(closure_path or ""),
+        "closure_status": str(closure.get("status", "")),
+        "summary": {
+            "source_count": len(actions),
+            "automation_state_counts": dict(sorted(action_counts.items())),
+            "automatic_download_candidate_count": len(downloadable),
+            "engineering_validated_registration_pending_count": len(engineering_validated),
+            "external_evidence_required_count": len(external_required),
+            "ready_for_registration_attempt_count": len(ready_registration),
+            "can_change_full_parity_gate": False,
+        },
+        "actions": actions,
+        "blockers": list(closure.get("blockers", []) or []),
+        "next_actions": _public_ec_runbook_next_actions(actions, closure),
+        "claim_boundary": {
+            "can_claim_public_raw_engineering_validation": bool(
+                dict(closure.get("claim_boundary", {}) or {}).get("can_claim_public_raw_engineering_validation", False)
+            ),
+            "can_claim_eddypro_raw_to_final_parity": False,
+            "can_release_full_eddypro_parity": False,
+            "can_change_full_parity_gate": False,
+        },
+        "automation_policy": {
+            "may_download_direct_public_candidates": True,
+            "may_byte_sample_large_candidates": True,
+            "may_auto_accept_licence_or_create_accounts": False,
+            "may_promote_without_official_eddypro_outputs": False,
+            "max_sample_bytes": int(max_sample_bytes or 0),
+        },
+        "truthfulness_boundary": (
+            "This runbook makes acquisition actions explicit, but it does not perform licence acceptance, "
+            "account registration, or full-parity promotion. Full EddyPro parity remains blocked until the "
+            "same source has raw input, EddyPro project/settings, official Full_Output, normalized reference, "
+            "normalization provenance, and accepted evidence."
+        ),
+    }
+
+
 def _probe_source(
     source: dict[str, Any],
     *,
@@ -1325,6 +1433,183 @@ def _acquisition_closure_next_actions(records: list[dict[str, Any]], *, blockers
     if blockers:
         actions.append({"priority": "P0", "action": "Carry blockers into delivery/report manifests instead of stalling execution.", "blockers": blockers})
     return actions
+
+
+def _public_ec_runbook_action(
+    source: dict[str, Any],
+    *,
+    workspace_root: Path,
+    discovery_probe_path: str | Path | None,
+    max_sample_bytes: int,
+) -> dict[str, Any]:
+    source_id = str(source.get("source_id", ""))
+    provider = str(source.get("provider", ""))
+    status = str(source.get("acquisition_status", ""))
+    missing = list(source.get("missing_for_eddypro_parity", []) or [])
+    evidence = dict(source.get("evidence", {}) or {})
+    automation_state = _public_ec_automation_state(source)
+    commands = _public_ec_runbook_commands(
+        source_id=source_id,
+        provider=provider,
+        automation_state=automation_state,
+        workspace_root=workspace_root,
+        discovery_probe_path=discovery_probe_path,
+        max_sample_bytes=max_sample_bytes,
+    )
+    ready_for_registration = bool(source.get("can_register_as_eddypro_parity_fixture", False)) and not missing
+    return {
+        "source_id": source_id,
+        "provider": provider,
+        "source_url": str(source.get("source_url", "")),
+        "acquisition_status": status,
+        "automation_state": automation_state,
+        "sample_mode": str(source.get("sample_mode", "")),
+        "registration_readiness_status": str(source.get("registration_readiness_status", "")),
+        "missing_for_eddypro_parity": missing,
+        "ready_for_registration_attempt": ready_for_registration,
+        "safe_to_run_without_user_login": automation_state == "automatic_download_available",
+        "requires_external_action": automation_state in {
+            "operator_subset_required",
+            "license_or_auth_required",
+            "missing_eddypro_pair",
+        },
+        "evidence": evidence,
+        "commands": commands,
+        "next_action": source.get("next_action", _acquisition_source_next_action(status)),
+        "truthfulness_boundary": (
+            "Runbook actions improve acquisition and engineering validation only. Do not claim EddyPro raw-to-final "
+            "parity until the missing evidence list is empty and acceptance commands pass."
+        ),
+    }
+
+
+def _public_ec_automation_state(source: dict[str, Any]) -> str:
+    status = str(source.get("acquisition_status", ""))
+    if status == "registered_anchor":
+        return "accepted_anchor"
+    if status in {"public_download_engineering_validated", "operator_subset_engineering_validated"}:
+        return "engineering_validated_registration_pending"
+    if status == "ready_for_public_download_or_validation":
+        return "automatic_download_available"
+    if status == "blocked_license_or_operator_subset_required":
+        return "license_or_auth_required"
+    if status == "blocked_operator_subset_required":
+        return "operator_subset_required"
+    if status == "blocked_missing_eddypro_pair":
+        return "missing_eddypro_pair"
+    if bool(source.get("can_register_as_eddypro_parity_fixture", False)):
+        return "registration_attempt_available"
+    return "tracking_only"
+
+
+def _public_ec_runbook_commands(
+    *,
+    source_id: str,
+    provider: str,
+    automation_state: str,
+    workspace_root: Path,
+    discovery_probe_path: str | Path | None,
+    max_sample_bytes: int,
+) -> list[dict[str, Any]]:
+    probe_arg = str(discovery_probe_path or DEFAULT_PUBLIC_EC_DISCOVERY_PROBE_PATH)
+    root_arg = str(workspace_root)
+    commands: list[dict[str, Any]] = []
+    folded = f"{source_id} {provider}".lower()
+    if automation_state == "automatic_download_available" and "neon" in folded:
+        commands.extend(
+            [
+                {
+                    "step": "download_neon_hdf5_candidate",
+                    "claim_scope": "engineering_validation_only",
+                    "command": (
+                        "python -m core.headless_batch_runner "
+                        f"--download-neon-hdf5-candidate \"{probe_arg}\" "
+                        f"--workspace-root \"{root_arg}\" "
+                        f"--neon-hdf5-source-id \"{source_id}\" "
+                        "--output artifacts/public_ec_data/neon_hdf5_download.json"
+                    ),
+                },
+                {
+                    "step": "build_neon_hdf5_validation_package",
+                    "claim_scope": "engineering_validation_only",
+                    "command": (
+                        "python -m core.headless_batch_runner "
+                        "--build-neon-hdf5-validation-package <downloaded-neon-file.h5> "
+                        f"--workspace-root \"{root_arg}\" "
+                        f"--neon-hdf5-source-id \"{source_id}\" "
+                        "--output artifacts/public_ec_data/neon_hdf5_validation_package.json"
+                    ),
+                },
+            ]
+        )
+    elif automation_state == "automatic_download_available":
+        commands.append(
+            {
+                "step": "byte_sample_public_candidate",
+                "claim_scope": "importer_smoke_only",
+                "command": (
+                    "python -m core.headless_batch_runner "
+                    f"--build-public-ec-data-discovery --workspace-root \"{root_arg}\" "
+                    f"--public-ec-sample-bytes {int(max_sample_bytes or 0)} "
+                    "--output artifacts/public_ec_data/public_ec_data_discovery_probe.json"
+                ),
+            }
+        )
+    if automation_state in {"operator_subset_required", "license_or_auth_required"}:
+        commands.append(
+            {
+                "step": "validate_operator_supplied_subset",
+                "claim_scope": "engineering_validation_only",
+                "command": (
+                    "python -m core.headless_batch_runner "
+                    "--build-public-raw-sample-validation-package <operator-supplied-public-subset.csv> "
+                    f"--workspace-root \"{root_arg}\" "
+                    f"--public-raw-source-id \"{source_id}\" "
+                    "--output artifacts/public_ec_data/public_raw_sample_validation_package.json"
+                ),
+            }
+        )
+    commands.append(
+        {
+            "step": "rebuild_acquisition_closure",
+            "claim_scope": "closure_manifest_only",
+            "command": (
+                "python -m core.headless_batch_runner "
+                f"--build-public-ec-acquisition-closure --workspace-root \"{root_arg}\" "
+                "--output artifacts/public_ec_data/public_ec_acquisition_closure.json"
+            ),
+        }
+    )
+    commands.append(
+        {
+            "step": "rebuild_acquisition_runbook",
+            "claim_scope": "closure_manifest_only",
+            "command": (
+                "python -m core.headless_batch_runner "
+                f"--build-public-ec-acquisition-runbook --workspace-root \"{root_arg}\" "
+                "--output artifacts/public_ec_data/public_ec_acquisition_runbook.json"
+            ),
+        }
+    )
+    return commands
+
+
+def _public_ec_runbook_next_actions(actions: list[dict[str, Any]], closure: dict[str, Any]) -> list[dict[str, Any]]:
+    next_actions: list[dict[str, Any]] = []
+    for state, priority, action in (
+        ("automatic_download_available", "P0", "Run safe direct-download or byte-sampling commands and rebuild validation artifacts."),
+        ("engineering_validated_registration_pending", "P0", "Attach matching EddyPro project/settings and official Full_Output before registration."),
+        ("operator_subset_required", "P1", "Provide a bounded public/operator raw subset and run validation package."),
+        ("license_or_auth_required", "P1", "Complete provider licence/authenticated download externally, then validate the accepted subset."),
+        ("missing_eddypro_pair", "P1", "Locate or generate the matching EddyPro settings/output pair for the same raw source."),
+    ):
+        ids = [str(item.get("source_id", "")) for item in actions if str(item.get("automation_state", "")) == state]
+        if ids:
+            next_actions.append({"priority": priority, "action": action, "source_ids": ids})
+    blockers = list(closure.get("blockers", []) or [])
+    if blockers:
+        next_actions.append({"priority": "P0", "action": "Keep full EddyPro parity blocked and carry blockers into delivery reports.", "blockers": blockers})
+    return next_actions
 
 
 def _acquisition_source_next_action(status: str) -> str:

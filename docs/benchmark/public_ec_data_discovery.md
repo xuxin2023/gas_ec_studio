@@ -265,6 +265,26 @@ raise SystemExit(run_cli([
 
 The closure artifact records candidate status counts, downloaded/validated NEON evidence, operator-subset validation evidence, licence/operator blockers, and next actions. It is intentionally truthfulness-preserving: a passing engineering validation can be reported, but the artifact still keeps `can_claim_eddypro_raw_to_final_parity=false`, `can_release_full_eddypro_parity=false`, and `can_change_full_parity_gate=false` until a single source has the complete raw input, EddyPro project/settings, official Full_Output, normalized reference, normalization provenance, and acceptance evidence set.
 
+## Acquisition Runbook
+
+After the closure artifact is available, render the action runbook that the report/export chain can carry without blocking execution:
+
+```powershell
+@'
+from core.headless_batch_runner import run_cli
+
+raise SystemExit(run_cli([
+    "--build-public-ec-acquisition-runbook",
+    "--workspace-root", ".",
+    "--public-ec-acquisition-closure", "artifacts/public_ec_data/public_ec_acquisition_closure.json",
+    "--public-ec-discovery-probe", "artifacts/public_ec_data/public_ec_data_discovery_probe_latest.json",
+    "--output", "artifacts/public_ec_data/public_ec_acquisition_runbook.json",
+]))
+'@ | python -
+```
+
+The runbook classifies each source as `automatic_download_available`, `engineering_validated_registration_pending`, `operator_subset_required`, `license_or_auth_required`, `accepted_anchor`, or `missing_eddypro_pair`. It records safe commands for NEON/direct-download candidates, operator-subset validation commands for CROCUS/BAS/ICOS-style candidates, and the explicit automation policy: direct public downloads and byte samples may be automated, but licence acceptance, account creation, and parity promotion are never automatic.
+
 ## Truthfulness Boundary
 
 Public discovery is not parity. A candidate becomes full-parity evidence only after it has:

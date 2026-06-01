@@ -261,7 +261,9 @@ def _build_formal_report_snapshot(
     eddypro_release_gate = dict(result_manifest.get("eddypro_release_gate", {}) or {})
     eddypro_partial_capability_closure = dict(result_manifest.get("eddypro_partial_capability_closure", {}) or {})
     public_ec_acquisition_closure = dict(result_manifest.get("public_ec_acquisition_closure", {}) or {})
+    public_ec_acquisition_runbook = dict(result_manifest.get("public_ec_acquisition_runbook", {}) or {})
     public_ec_acquisition_summary = dict(public_ec_acquisition_closure.get("summary", {}) or {})
+    public_ec_acquisition_runbook_summary = dict(public_ec_acquisition_runbook.get("summary", {}) or {})
     public_ec_acquisition_claim_boundary = dict(public_ec_acquisition_closure.get("claim_boundary", {}) or {})
     eddypro_closure_gate = dict(result_manifest.get("eddypro_closure_gate", {}) or eddypro_coverage_audit.get("closure_gate", {}) or {})
     eddypro_closure_plan = dict(result_manifest.get("eddypro_closure_plan", {}) or eddypro_coverage_audit.get("closure_plan", {}) or {})
@@ -325,6 +327,7 @@ def _build_formal_report_snapshot(
                 "eddypro_release_gate_artifact",
                 "eddypro_partial_capability_closure_artifact",
                 "public_ec_acquisition_closure_artifact",
+                "public_ec_acquisition_runbook_artifact",
                 "raw_to_final_parity_artifact",
                 "network_validation_summary",
             ]
@@ -422,6 +425,11 @@ def _build_formal_report_snapshot(
                 eddypro_partial_capability_closure.get("public_search_closure", {}) or {}
             ).get("ready_to_register_public_raw_candidate_count", 0),
             "public_ec_acquisition_closure_status": public_ec_acquisition_closure.get("status", ""),
+            "public_ec_acquisition_runbook_status": public_ec_acquisition_runbook.get("status", ""),
+            "public_ec_acquisition_automatic_download_candidate_count": public_ec_acquisition_runbook_summary.get(
+                "automatic_download_candidate_count",
+                0,
+            ),
             "public_ec_acquisition_candidate_count": public_ec_acquisition_summary.get("candidate_count", 0),
             "public_ec_acquisition_engineering_validation_pass_count": public_ec_acquisition_summary.get(
                 "engineering_validation_pass_count",
@@ -453,8 +461,14 @@ def _build_formal_report_snapshot(
         "eddypro_release_gate": eddypro_release_gate,
         "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
         "public_ec_acquisition_closure": public_ec_acquisition_closure,
+        "public_ec_acquisition_runbook": public_ec_acquisition_runbook,
         "public_ec_acquisition_summary": {
             "status": public_ec_acquisition_closure.get("status", ""),
+            "runbook_status": public_ec_acquisition_runbook.get("status", ""),
+            "automatic_download_candidate_count": public_ec_acquisition_runbook_summary.get(
+                "automatic_download_candidate_count",
+                0,
+            ),
             "candidate_count": public_ec_acquisition_summary.get("candidate_count", 0),
             "downloaded_candidate_count": public_ec_acquisition_summary.get("downloaded_candidate_count", 0),
             "engineering_validation_pass_count": public_ec_acquisition_summary.get(

@@ -420,6 +420,17 @@ def test_delivery_package_indexes_public_ec_acquisition_closure(tmp_path: Path) 
     }
     closure_path = result_root / "public_ec_acquisition_closure.json"
     closure_path.write_text(json.dumps(closure_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    runbook_payload = {
+        "artifact_type": "public_ec_acquisition_runbook_v1",
+        "status": "engineering_validated_registration_pending",
+        "summary": {
+            "automatic_download_candidate_count": 1,
+            "engineering_validated_registration_pending_count": 1,
+            "external_evidence_required_count": 2,
+        },
+    }
+    runbook_path = result_root / "public_ec_acquisition_runbook.json"
+    runbook_path.write_text(json.dumps(runbook_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     manifest_path = result_root / "export_manifest.json"
     manifest_path.write_text(
         json.dumps(
@@ -431,7 +442,9 @@ def test_delivery_package_indexes_public_ec_acquisition_closure(tmp_path: Path) 
                 "network_validation_summary": {"schema_target": "FLUXNET", "validation_status": "pass", "missing_fields": []},
                 "public_ec_acquisition_closure": closure_payload,
                 "public_ec_acquisition_closure_artifact": str(closure_path),
-                "exported_files": ["export_manifest.json", "public_ec_acquisition_closure.json"],
+                "public_ec_acquisition_runbook": runbook_payload,
+                "public_ec_acquisition_runbook_artifact": str(runbook_path),
+                "exported_files": ["export_manifest.json", "public_ec_acquisition_closure.json", "public_ec_acquisition_runbook.json"],
             },
             ensure_ascii=False,
             indent=2,
@@ -447,6 +460,7 @@ def test_delivery_package_indexes_public_ec_acquisition_closure(tmp_path: Path) 
             "files": {
                 "export_manifest": str(manifest_path),
                 "public_ec_acquisition_closure_artifact": str(closure_path),
+                "public_ec_acquisition_runbook_artifact": str(runbook_path),
             },
         },
         evidence_bundle=None,
@@ -457,7 +471,11 @@ def test_delivery_package_indexes_public_ec_acquisition_closure(tmp_path: Path) 
     manifest = json.loads(Path(delivery["files"]["package_manifest"]).read_text(encoding="utf-8"))
 
     assert manifest["artifact_index"]["public_ec_acquisition_closure_artifact"]["packaged"] is True
+    assert manifest["artifact_index"]["public_ec_acquisition_runbook_artifact"]["packaged"] is True
     assert manifest["public_ec_acquisition_closure"]["status"] == "engineering_validation_closed_full_parity_blocked"
+    assert manifest["public_ec_acquisition_runbook"]["status"] == "engineering_validated_registration_pending"
+    assert manifest["public_ec_acquisition_summary"]["runbook_status"] == "engineering_validated_registration_pending"
+    assert manifest["public_ec_acquisition_summary"]["automatic_download_candidate_count"] == 1
     assert manifest["public_ec_acquisition_summary"]["engineering_validation_pass_count"] == 2
     assert manifest["public_ec_acquisition_summary"]["can_claim_eddypro_raw_to_final_parity"] is False
     assert manifest["public_ec_acquisition_summary"]["can_release_full_eddypro_parity"] is False
