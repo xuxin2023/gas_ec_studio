@@ -7,6 +7,8 @@
   "local_registration_status": {
     "official_licor_sample_bundle": "registered_and_accepted",
     "neon_dp4_candidate": "api_and_download_url_head_verified_not_registered",
+    "crocus_uic_high_frequency_candidate": "landing_page_verified_real_raw_not_eddypro_pair",
+    "bas_arctic_cruise_high_frequency_candidate": "landing_page_verified_large_raw_not_eddypro_pair",
     "icos_raw_ascii_candidate": "landing_page_verified_license_flow_not_programmatically_registered",
     "ameriflux_fluxnet_candidate": "not_registered_for_high_frequency_raw_to_final_parity"
   },
@@ -59,6 +61,70 @@
       "next_action": "Add a NEON HDF5 metadata probe/downloader and a small smoke fixture plan before attempting full import."
     },
     {
+      "source_id": "crocus_uic_high_frequency_2023",
+      "provider": "DOE OSTI / CROCUS",
+      "source_url": "https://www.osti.gov/dataexplorer/biblio/dataset/2473255",
+      "access_status": "landing_page_verified_real_high_frequency_raw",
+      "account_or_registration": "not_required_for_landing_page; dataset download path still needs operator review",
+      "verified_at": "2026-06-01T00:00:00+08:00",
+      "verification_method": "public web search found OSTI dataset 2473255 describing raw high-frequency 10 Hz eddy covariance data from the UIC flux tower",
+      "landing_probe_keywords": [
+        "CROCUS",
+        "eddy covariance",
+        "10 Hz",
+        "High-frequency",
+        "raw"
+      ],
+      "registration_outcome": "not_registered",
+      "parity_value": "real_high_frequency_raw_candidate_not_eddypro_output",
+      "registration_evidence": {
+        "raw_input": true,
+        "eddypro_project_or_settings": false,
+        "official_eddypro_full_output": false,
+        "normalized_reference": false,
+        "normalization_provenance": false,
+        "acceptance_evidence": false
+      },
+      "known_limitations": [
+        "This is real high-frequency EC raw data, but no paired EddyPro project/settings file is registered.",
+        "No official EddyPro Full_Output, normalized reference, or acceptance evidence is currently registered.",
+        "Use for importer and engineering validation only until the missing EddyPro output pair is supplied."
+      ],
+      "next_action": "Probe and sample the OSTI landing/download path, then build an importer smoke artifact if a repeatable data file URL is available."
+    },
+    {
+      "source_id": "bas_arctic_cruise_raw_2021",
+      "provider": "British Antarctic Survey Polar Data Centre",
+      "source_url": "https://data.bas.ac.uk/full-record.php?id=GB%2FNERC%2FBAS%2FPDC%2F01522",
+      "access_status": "landing_page_verified_large_real_high_frequency_raw",
+      "account_or_registration": "not_required_for_public_landing_page; very large dataset should not be downloaded into git",
+      "verified_at": "2026-06-01T00:00:00+08:00",
+      "verification_method": "public web search found BAS raw 10 Hz sonic and greenhouse-gas analyser data from a ship-based Arctic cruise",
+      "landing_probe_keywords": [
+        "eddy covariance",
+        "10 Hz",
+        "raw",
+        "greenhouse gas",
+        "Picarro"
+      ],
+      "registration_outcome": "not_registered",
+      "parity_value": "real_large_high_frequency_raw_candidate_not_eddypro_pair",
+      "registration_evidence": {
+        "raw_input": true,
+        "eddypro_project_or_settings": false,
+        "official_eddypro_full_output": false,
+        "normalized_reference": false,
+        "normalization_provenance": false,
+        "acceptance_evidence": false
+      },
+      "known_limitations": [
+        "The public record describes a very large raw high-frequency dataset and auxiliary processing scripts, not an EddyPro raw-to-final bundle.",
+        "No EddyPro project/settings or official Full_Output reference is registered.",
+        "Ship-based motion correction and platform metadata make this useful for importer stress tests, but not for full EddyPro parity claims."
+      ],
+      "next_action": "Use only a byte-range/sample or operator-provided subset for importer stress testing; keep full parity blocked until EddyPro outputs are paired."
+    },
+    {
       "source_id": "icos_raw_ascii_ch_dav_candidate",
       "provider": "ICOS Carbon Portal",
       "source_url": "https://meta.icos-cp.eu/objects/QGFJjyiRVSqOvwQA_jaNIW2D",
@@ -96,6 +162,7 @@
   "recommended_next_steps": [
     "Keep LI-COR sample data as the current accepted official raw anchor.",
     "Implement a NEON DP4 HDF5 probe/downloader that stores only metadata and optionally byte-range samples first.",
+    "Probe CROCUS and BAS landing pages as real raw importer candidates, but do not register them as EddyPro parity fixtures without settings and Full_Output.",
     "Add an ICOS authenticated-download integration only after a reusable noninteractive token/session is available.",
     "Leave full EddyPro field numeric parity blocked until at least one new real candidate completes raw-to-final registration and acceptance."
   ]

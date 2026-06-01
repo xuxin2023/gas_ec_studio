@@ -18,6 +18,8 @@ def test_public_ec_data_discovery_tracks_new_candidates_without_claiming_full_pa
     assert payload["overall_status"] == "new_real_data_candidates_found_but_not_registered_as_eddypro_parity_fixtures"
     assert payload["local_registration_status"]["official_licor_sample_bundle"] == "registered_and_accepted"
     assert payload["local_registration_status"]["neon_dp4_candidate"] == "api_and_download_url_head_verified_not_registered"
+    assert payload["local_registration_status"]["crocus_uic_high_frequency_candidate"] == "landing_page_verified_real_raw_not_eddypro_pair"
+    assert payload["local_registration_status"]["bas_arctic_cruise_high_frequency_candidate"] == "landing_page_verified_large_raw_not_eddypro_pair"
     assert payload["local_registration_status"]["icos_raw_ascii_candidate"] == "landing_page_verified_license_flow_not_programmatically_registered"
     assert "does not change the full EddyPro parity claim gate" in payload["truthfulness_boundary"]
 
@@ -34,6 +36,15 @@ def test_public_ec_data_discovery_tracks_new_candidates_without_claiming_full_pa
     assert icos["access_status"] == "landing_page_verified_license_acceptance_required"
     assert icos["registration_outcome"] == "not_programmatically_registered"
 
+    crocus = sources["crocus_uic_high_frequency_2023"]
+    assert crocus["registration_evidence"]["raw_input"] is True
+    assert crocus["registration_evidence"]["official_eddypro_full_output"] is False
+    assert crocus["registration_outcome"] == "not_registered"
+
+    bas = sources["bas_arctic_cruise_raw_2021"]
+    assert bas["registration_evidence"]["raw_input"] is True
+    assert bas["registration_evidence"]["eddypro_project_or_settings"] is False
+
     licor = sources["licor_eddypro_sample_data_2021"]
     assert licor["registration_outcome"] == "registered_and_accepted"
     assert licor["parity_value"] == "official_public_raw_anchor"
@@ -44,6 +55,8 @@ def test_public_ec_data_discovery_doc_points_to_machine_readable_ledger() -> Non
 
     assert "references/eddypro/public_raw_search/ec_public_data_sources.json" in text
     assert "NEON DP4.00200.001" in text
+    assert "CROCUS" in text
+    assert "BAS Arctic cruise" in text
     assert "ICOS Raw ASCII" in text
     assert "Until then, the project may claim source-derived functional parity only" in text
 
@@ -95,6 +108,22 @@ def test_public_ec_data_discovery_probe_verifies_neon_and_writes_byte_sample(mon
                         "registration_outcome": "not_programmatically_registered",
                         "parity_value": "real_raw_ascii_candidate_not_registered",
                     },
+                    {
+                        "source_id": "crocus_test",
+                        "provider": "DOE OSTI / CROCUS",
+                        "source_url": "https://example.test/crocus",
+                        "landing_probe_keywords": ["CROCUS", "10 Hz", "raw"],
+                        "registration_outcome": "not_registered",
+                        "parity_value": "real_high_frequency_raw_candidate_not_eddypro_output",
+                        "registration_evidence": {
+                            "raw_input": True,
+                            "eddypro_project_or_settings": False,
+                            "official_eddypro_full_output": False,
+                            "normalized_reference": False,
+                            "normalization_provenance": False,
+                            "acceptance_evidence": False,
+                        },
+                    },
                 ],
             },
             ensure_ascii=False,
@@ -124,6 +153,13 @@ def test_public_ec_data_discovery_probe_verifies_neon_and_writes_byte_sample(mon
     assert Path(neon["candidate_files"][0]["byte_sample"]["path"]).read_bytes() == b"HDF5TEST"
     assert sources["icos_test"]["status"] == "licence_flow_verified"
     assert sources["icos_test"]["licence_acceptance_required"] is True
+    assert sources["crocus_test"]["status"] == "landing_verified"
+    assert sources["crocus_test"]["landing_keyword_hits"] == ["CROCUS", "10 Hz", "raw"]
+    assert sources["crocus_test"]["registration_readiness"]["has_raw_input"] is True
+    assert sources["crocus_test"]["registration_readiness"]["status"] == "blocked_missing_registration_evidence"
+    assert "official_eddypro_full_output" in sources["crocus_test"]["registration_readiness"]["missing_requirements"]
+    assert payload["summary"]["raw_without_eddypro_pair_count"] == 2
+    assert payload["summary"]["ready_to_register_candidate_count"] == 0
     assert payload["summary"]["can_change_full_parity_gate"] is False
 
 
@@ -201,4 +237,6 @@ def _fake_public_ec_urlopen(request, timeout: float = 0):  # noqa: ANN001
         return _FakeResponse(b"<html>Raw ASCII object</html>")
     if url == "https://example.test/icos-licence":
         return _FakeResponse(b"<html>I hereby confirm licence_accept</html>")
+    if url == "https://example.test/crocus":
+        return _FakeResponse(b"<html>CROCUS eddy covariance raw 10 Hz data</html>")
     raise AssertionError(f"unexpected URL: {url}")

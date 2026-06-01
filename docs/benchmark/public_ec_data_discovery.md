@@ -12,6 +12,7 @@ New real-data candidates exist, but they are not yet registered EddyPro parity f
 
 - LI-COR EddyPro sample data is already materialized locally and is the current accepted official raw anchor.
 - NEON DP4.00200.001 can return public EC HDF5 metadata and a Google Storage HDF5 URL without account registration.
+- CROCUS UIC and BAS Arctic cruise records add real high-frequency raw-data candidates for importer and engineering validation.
 - ICOS Raw ASCII object pages are discoverable, but repeatable programmatic download still needs an accepted licence/authenticated flow.
 - AmeriFlux/FLUXNET remains useful for processed flux validation, not as a complete high-frequency raw plus EddyPro Full_Output parity pair by default.
 
@@ -40,9 +41,18 @@ GET https://meta.icos-cp.eu/objects/QGFJjyiRVSqOvwQA_jaNIW2D
 
 Result: HTTP 200 and a Raw ASCII landing page. The licence URL also returned HTTP 200, but the noninteractive `licence_accept` request redirected back to the licence form, so no repeatable direct download was registered in this run.
 
+CROCUS / BAS high-frequency raw-data leads:
+
+```text
+https://www.osti.gov/dataexplorer/biblio/dataset/2473255
+https://data.bas.ac.uk/full-record.php?id=GB%2FNERC%2FBAS%2FPDC%2F01522
+```
+
+Result: public records describe real high-frequency eddy-covariance raw data, including 10 Hz raw streams. These are now tracked as importer-validation candidates with `registration_evidence.raw_input=true`, but they remain blocked for full EddyPro parity because no paired EddyPro project/settings file, official Full_Output, normalized reference, or acceptance evidence is registered.
+
 ## Registration Status
 
-The only currently successful local raw-to-final registration remains the LI-COR public EddyPro sample-data anchor. NEON and ICOS are newly useful candidates, but they still need download, hash validation, metadata mapping, importer support, and either official EddyPro output or a clearly scoped validation target before they can affect `can_release_full_eddypro_parity`.
+The only currently successful local raw-to-final registration remains the LI-COR public EddyPro sample-data anchor. NEON, CROCUS, BAS, and ICOS are useful real-data candidates, but they still need download/sample validation, hash validation, metadata mapping, importer support, and either official EddyPro output or a clearly scoped validation target before they can affect `can_release_full_eddypro_parity`.
 
 ## Headless Probe Artifact
 
@@ -61,7 +71,7 @@ raise SystemExit(run_cli([
 '@ | python -
 ```
 
-For CI or documentation checks that must not touch the network, add `--skip-public-ec-network`. The probe records the source ledger path, provider status, NEON API/HDF5 HEAD verification, optional byte-range sample metadata, ICOS licence-flow status, and `can_change_full_parity_gate=false`.
+For CI or documentation checks that must not touch the network, add `--skip-public-ec-network`. The probe records the source ledger path, provider status, NEON API/HDF5 HEAD verification, optional byte-range sample metadata, ICOS licence-flow status, generic landing-page keyword hits for CROCUS/BAS-style leads, registration-readiness missing requirements, and `can_change_full_parity_gate=false`.
 
 ## NEON HDF5 Metadata Smoke
 

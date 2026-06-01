@@ -285,6 +285,7 @@ def _public_search_closure(*, raw_search: dict[str, Any], ec_sources: dict[str, 
             "registration_outcome": str(item.get("registration_outcome", "")),
             "access_status": str(item.get("access_status", "")),
             "parity_value": str(item.get("parity_value", "")),
+            "registration_readiness": _source_registration_readiness(item),
             "next_action": str(item.get("next_action", "")),
             "known_limitations": list(item.get("known_limitations", []) or []),
         }
@@ -296,6 +297,12 @@ def _public_search_closure(*, raw_search: dict[str, Any], ec_sources: dict[str, 
         "ready_to_register_public_raw_candidate_count": len(ready_sources),
         "accepted_public_anchor_count": len(accepted_sources),
         "blocked_or_nonpromoted_source_count": len(blocked_sources),
+        "real_raw_without_eddypro_pair_count": sum(
+            1
+            for item in blocked_sources
+            if bool(dict(item.get("registration_readiness", {}) or {}).get("has_raw_input", False))
+            and bool(dict(item.get("registration_readiness", {}) or {}).get("missing_requirements", []))
+        ),
         "public_raw_binary_search_status": str(dict(raw_search.get("search_status", {}) or {}).get("status", "")),
         "public_raw_binary_lead_count": int(raw_search.get("lead_count", 0) or 0),
         "public_raw_binary_raw_to_final_candidate_count": int(raw_search.get("raw_to_final_candidate_count", 0) or 0),
@@ -328,6 +335,35 @@ def _public_search_closure(*, raw_search: dict[str, Any], ec_sources: dict[str, 
                 "Public discovery does not change full parity without raw/settings/output registration and acceptance.",
             )
         ),
+    }
+
+
+def _source_registration_readiness(source: dict[str, Any]) -> dict[str, Any]:
+    declared = dict(source.get("registration_evidence", {}) or {})
+    parity_value = str(source.get("parity_value", "")).lower()
+    if parity_value.startswith(("real_raw", "real_high_frequency_raw", "real_large_high_frequency_raw")):
+        declared.setdefault("raw_input", True)
+    if str(source.get("registration_outcome", "")) == "registered_and_accepted":
+        declared.setdefault("raw_input", True)
+        declared.setdefault("eddypro_project_or_settings", True)
+        declared.setdefault("official_eddypro_full_output", True)
+        declared.setdefault("normalized_reference", True)
+        declared.setdefault("normalization_provenance", True)
+        declared.setdefault("acceptance_evidence", True)
+    required = {
+        "raw_input": bool(declared.get("raw_input", False)),
+        "eddypro_project_or_settings": bool(declared.get("eddypro_project_or_settings", False)),
+        "official_eddypro_full_output": bool(declared.get("official_eddypro_full_output", False)),
+        "normalized_reference": bool(declared.get("normalized_reference", False)),
+        "normalization_provenance": bool(declared.get("normalization_provenance", False)),
+        "acceptance_evidence": bool(declared.get("acceptance_evidence", False)),
+    }
+    missing = [key for key, value in required.items() if not value]
+    status = "registered_and_accepted" if str(source.get("registration_outcome", "")) == "registered_and_accepted" else "ready_to_register" if not missing else "blocked_missing_registration_evidence"
+    return {
+        "status": status,
+        "has_raw_input": required["raw_input"],
+        "missing_requirements": missing,
     }
 
 

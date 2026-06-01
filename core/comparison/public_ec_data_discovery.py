@@ -50,6 +50,22 @@ def build_public_ec_data_discovery_probe(
     )
     real_candidate_count = sum(1 for probe in probes if bool(probe.get("real_data_candidate", False)))
     downloadable_count = sum(1 for probe in probes if str(probe.get("download_url_status", "")) == "verified")
+    ready_to_register_count = sum(
+        1
+        for probe in probes
+        if str(dict(probe.get("registration_readiness", {}) or {}).get("status", "")) == "ready_to_register"
+    )
+    raw_without_eddypro_pair_count = sum(
+        1
+        for probe in probes
+        if bool(dict(probe.get("registration_readiness", {}) or {}).get("has_raw_input", False))
+        and (
+            "eddypro_project_or_settings"
+            in list(dict(probe.get("registration_readiness", {}) or {}).get("missing_requirements", []) or [])
+            or "official_eddypro_full_output"
+            in list(dict(probe.get("registration_readiness", {}) or {}).get("missing_requirements", []) or [])
+        )
+    )
     return {
         "artifact_type": "public_ec_data_discovery_probe_v1",
         "generated_at": datetime.now().isoformat(),
@@ -65,6 +81,8 @@ def build_public_ec_data_discovery_probe(
             "registered_count": registered_count,
             "real_data_candidate_count": real_candidate_count,
             "downloadable_candidate_count": downloadable_count,
+            "ready_to_register_candidate_count": ready_to_register_count,
+            "raw_without_eddypro_pair_count": raw_without_eddypro_pair_count,
             "can_change_full_parity_gate": False,
             "next_action": _next_action(probes),
         },
@@ -101,6 +119,7 @@ def _probe_source(
     if not run_network:
         payload["status"] = "skipped_network"
         payload["candidate_files"] = list(source.get("candidate_files", []) or [])
+        payload["registration_readiness"] = _registration_readiness(source, payload)
         return payload
 
     if source.get("api_query_url"):
@@ -114,9 +133,12 @@ def _probe_source(
         )
     elif "icos" in provider.lower() or "icos" in source_id.lower():
         payload.update(_probe_icos_landing_source(source, timeout_s=timeout_s))
+    elif source.get("landing_probe_keywords") or source.get("candidate_files"):
+        payload.update(_probe_generic_landing_source(source, timeout_s=timeout_s))
     else:
         payload["status"] = "static_ledger_only"
         payload["candidate_files"] = list(source.get("candidate_files", []) or [])
+    payload["registration_readiness"] = _registration_readiness(source, payload)
     return payload
 
 
@@ -194,6 +216,89 @@ def _probe_icos_landing_source(source: dict[str, Any], *, timeout_s: float) -> d
     result["network_errors"] = errors
     result["status"] = "licence_flow_verified" if result.get("source_page_status") == "pass" else "network_error"
     return result
+
+
+def _probe_generic_landing_source(source: dict[str, Any], *, timeout_s: float) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "status": "landing_not_verified",
+        "download_url_status": "not_verified",
+        "source_page_status": "",
+        "registration_outcome": str(source.get("registration_outcome", "not_registered")),
+        "candidate_files": [],
+    }
+    errors: list[str] = []
+    try:
+        source_text = _read_url_text(str(source.get("source_url", "")), timeout_s=timeout_s)
+        result["source_page_status"] = "pass"
+        result["landing_keyword_hits"] = _keyword_hits(
+            source_text,
+            [str(item) for item in list(source.get("landing_probe_keywords", []) or []) if str(item).strip()],
+        )
+    except Exception as exc:  # pragma: no cover - network/environment dependent
+        errors.append(f"source_page_failed: {exc}")
+
+    candidate_payloads: list[dict[str, Any]] = []
+    for item in list(source.get("candidate_files", []) or []):
+        candidate = dict(item or {})
+        url = str(candidate.get("url", "") or candidate.get("download_url", "")).strip()
+        if url:
+            head = _head_url(url, timeout_s=timeout_s)
+            candidate["head"] = head
+            if head.get("status_code") == 200:
+                candidate["download_url_status"] = "verified"
+        candidate_payloads.append(candidate)
+    result["candidate_files"] = candidate_payloads
+    verified_count = sum(1 for item in candidate_payloads if str(item.get("download_url_status", "")) == "verified")
+    if verified_count:
+        result["download_url_status"] = "verified"
+    elif result.get("source_page_status") == "pass":
+        result["download_url_status"] = str(source.get("download_url_status", "landing_only") or "landing_only")
+    result["network_errors"] = errors
+    result["status"] = "landing_verified" if result.get("source_page_status") == "pass" else "network_error"
+    return result
+
+
+def _registration_readiness(source: dict[str, Any], probe: dict[str, Any]) -> dict[str, Any]:
+    declared = dict(source.get("registration_evidence", {}) or {})
+    parity_value = str(source.get("parity_value", "")).lower()
+    if parity_value.startswith(("real_raw", "real_high_frequency_raw", "real_large_high_frequency_raw")):
+        declared.setdefault("raw_input", True)
+    if str(source.get("registration_outcome", "")) in {"registered", "registered_and_accepted"}:
+        declared.setdefault("raw_input", True)
+        declared.setdefault("eddypro_project_or_settings", True)
+        declared.setdefault("official_eddypro_full_output", True)
+        declared.setdefault("normalized_reference", True)
+        declared.setdefault("normalization_provenance", True)
+        declared.setdefault("acceptance_evidence", True)
+    required = {
+        "raw_input": bool(declared.get("raw_input", False)),
+        "eddypro_project_or_settings": bool(declared.get("eddypro_project_or_settings", False)),
+        "official_eddypro_full_output": bool(declared.get("official_eddypro_full_output", False)),
+        "normalized_reference": bool(declared.get("normalized_reference", False)),
+        "normalization_provenance": bool(declared.get("normalization_provenance", False)),
+        "acceptance_evidence": bool(declared.get("acceptance_evidence", False)),
+    }
+    missing = [key for key, present in required.items() if not present]
+    status = "ready_to_register" if not missing else "blocked_missing_registration_evidence"
+    if str(source.get("registration_outcome", "")) == "registered_and_accepted":
+        status = "registered_and_accepted"
+    return {
+        "artifact_type": "public_ec_candidate_registration_readiness_v1",
+        "status": status,
+        "has_raw_input": required["raw_input"],
+        "has_eddypro_project_or_settings": required["eddypro_project_or_settings"],
+        "has_official_eddypro_full_output": required["official_eddypro_full_output"],
+        "has_normalized_reference": required["normalized_reference"],
+        "has_normalization_provenance": required["normalization_provenance"],
+        "has_acceptance_evidence": required["acceptance_evidence"],
+        "missing_requirements": missing,
+        "can_change_full_parity_gate": False,
+        "probe_status": str(probe.get("status", "")),
+        "truthfulness_boundary": (
+            "A public EC candidate is promotion-ready only when raw input, EddyPro project/settings, "
+            "official EddyPro Full_Output, normalized reference, provenance, and acceptance evidence are all present."
+        ),
+    }
 
 
 def _neon_candidate_files(api_payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -281,9 +386,18 @@ def _read_url_text(url: str, *, timeout_s: float) -> str:
         return response.read().decode("utf-8", "replace")
 
 
+def _keyword_hits(text: str, keywords: list[str]) -> list[str]:
+    folded = text.lower()
+    return [keyword for keyword in keywords if keyword.lower() in folded]
+
+
 def _next_action(probes: list[dict[str, Any]]) -> str:
+    if any(str(dict(item.get("registration_readiness", {}) or {}).get("status", "")) == "ready_to_register" for item in probes):
+        return "Promote the ready public candidate through official raw bundle registration and acceptance."
     if any(str(item.get("status", "")) == "candidate_verified" for item in probes):
         return "Build a small importer smoke test for the verified NEON HDF5 candidate before downloading full files."
+    if any(bool(dict(item.get("registration_readiness", {}) or {}).get("has_raw_input", False)) for item in probes):
+        return "Use real raw public candidates for importer smoke tests while keeping full EddyPro parity blocked until an EddyPro output pair exists."
     if any(str(item.get("status", "")) == "licence_flow_verified" for item in probes):
         return "Add an authenticated ICOS download path or use an operator-provided accepted file."
     return "Continue source-derived parity closure and rerun public discovery later."
