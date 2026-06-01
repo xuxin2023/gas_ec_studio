@@ -15,6 +15,7 @@ from core.acquisition.runtime_watchdog import attach_runtime_watchdog, build_run
 from core.comparison.eddypro_coverage_audit import build_eddypro_coverage_audit
 from core.comparison.eddypro_release_gate import build_eddypro_release_gate
 from core.comparison.eddypro_source_inventory import build_eddypro_source_inventory
+from core.comparison.partial_capability_closure import build_eddypro_partial_capability_closure
 from core.comparison.fixture_pack import (
     acquire_public_eddypro_fixture_files,
     build_fixture_pack_summary,
@@ -481,6 +482,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--watchdog-require-network-pass", default="", help="Require network validation pass in watchdog checks (true/false).")
     parser.add_argument("--build-eddypro-coverage-audit", action="store_true", help="Build a claim-gated EddyPro coverage audit JSON.")
     parser.add_argument("--build-eddypro-release-gate", action="store_true", help="Build a CI/release gate JSON for full EddyPro parity claims.")
+    parser.add_argument("--build-eddypro-partial-capability-closure", action="store_true", help="Build a non-blocking closure ledger for remaining partial EddyPro capabilities.")
     parser.add_argument("--build-public-eddypro-fixture-catalog", action="store_true", help="Build a public EddyPro fixture catalog/acquisition plan JSON.")
     parser.add_argument("--acquire-public-eddypro-fixtures", action="store_true", help="Download/refresh public EddyPro fixture files and validate the catalog.")
     parser.add_argument("--build-public-ec-data-discovery", action="store_true", help="Probe public real EC data candidates without registering EddyPro parity fixtures.")
@@ -493,6 +495,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--include-public-remote-originals", action="store_true", help="Include remote-original entries that declare local paths during public fixture acquisition.")
     parser.add_argument("--public-fixture-timeout-s", default="", help="Network timeout per public fixture download in seconds.")
     parser.add_argument("--public-ec-data-sources", default="", help="Public EC discovery source ledger JSON path.")
+    parser.add_argument("--public-raw-search-manifest", default="", help="Public TOB1/SLT/native-binary raw search ledger path.")
     parser.add_argument("--public-ec-sample-output-root", default="", help="Directory for optional public EC byte samples.")
     parser.add_argument("--public-ec-sample-bytes", default="", help="Optional byte count to sample from verified public EC candidates.")
     parser.add_argument("--public-ec-timeout-s", default="", help="Network timeout for public EC discovery probes.")
@@ -515,6 +518,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--neon-hdf5-start-index", default="", help="Requested base-series start index for NEON row extraction.")
     parser.add_argument("--neon-hdf5-max-time-gap-s", default="", help="Maximum timestamp matching gap for NEON row extraction.")
     parser.add_argument("--neon-hdf5-rp-block-minutes", default="", help="RP block size in minutes for --run-neon-hdf5-rp-smoke.")
+    parser.add_argument("--neon-hdf5-validation-package", default="", help="NEON HDF5 validation package used by partial capability closure.")
     parser.add_argument("--overwrite-neon-hdf5", action="store_true", help="Overwrite an existing downloaded NEON HDF5 candidate.")
     parser.add_argument("--capability-matrix", default="", help="Capability matrix path for EddyPro coverage/release gates.")
     parser.add_argument("--official-raw-evidence-pack", default="", help="Official raw evidence pack JSON used by the EddyPro coverage audit claim gate.")
@@ -563,6 +567,9 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     if args.build_eddypro_release_gate:
         return _run_eddypro_release_gate_cli(args, parser)
+
+    if args.build_eddypro_partial_capability_closure:
+        return _run_eddypro_partial_capability_closure_cli(args, parser)
 
     if args.build_eddypro_coverage_audit:
         return _run_eddypro_coverage_audit_cli(args, parser)
@@ -704,6 +711,23 @@ def _run_eddypro_coverage_audit_cli(args: argparse.Namespace, parser: argparse.A
         fixture_pack_path=args.fixture_pack or None,
         workspace_root=workspace_root,
         official_raw_evidence_pack=load_config_file(args.official_raw_evidence_pack) if args.official_raw_evidence_pack else None,
+    )
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0
+
+
+def _run_eddypro_partial_capability_closure_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --build-eddypro-partial-capability-closure.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    payload = build_eddypro_partial_capability_closure(
+        workspace_root=workspace_root,
+        capability_matrix_path=args.capability_matrix or None,
+        public_raw_search_manifest_path=args.public_raw_search_manifest or None,
+        public_ec_data_sources_path=args.public_ec_data_sources or None,
+        neon_validation_package_path=args.neon_hdf5_validation_package or None,
     )
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

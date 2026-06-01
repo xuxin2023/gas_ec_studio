@@ -85,6 +85,7 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
             "eddypro_coverage_audit.json",
             "eddypro_surrogate_evidence_closure.json",
             "eddypro_release_gate.json",
+            "eddypro_partial_capability_closure.json",
             "network_validation_summary.json",
             "fluxnet_half_hourly_foundation.json",
             "fluxnet_full_submission.json",
@@ -151,6 +152,10 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["eddypro_release_gate_status"] == "blocked"
         assert summary_payload["can_release_full_eddypro_parity"] is False
         assert summary_payload["can_release_source_derived_functional_parity"] is True
+        assert summary_payload["eddypro_partial_capability_closure"]["artifact_type"] == "eddypro_partial_capability_closure_v1"
+        assert summary_payload["eddypro_partial_capability_closure_status"] == "source_derived_closed_real_evidence_pending"
+        assert summary_payload["eddypro_partial_capability_count"] == 5
+        assert summary_payload["eddypro_ready_public_raw_candidate_count"] == 0
         assert summary_payload["eddypro_closure_gate"]["artifact_type"] == "eddypro_closure_gate_v1"
         assert summary_payload["eddypro_closure_gate_status"] == "blocked"
         assert summary_payload["eddypro_closure_open_item_count"] >= 1
@@ -223,6 +228,9 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["eddypro_release_gate"]["status"] == "blocked"
         assert manifest_payload["can_release_full_eddypro_parity"] is False
         assert manifest_payload["can_release_source_derived_functional_parity"] is True
+        assert manifest_payload["eddypro_partial_capability_closure_artifact"].endswith("eddypro_partial_capability_closure.json")
+        assert manifest_payload["eddypro_partial_capability_closure"]["partial_capability_count"] == 5
+        assert manifest_payload["eddypro_partial_capability_closure"]["closure_decision"]["current_round_closed"] is True
         assert manifest_payload["eddypro_closure_gate"]["status"] == "blocked"
         assert manifest_payload["eddypro_closure_plan"]["next_action_count"] >= 1
         assert manifest_payload["eddypro_closure_top_priority"] in {"P0", "P1"}

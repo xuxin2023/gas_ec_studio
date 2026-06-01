@@ -161,6 +161,7 @@ def export_formal_report(
             "official_raw_fixture_manifest": snapshot.get("delivery_audit", {}).get("official_raw_fixture_manifest", {}),
             "official_raw_fixture_detail": snapshot.get("delivery_audit", {}).get("official_raw_fixture_detail", {}),
             "eddypro_coverage_audit": snapshot.get("delivery_audit", {}).get("eddypro_coverage_audit", {}),
+            "eddypro_partial_capability_closure": snapshot.get("delivery_audit", {}).get("eddypro_partial_capability_closure", {}),
             "benchmark_summary": snapshot.get("delivery_audit", {}).get("benchmark_summary", {}),
         }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -251,6 +252,7 @@ def _build_formal_report_snapshot(
         or {}
     )
     eddypro_release_gate = dict(result_manifest.get("eddypro_release_gate", {}) or {})
+    eddypro_partial_capability_closure = dict(result_manifest.get("eddypro_partial_capability_closure", {}) or {})
     eddypro_closure_gate = dict(result_manifest.get("eddypro_closure_gate", {}) or eddypro_coverage_audit.get("closure_gate", {}) or {})
     eddypro_closure_plan = dict(result_manifest.get("eddypro_closure_plan", {}) or eddypro_coverage_audit.get("closure_plan", {}) or {})
     raw_to_final_parity = dict(result_manifest.get("raw_to_final_parity", {}) or {})
@@ -311,6 +313,7 @@ def _build_formal_report_snapshot(
                 "eddypro_coverage_audit_artifact",
                 "eddypro_surrogate_evidence_closure_artifact",
                 "eddypro_release_gate_artifact",
+                "eddypro_partial_capability_closure_artifact",
                 "raw_to_final_parity_artifact",
                 "network_validation_summary",
             ]
@@ -402,6 +405,11 @@ def _build_formal_report_snapshot(
                 eddypro_release_gate.get("can_release_source_derived_functional_parity", False),
             ),
             "eddypro_release_gate_ci_exit_code": eddypro_release_gate.get("ci_exit_code", 2),
+            "eddypro_partial_capability_closure_status": eddypro_partial_capability_closure.get("status", ""),
+            "eddypro_partial_capability_count": eddypro_partial_capability_closure.get("partial_capability_count", 0),
+            "eddypro_ready_public_raw_candidate_count": dict(
+                eddypro_partial_capability_closure.get("public_search_closure", {}) or {}
+            ).get("ready_to_register_public_raw_candidate_count", 0),
             "eddypro_closure_gate_status": eddypro_closure_gate.get("status", ""),
             "eddypro_closure_open_item_count": eddypro_closure_gate.get("open_item_count", 0),
             "eddypro_closure_top_priority": eddypro_closure_gate.get("top_priority", ""),
@@ -410,6 +418,7 @@ def _build_formal_report_snapshot(
         "eddypro_coverage_audit": eddypro_coverage_audit,
         "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
         "eddypro_release_gate": eddypro_release_gate,
+        "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
         "eddypro_closure_gate": eddypro_closure_gate,
         "eddypro_closure_plan": eddypro_closure_plan,
         "raw_to_final_parity": raw_to_final_parity,
@@ -749,6 +758,17 @@ def _build_formal_report_snapshot(
                                 result_manifest.get(
                                     "can_release_source_derived_functional_parity",
                                     eddypro_release_gate.get("can_release_source_derived_functional_parity", False),
+                                )
+                            ),
+                        ],
+                        ["eddypro_partial_capability_closure_status", str(eddypro_partial_capability_closure.get("status", "--"))],
+                        ["eddypro_partial_capability_count", str(eddypro_partial_capability_closure.get("partial_capability_count", "--"))],
+                        [
+                            "eddypro_ready_public_raw_candidates",
+                            str(
+                                dict(eddypro_partial_capability_closure.get("public_search_closure", {}) or {}).get(
+                                    "ready_to_register_public_raw_candidate_count",
+                                    "--",
                                 )
                             ),
                         ],

@@ -114,6 +114,7 @@ def export_delivery_package(
         "eddypro_coverage_audit": audit.get("eddypro_coverage_audit", {}),
         "eddypro_surrogate_evidence_closure": audit.get("eddypro_surrogate_evidence_closure", {}),
         "eddypro_release_gate": audit.get("eddypro_release_gate", {}),
+        "eddypro_partial_capability_closure": audit.get("eddypro_partial_capability_closure", {}),
         "eddypro_closure_gate": audit.get("eddypro_closure_gate", {}),
         "eddypro_closure_plan": audit.get("eddypro_closure_plan", {}),
         "raw_to_final_parity": audit.get("raw_to_final_parity", {}),
@@ -329,6 +330,7 @@ def _build_delivery_audit(
         or {}
     )
     eddypro_release_gate = dict(result_manifest.get("eddypro_release_gate", {}) or {})
+    eddypro_partial_capability_closure = dict(result_manifest.get("eddypro_partial_capability_closure", {}) or {})
     eddypro_closure_gate = dict(result_manifest.get("eddypro_closure_gate", {}) or eddypro_coverage_audit.get("closure_gate", {}) or {})
     eddypro_closure_plan = dict(result_manifest.get("eddypro_closure_plan", {}) or eddypro_coverage_audit.get("closure_plan", {}) or {})
     raw_to_final_parity = dict(result_manifest.get("raw_to_final_parity", {}) or {})
@@ -416,6 +418,7 @@ def _build_delivery_audit(
         "eddypro_coverage_audit_artifact",
         "eddypro_surrogate_evidence_closure_artifact",
         "eddypro_release_gate_artifact",
+        "eddypro_partial_capability_closure_artifact",
         "raw_to_final_parity_artifact",
         "neon_hdf5_validation_package_artifact",
         "neon_hdf5_metadata_smoke_artifact",
@@ -584,6 +587,15 @@ def _build_delivery_audit(
                 eddypro_release_gate.get("can_release_source_derived_functional_parity", False),
             ),
             "eddypro_release_gate_ci_exit_code": eddypro_release_gate.get("ci_exit_code", 2),
+            "eddypro_partial_capability_closure_status": eddypro_partial_capability_closure.get("status", ""),
+            "eddypro_partial_capability_count": eddypro_partial_capability_closure.get("partial_capability_count", 0),
+            "eddypro_partial_capability_ids": list(eddypro_partial_capability_closure.get("capability_ids", []) or []),
+            "eddypro_ready_public_raw_candidate_count": dict(
+                eddypro_partial_capability_closure.get("public_search_closure", {}) or {}
+            ).get("ready_to_register_public_raw_candidate_count", 0),
+            "eddypro_partial_closure_current_round_closed": dict(
+                eddypro_partial_capability_closure.get("closure_decision", {}) or {}
+            ).get("current_round_closed", False),
             "eddypro_closure_gate_status": eddypro_closure_gate.get("status", ""),
             "eddypro_closure_open_item_count": eddypro_closure_gate.get("open_item_count", 0),
             "eddypro_closure_top_priority": eddypro_closure_gate.get("top_priority", ""),
@@ -654,6 +666,7 @@ def _build_delivery_audit(
         "eddypro_coverage_audit": eddypro_coverage_audit,
         "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
         "eddypro_release_gate": eddypro_release_gate,
+        "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
         "eddypro_closure_gate": eddypro_closure_gate,
         "eddypro_closure_plan": eddypro_closure_plan,
         "raw_to_final_parity": raw_to_final_parity,

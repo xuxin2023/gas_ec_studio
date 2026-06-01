@@ -162,6 +162,18 @@ The current public LI-COR sample archive inspection finds one candidate folder w
 
 The resulting ZIP should remain under `artifacts/` unless redistribution rights and repository size constraints are explicitly reviewed.
 
+## Partial Capability Closure
+
+`eddypro_partial_capability_closure.json` records the current non-blocking closure state for capability rows that still remain `partial` in `docs/benchmark/eddypro_capability_matrix.json`. It joins the accepted LI-COR official raw anchor, the TOB1/SLT/native-binary public search ledger, public EC data discovery sources, NEON HDF5 engineering validation, and the source-derived closure boundary into one delivery artifact.
+
+Build it directly with:
+
+```bash
+gas-ec-headless --build-eddypro-partial-capability-closure --workspace-root . --output artifacts/eddypro_release_gate/eddypro_partial_capability_closure.json
+```
+
+The artifact is intentionally a current-round closure ledger, not a full-parity pass. If no redistributable raw/settings/Full_Output candidate is ready to register, it sets `closure_decision.current_round_closed=true` and keeps `claim_boundary.can_close_full_eddypro_parity=false`. Result bundles, delivery packages, and formal reports include the same artifact so the UI, manifest, export, and release evidence chain cannot drift.
+
 ## Truthfulness
 
 Inspection only proves the bundle is complete enough to register. Full parity is claimed only after the registered asset runs through the raw-to-final harness and passes against official EddyPro output-derived reference windows.

@@ -17,6 +17,7 @@ from core.acquisition.realtime_buffer import RealtimeBuffer
 from core.adapters.factory import build_adapter
 from core.comparison.eddypro_comparator import EddyProComparator
 from core.comparison.eddypro_coverage_audit import build_eddypro_coverage_audit
+from core.comparison.partial_capability_closure import build_eddypro_partial_capability_closure
 from core.comparison.fixture_pack import (
     acquire_public_eddypro_fixture_files,
     build_fixture_pack_summary,
@@ -4634,6 +4635,20 @@ class StudioController(QObject):
                 "gap_summary": {"top_gaps": []},
             }
         surrogate_evidence_closure = dict(eddypro_coverage_audit.get("surrogate_evidence_closure", {}) or {})
+        try:
+            eddypro_partial_capability_closure = build_eddypro_partial_capability_closure(
+                workspace_root=active_pack_root,
+                coverage_audit=eddypro_coverage_audit,
+            )
+        except Exception as exc:  # pragma: no cover - defensive UI fallback
+            eddypro_partial_capability_closure = {
+                "artifact_type": "eddypro_partial_capability_closure_v1",
+                "status": "closure_error",
+                "partial_capability_count": 0,
+                "capability_ids": [],
+                "public_search_closure": {},
+                "closure_decision": {"current_round_closed": False, "reason": str(exc)},
+            }
 
         rows: list[tuple[str, str, str]] = [
             (
@@ -4749,6 +4764,15 @@ class StudioController(QObject):
                     f"open={dict(eddypro_coverage_audit.get('closure_gate', {}) or {}).get('open_item_count', 0)}; "
                     f"top_priority={dict(eddypro_coverage_audit.get('closure_gate', {}) or {}).get('top_priority', '--')}; "
                     f"blocked_claims={('/'.join(str(item) for item in list(dict(eddypro_coverage_audit.get('closure_gate', {}) or {}).get('blocked_claims', []) or [])[:4]) or 'none')}"
+                ),
+            ),
+            (
+                "eddypro_partial_capability_closure",
+                str(eddypro_partial_capability_closure.get("status", "unknown")),
+                (
+                    f"partial={eddypro_partial_capability_closure.get('partial_capability_count', 0)}; "
+                    f"ready_public_raw={dict(eddypro_partial_capability_closure.get('public_search_closure', {}) or {}).get('ready_to_register_public_raw_candidate_count', 0)}; "
+                    f"current_round_closed={dict(eddypro_partial_capability_closure.get('closure_decision', {}) or {}).get('current_round_closed', False)}"
                 ),
             ),
             (
@@ -5181,6 +5205,7 @@ class StudioController(QObject):
             **({"Fixture Pack Artifact": str(result_export_files.get("fixture_pack_summary_artifact"))} if result_export_files.get("fixture_pack_summary_artifact") else {}),
             **({"Official Raw Fixture Manifest": str(result_export_files.get("official_raw_fixture_manifest_artifact"))} if result_export_files.get("official_raw_fixture_manifest_artifact") else {}),
             **({"EddyPro Coverage Audit": str(result_export_files.get("eddypro_coverage_audit_artifact"))} if result_export_files.get("eddypro_coverage_audit_artifact") else {}),
+            **({"EddyPro Partial Capability Closure": str(result_export_files.get("eddypro_partial_capability_closure_artifact"))} if result_export_files.get("eddypro_partial_capability_closure_artifact") else {}),
             **({"Public EddyPro Fixture Catalog": str(result_export_files.get("public_eddypro_fixture_catalog_artifact"))} if result_export_files.get("public_eddypro_fixture_catalog_artifact") else {}),
             "Active Fixture Pack": str(active_pack_path),
             "Fixture Pack Workspace Root": str(active_pack_root),
@@ -5243,6 +5268,7 @@ class StudioController(QObject):
             "official_raw_selected_fixture_detail": selected_detail,
             "official_raw_selected_fixture_detail_artifact": str(official_bundle_state.get("selected_fixture_detail_artifact", "")),
             "eddypro_coverage_audit": eddypro_coverage_audit,
+            "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
             "public_eddypro_fixture_catalog": public_catalog,
             "public_eddypro_fixture_acquisition": public_acquisition,
         }

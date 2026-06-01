@@ -28,6 +28,7 @@ from core.comparison.fixture_pack import (
     build_official_raw_fixture_manifest,
     build_public_eddypro_fixture_catalog,
 )
+from core.comparison.partial_capability_closure import build_eddypro_partial_capability_closure
 from core.comparison.raw_to_final_parity import run_raw_to_final_parity_harness
 from core.ec_rp.analysis import generate_reference_provenance
 from core.exports.report_exporter import write_report_snapshot
@@ -668,6 +669,14 @@ class ResultExporter:
             export_root=export_root,
         )
         neon_hdf5_validation_package = dict(external_artifact_payloads.get("neon_hdf5_validation_package_artifact", {}) or {})
+        eddypro_partial_capability_closure = build_eddypro_partial_capability_closure(
+            workspace_root=fixture_pack_workspace_root or None,
+            coverage_audit=eddypro_coverage_audit,
+            release_gate=eddypro_release_gate,
+            neon_validation_package=neon_hdf5_validation_package or None,
+        )
+        eddypro_partial_capability_closure_path = export_root / "eddypro_partial_capability_closure.json"
+        self._write_json(eddypro_partial_capability_closure_path, eddypro_partial_capability_closure)
 
         exported_files = [
             "rp_results.csv",
@@ -763,6 +772,7 @@ class ResultExporter:
         exported_files.append(eddypro_coverage_audit_path.name)
         exported_files.append(eddypro_surrogate_evidence_closure_path.name)
         exported_files.append(eddypro_release_gate_path.name)
+        exported_files.append(eddypro_partial_capability_closure_path.name)
         if synthetic_parity_path is not None:
             exported_files.append(synthetic_parity_path.name)
         if raw_to_final_parity_path is not None:
@@ -892,6 +902,19 @@ class ResultExporter:
                 "can_release_source_derived_functional_parity": bool(
                     eddypro_release_gate.get("can_release_source_derived_functional_parity", False)
                 ),
+                "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
+                "eddypro_partial_capability_closure_artifact": str(eddypro_partial_capability_closure_path),
+                "eddypro_partial_capability_closure_status": str(eddypro_partial_capability_closure.get("status", "")),
+                "eddypro_partial_capability_count": int(
+                    eddypro_partial_capability_closure.get("partial_capability_count", 0) or 0
+                ),
+                "eddypro_ready_public_raw_candidate_count": int(
+                    dict(eddypro_partial_capability_closure.get("public_search_closure", {}) or {}).get(
+                        "ready_to_register_public_raw_candidate_count",
+                        0,
+                    )
+                    or 0
+                ),
                 "eddypro_closure_gate": eddypro_closure_gate,
                 "eddypro_closure_plan": eddypro_closure_plan,
                 "eddypro_closure_gate_status": str(eddypro_closure_gate.get("status", "")),
@@ -1002,6 +1025,19 @@ class ResultExporter:
             "can_release_full_eddypro_parity": bool(eddypro_release_gate.get("can_release_full_eddypro_parity", False)),
             "can_release_source_derived_functional_parity": bool(
                 eddypro_release_gate.get("can_release_source_derived_functional_parity", False)
+            ),
+            "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
+            "eddypro_partial_capability_closure_artifact": str(eddypro_partial_capability_closure_path),
+            "eddypro_partial_capability_closure_status": str(eddypro_partial_capability_closure.get("status", "")),
+            "eddypro_partial_capability_count": int(
+                eddypro_partial_capability_closure.get("partial_capability_count", 0) or 0
+            ),
+            "eddypro_ready_public_raw_candidate_count": int(
+                dict(eddypro_partial_capability_closure.get("public_search_closure", {}) or {}).get(
+                    "ready_to_register_public_raw_candidate_count",
+                    0,
+                )
+                or 0
             ),
             "eddypro_closure_gate": eddypro_closure_gate,
             "eddypro_closure_plan": eddypro_closure_plan,
@@ -1377,6 +1413,7 @@ class ResultExporter:
         files["eddypro_coverage_audit_artifact"] = str(eddypro_coverage_audit_path)
         files["eddypro_surrogate_evidence_closure_artifact"] = str(eddypro_surrogate_evidence_closure_path)
         files["eddypro_release_gate_artifact"] = str(eddypro_release_gate_path)
+        files["eddypro_partial_capability_closure_artifact"] = str(eddypro_partial_capability_closure_path)
         if synthetic_parity_path is not None:
             files["synthetic_eddypro_parity_artifact"] = str(synthetic_parity_path)
         if raw_to_final_parity_path is not None:
