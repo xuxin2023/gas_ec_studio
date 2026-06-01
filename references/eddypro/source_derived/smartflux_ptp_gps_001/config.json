@@ -1,0 +1,25 @@
+{
+  "daemon_telemetry": {
+    "enabled": true,
+    "profile_id": "source_derived_smartflux_ptp_gps_v1",
+    "source_root": "references/eddypro/source_derived/smartflux_ptp_gps_001",
+    "ptp_servo_log": "ptp4l_phc2sys.log",
+    "gps_pps_log": "gpsd_pps.log",
+    "clock_discipline_log": "chrony_tracking.log",
+    "hardware_watchdog_log": "watchdogd.log",
+    "supervisor_status_file": "supervisor.json",
+    "require_supervisor_running": true,
+    "require_ptp_lock": true,
+    "require_gps_lock": true,
+    "require_clock_discipline_lock": true,
+    "require_hardware_watchdog": true,
+    "max_ptp_offset_ns": 100.0,
+    "max_gps_jitter_ns": 100.0,
+    "max_clock_discipline_offset_ns": 100.0,
+    "max_clock_frequency_ppm": 1.0,
+    "max_supervisor_restarts": 0,
+    "target_host_validation": {
+      "source_file": "target_host_validation.json"
+    }
+  }
+}

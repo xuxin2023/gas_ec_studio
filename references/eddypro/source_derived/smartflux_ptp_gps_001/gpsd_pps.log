@@ -1,0 +1,4 @@
+{"class": "TPV", "mode": 3, "ept": 4e-08}
+{"class": "PPS", "offset_ns": -28, "jitter_ns": 66, "locked": true}
+^* PPS0          .PPS.            0   6   377    12   -35ns[ -42ns] +/-   75ns
+2026-05-30T01:00:02 gpsd pps offset_ns=31 jitter_ns=62 lock=1

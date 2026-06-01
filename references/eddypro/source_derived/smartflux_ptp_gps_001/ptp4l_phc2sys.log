@@ -1,0 +1,4 @@
+2026-05-30T01:00:00 smartflux ptp4l[102]: selected best master clock 00-1d-c1-ff-fe-ec-77-01
+2026-05-30T01:00:01 smartflux ptp4l[102]: master offset -92 s2 freq +5 path delay 645
+2026-05-30T01:00:02 smartflux ptp4l[102]: master offset 64 state s2 freq +4 path delay 640
+2026-05-30T01:00:03 smartflux phc2sys[104]: CLOCK_REALTIME phc offset 36 s2 freq -0.8 delay 801

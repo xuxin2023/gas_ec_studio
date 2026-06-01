@@ -1,0 +1,8 @@
+Reference ID    : PPS
+Stratum         : 1
+System time     : 0.000000045 seconds fast of NTP time
+Last offset     : -0.000000035 seconds
+RMS offset      : 0.000000044 seconds
+Frequency       : 0.250 ppm slow
+Residual freq   : -0.004 ppm
+Leap status     : Normal

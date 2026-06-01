@@ -1,0 +1,41 @@
+{
+  "artifact_type": "source_derived_smartflux_ptp_gps_fixture_provenance_v1",
+  "fixture_id": "eddypro_source_smartflux_ptp_gps_001",
+  "generation_time": "2026-05-30T01:00:00+08:00",
+  "generation_method": "Deterministic SmartFlux-class PTP/GPS/chrony/watchdog target-host telemetry fixture.",
+  "normalization_script": "scripts/generate_source_derived_smartflux_ptp_gps_fixture.py",
+  "normalization_command": "python scripts/generate_source_derived_smartflux_ptp_gps_fixture.py",
+  "source_repositories": {
+    "eddypro_engine": {
+      "url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+      "used_for": "PTP/GPS/SmartFlux timing parity target and source capability matrix anchors."
+    },
+    "smartflux": {
+      "url": "https://bio.licor.com/env/products/eddy-covariance/smartflux",
+      "used_for": "SmartFlux-class target-host GPS/PTP synchronization and embedded runtime behavior."
+    }
+  },
+  "files": {
+    "config_json": "references/eddypro/source_derived/smartflux_ptp_gps_001/config.json",
+    "target_host_validation_json": "references/eddypro/source_derived/smartflux_ptp_gps_001/target_host_validation.json",
+    "ptp_servo_log": "references/eddypro/source_derived/smartflux_ptp_gps_001/ptp4l_phc2sys.log",
+    "gps_pps_log": "references/eddypro/source_derived/smartflux_ptp_gps_001/gpsd_pps.log",
+    "clock_discipline_log": "references/eddypro/source_derived/smartflux_ptp_gps_001/chrony_tracking.log",
+    "hardware_watchdog_log": "references/eddypro/source_derived/smartflux_ptp_gps_001/watchdogd.log",
+    "supervisor_status_json": "references/eddypro/source_derived/smartflux_ptp_gps_001/supervisor.json"
+  },
+  "sha256": {
+    "config_json": "3CE55906CFF9C25093778AB6F9BE9F6B2C9370B2976F9328CDBCFBD63BB87401",
+    "target_host_validation_json": "108BD49FFE93DA5DED2924DB0DBC9CF7A71822AFD95AFB3FFCB7A821B43DEA84",
+    "ptp_servo_log": "3D9D548426A3AA8F2B62DA9EA26325DE8A304279D00A8B52636D64EA75F4DB9E",
+    "gps_pps_log": "119F8BC8BF911674145B742A29E862A4FBAD9B8EAC33A85A6D254EF2AFA2E7A2",
+    "clock_discipline_log": "D5833A1B2FE576ABC67A248CB43DC4F68040FA06BDEB5254C610985B9E03AA8C",
+    "hardware_watchdog_log": "4E01C2337371CBEEB1E3FDC9E8DBFCA417928174448118271409413587B3112A",
+    "supervisor_status_json": "14585021EF82CE824804C104BBFE63E366AB7858B8C5D9A4C6BD5F25C90D6502"
+  },
+  "known_limitations": [
+    "This is a source-derived telemetry conformance fixture, not a capture from real SmartFlux hardware.",
+    "It validates parser, target-host golden snapshot, and delivery-chain propagation only.",
+    "Direct PHC/PTP/GPS clock discipline still requires bench validation on real hardware."
+  ]
+}

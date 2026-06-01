@@ -442,6 +442,8 @@
         "core/headless_batch_runner.py",
         "core/ec_rp/pipeline.py",
         "core/exports/result_exporter.py",
+        "scripts/generate_source_derived_smartflux_ptp_gps_fixture.py",
+        "references/eddypro/source_derived/smartflux_ptp_gps_001/provenance.json",
         "tests/test_clock_sync_pipeline.py",
         "tests/test_daemon_telemetry_runtime.py"
       ],
@@ -485,6 +487,16 @@
           ]
         },
         {
+          "id": "source_derived_smartflux_ptp_gps_fixture",
+          "label": "Source-derived SmartFlux-class PTP/GPS/chrony/watchdog telemetry fixture validates parser and target-host golden snapshot propagation.",
+          "status": "done",
+          "evidence": [
+            "scripts/generate_source_derived_smartflux_ptp_gps_fixture.py",
+            "references/eddypro/source_derived/smartflux_ptp_gps_001/provenance.json",
+            "tests/test_daemon_telemetry_runtime.py"
+          ]
+        },
+        {
           "id": "real_smartflux_ptp_gps_fixture_breadth",
           "label": "Real SmartFlux-class PTP/GPS telemetry breadth is still incomplete.",
           "status": "needs_hardware",
@@ -497,7 +509,7 @@
           "blocker": "Need bench validation against actual PHC/PTP/GPS hardware discipline paths."
         }
       ],
-      "gap": "GPS/PTP-style offset, drift, and event interpolation corrections now run before RP/FCC windowing; clock_sync now emits a correction-quality gate with offset span, maximum adjacent event step, configured threshold, pass/warn/fail status, and network/export/benchmark provenance fields; daemon_telemetry v1 parses ptp4l/phc2sys/chrony/GPSD/PPS-style lock, offset, jitter, hardware clock discipline offset/frequency, and dialect provenance; target_host_telemetry_validation_v1 now compares target-host captures with configured golden snapshots and propagates the validation gate through diagnostics/export/report/delivery. Direct hardware clock discipline control and broad real target-host fixture breadth remain incomplete.",
+      "gap": "GPS/PTP-style offset, drift, and event interpolation corrections now run before RP/FCC windowing; clock_sync now emits a correction-quality gate with offset span, maximum adjacent event step, configured threshold, pass/warn/fail status, and network/export/benchmark provenance fields; daemon_telemetry v1 parses ptp4l/phc2sys/chrony/GPSD/PPS-style lock, offset, jitter, hardware clock discipline offset/frequency, and dialect provenance; target_host_telemetry_validation_v1 now compares target-host captures with configured golden snapshots and propagates the validation gate through diagnostics/export/report/delivery; eddypro_source_smartflux_ptp_gps_001 adds a source-derived SmartFlux-class PTP/GPS/chrony/watchdog telemetry fixture with provenance and golden-snapshot validation. Direct hardware clock discipline control and broad real target-host fixture breadth remain incomplete.",
       "next_action": "Collect multiple real target-host chrony/ptp4l/gpsd/PHC fixture captures and validate the golden-snapshot artifacts on actual SmartFlux-class hardware."
     },
     {

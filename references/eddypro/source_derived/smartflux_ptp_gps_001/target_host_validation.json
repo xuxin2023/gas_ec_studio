@@ -1,0 +1,42 @@
+{
+  "artifact_type": "source_derived_target_host_validation_snapshot_v1",
+  "profile_id": "target_host_telemetry_validation_v1",
+  "fixture_id": "eddypro_source_smartflux_ptp_gps_001",
+  "target_host_id": "smartflux-source-derived-node-001",
+  "source_derived": true,
+  "expected": {
+    "status": "pass",
+    "supervisor": {
+      "state": "running",
+      "service_name": "gas-ec-runtime",
+      "max_restart_count": 0
+    },
+    "ptp_servo": {
+      "status": "locked",
+      "required_dialects": [
+        "ptp4l",
+        "phc2sys"
+      ],
+      "max_abs_offset_ns_lte": 92.0
+    },
+    "gps_pps": {
+      "status": "locked",
+      "required_dialects": [
+        "gpsd",
+        "pps"
+      ],
+      "max_jitter_ns_lte": 75.0
+    },
+    "clock_discipline": {
+      "status": "locked",
+      "clock_source": "PPS",
+      "max_abs_offset_ns_lte": 45.0,
+      "max_abs_frequency_ppm_lte": 0.25
+    },
+    "hardware_watchdog": {
+      "status": "active",
+      "min_kick_count": 1,
+      "max_timeout_count": 0
+    }
+  }
+}

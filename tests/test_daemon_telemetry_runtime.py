@@ -356,6 +356,31 @@ def test_daemon_telemetry_parses_target_host_daemon_dialects(tmp_path: Path) -> 
     assert artifact["supervisor"]["restart_count"] == 1
 
 
+def test_source_derived_smartflux_ptp_gps_fixture_validates_from_repo() -> None:
+    fixture_root = Path("references/eddypro/source_derived/smartflux_ptp_gps_001")
+    config = json.loads((fixture_root / "config.json").read_text(encoding="utf-8"))
+    provenance = json.loads((fixture_root / "provenance.json").read_text(encoding="utf-8"))
+
+    artifact = build_daemon_telemetry_artifact(config=config, runtime_root=Path.cwd())
+    validation = artifact["target_host_validation"]
+
+    assert provenance["fixture_id"] == "eddypro_source_smartflux_ptp_gps_001"
+    assert artifact["status"] == "pass"
+    assert artifact["source_root"].endswith("references\\eddypro\\source_derived\\smartflux_ptp_gps_001")
+    assert artifact["ptp_servo"]["status"] == "locked"
+    assert {"ptp4l", "phc2sys"}.issubset(set(artifact["ptp_servo"]["dialects"]))
+    assert artifact["gps_pps"]["status"] == "locked"
+    assert {"gpsd", "pps"}.issubset(set(artifact["gps_pps"]["dialects"]))
+    assert artifact["clock_discipline"]["status"] == "locked"
+    assert artifact["clock_discipline"]["clock_source"] == "PPS"
+    assert artifact["hardware_watchdog"]["status"] == "active"
+    assert validation["fixture_id"] == "eddypro_source_smartflux_ptp_gps_001"
+    assert validation["target_host_id"] == "smartflux-source-derived-node-001"
+    assert validation["gate_status"] == "pass"
+    assert validation["fail_count"] == 0
+    assert any(check["check_id"] == "target_host.ptp_servo.required_dialects" for check in validation["checks"])
+
+
 def test_daemon_telemetry_reaches_export_network_and_delivery(tmp_path: Path) -> None:
     metadata = _metadata()
     config = _with_target_host_validation(_config(tmp_path))

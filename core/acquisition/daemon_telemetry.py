@@ -14,6 +14,22 @@ from typing import Any
 from core.acquisition.supervisor_integration import build_supervisor_integration_artifact, has_supervisor_integration_config
 
 
+TELEMETRY_LOG_PATH_KEYS = (
+    "ptp_servo_log",
+    "ptp_log",
+    "gps_pps_log",
+    "gps_log",
+    "clock_discipline_log",
+    "clock_discipline_file",
+    "chrony_tracking_log",
+    "phc2sys_log",
+    "hardware_watchdog_log",
+    "watchdog_log",
+    "supervisor_status_file",
+    "supervisor_file",
+)
+
+
 def has_daemon_telemetry_config(config: dict[str, Any]) -> bool:
     if any(
         isinstance(config.get(key), dict) and config.get(key)
@@ -78,6 +94,7 @@ def build_daemon_telemetry_artifact(
         }
 
     root = Path(runtime_root or Path.cwd())
+    telemetry_config = _resolve_telemetry_log_paths(telemetry_config, runtime_root=root)
     process_telemetry = _process_telemetry(runtime_root=root)
     supervisor = _supervisor_status(telemetry_config)
     ptp_servo = parse_ptp_servo_log(_optional_path(telemetry_config.get("ptp_servo_log") or telemetry_config.get("ptp_log")))
@@ -142,6 +159,7 @@ def build_daemon_telemetry_artifact(
         "profile_id": str(telemetry_config.get("profile_id", "daemon_telemetry_v1")),
         "collected_at": datetime.now().isoformat(),
         "runtime_root": str(root),
+        "source_root": str(telemetry_config.get("_resolved_source_root", root)),
         "service_id": str((service_config or {}).get("service_id", "")),
         "process_telemetry": process_telemetry,
         "supervisor": supervisor,
@@ -176,6 +194,7 @@ def build_target_host_telemetry_validation_artifact(
 ) -> dict[str, Any]:
     telemetry_config = extract_daemon_telemetry_config(config)
     root = Path(runtime_root or Path.cwd())
+    telemetry_config = _resolve_telemetry_log_paths(telemetry_config, runtime_root=root)
     if telemetry_artifact:
         components = {
             "supervisor": dict(telemetry_artifact.get("supervisor", {}) or {}),
@@ -220,6 +239,39 @@ def build_target_host_telemetry_validation_artifact(
         telemetry_status=telemetry_status,
         telemetry_components=components,
     )
+
+
+def _resolve_telemetry_log_paths(config: dict[str, Any], *, runtime_root: Path) -> dict[str, Any]:
+    resolved = dict(config or {})
+    source_root_value = (
+        resolved.get("source_root")
+        or resolved.get("fixture_root")
+        or resolved.get("capture_root")
+        or resolved.get("log_root")
+    )
+    source_root = Path(str(source_root_value)) if source_root_value not in (None, "") else runtime_root
+    if not source_root.is_absolute():
+        source_root = runtime_root / source_root
+    for key in TELEMETRY_LOG_PATH_KEYS:
+        value = resolved.get(key)
+        if value in (None, ""):
+            continue
+        path = Path(str(value))
+        if not path.is_absolute():
+            resolved[key] = str(source_root / path)
+    validation = resolved.get("target_host_validation", {})
+    if isinstance(validation, dict) and validation:
+        validation = dict(validation)
+        for key in ("source_file", "golden_snapshot", "golden_snapshot_path", "fixture_path"):
+            value = validation.get(key)
+            if value in (None, ""):
+                continue
+            path = Path(str(value))
+            if not path.is_absolute():
+                validation[key] = str(source_root / path)
+        resolved["target_host_validation"] = validation
+    resolved["_resolved_source_root"] = str(source_root)
+    return resolved
 
 
 def _target_host_validation_config(*, config: dict[str, Any], telemetry_config: dict[str, Any]) -> dict[str, Any]:

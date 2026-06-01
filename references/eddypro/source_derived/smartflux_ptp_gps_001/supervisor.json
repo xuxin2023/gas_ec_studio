@@ -1,0 +1,6 @@
+{
+  "service_name": "gas-ec-runtime",
+  "state": "running",
+  "restart_count": 0,
+  "dialect": "systemd_json"
+}
