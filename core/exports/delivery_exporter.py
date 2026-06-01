@@ -124,6 +124,8 @@ def export_delivery_package(
         "neon_hdf5_summary": audit.get("neon_hdf5_summary", {}),
         "public_raw_sample_validation_package": audit.get("public_raw_sample_validation_package", {}),
         "public_raw_sample_summary": audit.get("public_raw_sample_summary", {}),
+        "public_ec_acquisition_closure": audit.get("public_ec_acquisition_closure", {}),
+        "public_ec_acquisition_summary": audit.get("public_ec_acquisition_summary", {}),
         "benchmark_summary": audit.get("benchmark_summary", {}),
         "method_artifact_keys": audit.get("method_artifact_keys", []),
         "notes": notes or ["交付包已完整导出。"],
@@ -295,6 +297,10 @@ def _build_delivery_audit(
         result_manifest.get("public_raw_sample_validation_package", {})
         or _read_json_file(result_files.get("public_raw_sample_validation_package_artifact", ""))
     )
+    public_ec_acquisition_closure = dict(
+        result_manifest.get("public_ec_acquisition_closure", {})
+        or _read_json_file(result_files.get("public_ec_acquisition_closure_artifact", ""))
+    )
     runtime_watchdog = dict(result_manifest.get("runtime_watchdog_summary", {}) or {})
     runtime_service = dict(result_manifest.get("runtime_service_summary", {}) or {})
     daemon_telemetry = dict(result_manifest.get("daemon_telemetry_summary", {}) or {})
@@ -433,6 +439,7 @@ def _build_delivery_audit(
         "public_raw_sample_validation_package_artifact",
         "public_raw_sample_importer_smoke_artifact",
         "public_raw_sample_rp_smoke_artifact",
+        "public_ec_acquisition_closure_artifact",
         "benchmark_summary_artifact",
         "parity_artifact",
         "reference_provenance_artifact",
@@ -645,6 +652,26 @@ def _build_delivery_audit(
             "public_raw_sample_can_claim_eddypro_raw_to_final_parity": dict(
                 public_raw_sample_validation.get("claim_boundary", {}) or {}
             ).get("can_claim_eddypro_raw_to_final_parity", False),
+            "public_ec_acquisition_closure_status": public_ec_acquisition_closure.get("status", ""),
+            "public_ec_acquisition_candidate_count": dict(public_ec_acquisition_closure.get("summary", {}) or {}).get(
+                "candidate_count",
+                0,
+            ),
+            "public_ec_acquisition_engineering_validation_pass_count": dict(
+                public_ec_acquisition_closure.get("summary", {}) or {}
+            ).get("engineering_validation_pass_count", 0),
+            "public_ec_acquisition_ready_to_register_candidate_count": dict(
+                public_ec_acquisition_closure.get("summary", {}) or {}
+            ).get("ready_to_register_candidate_count", 0),
+            "public_ec_acquisition_can_claim_engineering_validation": dict(
+                public_ec_acquisition_closure.get("claim_boundary", {}) or {}
+            ).get("can_claim_public_raw_engineering_validation", False),
+            "public_ec_acquisition_can_claim_eddypro_raw_to_final_parity": dict(
+                public_ec_acquisition_closure.get("claim_boundary", {}) or {}
+            ).get("can_claim_eddypro_raw_to_final_parity", False),
+            "public_ec_acquisition_can_release_full_eddypro_parity": dict(
+                public_ec_acquisition_closure.get("claim_boundary", {}) or {}
+            ).get("can_release_full_eddypro_parity", False),
         },
         "network_validation_summary": network_validation,
         "neon_hdf5_validation_package": neon_validation,
@@ -674,6 +701,30 @@ def _build_delivery_audit(
             "can_claim_eddypro_raw_to_final_parity": dict(
                 public_raw_sample_validation.get("claim_boundary", {}) or {}
             ).get("can_claim_eddypro_raw_to_final_parity", False),
+        },
+        "public_ec_acquisition_closure": public_ec_acquisition_closure,
+        "public_ec_acquisition_summary": {
+            "status": public_ec_acquisition_closure.get("status", ""),
+            "candidate_count": dict(public_ec_acquisition_closure.get("summary", {}) or {}).get("candidate_count", 0),
+            "downloaded_candidate_count": dict(public_ec_acquisition_closure.get("summary", {}) or {}).get(
+                "downloaded_candidate_count",
+                0,
+            ),
+            "engineering_validation_pass_count": dict(
+                public_ec_acquisition_closure.get("summary", {}) or {}
+            ).get("engineering_validation_pass_count", 0),
+            "ready_to_register_candidate_count": dict(
+                public_ec_acquisition_closure.get("summary", {}) or {}
+            ).get("ready_to_register_candidate_count", 0),
+            "can_claim_public_raw_engineering_validation": dict(
+                public_ec_acquisition_closure.get("claim_boundary", {}) or {}
+            ).get("can_claim_public_raw_engineering_validation", False),
+            "can_claim_eddypro_raw_to_final_parity": dict(
+                public_ec_acquisition_closure.get("claim_boundary", {}) or {}
+            ).get("can_claim_eddypro_raw_to_final_parity", False),
+            "can_release_full_eddypro_parity": dict(
+                public_ec_acquisition_closure.get("claim_boundary", {}) or {}
+            ).get("can_release_full_eddypro_parity", False),
         },
         "runtime_watchdog_summary": runtime_watchdog,
         "runtime_service_summary": runtime_service,

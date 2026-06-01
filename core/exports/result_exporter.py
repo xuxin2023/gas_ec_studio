@@ -29,6 +29,7 @@ from core.comparison.fixture_pack import (
     build_public_eddypro_fixture_catalog,
 )
 from core.comparison.partial_capability_closure import build_eddypro_partial_capability_closure
+from core.comparison.public_ec_data_discovery import build_public_ec_acquisition_closure
 from core.comparison.raw_to_final_parity import run_raw_to_final_parity_harness
 from core.ec_rp.analysis import generate_reference_provenance
 from core.exports.report_exporter import write_report_snapshot
@@ -672,6 +673,26 @@ class ResultExporter:
         public_raw_sample_validation_package = dict(
             external_artifact_payloads.get("public_raw_sample_validation_package_artifact", {}) or {}
         )
+        public_ec_acquisition_closure = dict(
+            external_artifact_payloads.get("public_ec_acquisition_closure_artifact", {}) or {}
+        )
+        if not public_ec_acquisition_closure:
+            public_ec_acquisition_closure = build_public_ec_acquisition_closure(
+                discovery_probe_path=external_artifact_files.get("public_ec_discovery_probe_artifact") or None,
+                smoke_plan_path=external_artifact_files.get("public_raw_importer_smoke_plan_artifact") or None,
+                workspace_root=fixture_pack_workspace_root or None,
+                neon_download_path=external_artifact_files.get("neon_hdf5_download_artifact") or None,
+                neon_validation_package_path=external_artifact_files.get("neon_hdf5_validation_package_artifact") or None,
+                public_raw_sample_validation_package_path=external_artifact_files.get(
+                    "public_raw_sample_validation_package_artifact"
+                )
+                or None,
+            )
+        public_ec_acquisition_closure_path = export_root / "public_ec_acquisition_closure.json"
+        self._write_json(public_ec_acquisition_closure_path, public_ec_acquisition_closure)
+        external_artifact_files["public_ec_acquisition_closure_artifact"] = str(public_ec_acquisition_closure_path)
+        public_ec_acquisition_summary = dict(public_ec_acquisition_closure.get("summary", {}) or {})
+        public_ec_acquisition_claim_boundary = dict(public_ec_acquisition_closure.get("claim_boundary", {}) or {})
         eddypro_partial_capability_closure = build_eddypro_partial_capability_closure(
             workspace_root=fixture_pack_workspace_root or None,
             coverage_audit=eddypro_coverage_audit,
@@ -777,6 +798,7 @@ class ResultExporter:
         exported_files.append(eddypro_surrogate_evidence_closure_path.name)
         exported_files.append(eddypro_release_gate_path.name)
         exported_files.append(eddypro_partial_capability_closure_path.name)
+        exported_files.append(public_ec_acquisition_closure_path.name)
         if synthetic_parity_path is not None:
             exported_files.append(synthetic_parity_path.name)
         if raw_to_final_parity_path is not None:
@@ -944,6 +966,25 @@ class ResultExporter:
                     "public_raw_sample_validation_package_artifact",
                     "",
                 ),
+                "public_ec_acquisition_closure": public_ec_acquisition_closure,
+                "public_ec_acquisition_closure_artifact": str(public_ec_acquisition_closure_path),
+                "public_ec_acquisition_closure_status": str(public_ec_acquisition_closure.get("status", "")),
+                "public_ec_acquisition_candidate_count": int(public_ec_acquisition_summary.get("candidate_count", 0) or 0),
+                "public_ec_acquisition_engineering_validation_pass_count": int(
+                    public_ec_acquisition_summary.get("engineering_validation_pass_count", 0) or 0
+                ),
+                "public_ec_acquisition_ready_to_register_candidate_count": int(
+                    public_ec_acquisition_summary.get("ready_to_register_candidate_count", 0) or 0
+                ),
+                "public_ec_acquisition_can_claim_engineering_validation": bool(
+                    public_ec_acquisition_claim_boundary.get("can_claim_public_raw_engineering_validation", False)
+                ),
+                "public_ec_acquisition_can_claim_eddypro_raw_to_final_parity": bool(
+                    public_ec_acquisition_claim_boundary.get("can_claim_eddypro_raw_to_final_parity", False)
+                ),
+                "public_ec_acquisition_can_release_full_eddypro_parity": bool(
+                    public_ec_acquisition_claim_boundary.get("can_release_full_eddypro_parity", False)
+                ),
                 "network_validation": network_validation,
                 "exported_files": exported_files,
             },
@@ -1094,6 +1135,25 @@ class ResultExporter:
                     "can_claim_eddypro_raw_to_final_parity",
                     False,
                 )
+            ),
+            "public_ec_acquisition_closure": public_ec_acquisition_closure,
+            "public_ec_acquisition_closure_artifact": str(public_ec_acquisition_closure_path),
+            "public_ec_acquisition_closure_status": str(public_ec_acquisition_closure.get("status", "")),
+            "public_ec_acquisition_candidate_count": int(public_ec_acquisition_summary.get("candidate_count", 0) or 0),
+            "public_ec_acquisition_engineering_validation_pass_count": int(
+                public_ec_acquisition_summary.get("engineering_validation_pass_count", 0) or 0
+            ),
+            "public_ec_acquisition_ready_to_register_candidate_count": int(
+                public_ec_acquisition_summary.get("ready_to_register_candidate_count", 0) or 0
+            ),
+            "public_ec_acquisition_can_claim_engineering_validation": bool(
+                public_ec_acquisition_claim_boundary.get("can_claim_public_raw_engineering_validation", False)
+            ),
+            "public_ec_acquisition_can_claim_eddypro_raw_to_final_parity": bool(
+                public_ec_acquisition_claim_boundary.get("can_claim_eddypro_raw_to_final_parity", False)
+            ),
+            "public_ec_acquisition_can_release_full_eddypro_parity": bool(
+                public_ec_acquisition_claim_boundary.get("can_release_full_eddypro_parity", False)
             ),
             "spectral_assessment": spectral_assessment_summary,
             "spectral_assessment_artifact": str(spectral_assessment_path) if spectral_assessment_path is not None else "",
@@ -1447,6 +1507,7 @@ class ResultExporter:
         files["eddypro_surrogate_evidence_closure_artifact"] = str(eddypro_surrogate_evidence_closure_path)
         files["eddypro_release_gate_artifact"] = str(eddypro_release_gate_path)
         files["eddypro_partial_capability_closure_artifact"] = str(eddypro_partial_capability_closure_path)
+        files["public_ec_acquisition_closure_artifact"] = str(public_ec_acquisition_closure_path)
         if synthetic_parity_path is not None:
             files["synthetic_eddypro_parity_artifact"] = str(synthetic_parity_path)
         if raw_to_final_parity_path is not None:

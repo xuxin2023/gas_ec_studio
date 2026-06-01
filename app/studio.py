@@ -18,6 +18,7 @@ from core.adapters.factory import build_adapter
 from core.comparison.eddypro_comparator import EddyProComparator
 from core.comparison.eddypro_coverage_audit import build_eddypro_coverage_audit
 from core.comparison.partial_capability_closure import build_eddypro_partial_capability_closure
+from core.comparison.public_ec_data_discovery import build_public_ec_acquisition_closure
 from core.comparison.fixture_pack import (
     acquire_public_eddypro_fixture_files,
     build_fixture_pack_summary,
@@ -1062,6 +1063,9 @@ class StudioController(QObject):
         catalog = dict(acquisition.get("catalog", {}) or build_public_eddypro_fixture_catalog(workspace_root=fixture_workspace_root))
         catalog_path = artifact_root / "public_eddypro_fixture_catalog.json"
         catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
+        public_ec_closure = build_public_ec_acquisition_closure(workspace_root=fixture_workspace_root)
+        public_ec_closure_path = artifact_root / "public_ec_acquisition_closure.json"
+        public_ec_closure_path.write_text(json.dumps(public_ec_closure, ensure_ascii=False, indent=2), encoding="utf-8")
 
         state.update(
             {
@@ -1076,6 +1080,8 @@ class StudioController(QObject):
                 "catalog_artifact": str(catalog_path),
                 "acquisition": acquisition,
                 "acquisition_artifact": str(acquisition_path),
+                "public_ec_acquisition_closure": public_ec_closure,
+                "public_ec_acquisition_closure_artifact": str(public_ec_closure_path),
                 "workspace_root": str(fixture_workspace_root),
                 "overwrite": bool(overwrite),
             }
@@ -1088,8 +1094,10 @@ class StudioController(QObject):
             "status": state["status"],
             "artifact": str(acquisition_path),
             "catalog_artifact": str(catalog_path),
+            "public_ec_acquisition_closure_artifact": str(public_ec_closure_path),
             "acquisition": acquisition,
             "catalog": catalog,
+            "public_ec_acquisition_closure": public_ec_closure,
         }
 
     def build_official_raw_bundle_manifest_for_report_center(
@@ -2393,6 +2401,8 @@ class StudioController(QObject):
             "catalog_artifact": "",
             "acquisition": {},
             "acquisition_artifact": "",
+            "public_ec_acquisition_closure": {},
+            "public_ec_acquisition_closure_artifact": "",
             "workspace_root": "",
             "overwrite": False,
         }
@@ -4605,6 +4615,16 @@ class StudioController(QObject):
             or build_public_eddypro_fixture_catalog(workspace_root=active_pack_root)
         )
         public_acquisition = dict(public_fixture_state.get("acquisition", {}) or {})
+        public_ec_acquisition_closure = dict(public_fixture_state.get("public_ec_acquisition_closure", {}) or {})
+        if not public_ec_acquisition_closure:
+            public_ec_artifact = result_export_files.get("public_ec_acquisition_closure_artifact")
+            if public_ec_artifact:
+                try:
+                    public_ec_acquisition_closure = json.loads(Path(str(public_ec_artifact)).read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    public_ec_acquisition_closure = {}
+        public_ec_acquisition_summary = dict(public_ec_acquisition_closure.get("summary", {}) or {})
+        public_ec_claim_boundary = dict(public_ec_acquisition_closure.get("claim_boundary", {}) or {})
         official_evidence_pack_for_audit = dict(official_bundle_state.get("evidence_pack", {}) or {}) or None
         if official_evidence_pack_for_audit is not None:
             gate_status = str(
@@ -4796,6 +4816,19 @@ class StudioController(QObject):
                         f"skipped={public_acquisition.get('skipped_count', 0)}; "
                         f"failed={public_acquisition.get('failed_count', 0)}; "
                         f"artifact={public_fixture_state.get('acquisition_artifact', '')}"
+                    ),
+                )
+            )
+        if public_ec_acquisition_closure:
+            rows.append(
+                (
+                    "public_ec_acquisition_closure",
+                    str(public_ec_acquisition_closure.get("status", "unknown")),
+                    (
+                        f"candidates={public_ec_acquisition_summary.get('candidate_count', 0)}; "
+                        f"engineering_validations={public_ec_acquisition_summary.get('engineering_validation_pass_count', 0)}; "
+                        f"ready_to_register={public_ec_acquisition_summary.get('ready_to_register_candidate_count', 0)}; "
+                        f"full_parity={public_ec_claim_boundary.get('can_release_full_eddypro_parity', False)}"
                     ),
                 )
             )
@@ -5206,6 +5239,7 @@ class StudioController(QObject):
             **({"Official Raw Fixture Manifest": str(result_export_files.get("official_raw_fixture_manifest_artifact"))} if result_export_files.get("official_raw_fixture_manifest_artifact") else {}),
             **({"EddyPro Coverage Audit": str(result_export_files.get("eddypro_coverage_audit_artifact"))} if result_export_files.get("eddypro_coverage_audit_artifact") else {}),
             **({"EddyPro Partial Capability Closure": str(result_export_files.get("eddypro_partial_capability_closure_artifact"))} if result_export_files.get("eddypro_partial_capability_closure_artifact") else {}),
+            **({"Public EC Acquisition Closure": str(result_export_files.get("public_ec_acquisition_closure_artifact"))} if result_export_files.get("public_ec_acquisition_closure_artifact") else {}),
             **({"Public EddyPro Fixture Catalog": str(result_export_files.get("public_eddypro_fixture_catalog_artifact"))} if result_export_files.get("public_eddypro_fixture_catalog_artifact") else {}),
             "Active Fixture Pack": str(active_pack_path),
             "Fixture Pack Workspace Root": str(active_pack_root),
@@ -5224,6 +5258,7 @@ class StudioController(QObject):
             "Official Raw Evidence Pack": str(official_bundle_state.get("evidence_pack_artifact", "")),
             "Public EddyPro Fixture Catalog Runtime": str(public_fixture_state.get("catalog_artifact", "")),
             "Public EddyPro Fixture Acquisition": str(public_fixture_state.get("acquisition_artifact", "")),
+            "Public EC Acquisition Closure Runtime": str(public_fixture_state.get("public_ec_acquisition_closure_artifact", "")),
         }
         return {
             "title": "Fixture Pack",
@@ -5271,6 +5306,7 @@ class StudioController(QObject):
             "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
             "public_eddypro_fixture_catalog": public_catalog,
             "public_eddypro_fixture_acquisition": public_acquisition,
+            "public_ec_acquisition_closure": public_ec_acquisition_closure,
         }
 
     def _filter_official_raw_matrix_rows(self, rows: list, filters: dict) -> list[dict]:

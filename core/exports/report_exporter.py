@@ -162,6 +162,8 @@ def export_formal_report(
             "official_raw_fixture_detail": snapshot.get("delivery_audit", {}).get("official_raw_fixture_detail", {}),
             "eddypro_coverage_audit": snapshot.get("delivery_audit", {}).get("eddypro_coverage_audit", {}),
             "eddypro_partial_capability_closure": snapshot.get("delivery_audit", {}).get("eddypro_partial_capability_closure", {}),
+            "public_ec_acquisition_closure": snapshot.get("delivery_audit", {}).get("public_ec_acquisition_closure", {}),
+            "public_ec_acquisition_summary": snapshot.get("delivery_audit", {}).get("public_ec_acquisition_summary", {}),
             "public_raw_sample_validation_package": snapshot.get("delivery_audit", {}).get(
                 "public_raw_sample_validation_package",
                 {},
@@ -258,6 +260,9 @@ def _build_formal_report_snapshot(
     )
     eddypro_release_gate = dict(result_manifest.get("eddypro_release_gate", {}) or {})
     eddypro_partial_capability_closure = dict(result_manifest.get("eddypro_partial_capability_closure", {}) or {})
+    public_ec_acquisition_closure = dict(result_manifest.get("public_ec_acquisition_closure", {}) or {})
+    public_ec_acquisition_summary = dict(public_ec_acquisition_closure.get("summary", {}) or {})
+    public_ec_acquisition_claim_boundary = dict(public_ec_acquisition_closure.get("claim_boundary", {}) or {})
     eddypro_closure_gate = dict(result_manifest.get("eddypro_closure_gate", {}) or eddypro_coverage_audit.get("closure_gate", {}) or {})
     eddypro_closure_plan = dict(result_manifest.get("eddypro_closure_plan", {}) or eddypro_coverage_audit.get("closure_plan", {}) or {})
     raw_to_final_parity = dict(result_manifest.get("raw_to_final_parity", {}) or {})
@@ -319,6 +324,7 @@ def _build_formal_report_snapshot(
                 "eddypro_surrogate_evidence_closure_artifact",
                 "eddypro_release_gate_artifact",
                 "eddypro_partial_capability_closure_artifact",
+                "public_ec_acquisition_closure_artifact",
                 "raw_to_final_parity_artifact",
                 "network_validation_summary",
             ]
@@ -415,6 +421,28 @@ def _build_formal_report_snapshot(
             "eddypro_ready_public_raw_candidate_count": dict(
                 eddypro_partial_capability_closure.get("public_search_closure", {}) or {}
             ).get("ready_to_register_public_raw_candidate_count", 0),
+            "public_ec_acquisition_closure_status": public_ec_acquisition_closure.get("status", ""),
+            "public_ec_acquisition_candidate_count": public_ec_acquisition_summary.get("candidate_count", 0),
+            "public_ec_acquisition_engineering_validation_pass_count": public_ec_acquisition_summary.get(
+                "engineering_validation_pass_count",
+                0,
+            ),
+            "public_ec_acquisition_ready_to_register_candidate_count": public_ec_acquisition_summary.get(
+                "ready_to_register_candidate_count",
+                0,
+            ),
+            "public_ec_acquisition_can_claim_engineering_validation": public_ec_acquisition_claim_boundary.get(
+                "can_claim_public_raw_engineering_validation",
+                False,
+            ),
+            "public_ec_acquisition_can_claim_eddypro_raw_to_final_parity": public_ec_acquisition_claim_boundary.get(
+                "can_claim_eddypro_raw_to_final_parity",
+                False,
+            ),
+            "public_ec_acquisition_can_release_full_eddypro_parity": public_ec_acquisition_claim_boundary.get(
+                "can_release_full_eddypro_parity",
+                False,
+            ),
             "eddypro_closure_gate_status": eddypro_closure_gate.get("status", ""),
             "eddypro_closure_open_item_count": eddypro_closure_gate.get("open_item_count", 0),
             "eddypro_closure_top_priority": eddypro_closure_gate.get("top_priority", ""),
@@ -424,6 +452,26 @@ def _build_formal_report_snapshot(
         "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
         "eddypro_release_gate": eddypro_release_gate,
         "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
+        "public_ec_acquisition_closure": public_ec_acquisition_closure,
+        "public_ec_acquisition_summary": {
+            "status": public_ec_acquisition_closure.get("status", ""),
+            "candidate_count": public_ec_acquisition_summary.get("candidate_count", 0),
+            "downloaded_candidate_count": public_ec_acquisition_summary.get("downloaded_candidate_count", 0),
+            "engineering_validation_pass_count": public_ec_acquisition_summary.get(
+                "engineering_validation_pass_count",
+                0,
+            ),
+            "ready_to_register_candidate_count": public_ec_acquisition_summary.get("ready_to_register_candidate_count", 0),
+            "can_claim_public_raw_engineering_validation": public_ec_acquisition_claim_boundary.get(
+                "can_claim_public_raw_engineering_validation",
+                False,
+            ),
+            "can_claim_eddypro_raw_to_final_parity": public_ec_acquisition_claim_boundary.get(
+                "can_claim_eddypro_raw_to_final_parity",
+                False,
+            ),
+            "can_release_full_eddypro_parity": public_ec_acquisition_claim_boundary.get("can_release_full_eddypro_parity", False),
+        },
         "eddypro_closure_gate": eddypro_closure_gate,
         "eddypro_closure_plan": eddypro_closure_plan,
         "raw_to_final_parity": raw_to_final_parity,
@@ -768,6 +816,23 @@ def _build_formal_report_snapshot(
                         ],
                         ["eddypro_partial_capability_closure_status", str(eddypro_partial_capability_closure.get("status", "--"))],
                         ["eddypro_partial_capability_count", str(eddypro_partial_capability_closure.get("partial_capability_count", "--"))],
+                        ["public_ec_acquisition_closure_status", str(public_ec_acquisition_closure.get("status", "--"))],
+                        [
+                            "public_ec_engineering_validation",
+                            (
+                                f"pass={public_ec_acquisition_summary.get('engineering_validation_pass_count', 0)}; "
+                                f"candidates={public_ec_acquisition_summary.get('candidate_count', 0)}; "
+                                f"ready_to_register={public_ec_acquisition_summary.get('ready_to_register_candidate_count', 0)}"
+                            ),
+                        ],
+                        [
+                            "public_ec_claim_boundary",
+                            (
+                                f"engineering={public_ec_acquisition_claim_boundary.get('can_claim_public_raw_engineering_validation', False)}; "
+                                f"raw_to_final={public_ec_acquisition_claim_boundary.get('can_claim_eddypro_raw_to_final_parity', False)}; "
+                                f"full={public_ec_acquisition_claim_boundary.get('can_release_full_eddypro_parity', False)}"
+                            ),
+                        ],
                         [
                             "eddypro_ready_public_raw_candidates",
                             str(

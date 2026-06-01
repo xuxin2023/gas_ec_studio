@@ -398,3 +398,68 @@ def test_delivery_package_indexes_public_raw_sample_validation_package(tmp_path:
     assert manifest["public_raw_sample_summary"]["can_claim_eddypro_raw_to_final_parity"] is False
     assert manifest["result_manifest_summary"]["public_raw_sample_validation_status"] == "pass"
     assert manifest["result_manifest_summary"]["public_raw_sample_rp_status"] == "pass"
+
+
+def test_delivery_package_indexes_public_ec_acquisition_closure(tmp_path: Path) -> None:
+    result_root = tmp_path / "result_bundle"
+    result_root.mkdir(parents=True)
+    closure_payload = {
+        "artifact_type": "public_ec_acquisition_closure_v1",
+        "status": "engineering_validation_closed_full_parity_blocked",
+        "summary": {
+            "candidate_count": 4,
+            "downloaded_candidate_count": 1,
+            "engineering_validation_pass_count": 2,
+            "ready_to_register_candidate_count": 0,
+        },
+        "claim_boundary": {
+            "can_claim_public_raw_engineering_validation": True,
+            "can_claim_eddypro_raw_to_final_parity": False,
+            "can_release_full_eddypro_parity": False,
+        },
+    }
+    closure_path = result_root / "public_ec_acquisition_closure.json"
+    closure_path.write_text(json.dumps(closure_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    manifest_path = result_root / "export_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "full_output_mode": "only_available",
+                "schema_target": "FLUXNET",
+                "network_validation_status": "pass",
+                "network_missing_fields": [],
+                "network_validation_summary": {"schema_target": "FLUXNET", "validation_status": "pass", "missing_fields": []},
+                "public_ec_acquisition_closure": closure_payload,
+                "public_ec_acquisition_closure_artifact": str(closure_path),
+                "exported_files": ["export_manifest.json", "public_ec_acquisition_closure.json"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    delivery = export_delivery_package(
+        runtime_root=tmp_path / "runtime_data",
+        formal_report={"files": {}, "pdf_status": "fallback_html_only"},
+        result_bundle={
+            "export_root": str(result_root),
+            "files": {
+                "export_manifest": str(manifest_path),
+                "public_ec_acquisition_closure_artifact": str(closure_path),
+            },
+        },
+        evidence_bundle=None,
+        compare_manifest=None,
+        attribution_result=None,
+        current_batch_id="batch-public-ec",
+    )
+    manifest = json.loads(Path(delivery["files"]["package_manifest"]).read_text(encoding="utf-8"))
+
+    assert manifest["artifact_index"]["public_ec_acquisition_closure_artifact"]["packaged"] is True
+    assert manifest["public_ec_acquisition_closure"]["status"] == "engineering_validation_closed_full_parity_blocked"
+    assert manifest["public_ec_acquisition_summary"]["engineering_validation_pass_count"] == 2
+    assert manifest["public_ec_acquisition_summary"]["can_claim_eddypro_raw_to_final_parity"] is False
+    assert manifest["public_ec_acquisition_summary"]["can_release_full_eddypro_parity"] is False
+    assert manifest["result_manifest_summary"]["public_ec_acquisition_closure_status"] == "engineering_validation_closed_full_parity_blocked"
+    assert manifest["result_manifest_summary"]["public_ec_acquisition_ready_to_register_candidate_count"] == 0
