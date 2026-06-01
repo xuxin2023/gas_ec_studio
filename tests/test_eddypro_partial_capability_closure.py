@@ -99,6 +99,22 @@ def test_partial_capability_closure_keeps_full_claim_blocked() -> None:
             "can_claim_eddypro_raw_to_final_parity": False,
         },
     }
+    public_raw_sample = {
+        "artifact_type": "public_raw_sample_validation_package_v1",
+        "status": "pass",
+        "source_id": "operator_subset_package",
+        "row_count": 120,
+        "loaded_row_count": 130,
+        "rp_window_count": 1,
+        "raw_format": "text",
+        "importer_status": "pass",
+        "rp_status": "pass",
+        "claim_boundary": {
+            "can_claim_public_raw_engineering_validation": True,
+            "can_claim_eddypro_raw_to_final_parity": False,
+            "can_release_full_eddypro_parity": False,
+        },
+    }
 
     payload = build_eddypro_partial_capability_closure(
         coverage_audit=coverage,
@@ -106,6 +122,7 @@ def test_partial_capability_closure_keeps_full_claim_blocked() -> None:
         public_raw_search_summary=_raw_search_summary(),
         public_ec_data_sources=_public_ec_sources(),
         neon_validation_package=neon,
+        public_raw_sample_validation_package=public_raw_sample,
     )
 
     assert payload["artifact_type"] == "eddypro_partial_capability_closure_v1"
@@ -118,6 +135,9 @@ def test_partial_capability_closure_keeps_full_claim_blocked() -> None:
     assert payload["public_search_closure"]["accepted_public_anchor_count"] == 1
     assert payload["neon_engineering_validation"]["can_claim_neon_engineering_validation"] is True
     assert payload["neon_engineering_validation"]["can_claim_eddypro_raw_to_final_parity"] is False
+    assert payload["public_raw_sample_engineering_validation"]["status"] == "pass"
+    assert payload["public_raw_sample_engineering_validation"]["can_claim_public_raw_engineering_validation"] is True
+    assert payload["public_raw_sample_engineering_validation"]["can_claim_eddypro_raw_to_final_parity"] is False
     assert payload["partial_capabilities"][0]["closure_status"] == "source_derived_binary_conformance_closed_real_fixture_pending"
     assert payload["closure_decision"]["current_round_closed"] is True
     assert payload["closure_decision"]["development_blocked"] is False
@@ -185,6 +205,30 @@ def test_partial_capability_closure_cli_writes_artifact(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+    public_raw_sample_path = tmp_path / "public_raw_sample_validation_package.json"
+    public_raw_sample_path.write_text(
+        json.dumps(
+            {
+                "artifact_type": "public_raw_sample_validation_package_v1",
+                "status": "pass",
+                "source_id": "operator_subset_package",
+                "row_count": 120,
+                "loaded_row_count": 130,
+                "rp_window_count": 1,
+                "raw_format": "text",
+                "importer_status": "pass",
+                "rp_status": "pass",
+                "claim_boundary": {
+                    "can_claim_public_raw_engineering_validation": True,
+                    "can_claim_eddypro_raw_to_final_parity": False,
+                    "can_release_full_eddypro_parity": False,
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     output_path = tmp_path / "closure.json"
 
     exit_code = run_cli(
@@ -200,6 +244,8 @@ def test_partial_capability_closure_cli_writes_artifact(tmp_path: Path) -> None:
             str(ec_sources_path),
             "--neon-hdf5-validation-package",
             str(neon_path),
+            "--public-raw-sample-validation-package",
+            str(public_raw_sample_path),
             "--output",
             str(output_path),
         ]
@@ -209,5 +255,7 @@ def test_partial_capability_closure_cli_writes_artifact(tmp_path: Path) -> None:
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["partial_capability_count"] == 1
     assert payload["capability_ids"] == ["raw_ghg_real_world_fixture_breadth"]
+    assert payload["public_raw_sample_engineering_validation"]["status"] == "pass"
+    assert payload["partial_capabilities"][0]["closure_status"] == "public_raw_sample_engineering_validated_registration_pending"
     assert payload["claim_boundary"]["can_promote_from_public_search"] is False
     assert payload["closure_decision"]["current_round_closed"] is True

@@ -13,6 +13,9 @@ from core.comparison.fixture_pack import build_public_raw_search_summary
 DEFAULT_PUBLIC_RAW_SEARCH_MANIFEST_PATH = Path("references/eddypro/public_raw_search/manifest.json")
 DEFAULT_PUBLIC_EC_DATA_SOURCES_PATH = Path("references/eddypro/public_raw_search/ec_public_data_sources.json")
 DEFAULT_NEON_VALIDATION_PACKAGE_PATH = Path("artifacts/public_ec_data/neon_hdf5_validation_package.json")
+DEFAULT_PUBLIC_RAW_SAMPLE_VALIDATION_PACKAGE_PATH = Path(
+    "artifacts/public_ec_data/public_raw_sample_validation_package.json"
+)
 
 
 def build_eddypro_partial_capability_closure(
@@ -22,11 +25,13 @@ def build_eddypro_partial_capability_closure(
     public_raw_search_manifest_path: str | Path | None = None,
     public_ec_data_sources_path: str | Path | None = None,
     neon_validation_package_path: str | Path | None = None,
+    public_raw_sample_validation_package_path: str | Path | None = None,
     coverage_audit: dict[str, Any] | None = None,
     release_gate: dict[str, Any] | None = None,
     public_raw_search_summary: dict[str, Any] | None = None,
     public_ec_data_sources: dict[str, Any] | None = None,
     neon_validation_package: dict[str, Any] | None = None,
+    public_raw_sample_validation_package: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a non-blocking closure ledger for the remaining partial EddyPro features.
 
@@ -51,6 +56,15 @@ def build_eddypro_partial_capability_closure(
     ec_sources = dict(public_ec_data_sources) if public_ec_data_sources is not None else _read_json(ec_sources_path)
     neon_path = _resolve(root, neon_validation_package_path or DEFAULT_NEON_VALIDATION_PACKAGE_PATH)
     neon = dict(neon_validation_package) if neon_validation_package is not None else _discover_neon_validation(root, neon_path)
+    public_raw_sample_path = _resolve(
+        root,
+        public_raw_sample_validation_package_path or DEFAULT_PUBLIC_RAW_SAMPLE_VALIDATION_PACKAGE_PATH,
+    )
+    public_raw_sample = (
+        dict(public_raw_sample_validation_package)
+        if public_raw_sample_validation_package is not None
+        else _discover_public_raw_sample_validation(root, public_raw_sample_path)
+    )
     accepted_anchor = _accepted_official_anchor(root=root, release_gate=release)
     source_derived_functional_parity = _source_derived_functional_parity(matrix, coverage, release)
     public_search = _public_search_closure(raw_search=raw_search, ec_sources=ec_sources)
@@ -61,6 +75,7 @@ def build_eddypro_partial_capability_closure(
             raw_search=raw_search,
             public_search=public_search,
             neon=neon,
+            public_raw_sample=public_raw_sample,
         )
         for row in partial_rows
     ]
@@ -84,6 +99,7 @@ def build_eddypro_partial_capability_closure(
             ),
             "public_ec_data_sources_path": str(ec_sources_path),
             "neon_validation_package_path": str(neon_path),
+            "public_raw_sample_validation_package_path": str(public_raw_sample_path),
             "coverage_audit_provided": bool(coverage_audit),
             "release_gate_provided": bool(release_gate),
         },
@@ -108,6 +124,7 @@ def build_eddypro_partial_capability_closure(
         },
         "accepted_official_anchor": accepted_anchor,
         "neon_engineering_validation": _neon_summary(neon),
+        "public_raw_sample_engineering_validation": _public_raw_sample_summary(public_raw_sample),
         "public_search_closure": public_search,
         "partial_capabilities": partials,
         "next_actions": _next_actions(partials, public_search=public_search),
@@ -193,6 +210,21 @@ def _discover_neon_validation(root: Path, preferred_path: Path) -> dict[str, Any
         return _read_json(preferred_path)
     candidates = sorted(
         (path for path in root.glob("artifacts/**/neon_hdf5_validation_package*.json") if path.is_file()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    return _read_json(candidates[0]) if candidates else {}
+
+
+def _discover_public_raw_sample_validation(root: Path, preferred_path: Path) -> dict[str, Any]:
+    if preferred_path.exists():
+        return _read_json(preferred_path)
+    candidates = sorted(
+        (
+            path
+            for path in root.glob("artifacts/**/public_raw_sample_validation_package*.json")
+            if path.is_file()
+        ),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
@@ -384,6 +416,26 @@ def _neon_summary(neon: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _public_raw_sample_summary(package: dict[str, Any]) -> dict[str, Any]:
+    claim = dict(package.get("claim_boundary", {}) or {})
+    return {
+        "status": str(package.get("status", "not_available") or "not_available"),
+        "source_id": str(package.get("source_id", "")),
+        "source_file": str(package.get("source_file", "")),
+        "importer_status": str(package.get("importer_status", "")),
+        "rp_status": str(package.get("rp_status", "")),
+        "row_count": int(package.get("row_count", 0) or 0),
+        "loaded_row_count": int(package.get("loaded_row_count", 0) or 0),
+        "rp_window_count": int(package.get("rp_window_count", 0) or 0),
+        "raw_format": str(package.get("raw_format", "")),
+        "can_claim_public_raw_engineering_validation": bool(
+            claim.get("can_claim_public_raw_engineering_validation", False)
+        ),
+        "can_claim_eddypro_raw_to_final_parity": bool(claim.get("can_claim_eddypro_raw_to_final_parity", False)),
+        "can_release_full_eddypro_parity": bool(claim.get("can_release_full_eddypro_parity", False)),
+    }
+
+
 def _partial_capability_record(
     row: dict[str, Any],
     *,
@@ -391,6 +443,7 @@ def _partial_capability_record(
     raw_search: dict[str, Any],
     public_search: dict[str, Any],
     neon: dict[str, Any],
+    public_raw_sample: dict[str, Any],
 ) -> dict[str, Any]:
     capability_id = str(row.get("id", ""))
     open_items = [
@@ -404,6 +457,7 @@ def _partial_capability_record(
         raw_search=raw_search,
         public_search=public_search,
         neon=neon,
+        public_raw_sample=public_raw_sample,
     )
     return {
         "id": capability_id,
@@ -434,8 +488,11 @@ def _closure_status_for_capability(
     raw_search: dict[str, Any],
     public_search: dict[str, Any],
     neon: dict[str, Any],
+    public_raw_sample: dict[str, Any],
 ) -> str:
     if capability_id == "raw_ghg_real_world_fixture_breadth":
+        if str(public_raw_sample.get("status", "")) == "pass":
+            return "public_raw_sample_engineering_validated_registration_pending"
         return "accepted_official_anchor_plus_breadth_pending" if accepted_anchor.get("is_accepted") else "needs_official_raw_anchor"
     if capability_id == "raw_binary_tob1_slt":
         if public_search.get("ready_to_register_public_raw_candidate_count", 0):

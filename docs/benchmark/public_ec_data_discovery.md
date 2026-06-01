@@ -114,6 +114,28 @@ raise SystemExit(run_cli([
 
 The output artifact records source file, SHA-256, raw importer loader path, row count, time range, required EC field coverage (`u/v/w`, `co2`, `h2o`, `pressure`), warnings, and the unchanged parity boundary. A passing smoke proves the parser can ingest the subset; it still does not change `can_release_full_eddypro_parity` until the same source also has EddyPro project/settings, official Full_Output, normalized reference, provenance, and acceptance evidence.
 
+The same subset can now be carried one step farther into RP engineering validation:
+
+```powershell
+@'
+from core.headless_batch_runner import run_cli
+
+sample = "artifacts/public_ec_data/operator_samples/crocus_or_icos_subset.csv"
+raise SystemExit(run_cli([
+    "--build-public-raw-sample-validation-package",
+    sample,
+    "--workspace-root", ".",
+    "--public-raw-source-id", "crocus_or_icos_operator_subset",
+    "--public-raw-smoke-max-rows", "5000",
+    "--public-raw-rp-min-rows", "64",
+    "--public-raw-rp-block-minutes", "0.1",
+    "--output", "artifacts/public_ec_data/public_raw_sample_validation_package.json",
+]))
+'@ | python -
+```
+
+The validation package combines importer smoke, RP smoke, field coverage, sample provenance, and claim boundaries. A `pass` status permits only `public_raw_engineering_validation`; it still explicitly keeps `can_claim_eddypro_raw_to_final_parity=false` and `can_release_full_eddypro_parity=false`.
+
 ## NEON HDF5 Metadata Smoke
 
 After a probe artifact verifies the NEON HDF5 candidate, the file can be downloaded into ignored local artifacts and inspected for EC field candidates:

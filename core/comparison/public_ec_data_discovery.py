@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
+from core.ec_rp.pipeline import ECRPPipeline
 from core.storage.raw_importer import (
     can_load_raw_native,
     can_load_raw_text,
@@ -219,21 +220,11 @@ def build_public_raw_sample_importer_smoke(
 
     payload["sample_size_bytes"] = source_path.stat().st_size
     payload["sample_hash"] = _sha256_file(source_path)
-    try:
-        if can_load_raw_native(source_path, metadata_bundle):
-            payload["raw_format"] = "native"
-            rows = load_raw_native_frames(source_path, metadata=metadata_bundle)
-        elif can_load_raw_text(source_path):
-            payload["raw_format"] = "text"
-            rows = load_raw_text_frames(source_path, metadata=metadata_bundle)
-        else:
-            payload["import_status"] = "unsupported_format"
-            payload["raw_format"] = source_path.suffix.lower().lstrip(".") or "unknown"
-            payload["errors"].append(f"unsupported raw importer suffix: {source_path.suffix or '<none>'}")
-            return payload
-    except Exception as exc:
-        payload["import_status"] = "loader_error"
-        payload["errors"].append(f"raw importer failed: {exc}")
+    rows, raw_format, load_error = _load_public_raw_sample_rows(source_path, metadata_bundle)
+    payload["raw_format"] = raw_format
+    if load_error:
+        payload["import_status"] = "loader_error" if load_error.startswith("raw importer failed") else "unsupported_format"
+        payload["errors"].append(load_error)
         return payload
 
     all_rows = list(rows)
@@ -263,6 +254,199 @@ def build_public_raw_sample_importer_smoke(
             "Importer loaded rows, but the subset does not expose the complete EC field family needed for RP parity."
         )
     return payload
+
+
+def build_public_raw_sample_rp_smoke(
+    *,
+    sample_path: str | Path,
+    metadata_path: str | Path | None = None,
+    metadata: MetadataBundle | dict[str, Any] | None = None,
+    source_id: str = "",
+    workspace_root: str | Path | None = None,
+    max_rows: int = 0,
+    min_rows: int = 64,
+    sample_hz: float | None = None,
+    block_minutes: float = 0.1,
+) -> dict[str, Any]:
+    """Load a public/operator raw subset and run it through the local RP pipeline."""
+
+    root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
+    source_path = _resolve(root, sample_path)
+    metadata_bundle, metadata_source, metadata_error = _load_smoke_metadata(
+        metadata=metadata,
+        metadata_path=metadata_path,
+        root=root,
+    )
+    importer_smoke = build_public_raw_sample_importer_smoke(
+        sample_path=source_path,
+        metadata=metadata_bundle,
+        source_id=source_id,
+        workspace_root=root,
+        max_rows=max_rows,
+    )
+    payload: dict[str, Any] = {
+        "artifact_type": "public_raw_sample_rp_smoke_v1",
+        "generated_at": datetime.now().isoformat(),
+        "source_id": str(source_id or source_path.stem),
+        "source_file": str(source_path),
+        "metadata_path": str(_resolve(root, metadata_path)) if metadata_path not in (None, "") else "",
+        "metadata_source": metadata_source,
+        "status": "blocked",
+        "importer_smoke": importer_smoke,
+        "row_count": int(importer_smoke.get("row_count", 0) or 0),
+        "loaded_row_count": int(importer_smoke.get("loaded_row_count", 0) or 0),
+        "min_rows": int(min_rows or 0),
+        "raw_format": str(importer_smoke.get("raw_format", "")),
+        "field_coverage": dict(importer_smoke.get("field_coverage", {}) or {}),
+        "time_range": dict(importer_smoke.get("time_range", {}) or {}),
+        "rp_config": {},
+        "rp_result": {},
+        "rp_summary": {},
+        "window_count": 0,
+        "errors": [],
+        "warnings": [],
+        "can_change_full_parity_gate": False,
+        "ready_for_raw_to_final_registration": False,
+        "truthfulness_boundary": (
+            "This RP smoke proves an operator/public raw subset can enter the local RP pipeline. "
+            "It does not claim EddyPro raw-to-final parity without paired EddyPro settings, official "
+            "Full_Output, normalized reference, provenance, and acceptance evidence."
+        ),
+    }
+    if metadata_error:
+        payload["errors"].append(metadata_error)
+        payload["status"] = "metadata_error"
+        return payload
+    if str(importer_smoke.get("status", "")) == "fail":
+        payload["errors"].extend(list(importer_smoke.get("errors", []) or []))
+        payload["status"] = "importer_failed"
+        return payload
+    if not dict(importer_smoke.get("field_coverage", {}) or {}).get("complete_for_rp_smoke", False):
+        payload["errors"].append("Importer smoke did not expose the complete EC field family required for RP smoke.")
+        payload["status"] = "blocked_incomplete_fields"
+        return payload
+    rows, _raw_format, load_error = _load_public_raw_sample_rows(source_path, metadata_bundle)
+    if load_error:
+        payload["errors"].append(load_error)
+        payload["status"] = "importer_failed"
+        return payload
+    selected_rows = list(rows)
+    if max_rows and max_rows > 0:
+        selected_rows = selected_rows[: int(max_rows)]
+    if len(selected_rows) < int(min_rows or 0):
+        payload["errors"].append(
+            f"Raw sample has {len(selected_rows)} rows after max_rows; {int(min_rows or 0)} rows are required for RP smoke."
+        )
+        payload["status"] = "blocked_insufficient_rows"
+        return payload
+
+    config = _public_raw_rp_smoke_config(
+        metadata_bundle=metadata_bundle,
+        sample_hz=sample_hz,
+        block_minutes=block_minutes,
+    )
+    payload["rp_config"] = config
+    try:
+        result = ECRPPipeline().run(
+            rows=selected_rows,
+            project=metadata_bundle.project,
+            site=metadata_bundle.site,
+            config=config,
+            data_source="public_raw_sample_rp_smoke",
+            time_range=f"{payload['time_range'].get('start', '')}~{payload['time_range'].get('end', '')}",
+        )
+    except Exception as exc:  # pragma: no cover - defensive guard for operator data
+        payload["errors"].append(f"RP pipeline failed: {exc}")
+        payload["status"] = "rp_failed"
+        return payload
+
+    result_dict = result.to_dict()
+    payload["rp_result"] = result_dict
+    payload["rp_summary"] = dict(result_dict.get("summary", {}) or {})
+    payload["window_count"] = len(result_dict.get("windows", []) or [])
+    payload["status"] = "pass" if payload["window_count"] > 0 else "no_rp_windows"
+    return payload
+
+
+def build_public_raw_sample_validation_package(
+    *,
+    sample_path: str | Path,
+    workspace_root: str | Path | None = None,
+    metadata_path: str | Path | None = None,
+    importer_smoke_path: str | Path | None = None,
+    rp_smoke_path: str | Path | None = None,
+    source_id: str = "",
+    max_rows: int = 0,
+    min_rp_rows: int = 64,
+    sample_hz: float | None = None,
+    block_minutes: float = 0.1,
+) -> dict[str, Any]:
+    """Package public raw subset importer and RP smoke evidence behind a truthful claim gate."""
+
+    root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
+    source_path = _resolve(root, sample_path)
+    importer_path = _resolve(root, importer_smoke_path) if importer_smoke_path not in (None, "") else None
+    rp_path = _resolve(root, rp_smoke_path) if rp_smoke_path not in (None, "") else None
+    importer_smoke = _read_json(importer_path) if importer_path else build_public_raw_sample_importer_smoke(
+        sample_path=source_path,
+        metadata_path=metadata_path,
+        source_id=source_id,
+        workspace_root=root,
+        max_rows=max_rows,
+    )
+    rp_smoke = _read_json(rp_path) if rp_path else build_public_raw_sample_rp_smoke(
+        sample_path=source_path,
+        metadata_path=metadata_path,
+        source_id=source_id,
+        workspace_root=root,
+        max_rows=max_rows,
+        min_rows=min_rp_rows,
+        sample_hz=sample_hz,
+        block_minutes=block_minutes,
+    )
+    importer_status = str(importer_smoke.get("status", "not_run"))
+    rp_status = str(rp_smoke.get("status", "not_run"))
+    status = _public_raw_validation_status(importer_status=importer_status, rp_status=rp_status)
+    claim_boundary = {
+        "can_change_full_parity_gate": False,
+        "can_claim_public_raw_engineering_validation": status == "pass",
+        "can_claim_eddypro_raw_to_final_parity": False,
+        "can_release_full_eddypro_parity": False,
+    }
+    return {
+        "artifact_type": "public_raw_sample_validation_package_v1",
+        "generated_at": datetime.now().isoformat(),
+        "status": status,
+        "source_id": str(source_id or importer_smoke.get("source_id") or rp_smoke.get("source_id") or source_path.stem),
+        "source_file": str(source_path),
+        "importer_smoke_artifact": str(importer_path) if importer_path else "",
+        "rp_smoke_artifact": str(rp_path) if rp_path else "",
+        "importer_status": importer_status,
+        "rp_status": rp_status,
+        "row_count": int(importer_smoke.get("row_count", 0) or rp_smoke.get("row_count", 0) or 0),
+        "loaded_row_count": int(importer_smoke.get("loaded_row_count", 0) or rp_smoke.get("loaded_row_count", 0) or 0),
+        "rp_window_count": int(rp_smoke.get("window_count", 0) or 0),
+        "raw_format": str(importer_smoke.get("raw_format", rp_smoke.get("raw_format", ""))),
+        "sample_hash": str(importer_smoke.get("sample_hash", "")),
+        "time_range": dict(importer_smoke.get("time_range", rp_smoke.get("time_range", {})) or {}),
+        "field_coverage": dict(importer_smoke.get("field_coverage", rp_smoke.get("field_coverage", {})) or {}),
+        "claim_boundary": claim_boundary,
+        "can_change_full_parity_gate": False,
+        "ready_for_raw_to_final_registration": False,
+        "errors": list(importer_smoke.get("errors", []) or []) + list(rp_smoke.get("errors", []) or []),
+        "warnings": list(importer_smoke.get("warnings", []) or []) + list(rp_smoke.get("warnings", []) or []),
+        "truthfulness_boundary": (
+            "This package closes public/operator raw subset engineering validation through importer and RP smoke. "
+            "It is still not an EddyPro official raw-to-final parity fixture because the registered evidence set "
+            "does not include official EddyPro project/settings, Full_Output, normalized reference, provenance, and acceptance."
+        ),
+        "known_limitations": [
+            "Operator/public subsets can validate parser and RP compatibility but may not represent the full original dataset.",
+            "No official EddyPro executable output is compared in this package.",
+            "QC equivalence, full run segmentation, and vendor-specific preprocessing remain outside this claim scope.",
+        ],
+        "next_action": _public_raw_validation_next_action(status),
+    }
 
 
 def _probe_source(
@@ -719,6 +903,73 @@ def _load_smoke_metadata(
         except Exception as exc:
             return MetadataBundle(), "metadata_file", f"metadata invalid: {exc}"
     return MetadataBundle(), "default_metadata_bundle", ""
+
+
+def _load_public_raw_sample_rows(
+    source_path: Path,
+    metadata_bundle: MetadataBundle,
+) -> tuple[list[NormalizedHFFrame], str, str]:
+    try:
+        if can_load_raw_native(source_path, metadata_bundle):
+            return load_raw_native_frames(source_path, metadata=metadata_bundle), "native", ""
+        if can_load_raw_text(source_path):
+            return load_raw_text_frames(source_path, metadata=metadata_bundle), "text", ""
+    except Exception as exc:
+        return [], source_path.suffix.lower().lstrip(".") or "unknown", f"raw importer failed: {exc}"
+    return [], source_path.suffix.lower().lstrip(".") or "unknown", (
+        f"unsupported raw importer suffix: {source_path.suffix or '<none>'}"
+    )
+
+
+def _public_raw_rp_smoke_config(
+    *,
+    metadata_bundle: MetadataBundle,
+    sample_hz: float | None,
+    block_minutes: float,
+) -> dict[str, Any]:
+    resolved_sample_hz = float(sample_hz or metadata_bundle.raw_file_settings.sample_hz or 10.0)
+    resolved_block_minutes = float(block_minutes or 0.1)
+    return {
+        "sample_hz": resolved_sample_hz,
+        "block_minutes": resolved_block_minutes,
+        "rotation_mode": "double",
+        "detrend_mode": "block_mean",
+        "density_correction_mode": "mixing_ratio",
+        "lag_phase": {"strategy": "none", "search_window_s": 0.0},
+        "benchmark": {"status": "inactive", "target": "public_raw_sample_engineering_smoke"},
+        "steps": {
+            "window_sampling": {
+                "sample_hz": resolved_sample_hz,
+                "block_minutes": resolved_block_minutes,
+                "window_minutes": resolved_block_minutes,
+            }
+        },
+    }
+
+
+def _public_raw_validation_status(*, importer_status: str, rp_status: str) -> str:
+    if importer_status in {"pass", "partial"} and rp_status == "pass":
+        return "pass"
+    if importer_status in {"pass", "partial"} and rp_status in {
+        "blocked",
+        "blocked_insufficient_rows",
+        "blocked_incomplete_fields",
+        "no_rp_windows",
+        "not_run",
+    }:
+        return "importer_only"
+    return "fail"
+
+
+def _public_raw_validation_next_action(status: str) -> str:
+    if status == "pass":
+        return (
+            "Acquire or generate the paired EddyPro project/settings and official Full_Output, then promote the "
+            "same source through official raw bundle registration and raw-to-final parity acceptance."
+        )
+    if status == "importer_only":
+        return "Increase the real subset duration/field coverage and rerun RP smoke before attempting registration."
+    return "Repair importer metadata, file format support, or field mappings before rerunning the public raw package."
 
 
 def _empty_field_coverage() -> dict[str, Any]:

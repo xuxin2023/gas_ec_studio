@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 import hashlib
 import json
+import math
 from pathlib import Path
 
 from core.comparison import public_ec_data_discovery
@@ -9,6 +11,7 @@ from core.comparison.public_ec_data_discovery import (
     build_public_ec_data_discovery_probe,
     build_public_raw_importer_smoke_plan,
     build_public_raw_sample_importer_smoke,
+    build_public_raw_sample_rp_smoke,
 )
 from core.headless_batch_runner import run_cli
 
@@ -311,6 +314,92 @@ def test_public_raw_sample_importer_smoke_cli_writes_artifact(tmp_path: Path) ->
     assert payload["field_coverage"]["complete_for_rp_smoke"] is True
     assert payload["provenance"]["loader"] == "core.storage.raw_importer"
     assert payload["can_change_full_parity_gate"] is False
+
+
+def test_public_raw_sample_rp_smoke_runs_pipeline_without_parity_claim(tmp_path: Path) -> None:
+    sample = _write_public_raw_rp_sample(tmp_path / "operator_rp_subset.csv", rows=130)
+
+    payload = build_public_raw_sample_rp_smoke(
+        sample_path=sample,
+        workspace_root=tmp_path,
+        source_id="operator_subset_rp",
+        max_rows=120,
+        min_rows=64,
+        block_minutes=0.1,
+    )
+
+    assert payload["artifact_type"] == "public_raw_sample_rp_smoke_v1"
+    assert payload["status"] == "pass"
+    assert payload["importer_smoke"]["status"] == "pass"
+    assert payload["row_count"] == 120
+    assert payload["window_count"] >= 1
+    assert payload["rp_summary"]["sample_rate_hz"] > 0.0
+    assert payload["field_coverage"]["complete_for_rp_smoke"] is True
+    assert payload["can_change_full_parity_gate"] is False
+    assert payload["ready_for_raw_to_final_registration"] is False
+
+
+def test_public_raw_sample_validation_package_cli_closes_importer_and_rp_smoke(tmp_path: Path) -> None:
+    sample = _write_public_raw_rp_sample(tmp_path / "operator_package_subset.csv", rows=130)
+    output = tmp_path / "public_raw_validation_package.json"
+
+    code = run_cli(
+        [
+            "--build-public-raw-sample-validation-package",
+            str(sample),
+            "--workspace-root",
+            str(tmp_path),
+            "--public-raw-source-id",
+            "operator_subset_package",
+            "--public-raw-smoke-max-rows",
+            "120",
+            "--public-raw-rp-min-rows",
+            "64",
+            "--public-raw-rp-block-minutes",
+            "0.1",
+            "--output",
+            str(output),
+        ]
+    )
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["artifact_type"] == "public_raw_sample_validation_package_v1"
+    assert payload["status"] == "pass"
+    assert payload["importer_status"] == "pass"
+    assert payload["rp_status"] == "pass"
+    assert payload["rp_window_count"] >= 1
+    assert payload["claim_boundary"]["can_claim_public_raw_engineering_validation"] is True
+    assert payload["claim_boundary"]["can_claim_eddypro_raw_to_final_parity"] is False
+    assert payload["claim_boundary"]["can_release_full_eddypro_parity"] is False
+    assert payload["ready_for_raw_to_final_registration"] is False
+
+
+def _write_public_raw_rp_sample(path: Path, *, rows: int) -> Path:
+    start = datetime(2023, 7, 1, 0, 0, 0)
+    lines = ["timestamp,u,v,w,co2_ppm,h2o_mmol,pressure_kpa,ch4_ppb"]
+    for index in range(rows):
+        t = index / 10.0
+        vertical = math.sin(2.0 * math.pi * 0.18 * t) + 0.35 * math.sin(2.0 * math.pi * 0.72 * t)
+        co2 = 410.0 + 5.0 * vertical + 0.15 * math.cos(2.0 * math.pi * 0.4 * t)
+        h2o = 12.0 + 0.8 * vertical + 0.05 * math.sin(2.0 * math.pi * 0.5 * t)
+        timestamp = start + timedelta(seconds=t)
+        lines.append(
+            ",".join(
+                [
+                    timestamp.isoformat(),
+                    f"{2.2 + 0.1 * math.sin(0.2 * t):.6f}",
+                    f"{0.1 * math.cos(0.3 * t):.6f}",
+                    f"{vertical:.6f}",
+                    f"{co2:.6f}",
+                    f"{h2o:.6f}",
+                    f"{101.3 + 0.02 * vertical:.6f}",
+                    f"{1900.0 + 2.0 * vertical:.6f}",
+                ]
+            )
+        )
+    path.write_text("\n".join(lines), encoding="utf-8-sig")
+    return path
 
 
 class _FakeResponse:
