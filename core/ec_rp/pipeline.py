@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -55,7 +56,16 @@ from core.ec_rp.qc import classify_window_qc
 from core.storage.clock_sync import apply_clock_sync_to_rows, clock_sync_diagnostics
 from models.hf_models import NormalizedHFFrame
 from models.rp_models import RPRunResult, WindowRPResult
-from models.station_models import BiometSourceMetadata, ProjectProfile, SiteProfile, aggregate_biomet_window, load_biomet_records
+from models.station_models import (
+    BiometSourceMetadata,
+    DynamicMetadataConfig,
+    ProjectProfile,
+    SiteProfile,
+    aggregate_biomet_window,
+    load_biomet_records,
+    load_dynamic_metadata_csv,
+    match_dynamic_metadata,
+)
 
 
 LI7700_BUILTIN_COEFFICIENT_PROFILES: dict[str, dict[str, Any]] = {
@@ -119,7 +129,11 @@ class ECRPPipeline:
         benchmark_config = _extract_benchmark_config(config)
         qc_config = _extract_qc_config(config)
         network_output_config = _extract_network_output_config(config)
-        footprint_config = _extract_footprint_config(config)
+        footprint_config = _apply_static_footprint_defaults(
+            _extract_footprint_config(config),
+            config=config,
+            site=site,
+        )
         uncertainty_method_config = _extract_uncertainty_method_config(config)
         spectral_correction_config = _extract_spectral_correction_config(config)
         trace_gas_config = _extract_trace_gas_config(config)
@@ -127,6 +141,7 @@ class ECRPPipeline:
         crosswind_correction_config = _extract_crosswind_correction_config(config)
         method_compare_config = _extract_method_compare_config(config)
         biomet_context = _build_biomet_context(config)
+        dynamic_metadata_context = _build_dynamic_metadata_context(config, site=site)
         configured_ambient_context = _build_configured_ambient_context(config)
         benchmark_summary = _default_benchmark_summary(benchmark_config=benchmark_config, window_count=0)
         reference_provenance = _build_reference_provenance_artifact(benchmark_config.get("reference_id", ""))
@@ -212,6 +227,7 @@ class ECRPPipeline:
                             method_compare_config=method_compare_config,
                             clock_sync_summary=clock_sync_summary,
                             biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
+                            dynamic_metadata_override=_dynamic_metadata_override_for_rows(window_rows, dynamic_metadata_context),
                             configured_ambient_context=configured_ambient_context,
                         )
                     )
@@ -262,6 +278,7 @@ class ECRPPipeline:
                         method_compare_config=method_compare_config,
                         clock_sync_summary=clock_sync_summary,
                         biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
+                        dynamic_metadata_override=_dynamic_metadata_override_for_rows(window_rows, dynamic_metadata_context),
                         configured_ambient_context=configured_ambient_context,
                     )
                 )
@@ -358,6 +375,7 @@ class ECRPPipeline:
         method_compare_config: dict[str, Any] | None = None,
         clock_sync_summary: dict[str, Any] | None = None,
         biomet_override: dict[str, Any] | None = None,
+        dynamic_metadata_override: dict[str, Any] | None = None,
         configured_ambient_context: dict[str, Any] | None = None,
     ) -> WindowRPResult:
         window_timer_start = time.perf_counter()
@@ -664,42 +682,51 @@ class ECRPPipeline:
             "fluxnet_timezone_offset_h": float(network_output_config.get("timezone_offset_hours", 0.0)) if network_output_config else 0.0,
             "fluxnet_gap_fill_value": float(network_output_config.get("gap_fill_value", -9999.0)) if network_output_config else -9999.0,
         }
-        if footprint_config and footprint_config.get("enabled", False) and turbulence.ustar is not None and turbulence.ustar > 1e-6:
+        window_footprint_config, dynamic_footprint_diagnostics = _resolve_window_footprint_config(
+            footprint_config or {},
+            dynamic_metadata_override=dynamic_metadata_override,
+        )
+        if dynamic_footprint_diagnostics:
+            diagnostics.update(dynamic_footprint_diagnostics)
+        if window_footprint_config and window_footprint_config.get("enabled", False) and turbulence.ustar is not None and turbulence.ustar > 1e-6:
             footprint_bearing_deg = math.degrees(
                 math.atan2(float(np.mean(rotation.v)) if rotation.v.size > 0 else 0.0, float(np.mean(rotation.u)) if rotation.u.size > 0 else 0.0)
             ) % 360.0
             fp = compute_footprint(
-                method=footprint_config.get("method", "kljun"),
+                method=window_footprint_config.get("method", "kljun"),
                 ustar=turbulence.ustar,
                 mean_wind_speed=float(np.mean(rotation.u)) if rotation.u.size > 0 else 0.0,
                 sigma_v=float(np.std(rotation.v)) if rotation.v.size > 0 else 0.0,
-                z_m=footprint_config.get("z_m", 0.0),
-                h=footprint_config.get("canopy_height_m", 0.0),
-                z0=footprint_config.get("z0"),
-                ol=footprint_config.get("ol"),
+                z_m=window_footprint_config.get("z_m", 0.0),
+                h=window_footprint_config.get("canopy_height_m", 0.0),
+                z0=window_footprint_config.get("z0"),
+                ol=window_footprint_config.get("ol"),
             )
             diagnostics["footprint_method"] = fp.method
+            diagnostics["footprint_z_m"] = window_footprint_config.get("z_m", 0.0)
+            diagnostics["footprint_canopy_height_m"] = window_footprint_config.get("canopy_height_m", 0.0)
+            diagnostics["footprint_canopy_height_source"] = window_footprint_config.get("canopy_height_source", "config")
             diagnostics["footprint_peak_distance_m"] = fp.peak_distance_m
             diagnostics["footprint_offset_distance_m"] = fp.offset_distance_m
             diagnostics["footprint_contribution_distances"] = fp.contribution_distances
             diagnostics["footprint_detail"] = fp.detail
             diagnostics["footprint_bearing_deg"] = footprint_bearing_deg
-            if footprint_config.get("grid_enabled", True):
+            if window_footprint_config.get("grid_enabled", True):
                 section_start = time.perf_counter()
                 fp_grid = compute_footprint_2d_grid(
                     footprint=fp,
-                    method=footprint_config.get("method", "kljun"),
+                    method=window_footprint_config.get("method", "kljun"),
                     ustar=turbulence.ustar,
                     mean_wind_speed=float(np.mean(rotation.u)) if rotation.u.size > 0 else 0.0,
                     sigma_v=float(np.std(rotation.v)) if rotation.v.size > 0 else 0.0,
-                    z_m=footprint_config.get("z_m", 0.0),
-                    h=footprint_config.get("canopy_height_m", 0.0),
-                    z0=footprint_config.get("z0"),
-                    ol=footprint_config.get("ol"),
-                    x_bins=int(footprint_config.get("grid_x_bins", 32) or 32),
-                    y_bins=int(footprint_config.get("grid_y_bins", 25) or 25),
-                    max_downwind_m=footprint_config.get("grid_max_downwind_m"),
-                    max_crosswind_m=footprint_config.get("grid_max_crosswind_m"),
+                    z_m=window_footprint_config.get("z_m", 0.0),
+                    h=window_footprint_config.get("canopy_height_m", 0.0),
+                    z0=window_footprint_config.get("z0"),
+                    ol=window_footprint_config.get("ol"),
+                    x_bins=int(window_footprint_config.get("grid_x_bins", 32) or 32),
+                    y_bins=int(window_footprint_config.get("grid_y_bins", 25) or 25),
+                    max_downwind_m=window_footprint_config.get("grid_max_downwind_m"),
+                    max_crosswind_m=window_footprint_config.get("grid_max_crosswind_m"),
                 )
                 if fp_grid is not None:
                     fp_grid_payload = asdict(fp_grid)
@@ -991,19 +1018,19 @@ class ECRPPipeline:
                 if str(item).strip()
             }
             averaging_period_s = prepared.sample_count / max(sample_rate_hz, 1.0)
-            if "footprint" in families and footprint_config and footprint_config.get("enabled", False):
+            if "footprint" in families and window_footprint_config and window_footprint_config.get("enabled", False):
                 footprint_compare = run_method_compare(
                     method_family="footprint",
-                    selected_method=str(footprint_config.get("method", "")),
+                    selected_method=str(window_footprint_config.get("method", "")),
                     methods_to_run=method_compare_config.get("footprint_methods", ["kljun", "kormann_meixner", "hsieh"]),
                     window_params={
                         "ustar": turbulence.ustar or 0.0,
                         "mean_wind_speed": float(np.mean(rotation.u)) if rotation.u.size > 0 else 0.0,
                         "sigma_v": float(np.std(rotation.v)) if rotation.v.size > 0 else 0.0,
-                        "z_m": footprint_config.get("z_m", 0.0),
-                        "h": footprint_config.get("canopy_height_m", 0.0),
-                        "z0": footprint_config.get("z0"),
-                        "ol": footprint_config.get("ol"),
+                        "z_m": window_footprint_config.get("z_m", 0.0),
+                        "h": window_footprint_config.get("canopy_height_m", 0.0),
+                        "z0": window_footprint_config.get("z0"),
+                        "ol": window_footprint_config.get("ol"),
                     },
                 )
                 compare_payload["footprint"] = asdict(footprint_compare)
@@ -1708,6 +1735,18 @@ def _pick_numeric(payload: dict[str, Any], aliases: tuple[str, ...]) -> float | 
     return None
 
 
+def _safe_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)) and math.isfinite(float(value)):
+        return float(value)
+    if value not in (None, ""):
+        try:
+            parsed = float(str(value))
+        except ValueError:
+            return None
+        return parsed if math.isfinite(parsed) else None
+    return None
+
+
 def _pick_numeric_with_alias(payload: dict[str, Any], aliases: tuple[str, ...]) -> tuple[str, float | None]:
     lookup = {str(key).lower(): (str(key), value) for key, value in payload.items()}
     for alias in aliases:
@@ -2098,6 +2137,172 @@ def _extract_footprint_config(config: dict[str, Any]) -> dict[str, Any]:
         value = _config_value(config, f"footprint.{key}", f"steps.footprint.{key}", default=default)
         fc[key] = value
     return fc
+
+
+def _apply_static_footprint_defaults(
+    footprint_config: dict[str, Any],
+    *,
+    config: dict[str, Any],
+    site: SiteProfile,
+) -> dict[str, Any]:
+    resolved = dict(footprint_config)
+    canopy = _safe_float(resolved.get("canopy_height_m"))
+    if canopy is None or canopy <= 0.0:
+        site_canopy = _safe_float(getattr(site, "canopy_height_m", None))
+        if site_canopy is not None and site_canopy > 0.0:
+            resolved["canopy_height_m"] = site_canopy
+            resolved["canopy_height_source"] = "site_profile"
+    else:
+        resolved.setdefault("canopy_height_source", "config")
+    if _safe_float(resolved.get("z_m")) in (None, 0.0):
+        metadata = config.get("metadata_bundle", {})
+        instruments = metadata.get("instruments", {}) if isinstance(metadata, dict) else {}
+        if isinstance(instruments, dict):
+            for key in ("sonic_height_m", "analyzer_height_m"):
+                height = _safe_float(instruments.get(key))
+                if height is not None and height > 0.0:
+                    resolved["z_m"] = height
+                    resolved["z_m_source"] = f"metadata_bundle.instruments.{key}"
+                    break
+    resolved.setdefault("canopy_height_source", "config")
+    resolved.setdefault("z_m_source", "config")
+    return resolved
+
+
+def _build_dynamic_metadata_context(config: dict[str, Any], *, site: SiteProfile) -> dict[str, Any]:
+    metadata_payload = config.get("metadata_bundle", {})
+    if not isinstance(metadata_payload, dict):
+        return {}
+    dynamic_payload = metadata_payload.get("dynamic_metadata", {})
+    if not isinstance(dynamic_payload, dict):
+        return {}
+    source_path = str(dynamic_payload.get("source_path", "") or "").strip()
+    records = []
+    resolved_source = ""
+    if source_path:
+        resolved = _resolve_dynamic_metadata_path(source_path, config=config, metadata_payload=metadata_payload)
+        if resolved is not None and resolved.exists():
+            try:
+                loaded = load_dynamic_metadata_csv(
+                    resolved,
+                    start_column=str(dynamic_payload.get("start_column", "start_time") or "start_time"),
+                    end_column=str(dynamic_payload.get("end_column", "end_time") or "end_time"),
+                )
+                records = loaded.records
+                resolved_source = str(resolved)
+            except (OSError, ValueError):
+                records = []
+                resolved_source = str(resolved)
+    if not records and isinstance(dynamic_payload.get("records"), list):
+        try:
+            records = DynamicMetadataConfig.from_dict(dynamic_payload).records
+            resolved_source = source_path
+        except (KeyError, TypeError, ValueError):
+            records = []
+    if not records:
+        return {}
+    fields = _coerce_string_list(dynamic_payload.get("fields", [])) or ["canopy_height_m"]
+    return {
+        "records": records,
+        "fields": fields,
+        "source_path": resolved_source or source_path,
+        "source_config_path": source_path,
+        "site_canopy_height_m": _safe_float(getattr(site, "canopy_height_m", None)),
+        "timezone": str(dynamic_payload.get("timezone", "")),
+    }
+
+
+def _resolve_dynamic_metadata_path(
+    source_path: str,
+    *,
+    config: dict[str, Any],
+    metadata_payload: dict[str, Any],
+) -> Path | None:
+    path = Path(source_path)
+    if path.is_absolute():
+        return path
+    roots: list[Path] = []
+    for payload in (config, metadata_payload, metadata_payload.get("extra", {}) if isinstance(metadata_payload.get("extra", {}), dict) else {}):
+        if not isinstance(payload, dict):
+            continue
+        for key in ("bundle_root", "fixture_bundle_root", "workspace_root", "source_root", "runtime_root"):
+            value = payload.get(key)
+            if value not in (None, ""):
+                roots.append(Path(str(value)))
+    roots.append(Path.cwd())
+    for root in roots:
+        candidate = root / path
+        if candidate.exists():
+            return candidate
+    return roots[0] / path if roots else path
+
+
+def _dynamic_metadata_override_for_rows(rows: list[NormalizedHFFrame], context: dict[str, Any]) -> dict[str, Any]:
+    if not rows or not context:
+        return {}
+    records = list(context.get("records", []) or [])
+    if not records:
+        return {}
+    window_start = rows[0].timestamp
+    window_end = rows[-1].timestamp
+    record = match_dynamic_metadata(records, window_start=window_start, window_end=window_end)
+    base = {
+        "status": "matched" if record is not None else "configured_no_match",
+        "source_path": str(context.get("source_path", "")),
+        "source_config_path": str(context.get("source_config_path", "")),
+        "fields": list(context.get("fields", []) or []),
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
+        "site_canopy_height_m": context.get("site_canopy_height_m"),
+    }
+    if record is None:
+        return base
+    values = dict(record.values or {})
+    canopy = _pick_numeric(values, ("canopy_height_m", "canopy_height", "dynamic_canopy_height", "canopy_h", "crop_height_m"))
+    base.update(
+        {
+            "source_row": int(record.source_row),
+            "record_start": record.start_time.isoformat(),
+            "record_end": record.end_time.isoformat(),
+            "values": values,
+        }
+    )
+    if canopy is not None and canopy > 0.0:
+        base["canopy_height_m"] = canopy
+    return base
+
+
+def _resolve_window_footprint_config(
+    footprint_config: dict[str, Any],
+    *,
+    dynamic_metadata_override: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    resolved = dict(footprint_config)
+    diagnostics: dict[str, Any] = {}
+    dynamic = dict(dynamic_metadata_override or {})
+    canopy_source = str(resolved.get("canopy_height_source", "config") or "config")
+    if dynamic:
+        diagnostics["dynamic_metadata_status"] = dynamic.get("status", "")
+        diagnostics["dynamic_metadata_source_path"] = dynamic.get("source_path", "")
+        diagnostics["dynamic_metadata_source_row"] = dynamic.get("source_row", "")
+        diagnostics["dynamic_metadata_fields"] = dynamic.get("fields", [])
+        diagnostics["dynamic_metadata_detail"] = dynamic
+    dynamic_canopy = _safe_float(dynamic.get("canopy_height_m"))
+    if dynamic.get("status") == "matched" and dynamic_canopy is not None and dynamic_canopy > 0.0:
+        resolved["canopy_height_m"] = dynamic_canopy
+        canopy_source = "dynamic_metadata"
+        diagnostics["dynamic_canopy_height_m"] = dynamic_canopy
+    elif (_safe_float(resolved.get("canopy_height_m")) is None or _safe_float(resolved.get("canopy_height_m")) <= 0.0):
+        site_canopy = _safe_float(dynamic.get("site_canopy_height_m"))
+        if site_canopy is not None and site_canopy > 0.0:
+            resolved["canopy_height_m"] = site_canopy
+            canopy_source = "site_profile"
+    resolved["canopy_height_source"] = canopy_source
+    diagnostics["footprint_canopy_height_m"] = resolved.get("canopy_height_m", 0.0)
+    diagnostics["footprint_canopy_height_source"] = canopy_source
+    diagnostics["footprint_z_m"] = resolved.get("z_m", 0.0)
+    diagnostics["footprint_z_m_source"] = resolved.get("z_m_source", "config")
+    return resolved, diagnostics
 
 
 def _extract_method_compare_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -3141,6 +3346,21 @@ def _summarize_method_outputs(
         "status": "enabled" if footprint_config.get("enabled", False) else "disabled",
         "method": _first_non_empty_text([window.diagnostics.get("footprint_method", "") for window in windows]) or (str(footprint_config.get("method", "")) if footprint_config.get("enabled", False) else ""),
         "window_count": len(footprint_diags),
+        "measurement_height_m": _mean_or_none([window.diagnostics.get("footprint_z_m") for window in windows if isinstance(window.diagnostics.get("footprint_z_m"), (int, float))]),
+        "measurement_height_source": _first_non_empty_text([window.diagnostics.get("footprint_z_m_source", "") for window in windows]) or str(footprint_config.get("z_m_source", "config")),
+        "canopy_height_m": _mean_or_none([window.diagnostics.get("footprint_canopy_height_m") for window in windows if isinstance(window.diagnostics.get("footprint_canopy_height_m"), (int, float))]),
+        "canopy_height_source": _first_non_empty_text([window.diagnostics.get("footprint_canopy_height_source", "") for window in windows]) or str(footprint_config.get("canopy_height_source", "config")),
+        "dynamic_canopy_height_m": _mean_or_none([window.diagnostics.get("dynamic_canopy_height_m") for window in windows if isinstance(window.diagnostics.get("dynamic_canopy_height_m"), (int, float))]),
+        "dynamic_metadata_source_path": _first_non_empty_text([window.diagnostics.get("dynamic_metadata_source_path", "") for window in windows]),
+        "dynamic_metadata_status_counts": dict(
+            sorted(
+                Counter(
+                    str(window.diagnostics.get("dynamic_metadata_status", ""))
+                    for window in windows
+                    if window.diagnostics.get("dynamic_metadata_status", "")
+                ).items()
+            )
+        ),
         "peak_distance_m": _mean_or_none([window.diagnostics.get("footprint_peak_distance_m") for window in windows if isinstance(window.diagnostics.get("footprint_peak_distance_m"), (int, float))]),
         "offset_distance_m": _mean_or_none([window.diagnostics.get("footprint_offset_distance_m") for window in windows if isinstance(window.diagnostics.get("footprint_offset_distance_m"), (int, float))]),
         "contribution_distances": _aggregate_numeric_mapping(footprint_contrib),

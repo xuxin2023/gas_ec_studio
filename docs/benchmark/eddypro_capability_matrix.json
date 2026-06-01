@@ -623,10 +623,13 @@
       "gas_ec_status": "covered",
       "evidence": [
         "models/station_models.py",
-        "tests/test_ec_core_parity_v1.py"
+        "core/ec_rp/pipeline.py",
+        "core/exports/result_exporter.py",
+        "tests/test_ec_core_parity_v1.py",
+        "tests/test_dynamic_canopy_footprint.py"
       ],
       "gap": "",
-      "next_action": "Propagate dynamic canopy height deeper into footprint defaults."
+      "next_action": "Add more public or anonymized crop-height schedules for numeric footprint sensitivity validation."
     },
     {
       "id": "biomet_external_and_ghg",
