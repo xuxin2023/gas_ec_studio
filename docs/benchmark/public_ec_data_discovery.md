@@ -44,6 +44,25 @@ Result: HTTP 200 and a Raw ASCII landing page. The licence URL also returned HTT
 
 The only currently successful local raw-to-final registration remains the LI-COR public EddyPro sample-data anchor. NEON and ICOS are newly useful candidates, but they still need download, hash validation, metadata mapping, importer support, and either official EddyPro output or a clearly scoped validation target before they can affect `can_release_full_eddypro_parity`.
 
+## Headless Probe Artifact
+
+The source ledger can now be converted into a repeatable probe artifact without registering a parity fixture:
+
+```powershell
+@'
+from core.headless_batch_runner import run_cli
+
+raise SystemExit(run_cli([
+    "--build-public-ec-data-discovery",
+    "--workspace-root", ".",
+    "--output", "artifacts/public_ec_data/public_ec_data_discovery_probe.json",
+    "--public-ec-sample-bytes", "4096",
+]))
+'@ | python -
+```
+
+For CI or documentation checks that must not touch the network, add `--skip-public-ec-network`. The probe records the source ledger path, provider status, NEON API/HDF5 HEAD verification, optional byte-range sample metadata, ICOS licence-flow status, and `can_change_full_parity_gate=false`.
+
 ## Truthfulness Boundary
 
 Public discovery is not parity. A candidate becomes full-parity evidence only after it has:

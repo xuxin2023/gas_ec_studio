@@ -24,6 +24,7 @@ from core.comparison.fixture_pack import (
     inspect_public_official_raw_archive,
     materialize_public_official_raw_bundle_draft,
 )
+from core.comparison.public_ec_data_discovery import build_public_ec_data_discovery_probe
 from core.comparison.official_raw_fixture_bundle import (
     build_official_raw_fixture_bundle_manifest,
     build_official_raw_fixture_bundle_manifest_batch,
@@ -475,6 +476,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--build-eddypro-release-gate", action="store_true", help="Build a CI/release gate JSON for full EddyPro parity claims.")
     parser.add_argument("--build-public-eddypro-fixture-catalog", action="store_true", help="Build a public EddyPro fixture catalog/acquisition plan JSON.")
     parser.add_argument("--acquire-public-eddypro-fixtures", action="store_true", help="Download/refresh public EddyPro fixture files and validate the catalog.")
+    parser.add_argument("--build-public-ec-data-discovery", action="store_true", help="Probe public real EC data candidates without registering EddyPro parity fixtures.")
     parser.add_argument("--inspect-public-official-raw-archive", default="", help="Inspect a downloaded public official raw archive ZIP without promoting parity claims.")
     parser.add_argument("--materialize-public-official-raw-bundle", default="", help="Extract a downloaded public official raw archive into an incomplete official_raw_fixture_bundle draft.")
     parser.add_argument("--public-official-raw-output-root", default="", help="Bundle directory written by --materialize-public-official-raw-bundle.")
@@ -483,6 +485,11 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--overwrite-public-official-raw", action="store_true", help="Overwrite extracted raw files and manifest during public official raw bundle materialization.")
     parser.add_argument("--include-public-remote-originals", action="store_true", help="Include remote-original entries that declare local paths during public fixture acquisition.")
     parser.add_argument("--public-fixture-timeout-s", default="", help="Network timeout per public fixture download in seconds.")
+    parser.add_argument("--public-ec-data-sources", default="", help="Public EC discovery source ledger JSON path.")
+    parser.add_argument("--public-ec-sample-output-root", default="", help="Directory for optional public EC byte samples.")
+    parser.add_argument("--public-ec-sample-bytes", default="", help="Optional byte count to sample from verified public EC candidates.")
+    parser.add_argument("--public-ec-timeout-s", default="", help="Network timeout for public EC discovery probes.")
+    parser.add_argument("--skip-public-ec-network", action="store_true", help="Build public EC discovery from the ledger without network probes.")
     parser.add_argument("--capability-matrix", default="", help="Capability matrix path for EddyPro coverage/release gates.")
     parser.add_argument("--official-raw-evidence-pack", default="", help="Official raw evidence pack JSON used by the EddyPro coverage audit claim gate.")
     parser.add_argument("--official-raw-closure-run", default="", help="Official raw closure-run JSON used by the EddyPro release gate.")
@@ -539,6 +546,9 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     if args.acquire_public_eddypro_fixtures:
         return _run_public_eddypro_fixture_acquisition_cli(args, parser)
+
+    if args.build_public_ec_data_discovery:
+        return _run_public_ec_data_discovery_cli(args, parser)
 
     if args.inspect_public_official_raw_archive:
         return _run_public_official_raw_archive_inspection_cli(args, parser)
@@ -685,6 +695,24 @@ def _run_public_eddypro_fixture_acquisition_cli(args: argparse.Namespace, parser
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if payload.get("status") == "pass" else 2
+
+
+def _run_public_ec_data_discovery_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --build-public-ec-data-discovery.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    payload = build_public_ec_data_discovery_probe(
+        manifest_path=args.public_ec_data_sources or None,
+        workspace_root=workspace_root,
+        sample_output_root=args.public_ec_sample_output_root or None,
+        sample_bytes=int(args.public_ec_sample_bytes or 0),
+        timeout_s=float(args.public_ec_timeout_s or args.public_fixture_timeout_s or 60.0),
+        run_network=not bool(args.skip_public_ec_network),
+    )
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0 if payload.get("status") == "ok" else 2
 
 
 def _run_public_official_raw_archive_inspection_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
