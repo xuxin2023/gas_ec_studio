@@ -329,7 +329,7 @@ def _read_tabular_text(
     output: list[dict[str, str]] = []
     for row in reader:
         cleaned = {
-            str(key).strip().strip('"'): "" if value in missing_tokens else str(value).strip().strip('"')
+            str(key).lstrip("\ufeff").strip().strip('"'): "" if value in missing_tokens else str(value).strip().strip('"')
             for key, value in row.items()
             if key is not None
         }

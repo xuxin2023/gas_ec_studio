@@ -8,6 +8,7 @@ from core.comparison import public_ec_data_discovery
 from core.comparison.public_ec_data_discovery import (
     build_public_ec_data_discovery_probe,
     build_public_raw_importer_smoke_plan,
+    build_public_raw_sample_importer_smoke,
 )
 from core.headless_batch_runner import run_cli
 
@@ -234,6 +235,82 @@ def test_public_raw_importer_smoke_plan_cli_can_use_probe(tmp_path: Path) -> Non
     assert payload["candidate_plans"][0]["source_id"] == "bas_test"
     assert payload["candidate_plans"][0]["sample_mode"] == "operator_subset"
     assert payload["candidate_plans"][0]["recommended_smoke"]["smoke_type"] == "large_raw_subset_stress_sample"
+
+
+def test_public_raw_sample_importer_smoke_loads_operator_subset(tmp_path: Path) -> None:
+    sample = tmp_path / "operator_public_subset.csv"
+    sample_text = "\n".join(
+        [
+            "timestamp,u,v,w,co2,h2o,pressure,temperature,ch4",
+            "2023-07-01T00:00:00,2.1,0.1,0.05,410.1,12.2,101.2,22.1,1900",
+            "2023-07-01T00:00:00.1,2.2,0.0,0.06,410.4,12.1,101.2,22.1,1901",
+            "2023-07-01T00:00:00.2,2.0,-0.1,0.04,409.9,12.3,101.1,22.2,1899",
+            "2023-07-01T00:00:00.3,2.3,0.2,0.07,410.7,12.0,101.3,22.2,1902",
+        ]
+    )
+    sample.write_text(sample_text, encoding="utf-8-sig")
+
+    payload = build_public_raw_sample_importer_smoke(
+        sample_path=sample,
+        source_id="crocus_operator_subset",
+        workspace_root=tmp_path,
+        max_rows=3,
+    )
+
+    assert payload["artifact_type"] == "public_raw_sample_importer_smoke_v1"
+    assert payload["status"] == "pass"
+    assert payload["import_status"] == "loaded"
+    assert payload["raw_format"] == "text"
+    assert payload["row_count"] == 3
+    assert payload["loaded_row_count"] == 4
+    assert payload["sample_hash"] == hashlib.sha256(sample.read_bytes()).hexdigest().upper()
+    assert payload["field_coverage"]["complete_for_rp_smoke"] is True
+    assert payload["field_coverage"]["missing_required_fields"] == []
+    assert payload["field_coverage"]["field_counts"]["w"] == 3
+    assert payload["time_range"]["start"] == "2023-07-01T00:00:00"
+    assert payload["time_range"]["end"] == "2023-07-01T00:00:00.200000"
+    assert payload["ready_for_raw_to_final_registration"] is False
+    assert payload["can_change_full_parity_gate"] is False
+    assert "settings" in payload["claim_boundary"]
+
+
+def test_public_raw_sample_importer_smoke_cli_writes_artifact(tmp_path: Path) -> None:
+    sample = tmp_path / "public_subset.csv"
+    sample.write_text(
+        "\n".join(
+            [
+                "timestamp,u,v,w,co2_ppm,h2o_mmol,pressure_kpa",
+                "2023-07-01T00:00:00,2.1,0.1,0.05,410.1,12.2,101.2",
+                "2023-07-01T00:00:00.1,2.2,0.0,0.06,410.4,12.1,101.2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "public_raw_sample_smoke.json"
+
+    code = run_cli(
+        [
+            "--build-public-raw-sample-importer-smoke",
+            str(sample),
+            "--workspace-root",
+            str(tmp_path),
+            "--public-raw-source-id",
+            "operator_subset_cli",
+            "--public-raw-smoke-max-rows",
+            "10",
+            "--output",
+            str(output),
+        ]
+    )
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert payload["source_id"] == "operator_subset_cli"
+    assert payload["row_count"] == 2
+    assert payload["field_coverage"]["complete_for_rp_smoke"] is True
+    assert payload["provenance"]["loader"] == "core.storage.raw_importer"
+    assert payload["can_change_full_parity_gate"] is False
 
 
 class _FakeResponse:

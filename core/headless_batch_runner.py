@@ -35,6 +35,7 @@ from core.comparison.neon_hdf5_importer import (
 from core.comparison.public_ec_data_discovery import (
     build_public_ec_data_discovery_probe,
     build_public_raw_importer_smoke_plan,
+    build_public_raw_sample_importer_smoke,
 )
 from core.comparison.official_raw_fixture_bundle import (
     build_official_raw_fixture_bundle_manifest,
@@ -490,6 +491,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--acquire-public-eddypro-fixtures", action="store_true", help="Download/refresh public EddyPro fixture files and validate the catalog.")
     parser.add_argument("--build-public-ec-data-discovery", action="store_true", help="Probe public real EC data candidates without registering EddyPro parity fixtures.")
     parser.add_argument("--build-public-raw-importer-smoke-plan", action="store_true", help="Build a bounded importer-smoke plan for public real raw EC candidates.")
+    parser.add_argument("--build-public-raw-sample-importer-smoke", default="", help="Run raw importer smoke on a local public/operator-supplied raw subset.")
     parser.add_argument("--inspect-public-official-raw-archive", default="", help="Inspect a downloaded public official raw archive ZIP without promoting parity claims.")
     parser.add_argument("--materialize-public-official-raw-bundle", default="", help="Extract a downloaded public official raw archive into an incomplete official_raw_fixture_bundle draft.")
     parser.add_argument("--public-official-raw-output-root", default="", help="Bundle directory written by --materialize-public-official-raw-bundle.")
@@ -503,6 +505,9 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--public-ec-sample-output-root", default="", help="Directory for optional public EC byte samples.")
     parser.add_argument("--public-ec-sample-bytes", default="", help="Optional byte count to sample from verified public EC candidates.")
     parser.add_argument("--public-raw-smoke-max-sample-bytes", default="", help="Maximum byte budget proposed by --build-public-raw-importer-smoke-plan.")
+    parser.add_argument("--public-raw-smoke-max-rows", default="", help="Maximum loaded rows to summarize for --build-public-raw-sample-importer-smoke.")
+    parser.add_argument("--public-raw-source-id", default="", help="Source id recorded by --build-public-raw-sample-importer-smoke.")
+    parser.add_argument("--public-raw-metadata", default="", help="Metadata JSON used by --build-public-raw-sample-importer-smoke.")
     parser.add_argument("--public-ec-discovery-probe", default="", help="Public EC discovery probe JSON used by --build-public-raw-importer-smoke-plan.")
     parser.add_argument("--public-ec-timeout-s", default="", help="Network timeout for public EC discovery probes.")
     parser.add_argument("--skip-public-ec-network", action="store_true", help="Build public EC discovery from the ledger without network probes.")
@@ -591,6 +596,9 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     if args.build_public_raw_importer_smoke_plan:
         return _run_public_raw_importer_smoke_plan_cli(args, parser)
+
+    if args.build_public_raw_sample_importer_smoke:
+        return _run_public_raw_sample_importer_smoke_cli(args, parser)
 
     if args.download_neon_hdf5_candidate:
         return _run_neon_hdf5_candidate_download_cli(args, parser)
@@ -803,6 +811,23 @@ def _run_public_raw_importer_smoke_plan_cli(args: argparse.Namespace, parser: ar
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if payload.get("status") == "ready_for_importer_smoke" else 2
+
+
+def _run_public_raw_sample_importer_smoke_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --build-public-raw-sample-importer-smoke.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    payload = build_public_raw_sample_importer_smoke(
+        sample_path=args.build_public_raw_sample_importer_smoke,
+        metadata_path=args.public_raw_metadata or None,
+        source_id=args.public_raw_source_id,
+        workspace_root=workspace_root,
+        max_rows=int(args.public_raw_smoke_max_rows or 0),
+    )
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0 if payload.get("status") in {"pass", "partial"} else 2
 
 
 def _run_neon_hdf5_candidate_download_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

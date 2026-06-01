@@ -8,6 +8,15 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
+from core.storage.raw_importer import (
+    can_load_raw_native,
+    can_load_raw_text,
+    load_raw_native_frames,
+    load_raw_text_frames,
+)
+from models.hf_models import NormalizedHFFrame
+from models.station_models import MetadataBundle
+
 
 DEFAULT_PUBLIC_EC_DATA_SOURCES_PATH = Path("references/eddypro/public_raw_search/ec_public_data_sources.json")
 DEFAULT_PUBLIC_EC_SAMPLE_ROOT = Path("artifacts/public_ec_data")
@@ -146,6 +155,114 @@ def build_public_raw_importer_smoke_plan(
             "reference, provenance, and acceptance evidence are present."
         ),
     }
+
+
+def build_public_raw_sample_importer_smoke(
+    *,
+    sample_path: str | Path,
+    metadata_path: str | Path | None = None,
+    metadata: MetadataBundle | dict[str, Any] | None = None,
+    source_id: str = "",
+    workspace_root: str | Path | None = None,
+    max_rows: int = 0,
+) -> dict[str, Any]:
+    """Run the existing raw importer against an operator-supplied public raw subset.
+
+    This closes the practical discovery gap: when a public source requires a
+    manual licence step, authenticated download, or large-file subset, the
+    operator can supply a small raw sample and still produce a machine-readable
+    importer evidence artifact without promoting it to EddyPro parity.
+    """
+
+    root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
+    source_path = _resolve(root, sample_path)
+    metadata_bundle, metadata_source, metadata_error = _load_smoke_metadata(
+        metadata=metadata,
+        metadata_path=metadata_path,
+        root=root,
+    )
+    payload: dict[str, Any] = {
+        "artifact_type": "public_raw_sample_importer_smoke_v1",
+        "generated_at": datetime.now().isoformat(),
+        "source_id": str(source_id or source_path.stem),
+        "source_file": str(source_path),
+        "metadata_path": str(_resolve(root, metadata_path)) if metadata_path not in (None, "") else "",
+        "metadata_source": metadata_source,
+        "status": "fail",
+        "import_status": "not_started",
+        "raw_format": "",
+        "row_count": 0,
+        "loaded_row_count": 0,
+        "max_rows": int(max_rows or 0),
+        "time_range": {"start": None, "end": None},
+        "field_coverage": _empty_field_coverage(),
+        "sample_hash": "",
+        "sample_size_bytes": 0,
+        "errors": [],
+        "warnings": [],
+        "ready_for_raw_to_final_registration": False,
+        "can_change_full_parity_gate": False,
+        "claim_boundary": (
+            "This artifact validates raw importer behavior for a public/operator-supplied subset only. "
+            "It is not an EddyPro raw-to-final parity fixture until paired EddyPro settings, official "
+            "Full_Output, normalized reference, provenance, and acceptance evidence are registered."
+        ),
+    }
+    if metadata_error:
+        payload["errors"].append(metadata_error)
+        payload["import_status"] = "metadata_error"
+        return payload
+    if not source_path.exists() or not source_path.is_file():
+        payload["errors"].append(f"sample missing: {source_path}")
+        payload["import_status"] = "sample_missing"
+        return payload
+
+    payload["sample_size_bytes"] = source_path.stat().st_size
+    payload["sample_hash"] = _sha256_file(source_path)
+    try:
+        if can_load_raw_native(source_path, metadata_bundle):
+            payload["raw_format"] = "native"
+            rows = load_raw_native_frames(source_path, metadata=metadata_bundle)
+        elif can_load_raw_text(source_path):
+            payload["raw_format"] = "text"
+            rows = load_raw_text_frames(source_path, metadata=metadata_bundle)
+        else:
+            payload["import_status"] = "unsupported_format"
+            payload["raw_format"] = source_path.suffix.lower().lstrip(".") or "unknown"
+            payload["errors"].append(f"unsupported raw importer suffix: {source_path.suffix or '<none>'}")
+            return payload
+    except Exception as exc:
+        payload["import_status"] = "loader_error"
+        payload["errors"].append(f"raw importer failed: {exc}")
+        return payload
+
+    all_rows = list(rows)
+    if max_rows and max_rows > 0:
+        rows = all_rows[: int(max_rows)]
+        if len(all_rows) > len(rows):
+            payload["warnings"].append(
+                f"Loaded {len(all_rows)} rows and summarized the first {len(rows)} rows because max_rows is set."
+            )
+    payload["loaded_row_count"] = len(all_rows)
+    payload["row_count"] = len(rows)
+    payload["field_coverage"] = _field_coverage(rows)
+    payload["time_range"] = _time_range(rows)
+    payload["import_status"] = "loaded" if rows else "loaded_empty"
+    payload["status"] = _sample_smoke_status(rows, payload["field_coverage"])
+    payload["ready_for_raw_to_final_registration"] = False
+    payload["provenance"] = {
+        "sample_sha256": payload["sample_hash"],
+        "sample_size_bytes": payload["sample_size_bytes"],
+        "loader": "core.storage.raw_importer",
+        "metadata_source": metadata_source,
+        "metadata_path": payload["metadata_path"],
+        "source_id": payload["source_id"],
+    }
+    if payload["status"] == "partial":
+        payload["warnings"].append(
+            "Importer loaded rows, but the subset does not expose the complete EC field family needed for RP parity."
+        )
+    return payload
 
 
 def _probe_source(
@@ -578,6 +695,97 @@ def _smoke_plan_next_actions(candidates: list[dict[str, Any]]) -> list[dict[str,
         }
     )
     return actions
+
+
+def _load_smoke_metadata(
+    *,
+    metadata: MetadataBundle | dict[str, Any] | None,
+    metadata_path: str | Path | None,
+    root: Path,
+) -> tuple[MetadataBundle, str, str]:
+    if isinstance(metadata, MetadataBundle):
+        return metadata, "provided_metadata_bundle", ""
+    if isinstance(metadata, dict):
+        try:
+            return MetadataBundle.from_dict(dict(metadata)), "provided_metadata_dict", ""
+        except Exception as exc:
+            return MetadataBundle(), "provided_metadata_dict", f"metadata invalid: {exc}"
+    if metadata_path not in (None, ""):
+        path = _resolve(root, metadata_path)
+        if not path.exists() or not path.is_file():
+            return MetadataBundle(), "metadata_file", f"metadata missing: {path}"
+        try:
+            return MetadataBundle.from_dict(json.loads(path.read_text(encoding="utf-8"))), "metadata_file", ""
+        except Exception as exc:
+            return MetadataBundle(), "metadata_file", f"metadata invalid: {exc}"
+    return MetadataBundle(), "default_metadata_bundle", ""
+
+
+def _empty_field_coverage() -> dict[str, Any]:
+    return {
+        "row_count": 0,
+        "required_fields": ["timestamp", "u", "v", "w", "co2_ppm", "h2o_mmol", "pressure_kpa"],
+        "optional_fields": ["ch4_ppb", "chamber_temp_c", "case_temp_c"],
+        "present_fields": [],
+        "missing_required_fields": ["timestamp", "u", "v", "w", "co2_ppm", "h2o_mmol", "pressure_kpa"],
+        "field_counts": {},
+        "complete_for_rp_smoke": False,
+    }
+
+
+def _field_coverage(rows: list[NormalizedHFFrame]) -> dict[str, Any]:
+    coverage = _empty_field_coverage()
+    coverage["row_count"] = len(rows)
+    counts = {field: 0 for field in coverage["required_fields"] + coverage["optional_fields"]}
+    counts["timestamp"] = len(rows)
+    for row in rows:
+        raw_payload = _frame_raw_payload(row)
+        for field in ("co2_ppm", "h2o_mmol", "pressure_kpa", "ch4_ppb", "chamber_temp_c", "case_temp_c"):
+            if getattr(row, field) is not None:
+                counts[field] += 1
+        for field in ("u", "v", "w"):
+            if raw_payload.get(field) is not None:
+                counts[field] += 1
+    present = [field for field, count in counts.items() if count > 0]
+    missing = [field for field in coverage["required_fields"] if counts.get(field, 0) <= 0]
+    coverage["present_fields"] = present
+    coverage["missing_required_fields"] = missing
+    coverage["field_counts"] = counts
+    coverage["complete_for_rp_smoke"] = bool(rows) and not missing
+    return coverage
+
+
+def _frame_raw_payload(row: NormalizedHFFrame) -> dict[str, Any]:
+    if not row.raw_text:
+        return {}
+    try:
+        payload = json.loads(row.raw_text)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _time_range(rows: list[NormalizedHFFrame]) -> dict[str, str | None]:
+    if not rows:
+        return {"start": None, "end": None}
+    ordered = sorted(rows, key=lambda item: item.timestamp)
+    return {"start": ordered[0].timestamp.isoformat(), "end": ordered[-1].timestamp.isoformat()}
+
+
+def _sample_smoke_status(rows: list[NormalizedHFFrame], coverage: dict[str, Any]) -> str:
+    if not rows:
+        return "fail"
+    if coverage.get("complete_for_rp_smoke"):
+        return "pass"
+    return "partial"
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().upper()
 
 
 def _resolve(root: Path, value: str | Path) -> Path:

@@ -93,6 +93,27 @@ raise SystemExit(run_cli([
 
 The plan separates direct byte-range candidates such as NEON from landing-page-only or very large raw candidates such as CROCUS, BAS, and ICOS. It records `missing_for_eddypro_parity` for each source, so a real raw sample can advance importer validation without silently becoming a full EddyPro parity fixture.
 
+## Operator-Supplied Raw Sample Importer Smoke
+
+When a real source requires an authenticated download, licence click-through, or large-file subset step, provide a small local raw sample and run the importer smoke directly:
+
+```powershell
+@'
+from core.headless_batch_runner import run_cli
+
+raise SystemExit(run_cli([
+    "--build-public-raw-sample-importer-smoke",
+    "artifacts/public_ec_data/operator_samples/crocus_or_icos_subset.csv",
+    "--workspace-root", ".",
+    "--public-raw-source-id", "crocus_or_icos_operator_subset",
+    "--public-raw-smoke-max-rows", "5000",
+    "--output", "artifacts/public_ec_data/public_raw_sample_importer_smoke.json",
+]))
+'@ | python -
+```
+
+The output artifact records source file, SHA-256, raw importer loader path, row count, time range, required EC field coverage (`u/v/w`, `co2`, `h2o`, `pressure`), warnings, and the unchanged parity boundary. A passing smoke proves the parser can ingest the subset; it still does not change `can_release_full_eddypro_parity` until the same source also has EddyPro project/settings, official Full_Output, normalized reference, provenance, and acceptance evidence.
+
 ## NEON HDF5 Metadata Smoke
 
 After a probe artifact verifies the NEON HDF5 candidate, the file can be downloaded into ignored local artifacts and inspected for EC field candidates:
