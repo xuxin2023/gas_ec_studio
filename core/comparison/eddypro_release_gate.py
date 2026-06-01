@@ -51,6 +51,7 @@ def build_eddypro_release_gate(
     closure_run = _load_closure_run(
         official_raw_closure_run=official_raw_closure_run,
         official_raw_closure_run_path=official_raw_closure_run_path,
+        workspace_root=root,
     )
     closure_summary = _closure_run_summary(closure_run)
     evidence_pack_was_requested = (
@@ -239,12 +240,75 @@ def _load_closure_run(
     *,
     official_raw_closure_run: dict[str, Any] | None,
     official_raw_closure_run_path: str | Path | None,
+    workspace_root: Path,
 ) -> dict[str, Any]:
     if official_raw_closure_run is not None:
         return deepcopy(dict(official_raw_closure_run))
     if official_raw_closure_run_path not in (None, ""):
         return _read_json(Path(official_raw_closure_run_path))
+    discovered = _discover_official_raw_closure_run(workspace_root)
+    if discovered:
+        return discovered
     return {}
+
+
+def _discover_official_raw_closure_run(root: Path) -> dict[str, Any]:
+    candidates: list[tuple[int, float, dict[str, Any]]] = []
+    for path in _official_raw_closure_candidate_paths(root):
+        payload = _read_json(path)
+        if str(payload.get("artifact_type", "")) != "official_raw_closure_run_v1":
+            continue
+        payload.setdefault("artifact", _display_path(root, path))
+        payload.setdefault("discovery_source", "auto_discovered_standard_artifact")
+        try:
+            modified_at = path.stat().st_mtime
+        except OSError:
+            modified_at = 0.0
+        candidates.append((_official_raw_closure_score(payload), modified_at, payload))
+    if not candidates:
+        return {}
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return dict(candidates[0][2])
+
+
+def _official_raw_closure_candidate_paths(root: Path) -> list[Path]:
+    patterns = [
+        "artifacts/eddypro_public_raw/*official_raw_closure*.json",
+        "artifacts/eddypro_release_gate/*official_raw_closure*.json",
+        "artifacts/**/official_raw_closure*.json",
+        "artifacts/**/*official_raw_closure*.json",
+    ]
+    paths: list[Path] = []
+    seen: set[str] = set()
+    for pattern in patterns:
+        for path in root.glob(pattern):
+            if not path.is_file():
+                continue
+            key = str(path.resolve()).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            paths.append(path)
+    return paths
+
+
+def _official_raw_closure_score(payload: dict[str, Any]) -> int:
+    score = 0
+    if str(payload.get("gate_status", "")) == "pass":
+        score += 100
+    if str(payload.get("status", "")) == "pass":
+        score += 40
+    if str(payload.get("raw_to_final_parity_status", "")) == "pass":
+        score += 30
+    if str(payload.get("acceptance_gate_status", "")) == "pass":
+        score += 20
+    if str(payload.get("official_eddypro_run_gate_status", "")) == "pass":
+        score += 20
+    if float(payload.get("pass_rate", 0.0) or 0.0) >= 1.0:
+        score += 10
+    if dict(payload.get("evidence_pack", {}) or {}).get("artifact_type") == "official_raw_fixture_evidence_pack_v1":
+        score += 5
+    return score
 
 
 def _evidence_pack_from_closure_run(
@@ -328,6 +392,13 @@ def _read_json(path: Path) -> dict[str, Any]:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _display_path(root: Path, path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path)
 
 
 def _dedupe(items: list[Any]) -> list[str]:

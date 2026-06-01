@@ -183,6 +183,35 @@ def test_eddypro_release_gate_uses_closure_run_as_first_class_input(tmp_path: Pa
     assert Path(gate["artifacts"]["official_raw_evidence_pack"]).exists()
 
 
+def test_eddypro_release_gate_auto_discovers_passed_closure_run(tmp_path: Path) -> None:
+    matrix = tmp_path / "matrix.json"
+    output_dir = tmp_path / "release_gate"
+    closure_dir = tmp_path / "artifacts" / "eddypro_public_raw"
+    closure_dir.mkdir(parents=True)
+    closure_path = closure_dir / "site_001_official_raw_closure_preview.json"
+    _write_matrix(matrix, covered=True)
+    closure_path.write_text(json.dumps(_closure_run(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+    gate = build_eddypro_release_gate(
+        capability_matrix_path=matrix,
+        workspace_root=tmp_path,
+        fixture_summary=_fixture_summary(),
+        official_raw_manifest=_official_manifest(),
+        source_inventory=_source_inventory(),
+        output_dir=output_dir,
+        run_acceptance=False,
+    )
+
+    assert gate["status"] == "pass"
+    assert gate["summary"]["official_raw_closure_run_status"] == "pass"
+    assert gate["summary"]["official_raw_closure_run_gate_status"] == "pass"
+    assert gate["official_raw_closure_run"]["discovery_source"] == "auto_discovered_standard_artifact"
+    assert gate["official_raw_closure_run"]["artifact"].endswith("site_001_official_raw_closure_preview.json")
+    assert gate["official_raw_evidence_pack"]["fixture_id"] == "site_001_official"
+    assert Path(gate["artifacts"]["official_raw_closure_run"]).exists()
+    assert Path(gate["artifacts"]["official_raw_evidence_pack"]).exists()
+
+
 def test_eddypro_release_gate_blocks_when_closure_run_is_blocked(tmp_path: Path) -> None:
     matrix = tmp_path / "matrix.json"
     _write_matrix(matrix, covered=True)

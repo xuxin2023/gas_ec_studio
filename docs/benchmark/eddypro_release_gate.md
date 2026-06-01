@@ -16,7 +16,7 @@ It produces one machine-readable pass/block decision for full EddyPro parity rel
 - fixture pack validity
 - official raw-to-final readiness
 - official raw evidence-pack acceptance status
-- optional official raw closure-run status when a closure artifact is supplied
+- official raw closure-run status when a closure artifact is supplied or auto-discovered under standard `artifacts/` locations
 
 Headless usage:
 
@@ -39,6 +39,8 @@ python scripts/run_eddypro_release_gate.py --workspace-root . --official-raw-evi
 ```
 
 The runner also accepts `--official-raw-closure-run official_raw_closure_run.json`. When supplied, the gate copies that artifact, reads its embedded or referenced evidence pack, and requires `official_raw_closure_run_gate_status=pass`.
+
+If no closure-run path is supplied, the gate auto-discovers `official_raw_closure_run_v1` artifacts from standard `artifacts/eddypro_public_raw`, `artifacts/eddypro_release_gate`, and nested `artifacts/**` locations. It prefers closure runs where `gate_status`, raw-to-final parity, acceptance, official EddyPro executable run, and pass rate have already passed. This keeps accepted public anchors visible in release summaries without changing the full-parity claim rule.
 
 The runner writes the release artifact, prints a compact blocker summary, returns the same full-parity CI exit code as the artifact, and writes a Markdown summary when `--summary-md` or `GITHUB_STEP_SUMMARY` is present. That summary includes both full parity and source-derived parity status.
 
