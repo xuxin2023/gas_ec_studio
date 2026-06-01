@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_PUBLIC_EC_DATA_SOURCES_PATH = Path("references/eddypro/public_raw_search/ec_public_data_sources.json")
 DEFAULT_PUBLIC_EC_SAMPLE_ROOT = Path("artifacts/public_ec_data")
+DEFAULT_PUBLIC_EC_DISCOVERY_PROBE_PATH = Path("artifacts/public_ec_data/public_ec_data_discovery_probe.json")
 
 
 def build_public_ec_data_discovery_probe(
@@ -94,6 +95,59 @@ def build_public_ec_data_discovery_probe(
     }
 
 
+def build_public_raw_importer_smoke_plan(
+    *,
+    discovery_probe_path: str | Path | None = None,
+    manifest_path: str | Path | None = None,
+    workspace_root: str | Path | None = None,
+    max_sample_bytes: int = 65536,
+) -> dict[str, Any]:
+    """Build a safe importer-smoke plan for real public raw candidates.
+
+    The plan is intentionally evidence-oriented: it identifies real raw sources
+    that are useful for importer work while preserving the missing EddyPro
+    settings/output requirements that keep full parity blocked.
+    """
+
+    root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
+    probe_path = _resolve(root, discovery_probe_path or DEFAULT_PUBLIC_EC_DISCOVERY_PROBE_PATH)
+    probe = _read_json(probe_path) if probe_path.exists() else {}
+    if not probe.get("sources"):
+        probe = build_public_ec_data_discovery_probe(
+            manifest_path=manifest_path,
+            workspace_root=root,
+            run_network=False,
+        )
+    sources = [dict(item or {}) for item in list(probe.get("sources", []) or [])]
+    candidates = [_raw_importer_candidate_plan(item, max_sample_bytes=max_sample_bytes) for item in sources]
+    real_candidates = [item for item in candidates if item.get("has_real_raw_potential")]
+    direct_sample_count = sum(1 for item in real_candidates if item.get("sample_mode") == "byte_range")
+    operator_subset_count = sum(1 for item in real_candidates if item.get("sample_mode") == "operator_subset")
+    ready_to_register_count = sum(
+        1 for item in real_candidates if str(item.get("registration_readiness_status", "")) == "ready_to_register"
+    )
+    return {
+        "artifact_type": "public_raw_importer_smoke_plan_v1",
+        "generated_at": datetime.now().isoformat(),
+        "status": "ready_for_importer_smoke" if real_candidates else "no_real_raw_candidates",
+        "discovery_probe_path": str(probe_path) if probe_path.exists() else "",
+        "source_count": len(sources),
+        "real_raw_candidate_count": len(real_candidates),
+        "direct_byte_sample_candidate_count": direct_sample_count,
+        "operator_subset_required_count": operator_subset_count,
+        "ready_to_register_candidate_count": ready_to_register_count,
+        "max_sample_bytes": int(max_sample_bytes),
+        "can_change_full_parity_gate": False,
+        "candidate_plans": real_candidates,
+        "next_actions": _smoke_plan_next_actions(real_candidates),
+        "truthfulness_boundary": (
+            "This plan moves real public data into importer smoke testing only. It does not register a parity fixture "
+            "and cannot change full EddyPro parity until EddyPro project/settings, official Full_Output, normalized "
+            "reference, provenance, and acceptance evidence are present."
+        ),
+    }
+
+
 def _probe_source(
     source: dict[str, Any],
     *,
@@ -110,6 +164,7 @@ def _probe_source(
         "source_url": str(source.get("source_url", "")),
         "registration_outcome": str(source.get("registration_outcome", "")),
         "declared_access_status": str(source.get("access_status", "")),
+        "parity_value": str(source.get("parity_value", "")),
         "status": "not_probed",
         "real_data_candidate": str(source.get("parity_value", "")).startswith("real_"),
         "download_url_status": "",
@@ -140,6 +195,98 @@ def _probe_source(
         payload["candidate_files"] = list(source.get("candidate_files", []) or [])
     payload["registration_readiness"] = _registration_readiness(source, payload)
     return payload
+
+
+def _raw_importer_candidate_plan(source_probe: dict[str, Any], *, max_sample_bytes: int) -> dict[str, Any]:
+    readiness = dict(source_probe.get("registration_readiness", {}) or {})
+    candidate_files = [dict(item or {}) for item in list(source_probe.get("candidate_files", []) or [])]
+    downloadable = [
+        item
+        for item in candidate_files
+        if str(item.get("download_url_status", "")) == "verified"
+        or int(dict(item.get("head", {}) or {}).get("status_code", 0) or 0) == 200
+        or str(item.get("url", "") or item.get("download_url", "")).startswith(("http://", "https://"))
+    ]
+    has_raw = bool(readiness.get("has_raw_input", False))
+    parity_value = str(source_probe.get("parity_value", "")).lower()
+    already_accepted = str(readiness.get("status", "")) == "registered_and_accepted"
+    real_candidate = (
+        has_raw
+        or parity_value.startswith(("real_ec", "real_raw", "real_high_frequency_raw", "real_large_high_frequency_raw"))
+    ) and not already_accepted
+    sample_mode = "not_applicable"
+    if downloadable:
+        sample_mode = "byte_range"
+    elif real_candidate:
+        sample_mode = "operator_subset"
+    missing = list(readiness.get("missing_requirements", []) or [])
+    return {
+        "source_id": str(source_probe.get("source_id", "")),
+        "provider": str(source_probe.get("provider", "")),
+        "source_url": str(source_probe.get("source_url", "")),
+        "status": str(source_probe.get("status", "")),
+        "has_real_raw_potential": bool(real_candidate),
+        "sample_mode": sample_mode,
+        "sample_byte_budget": int(max_sample_bytes) if sample_mode == "byte_range" else 0,
+        "candidate_file_count": len(candidate_files),
+        "downloadable_file_count": len(downloadable),
+        "candidate_files": [
+            {
+                "name": str(item.get("name", "")),
+                "url": str(item.get("url", "") or item.get("download_url", "")),
+                "size_bytes": int(item.get("size_bytes", item.get("size", 0)) or 0),
+                "download_url_status": str(item.get("download_url_status", "")),
+            }
+            for item in downloadable[:5]
+        ],
+        "registration_readiness_status": str(readiness.get("status", "")),
+        "missing_for_eddypro_parity": missing,
+        "can_register_as_eddypro_parity_fixture": not missing and bool(readiness),
+        "recommended_smoke": _recommended_smoke(source_probe, sample_mode=sample_mode),
+        "truthfulness_boundary": (
+            "Importer smoke can validate parser and metadata handling. It is not an EddyPro raw-to-final parity fixture "
+            "unless the missing registration evidence list is empty and acceptance passes."
+        ),
+    }
+
+
+def _recommended_smoke(source_probe: dict[str, Any], *, sample_mode: str) -> dict[str, Any]:
+    source_id = str(source_probe.get("source_id", "")).lower()
+    provider = str(source_probe.get("provider", "")).lower()
+    if "neon" in source_id or "neon" in provider:
+        return {
+            "smoke_type": "neon_hdf5_metadata_row_rp",
+            "command_family": [
+                "--download-neon-hdf5-candidate",
+                "--build-neon-hdf5-metadata-smoke",
+                "--build-neon-hdf5-row-smoke",
+                "--run-neon-hdf5-rp-smoke",
+            ],
+            "claim_scope": "engineering_validation_only",
+        }
+    if "crocus" in source_id or "osti" in provider:
+        return {
+            "smoke_type": "generic_high_frequency_raw_sample",
+            "command_family": ["--build-public-ec-data-discovery", "operator_supplied_sample_then_raw_importer_probe"],
+            "claim_scope": "importer_validation_only",
+        }
+    if "bas" in source_id or "antarctic" in provider:
+        return {
+            "smoke_type": "large_raw_subset_stress_sample",
+            "command_family": ["operator_supplied_subset_then_raw_importer_probe"],
+            "claim_scope": "importer_stress_validation_only",
+        }
+    if "icos" in source_id or "icos" in provider:
+        return {
+            "smoke_type": "authenticated_raw_ascii_subset",
+            "command_family": ["authenticated_download_or_operator_subset_then_raw_importer_probe"],
+            "claim_scope": "importer_validation_only",
+        }
+    return {
+        "smoke_type": "manual_public_raw_subset" if sample_mode == "operator_subset" else "byte_range_sample",
+        "command_family": ["operator_supplied_sample_then_raw_importer_probe"],
+        "claim_scope": "engineering_validation_only",
+    }
 
 
 def _probe_neon_api_source(
@@ -401,6 +548,36 @@ def _next_action(probes: list[dict[str, Any]]) -> str:
     if any(str(item.get("status", "")) == "licence_flow_verified" for item in probes):
         return "Add an authenticated ICOS download path or use an operator-provided accepted file."
     return "Continue source-derived parity closure and rerun public discovery later."
+
+
+def _smoke_plan_next_actions(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    byte_range_ids = [str(item.get("source_id", "")) for item in candidates if item.get("sample_mode") == "byte_range"]
+    operator_ids = [str(item.get("source_id", "")) for item in candidates if item.get("sample_mode") == "operator_subset"]
+    if byte_range_ids:
+        actions.append(
+            {
+                "priority": "P0",
+                "action": "Run bounded byte-range or metadata smoke on direct-download public candidates.",
+                "source_ids": byte_range_ids,
+            }
+        )
+    if operator_ids:
+        actions.append(
+            {
+                "priority": "P1",
+                "action": "Use operator-provided subsets for landing-page-only or very large raw datasets.",
+                "source_ids": operator_ids,
+            }
+        )
+    actions.append(
+        {
+            "priority": "P0",
+            "action": "Keep full EddyPro parity blocked until each promoted source has settings, Full_Output, provenance, and acceptance evidence.",
+            "source_ids": [str(item.get("source_id", "")) for item in candidates],
+        }
+    )
+    return actions
 
 
 def _resolve(root: Path, value: str | Path) -> Path:

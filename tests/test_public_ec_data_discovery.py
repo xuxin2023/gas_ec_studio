@@ -5,7 +5,10 @@ import json
 from pathlib import Path
 
 from core.comparison import public_ec_data_discovery
-from core.comparison.public_ec_data_discovery import build_public_ec_data_discovery_probe
+from core.comparison.public_ec_data_discovery import (
+    build_public_ec_data_discovery_probe,
+    build_public_raw_importer_smoke_plan,
+)
 from core.headless_batch_runner import run_cli
 
 
@@ -161,6 +164,76 @@ def test_public_ec_data_discovery_probe_verifies_neon_and_writes_byte_sample(mon
     assert payload["summary"]["raw_without_eddypro_pair_count"] == 2
     assert payload["summary"]["ready_to_register_candidate_count"] == 0
     assert payload["summary"]["can_change_full_parity_gate"] is False
+
+    probe_path = tmp_path / "probe.json"
+    probe_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    plan = build_public_raw_importer_smoke_plan(
+        discovery_probe_path=probe_path,
+        workspace_root=tmp_path,
+        max_sample_bytes=2048,
+    )
+    plans = {item["source_id"]: item for item in plan["candidate_plans"]}
+    assert plan["artifact_type"] == "public_raw_importer_smoke_plan_v1"
+    assert plan["status"] == "ready_for_importer_smoke"
+    assert plan["can_change_full_parity_gate"] is False
+    assert plan["real_raw_candidate_count"] == 3
+    assert plan["direct_byte_sample_candidate_count"] == 1
+    assert plan["operator_subset_required_count"] == 2
+    assert plans["neon_test"]["sample_mode"] == "byte_range"
+    assert plans["neon_test"]["sample_byte_budget"] == 2048
+    assert plans["crocus_test"]["sample_mode"] == "operator_subset"
+    assert plans["crocus_test"]["recommended_smoke"]["smoke_type"] == "generic_high_frequency_raw_sample"
+    assert plans["icos_test"]["missing_for_eddypro_parity"]
+
+
+def test_public_raw_importer_smoke_plan_cli_can_use_probe(tmp_path: Path) -> None:
+    probe_path = tmp_path / "probe.json"
+    probe_path.write_text(
+        json.dumps(
+            {
+                "artifact_type": "public_ec_data_discovery_probe_v1",
+                "sources": [
+                    {
+                        "source_id": "bas_test",
+                        "provider": "British Antarctic Survey",
+                        "source_url": "https://example.test/bas",
+                        "status": "landing_verified",
+                        "parity_value": "real_large_high_frequency_raw_candidate_not_eddypro_pair",
+                        "registration_readiness": {
+                            "status": "blocked_missing_registration_evidence",
+                            "has_raw_input": True,
+                            "missing_requirements": ["official_eddypro_full_output"],
+                        },
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "smoke_plan.json"
+
+    code = run_cli(
+        [
+            "--build-public-raw-importer-smoke-plan",
+            "--workspace-root",
+            str(tmp_path),
+            "--public-ec-discovery-probe",
+            str(probe_path),
+            "--public-raw-smoke-max-sample-bytes",
+            "1024",
+            "--output",
+            str(output_path),
+        ]
+    )
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["real_raw_candidate_count"] == 1
+    assert payload["candidate_plans"][0]["source_id"] == "bas_test"
+    assert payload["candidate_plans"][0]["sample_mode"] == "operator_subset"
+    assert payload["candidate_plans"][0]["recommended_smoke"]["smoke_type"] == "large_raw_subset_stress_sample"
 
 
 class _FakeResponse:

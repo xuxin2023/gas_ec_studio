@@ -73,6 +73,26 @@ raise SystemExit(run_cli([
 
 For CI or documentation checks that must not touch the network, add `--skip-public-ec-network`. The probe records the source ledger path, provider status, NEON API/HDF5 HEAD verification, optional byte-range sample metadata, ICOS licence-flow status, generic landing-page keyword hits for CROCUS/BAS-style leads, registration-readiness missing requirements, and `can_change_full_parity_gate=false`.
 
+## Public Raw Importer Smoke Plan
+
+After building a discovery probe, convert real raw candidates into a bounded importer-smoke plan:
+
+```powershell
+@'
+from core.headless_batch_runner import run_cli
+
+raise SystemExit(run_cli([
+    "--build-public-raw-importer-smoke-plan",
+    "--workspace-root", ".",
+    "--public-ec-discovery-probe", "artifacts/public_ec_data/public_ec_data_discovery_probe.json",
+    "--public-raw-smoke-max-sample-bytes", "65536",
+    "--output", "artifacts/public_ec_data/public_raw_importer_smoke_plan.json",
+]))
+'@ | python -
+```
+
+The plan separates direct byte-range candidates such as NEON from landing-page-only or very large raw candidates such as CROCUS, BAS, and ICOS. It records `missing_for_eddypro_parity` for each source, so a real raw sample can advance importer validation without silently becoming a full EddyPro parity fixture.
+
 ## NEON HDF5 Metadata Smoke
 
 After a probe artifact verifies the NEON HDF5 candidate, the file can be downloaded into ignored local artifacts and inspected for EC field candidates:
