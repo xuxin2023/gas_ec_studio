@@ -23,3 +23,18 @@ python -m app.main
 ```powershell
 pytest
 ```
+
+## EddyPro Parity Gates
+
+This repository keeps two EddyPro parity claims separate:
+
+- `can_release_full_eddypro_parity`: strict official parity. It stays blocked until complete EddyPro/SmartFlux breadth, official EddyPro executable-run raw-to-final evidence, and accepted evidence-pack provenance pass together.
+- `can_release_source_derived_functional_parity`: source-derived functional parity. It can pass when public real raw or hardware evidence is unavailable, using EddyPro-source-derived conformance fixtures, the accepted public official anchor, and delivery-chain tests.
+
+Use:
+
+```powershell
+python scripts/run_eddypro_release_gate.py --workspace-root . --output artifacts/eddypro_release_gate/eddypro_release_gate.json --skip-acceptance
+```
+
+The second gate is a truthful engineering closure, not a substitute for official field numeric parity or hardware/vendor certification. Current public data discovery status is tracked in `docs/benchmark/public_ec_data_discovery.md`.

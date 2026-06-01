@@ -61,6 +61,12 @@ def _print_summary(gate: dict[str, Any], output_path: Path) -> None:
     summary = dict(gate.get("summary", {}) or {})
     print(f"EddyPro release gate: {gate.get('status', 'blocked')}")
     print(f"can_release_full_eddypro_parity: {gate.get('can_release_full_eddypro_parity', False)}")
+    print(
+        "can_release_source_derived_functional_parity: "
+        f"{gate.get('can_release_source_derived_functional_parity', False)}"
+    )
+    print(f"surrogate_evidence_closure_status: {gate.get('surrogate_evidence_closure_status', 'not_configured')}")
+    print(f"surrogate_ci_exit_code: {gate.get('surrogate_ci_exit_code', 2)}")
     print(f"official_raw_acceptance_gate_status: {summary.get('official_raw_acceptance_gate_status', 'not_run')}")
     print(f"official_raw_closure_run_gate_status: {summary.get('official_raw_closure_run_gate_status', 'not_available')}")
     print(f"capability_completion_score: {summary.get('capability_completion_score', 0.0)}")
@@ -79,10 +85,17 @@ def _write_summary(path: Path, gate: dict[str, Any], output_path: Path) -> None:
         f"- Status: `{gate.get('status', 'blocked')}`",
         f"- Can release full EddyPro parity: `{gate.get('can_release_full_eddypro_parity', False)}`",
         f"- CI exit code: `{gate.get('ci_exit_code', 2)}`",
+        f"- Can release source-derived functional parity: `{gate.get('can_release_source_derived_functional_parity', False)}`",
+        f"- Source-derived CI exit code: `{gate.get('surrogate_ci_exit_code', 2)}`",
+        f"- Surrogate evidence closure: `{gate.get('surrogate_evidence_closure_status', 'not_configured')}`",
+        f"- Surrogate accepted items: `{summary.get('surrogate_accepted_item_count', 0)}`",
+        f"- Surrogate missing items: `{summary.get('surrogate_missing_item_count', 0)}`",
         f"- Official raw acceptance: `{summary.get('official_raw_acceptance_gate_status', 'not_run')}`",
         f"- Official raw closure run: `{summary.get('official_raw_closure_run_gate_status', 'not_available')}`",
         f"- Capability completion score: `{summary.get('capability_completion_score', 0.0)}`",
         f"- Artifact: `{output_path}`",
+        "",
+        "> Source-derived functional parity is a software/evidence-chain closure. It must not be described as official field numeric parity, real hardware validation, or vendor-certified EddyPro equivalence.",
     ]
     if blocking_reasons:
         lines.extend(["", "### Blocking Reasons"])

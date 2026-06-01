@@ -1,0 +1,102 @@
+{
+  "artifact_type": "public_ec_data_source_discovery_v1",
+  "manifest_id": "public_ec_data_source_discovery_2026_06_01",
+  "updated_at": "2026-06-01T00:00:00+08:00",
+  "purpose": "Track public real EC data sources that may help replace source-derived EddyPro parity closures with direct raw-to-final evidence.",
+  "overall_status": "new_real_data_candidates_found_but_not_registered_as_eddypro_parity_fixtures",
+  "local_registration_status": {
+    "official_licor_sample_bundle": "registered_and_accepted",
+    "neon_dp4_candidate": "api_and_download_url_head_verified_not_registered",
+    "icos_raw_ascii_candidate": "landing_page_verified_license_flow_not_programmatically_registered",
+    "ameriflux_fluxnet_candidate": "not_registered_for_high_frequency_raw_to_final_parity"
+  },
+  "truthfulness_boundary": "Discovery or downloadable metadata does not change the full EddyPro parity claim gate. A candidate can only replace surrogate closure after download, hash validation, metadata mapping, EddyPro project/settings pairing, official output normalization, raw-to-final parity, and evidence-pack acceptance.",
+  "sources": [
+    {
+      "source_id": "licor_eddypro_sample_data_2021",
+      "provider": "LI-COR",
+      "source_url": "https://www.licor.com/support/EddyPro/topics/sample-datasets.html",
+      "access_status": "already_materialized_locally",
+      "account_or_registration": "not_required_for_existing_local_artifacts",
+      "verified_at": "2026-06-01T00:00:00+08:00",
+      "verification_method": "local_artifact_audit",
+      "local_evidence": [
+        "references/eddypro/public_official_raw/manifest.json",
+        "artifacts/eddypro_public_raw/ghg_sample_data_2021_licor_public_raw_candidate_official_raw_evidence_pack.json",
+        "artifacts/eddypro_public_raw/ghg_sample_data_2021_official_raw_closure_preview.json"
+      ],
+      "registration_outcome": "registered_and_accepted",
+      "parity_value": "official_public_raw_anchor",
+      "next_action": "Keep as the accepted official anchor; do not expand full parity claims until additional real candidates pass the same closure path."
+    },
+    {
+      "source_id": "neon_dp4_00200_001_harv_2023_07",
+      "provider": "NEON",
+      "source_url": "https://data.neonscience.org/data-products/DP4.00200.001",
+      "api_query_url": "https://data.neonscience.org/api/v0/data/query?productCode=DP4.00200.001&siteCode=HARV&startDateMonth=2023-07&endDateMonth=2023-07&release=RELEASE-2025&includeProvisional=false",
+      "access_status": "api_metadata_and_download_url_head_verified",
+      "account_or_registration": "not_required_for_metadata_or_public_google_storage_url",
+      "verified_at": "2026-06-01T00:00:00+08:00",
+      "verification_method": "Invoke-WebRequest returned HTTP 200 for the NEON API query and HTTP 200 for HEAD on the public HDF5 URL",
+      "candidate_files": [
+        {
+          "name": "NEON.D01.HARV.DP4.00200.001.nsae.2023-07.basic.20250122T131642Z.h5",
+          "size_bytes": 156344090,
+          "md5": "02c7e93f6f8f7309915831c8306ab8c4",
+          "head_status": 200,
+          "head_content_length": 156344090,
+          "head_content_type": "application/octet-stream",
+          "url": "https://storage.googleapis.com/neon-sae-files/ods/dataproducts/DP4/2023-07-01/HARV/NEON.D01.HARV.DP4.00200.001.nsae.2023-07.basic.20250122T131642Z.h5"
+        }
+      ],
+      "registration_outcome": "not_registered",
+      "parity_value": "real_ec_hdf5_candidate_not_eddypro_output",
+      "known_limitations": [
+        "NEON HDF5 is real EC data, but it is not an EddyPro .ghg/TOB1/SLT raw bundle with paired EddyPro Full_Output.",
+        "Requires a new importer/mapping path before it can become a raw-to-final parity fixture.",
+        "Download was intentionally not performed in this run because the first verified HDF5 candidate is about 156 MB."
+      ],
+      "next_action": "Add a NEON HDF5 metadata probe/downloader and a small smoke fixture plan before attempting full import."
+    },
+    {
+      "source_id": "icos_raw_ascii_ch_dav_candidate",
+      "provider": "ICOS Carbon Portal",
+      "source_url": "https://meta.icos-cp.eu/objects/QGFJjyiRVSqOvwQA_jaNIW2D",
+      "licence_url": "https://data.icos-cp.eu/licence?ids=%5B%22QGFJjyiRVSqOvwQA_jaNIW2D%22%5D",
+      "access_status": "landing_page_verified_license_acceptance_required",
+      "account_or_registration": "interactive_licence_acceptance_or_authenticated_icos_flow_required",
+      "verified_at": "2026-06-01T00:00:00+08:00",
+      "verification_method": "Invoke-WebRequest returned HTTP 200 for object page and licence page; noninteractive licence_accept redirected back to licence form",
+      "registration_outcome": "not_programmatically_registered",
+      "parity_value": "real_raw_ascii_candidate_not_registered",
+      "known_limitations": [
+        "No local ICOS authenticated token/session was found.",
+        "The object page is discoverable and indicates Raw ASCII, but this run did not obtain a repeatable direct data download.",
+        "Even after download, ICOS Raw ASCII still needs EddyPro settings/output pairing or a separately defined raw-to-final validation target."
+      ],
+      "next_action": "Use the ICOS Python package or an authenticated licence-accepted session to download a small object, then normalize metadata and evaluate importer fit."
+    },
+    {
+      "source_id": "ameriflux_fluxnet_product_lead",
+      "provider": "AmeriFlux/FLUXNET",
+      "source_url": "https://ameriflux.lbl.gov/data/download-data/",
+      "access_status": "not_promoted_for_raw_to_final",
+      "account_or_registration": "account_or_data_policy_flow_may_be_required_by_provider",
+      "verified_at": "2026-06-01T00:00:00+08:00",
+      "verification_method": "public lead retained from prior fixture search; not downloaded in this run",
+      "registration_outcome": "not_registered",
+      "parity_value": "processed_flux_reference_lead_not_high_frequency_raw_eddypro_pair",
+      "known_limitations": [
+        "AmeriFlux/FLUXNET products are valuable processed-flux references, but they generally are not a redistributable high-frequency raw plus EddyPro settings plus Full_Output parity bundle.",
+        "Do not use them to claim official EddyPro raw-to-final parity without a complete paired raw/output package."
+      ],
+      "next_action": "Use only as processed-output validation unless a site explicitly publishes high-frequency raw data and EddyPro project/output sidecars."
+    }
+  ],
+  "recommended_next_steps": [
+    "Keep LI-COR sample data as the current accepted official raw anchor.",
+    "Implement a NEON DP4 HDF5 probe/downloader that stores only metadata and optionally byte-range samples first.",
+    "Add an ICOS authenticated-download integration only after a reusable noninteractive token/session is available.",
+    "Leave full EddyPro field numeric parity blocked until at least one new real candidate completes raw-to-final registration and acceptance."
+  ]
+}

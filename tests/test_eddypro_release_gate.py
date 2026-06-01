@@ -339,4 +339,9 @@ def test_release_gate_runner_script_writes_artifact_and_returns_gate_code(tmp_pa
     assert payload["status"] == "blocked"
     assert payload["summary"]["official_raw_acceptance_gate_status"] == "pass"
     assert "EddyPro release gate: blocked" in completed.stdout
+    assert "can_release_source_derived_functional_parity: True" in completed.stdout
+    assert "surrogate_evidence_closure_status: pass" in completed.stdout
     assert "## EddyPro Release Gate" in summary.read_text(encoding="utf-8")
+    summary_text = summary.read_text(encoding="utf-8")
+    assert "Can release source-derived functional parity: `True`" in summary_text
+    assert "Surrogate evidence closure: `pass`" in summary_text

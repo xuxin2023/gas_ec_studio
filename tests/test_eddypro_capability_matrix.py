@@ -51,3 +51,14 @@ def test_capability_matrix_sources_are_official_licor_urls() -> None:
         assert source["url"].startswith("https://")
         assert "licor.com" in source["url"]
         assert source["used_for"]
+
+
+def test_capability_matrix_keeps_surrogate_claim_boundary_explicit() -> None:
+    matrix = json.loads(Path("docs/benchmark/eddypro_capability_matrix.json").read_text(encoding="utf-8"))
+    policy = matrix["surrogate_evidence_closure_policy"]
+
+    assert policy["status"] == "accepted"
+    assert "source_derived_functional_eddypro_parity" in policy["allowed_claims"]
+    assert "official_field_numeric_parity" in policy["blocked_claims"]
+    assert "must never be described as real field golden-output parity" in policy["truthfulness_note"]
+    assert len(policy["accepted_blockers"]) == 10

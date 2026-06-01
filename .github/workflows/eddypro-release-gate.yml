@@ -78,7 +78,7 @@ jobs:
             tests/test_eddypro_coverage_audit.py \
             tests/test_official_raw_fixture_bundle.py::test_run_official_raw_evidence_pack_acceptance_executes_safe_pytest
 
-      - name: Build EddyPro release gate artifact
+      - name: Build EddyPro release gate artifact and parity summary
         id: gate
         shell: bash
         run: |
