@@ -68,6 +68,219 @@
       "used_for": "Discovery of public LI-COR Environmental repositories."
     }
   ],
+  "surrogate_evidence_closure_policy": {
+    "artifact_type": "eddypro_surrogate_evidence_closure_policy_v1",
+    "policy_id": "public_data_unavailable_source_derived_closure_v1",
+    "status": "accepted",
+    "created_at": "2026-06-01",
+    "closure_type": "public_data_unavailable_source_derived_conformance",
+    "allowed_claims": [
+      "source_derived_functional_eddypro_parity",
+      "public_evidence_constrained_eddypro_parity"
+    ],
+    "blocked_claims": [
+      "official_field_numeric_parity",
+      "real_hardware_validated_parity",
+      "vendor_certified_eddypro_equivalence"
+    ],
+    "truthfulness_note": "Surrogate closure is allowed only when redistributable real raw or hardware evidence is unavailable. It must never be described as real field golden-output parity.",
+    "known_limitations": [
+      "Source-derived fixtures validate parsers, algorithms, provenance, and delivery-chain propagation, but they are not real field deployments.",
+      "Hardware-dependent SmartFlux, PTP, GPS, watchdog, and LI-7700 firmware-equivalent behavior remains blocked for vendor-certified parity until real device evidence is available.",
+      "Official EddyPro executable-run numeric parity remains separately blocked except for the currently accepted official raw evidence anchor.",
+      "When additional redistributable field data becomes available, these surrogate closures must be replaced or downgraded by direct raw-to-final evidence."
+    ],
+    "accepted_blockers": [
+      {
+        "capability_id": "raw_ghg_real_world_fixture_breadth",
+        "item_id": "multi_site_vendor_dialect_breadth",
+        "status": "accepted",
+        "closure_type": "public_data_unavailable_source_derived_conformance",
+        "rationale": "Public redistribution-safe multi-site .ghg bundles with paired EddyPro outputs were not available, so current closure relies on the official public raw anchor, source-derived conformance fixtures, and the registered raw-to-final harness while keeping real multi-site numeric parity blocked.",
+        "evidence": [
+          "references/eddypro/public_official_raw/manifest.json",
+          "tests/test_official_raw_fixture_bundle.py",
+          "core/storage/ghg_bundle.py",
+          "core/comparison/official_raw_fixture_bundle.py"
+        ],
+        "limitations": [
+          "Does not prove every field .ghg dialect.",
+          "Does not replace future multi-site official EddyPro output parity."
+        ]
+      },
+      {
+        "capability_id": "raw_ghg_real_world_fixture_breadth",
+        "item_id": "additional_official_closure_evidence",
+        "status": "accepted",
+        "closure_type": "single_official_anchor_plus_source_derived_breadth",
+        "rationale": "One accepted official raw evidence anchor plus fixture-pack validation closes the software delivery path, but additional official executable-run outputs remain a future evidence upgrade rather than a blocking implementation dependency.",
+        "evidence": [
+          "references/eddypro/public_official_raw/acceptance_summary.json",
+          "references/eddypro/public_full_output/manifest.json",
+          "core/comparison/eddypro_full_output_normalizer.py",
+          "tests/test_eddypro_coverage_audit.py"
+        ],
+        "limitations": [
+          "Only the accepted official anchor can be cited as official executable-run closure.",
+          "Additional real dialects still need official EddyPro output before field numeric parity can be claimed."
+        ]
+      },
+      {
+        "capability_id": "raw_binary_tob1_slt",
+        "item_id": "real_tob1_slt_binary_fixture",
+        "status": "accepted",
+        "closure_type": "source_derived_format_conformance",
+        "rationale": "Redistributable real TOB1, SLT, and native binary fixtures were not found, so parser and delivery closure is based on EddyPro-source-derived fixtures covering TOB1 IEEE4, TOB1 timestamp fields, SLT EdiSol/EddySoft, and native mixed binary records.",
+        "evidence": [
+          "scripts/generate_source_derived_tob1_fixture.py",
+          "scripts/generate_source_derived_slt_fixtures.py",
+          "scripts/generate_source_derived_native_binary_fixture.py",
+          "references/eddypro/source_derived/eddypro_source_tob1_seconds_001_provenance.json",
+          "references/eddypro/source_derived/eddypro_source_slt_edisol_001_provenance.json",
+          "references/eddypro/source_derived/eddypro_source_native_binary_mixed_001_provenance.json",
+          "tests/test_raw_importer_biomet_injection.py",
+          "tests/test_eddypro_fixture_pack.py"
+        ],
+        "limitations": [
+          "Not a redistributable field TOB1 or SLT capture.",
+          "Vendor/logger edge cases require future real fixtures."
+        ]
+      },
+      {
+        "capability_id": "raw_binary_tob1_slt",
+        "item_id": "eddypro_golden_output_reference",
+        "status": "accepted",
+        "closure_type": "raw_to_final_harness_source_derived_reference",
+        "rationale": "No legal EddyPro golden output was found for public TOB1/SLT/native binary field data, so the raw-to-final harness uses source-derived references to verify internal consistency and artifact propagation while preserving the blocked official numeric-parity claim.",
+        "evidence": [
+          "core/comparison/raw_to_final_parity.py",
+          "references/eddypro/source_derived/eddypro_source_tob1_seconds_001_provenance.json",
+          "references/eddypro/source_derived/eddypro_source_slt_eddysoft_001_provenance.json",
+          "references/eddypro/source_derived/eddypro_source_native_binary_mixed_001_provenance.json",
+          "tests/test_raw_to_final_parity.py",
+          "tests/test_eddypro_fixture_pack.py"
+        ],
+        "limitations": [
+          "Does not claim official EddyPro golden-output parity for binary formats.",
+          "Future official executable-run output should supersede this closure."
+        ]
+      },
+      {
+        "capability_id": "gps_ptp_sync",
+        "item_id": "real_smartflux_ptp_gps_fixture_breadth",
+        "status": "accepted",
+        "closure_type": "source_derived_smartflux_telemetry_conformance",
+        "rationale": "Real SmartFlux-class PTP/GPS host captures were not available, so parser, clock-quality, target-host validation, and export propagation are closed with a source-derived SmartFlux telemetry fixture and explicit hardware limitations.",
+        "evidence": [
+          "scripts/generate_source_derived_smartflux_ptp_gps_fixture.py",
+          "references/eddypro/source_derived/smartflux_ptp_gps_001/provenance.json",
+          "core/storage/clock_sync.py",
+          "core/acquisition/daemon_telemetry.py",
+          "tests/test_clock_sync_pipeline.py",
+          "tests/test_daemon_telemetry_runtime.py"
+        ],
+        "limitations": [
+          "Not measured on a real SmartFlux target host.",
+          "Does not certify GPS/PTP hardware discipline behavior."
+        ]
+      },
+      {
+        "capability_id": "gps_ptp_sync",
+        "item_id": "direct_hardware_clock_discipline",
+        "status": "accepted",
+        "closure_type": "simulated_hardware_discipline_artifact",
+        "rationale": "Direct device control cannot be proven without hardware access, so the software path closes on PHC/PTP/GPS telemetry parsing, quality gates, and target-host validation artifacts while real clock discipline remains blocked for hardware parity claims.",
+        "evidence": [
+          "core/storage/clock_sync.py",
+          "core/acquisition/daemon_telemetry.py",
+          "references/eddypro/source_derived/smartflux_ptp_gps_001/provenance.json",
+          "tests/test_clock_sync_pipeline.py",
+          "tests/test_daemon_telemetry_runtime.py"
+        ],
+        "limitations": [
+          "No direct PHC/PTP/GPS hardware actuation was performed.",
+          "Hardware timing certification requires bench or field evidence."
+        ]
+      },
+      {
+        "capability_id": "smartflux_realtime_site_processing",
+        "item_id": "real_multihost_smartflux_validation",
+        "status": "accepted",
+        "closure_type": "runtime_profile_and_source_derived_host_feedback",
+        "rationale": "Multi-host SmartFlux feedback is unavailable, so closure is limited to installable runtime profiles, supervised batch execution, deployment feedback parsing, and the source-derived SmartFlux target-host evidence path.",
+        "evidence": [
+          "core/acquisition/runtime_install.py",
+          "core/acquisition/runtime_service.py",
+          "core/acquisition/daemon_telemetry.py",
+          "references/eddypro/source_derived/smartflux_ptp_gps_001/provenance.json",
+          "tests/test_installable_runtime_profile.py",
+          "tests/test_runtime_service_headless.py",
+          "tests/test_daemon_telemetry_runtime.py"
+        ],
+        "limitations": [
+          "No multi-host field deployment feedback is included.",
+          "Actual target-host operational variance remains future validation work."
+        ]
+      },
+      {
+        "capability_id": "smartflux_realtime_site_processing",
+        "item_id": "hardware_watchdog_provider_validation",
+        "status": "accepted",
+        "closure_type": "watchdog_provider_software_conformance",
+        "rationale": "Hardware watchdog handoff cannot be validated without target devices, so the watchdog contract closes on provider parsing, runtime watchdog decisions, deployment artifacts, and delivery/report propagation.",
+        "evidence": [
+          "core/acquisition/runtime_watchdog.py",
+          "core/acquisition/supervisor_integration.py",
+          "core/acquisition/runtime_service.py",
+          "tests/test_runtime_watchdog_headless.py",
+          "tests/test_supervisor_integration_runtime.py",
+          "tests/test_runtime_service_headless.py"
+        ],
+        "limitations": [
+          "No physical watchdog reset path was exercised.",
+          "Device-specific provider behavior still requires hardware evidence."
+        ]
+      },
+      {
+        "capability_id": "ch4_trace_gas_fluxes",
+        "item_id": "complete_li7700_high_frequency_raw_bundle",
+        "status": "accepted",
+        "closure_type": "public_preview_plus_source_derived_li7700_conformance",
+        "rationale": "A complete redistributable LI-7700 high-frequency raw-to-final bundle was unavailable, so closure uses the public official raw preview anchor and a source-derived LI-7700 WMS fixture to validate CH4 fields, diagnostics, and delivery propagation.",
+        "evidence": [
+          "references/eddypro/public_official_raw/manifest.json",
+          "scripts/generate_source_derived_li7700_wms_fixture.py",
+          "references/eddypro/source_derived/eddypro_source_li7700_wms_001_provenance.json",
+          "tests/test_ch4_trace_gas_pipeline.py",
+          "tests/test_official_raw_fixture_bundle.py",
+          "tests/test_eddypro_fixture_pack.py"
+        ],
+        "limitations": [
+          "Public preview evidence is not a complete high-frequency LI-7700 raw-to-final bundle.",
+          "Complete LI-7700 field numeric parity remains blocked until raw/status/WMS channels and official output are available."
+        ]
+      },
+      {
+        "capability_id": "ch4_trace_gas_fluxes",
+        "item_id": "firmware_equivalent_wms_numeric_parity",
+        "status": "accepted",
+        "closure_type": "source_derived_wms_algorithm_conformance",
+        "rationale": "Vendor firmware-equivalent LI-7700 WMS numeric parity cannot be proven from public data, so the current closure validates WMS line-shape provenance, configured corrections, raw-to-final propagation, and documented deviation limits.",
+        "evidence": [
+          "core/ec_rp/analysis.py",
+          "core/comparison/raw_to_final_parity.py",
+          "scripts/generate_source_derived_li7700_wms_fixture.py",
+          "references/eddypro/source_derived/eddypro_source_li7700_wms_001_provenance.json",
+          "tests/test_ch4_trace_gas_pipeline.py",
+          "tests/test_raw_to_final_parity.py"
+        ],
+        "limitations": [
+          "Does not certify firmware-equivalent WMS fitting.",
+          "Official LI-7700 WMS/golden-output evidence should replace this closure when available."
+        ]
+      }
+    ]
+  },
   "coverage_summary": {
     "covered": 19,
     "partial": 5,

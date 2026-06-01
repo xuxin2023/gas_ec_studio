@@ -24,6 +24,7 @@ STATUS_WEIGHTS = {
 PRIORITY_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 SUBPROGRESS_DONE_STATUSES = {"done", "covered", "complete", "pass", "validated"}
 SUBPROGRESS_BLOCKED_STATUSES = {"blocked", "missing", "needs_real_fixture", "needs_hardware", "needs_official_output"}
+SURROGATE_ACCEPTED_STATUSES = {"accepted", "approved", "closed", "pass", "validated"}
 
 
 def build_eddypro_coverage_audit(
@@ -80,6 +81,13 @@ def build_eddypro_coverage_audit(
     gaps = _gap_items(rows, summary_payload, official_payload, source_payload, acceptance_summary)
     closure_gate = _closure_gate(gaps)
     closure_plan = _closure_plan(closure_gate)
+    surrogate_closure = _surrogate_evidence_closure_gate(
+        policy=matrix.get("surrogate_evidence_closure_policy", {}),
+        capability_rows=rows,
+        fixture_evidence_summary=fixture_summary_small,
+        source_summary=source_summary,
+        acceptance_summary=acceptance_summary,
+    )
     blocking_reasons = _blocking_reasons(
         capability_summary=capability_summary,
         fixture_summary=summary_payload,
@@ -95,11 +103,13 @@ def build_eddypro_coverage_audit(
         "generated_at": datetime.now().isoformat(),
         "status": "full_eddypro_parity_evidence_ready" if can_claim_full_parity else "not_full_eddypro_parity_yet",
         "can_claim_full_eddypro_parity": can_claim_full_parity,
+        "can_claim_source_derived_functional_parity": surrogate_closure.get("status") == "pass",
         "claim_gate": {
             "status": "pass" if can_claim_full_parity else "blocked",
             "blocking_reasons": blocking_reasons,
             "closure_gate_status": closure_gate["status"],
             "closure_open_item_count": closure_gate["open_item_count"],
+            "surrogate_evidence_closure_status": surrogate_closure.get("status", "not_configured"),
             "required_evidence": [
                 "No EddyPro capability rows remain partial or missing.",
                 "At least one official raw-to-final fixture has raw input, EddyPro settings, official output, normalized reference, provenance, and passing parity.",
@@ -132,6 +142,7 @@ def build_eddypro_coverage_audit(
         },
         "closure_gate": closure_gate,
         "closure_plan": closure_plan,
+        "surrogate_evidence_closure": surrogate_closure,
         "capability_rows": rows,
         "truthfulness_note": (
             "This audit is a claim gate, not a marketing score. It keeps full EddyPro parity blocked "
@@ -361,6 +372,180 @@ def _capability_subprogress_summary(rows: list[dict[str, Any]]) -> dict[str, Any
         "completion_ratio": done_items / total_items if total_items else 0.0,
         "rows": subprogress_rows,
     }
+
+
+def _surrogate_evidence_closure_gate(
+    *,
+    policy: Any,
+    capability_rows: list[dict[str, Any]],
+    fixture_evidence_summary: dict[str, Any],
+    source_summary: dict[str, Any],
+    acceptance_summary: dict[str, Any],
+) -> dict[str, Any]:
+    policy_payload = dict(policy or {}) if isinstance(policy, dict) else {}
+    if not policy_payload:
+        return {
+            "artifact_type": "eddypro_surrogate_evidence_closure_v1",
+            "status": "not_configured",
+            "gate_status": "not_configured",
+            "can_claim_source_derived_functional_parity": False,
+            "surrogate_item_count": 0,
+            "accepted_item_count": 0,
+            "missing_item_count": 0,
+            "truthfulness_note": "No surrogate evidence closure policy was configured.",
+        }
+
+    accepted_index = _surrogate_policy_index(policy_payload)
+    rows: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
+    accepted: list[dict[str, Any]] = []
+    for row in capability_rows:
+        if row.get("gas_ec_status") != "partial":
+            continue
+        for item in list(row.get("coverage_checklist", []) or []):
+            if _subprogress_item_done(item):
+                continue
+            capability_id = str(row.get("id", ""))
+            item_id = str(item.get("id", item.get("label", "")))
+            closure = _surrogate_closure_for_item(accepted_index, capability_id=capability_id, item_id=item_id)
+            validation = _validate_surrogate_closure(closure)
+            entry = {
+                "capability_id": capability_id,
+                "family": str(row.get("family", "")),
+                "item_id": item_id,
+                "original_status": str(item.get("status", "")),
+                "original_blocker": str(item.get("blocker", "")),
+                "surrogate_status": validation["status"],
+                "closure_type": str(closure.get("closure_type", "")),
+                "evidence": list(closure.get("evidence", []) or []),
+                "limitations": list(closure.get("limitations", []) or []),
+                "rationale": str(closure.get("rationale", "")),
+                "missing_requirements": list(validation.get("missing_requirements", []) or []),
+            }
+            rows.append(entry)
+            if validation["status"] == "accepted":
+                accepted.append(entry)
+            else:
+                missing.append(entry)
+
+    policy_status = str(policy_payload.get("status", "not_configured"))
+    evidence_checks = _surrogate_external_evidence_checks(
+        fixture_evidence_summary=fixture_evidence_summary,
+        source_summary=source_summary,
+        acceptance_summary=acceptance_summary,
+    )
+    failed_external = [item for item in evidence_checks if item.get("status") != "pass"]
+    status = "pass" if policy_status in SURROGATE_ACCEPTED_STATUSES and not missing and not failed_external else "blocked"
+    if not rows:
+        status = "not_needed" if policy_status in SURROGATE_ACCEPTED_STATUSES else "not_configured"
+    return {
+        "artifact_type": "eddypro_surrogate_evidence_closure_v1",
+        "status": status,
+        "gate_status": "pass" if status in {"pass", "not_needed"} else status,
+        "policy_id": str(policy_payload.get("policy_id", "")),
+        "policy_status": policy_status,
+        "can_claim_source_derived_functional_parity": status in {"pass", "not_needed"},
+        "surrogate_item_count": len(rows),
+        "accepted_item_count": len(accepted),
+        "missing_item_count": len(missing),
+        "external_evidence_checks": evidence_checks,
+        "failed_external_check_count": len(failed_external),
+        "accepted_items": accepted,
+        "missing_items": missing,
+        "rows": rows,
+        "allowed_claims": list(policy_payload.get("allowed_claims", []) or []),
+        "blocked_claims": list(policy_payload.get("blocked_claims", []) or ["official_field_numeric_parity"]),
+        "truthfulness_note": str(
+            policy_payload.get(
+                "truthfulness_note",
+                "Surrogate evidence can close source-derived functional parity only; it does not create real field golden-output evidence.",
+            )
+        ),
+        "known_limitations": list(policy_payload.get("known_limitations", []) or []),
+    }
+
+
+def _surrogate_policy_index(policy: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
+    index: dict[tuple[str, str], dict[str, Any]] = {}
+    for item in list(policy.get("accepted_blockers", []) or []):
+        if not isinstance(item, dict):
+            continue
+        capability_id = str(item.get("capability_id", "") or "")
+        item_id = str(item.get("item_id", "") or "")
+        if capability_id and item_id:
+            index[(capability_id, item_id)] = dict(item)
+    return index
+
+
+def _surrogate_closure_for_item(
+    index: dict[tuple[str, str], dict[str, Any]],
+    *,
+    capability_id: str,
+    item_id: str,
+) -> dict[str, Any]:
+    return dict(index.get((capability_id, item_id), {}) or index.get(("*", item_id), {}) or {})
+
+
+def _validate_surrogate_closure(closure: dict[str, Any]) -> dict[str, Any]:
+    missing: list[str] = []
+    if str(closure.get("status", "")) not in SURROGATE_ACCEPTED_STATUSES:
+        missing.append("accepted_status")
+    if not list(closure.get("evidence", []) or []):
+        missing.append("evidence")
+    if not str(closure.get("rationale", "")).strip():
+        missing.append("rationale")
+    if not list(closure.get("limitations", []) or []):
+        missing.append("limitations")
+    if not str(closure.get("closure_type", "")).strip():
+        missing.append("closure_type")
+    return {
+        "status": "accepted" if not missing else "missing_requirements",
+        "missing_requirements": missing,
+    }
+
+
+def _surrogate_external_evidence_checks(
+    *,
+    fixture_evidence_summary: dict[str, Any],
+    source_summary: dict[str, Any],
+    acceptance_summary: dict[str, Any],
+) -> list[dict[str, Any]]:
+    registered_count = int(fixture_evidence_summary.get("registered_raw_to_final_fixture_count", 0) or 0)
+    pass_count = int(fixture_evidence_summary.get("raw_to_final_pass_count", 0) or 0)
+    source_derived_count = int(dict(fixture_evidence_summary.get("readiness_counts", {}) or {}).get("source_derived_conformance", 0) or 0)
+    checks = [
+        {
+            "check_id": "fixture_pack_status",
+            "status": "pass" if str(fixture_evidence_summary.get("fixture_pack_status", "")) == "pass" else "fail",
+            "measured": fixture_evidence_summary.get("fixture_pack_status", ""),
+            "threshold": "pass",
+        },
+        {
+            "check_id": "source_inventory_status",
+            "status": "pass" if str(source_summary.get("status", "")) == "pass" else "fail",
+            "measured": source_summary.get("status", ""),
+            "threshold": "pass",
+        },
+        {
+            "check_id": "registered_raw_to_final_passes",
+            "status": "pass" if registered_count > 0 and pass_count >= registered_count else "fail",
+            "measured": {"registered": registered_count, "pass": pass_count},
+            "threshold": "all registered raw-to-final fixtures pass",
+        },
+        {
+            "check_id": "source_derived_conformance_breadth",
+            "status": "pass" if source_derived_count >= 5 else "fail",
+            "measured": source_derived_count,
+            "threshold": ">=5 source-derived conformance fixtures",
+        },
+        {
+            "check_id": "official_raw_acceptance_anchor",
+            "status": "pass" if str(acceptance_summary.get("gate_status", "")) == "pass" else "fail",
+            "measured": acceptance_summary.get("gate_status", "not_run"),
+            "threshold": "at least one accepted official raw evidence anchor",
+        },
+    ]
+    return checks
 
 
 def _family_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:

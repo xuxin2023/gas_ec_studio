@@ -603,18 +603,24 @@ class ResultExporter:
         eddypro_source_inventory = build_eddypro_source_inventory()
         eddypro_source_inventory_path = export_root / "eddypro_source_inventory.json"
         self._write_json(eddypro_source_inventory_path, eddypro_source_inventory)
+        coverage_official_raw_evidence_pack = (
+            official_raw_evidence_pack if official_raw_acceptance_gate_status == "pass" else None
+        )
         eddypro_coverage_audit = build_eddypro_coverage_audit(
             fixture_pack_path=fixture_pack_path or None,
             workspace_root=fixture_pack_workspace_root or None,
             fixture_summary=fixture_pack_summary,
             official_raw_manifest=official_raw_fixture_manifest,
-            official_raw_evidence_pack=official_raw_evidence_pack,
+            official_raw_evidence_pack=coverage_official_raw_evidence_pack,
             source_inventory=eddypro_source_inventory,
         )
         eddypro_closure_gate = dict(eddypro_coverage_audit.get("closure_gate", {}) or {})
         eddypro_closure_plan = dict(eddypro_coverage_audit.get("closure_plan", {}) or {})
+        eddypro_surrogate_evidence_closure = dict(eddypro_coverage_audit.get("surrogate_evidence_closure", {}) or {})
         eddypro_coverage_audit_path = export_root / "eddypro_coverage_audit.json"
         self._write_json(eddypro_coverage_audit_path, eddypro_coverage_audit)
+        eddypro_surrogate_evidence_closure_path = export_root / "eddypro_surrogate_evidence_closure.json"
+        self._write_json(eddypro_surrogate_evidence_closure_path, eddypro_surrogate_evidence_closure)
         eddypro_release_gate = build_eddypro_release_gate(
             fixture_pack_path=fixture_pack_path or None,
             workspace_root=fixture_pack_workspace_root or None,
@@ -629,6 +635,7 @@ class ResultExporter:
             {
                 "official_raw_evidence_pack": str(official_raw_evidence_pack_path),
                 "eddypro_coverage_audit": str(eddypro_coverage_audit_path),
+                "surrogate_evidence_closure": str(eddypro_surrogate_evidence_closure_path),
             }
         )
         eddypro_release_gate_path = export_root / "eddypro_release_gate.json"
@@ -746,6 +753,7 @@ class ResultExporter:
         exported_files.append(official_raw_evidence_pack_path.name)
         exported_files.append(eddypro_source_inventory_path.name)
         exported_files.append(eddypro_coverage_audit_path.name)
+        exported_files.append(eddypro_surrogate_evidence_closure_path.name)
         exported_files.append(eddypro_release_gate_path.name)
         if synthetic_parity_path is not None:
             exported_files.append(synthetic_parity_path.name)
@@ -861,10 +869,19 @@ class ResultExporter:
                 "eddypro_source_inventory_artifact": str(eddypro_source_inventory_path),
                 "eddypro_coverage_audit": eddypro_coverage_audit,
                 "eddypro_coverage_audit_artifact": str(eddypro_coverage_audit_path),
+                "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
+                "eddypro_surrogate_evidence_closure_artifact": str(eddypro_surrogate_evidence_closure_path),
+                "eddypro_surrogate_evidence_closure_status": str(eddypro_surrogate_evidence_closure.get("status", "")),
+                "can_claim_source_derived_functional_parity": bool(
+                    eddypro_coverage_audit.get("can_claim_source_derived_functional_parity", False)
+                ),
                 "eddypro_release_gate": eddypro_release_gate,
                 "eddypro_release_gate_artifact": str(eddypro_release_gate_path),
                 "eddypro_release_gate_status": str(eddypro_release_gate.get("status", "")),
                 "can_release_full_eddypro_parity": bool(eddypro_release_gate.get("can_release_full_eddypro_parity", False)),
+                "can_release_source_derived_functional_parity": bool(
+                    eddypro_release_gate.get("can_release_source_derived_functional_parity", False)
+                ),
                 "eddypro_closure_gate": eddypro_closure_gate,
                 "eddypro_closure_plan": eddypro_closure_plan,
                 "eddypro_closure_gate_status": str(eddypro_closure_gate.get("status", "")),
@@ -960,10 +977,19 @@ class ResultExporter:
             "eddypro_source_inventory_artifact": str(eddypro_source_inventory_path),
             "eddypro_coverage_audit": eddypro_coverage_audit,
             "eddypro_coverage_audit_artifact": str(eddypro_coverage_audit_path),
+            "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
+            "eddypro_surrogate_evidence_closure_artifact": str(eddypro_surrogate_evidence_closure_path),
+            "eddypro_surrogate_evidence_closure_status": str(eddypro_surrogate_evidence_closure.get("status", "")),
+            "can_claim_source_derived_functional_parity": bool(
+                eddypro_coverage_audit.get("can_claim_source_derived_functional_parity", False)
+            ),
             "eddypro_release_gate": eddypro_release_gate,
             "eddypro_release_gate_artifact": str(eddypro_release_gate_path),
             "eddypro_release_gate_status": str(eddypro_release_gate.get("status", "")),
             "can_release_full_eddypro_parity": bool(eddypro_release_gate.get("can_release_full_eddypro_parity", False)),
+            "can_release_source_derived_functional_parity": bool(
+                eddypro_release_gate.get("can_release_source_derived_functional_parity", False)
+            ),
             "eddypro_closure_gate": eddypro_closure_gate,
             "eddypro_closure_plan": eddypro_closure_plan,
             "eddypro_closure_gate_status": str(eddypro_closure_gate.get("status", "")),
@@ -1330,6 +1356,7 @@ class ResultExporter:
         files["official_raw_evidence_pack_artifact"] = str(official_raw_evidence_pack_path)
         files["eddypro_source_inventory_artifact"] = str(eddypro_source_inventory_path)
         files["eddypro_coverage_audit_artifact"] = str(eddypro_coverage_audit_path)
+        files["eddypro_surrogate_evidence_closure_artifact"] = str(eddypro_surrogate_evidence_closure_path)
         files["eddypro_release_gate_artifact"] = str(eddypro_release_gate_path)
         if synthetic_parity_path is not None:
             files["synthetic_eddypro_parity_artifact"] = str(synthetic_parity_path)

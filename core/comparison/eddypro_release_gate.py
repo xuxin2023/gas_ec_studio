@@ -53,6 +53,12 @@ def build_eddypro_release_gate(
         official_raw_closure_run_path=official_raw_closure_run_path,
     )
     closure_summary = _closure_run_summary(closure_run)
+    evidence_pack_was_requested = (
+        official_raw_evidence_pack is not None
+        or official_raw_evidence_pack_path not in (None, "")
+        or official_raw_bundle_dir not in (None, "")
+        or bool(closure_run)
+    )
     evidence_pack = _load_or_build_evidence_pack(
         official_raw_evidence_pack=official_raw_evidence_pack,
         official_raw_evidence_pack_path=official_raw_evidence_pack_path,
@@ -111,7 +117,7 @@ def build_eddypro_release_gate(
             workspace_root=root,
             fixture_summary=summary,
             official_raw_manifest=official_manifest,
-            official_raw_evidence_pack=evidence_pack,
+            official_raw_evidence_pack=evidence_pack if (evidence_pack or evidence_pack_was_requested) else None,
             source_inventory=source,
         )
     )
@@ -123,6 +129,7 @@ def build_eddypro_release_gate(
     claim_gate = dict(coverage_audit.get("claim_gate", {}) or {})
     acceptance = dict(coverage_audit.get("official_raw_acceptance_summary", {}) or {})
     closure_gate = dict(coverage_audit.get("closure_gate", {}) or {})
+    surrogate_closure = dict(coverage_audit.get("surrogate_evidence_closure", {}) or {})
     closure_blockers = _closure_run_blocking_reasons(closure_summary)
     blocking_reasons = _dedupe(
         [
@@ -131,6 +138,7 @@ def build_eddypro_release_gate(
         ]
     )
     release_pass = bool(coverage_audit.get("can_claim_full_eddypro_parity", False)) and not closure_blockers
+    surrogate_release_pass = str(surrogate_closure.get("gate_status", surrogate_closure.get("status", ""))) == "pass"
     return {
         "artifact_type": "eddypro_release_gate_v1",
         "gate_id": "eddypro_release_gate_v1",
@@ -138,6 +146,9 @@ def build_eddypro_release_gate(
         "status": "pass" if release_pass else "blocked",
         "ci_exit_code": 0 if release_pass else 2,
         "can_release_full_eddypro_parity": release_pass,
+        "surrogate_evidence_closure_status": str(surrogate_closure.get("status", "not_configured")),
+        "surrogate_ci_exit_code": 0 if surrogate_release_pass else 2,
+        "can_release_source_derived_functional_parity": surrogate_release_pass,
         "workspace_root": str(root),
         "inputs": {
             "capability_matrix_path": str(_resolve(root, capability_matrix_path or DEFAULT_CAPABILITY_MATRIX_PATH)),
@@ -153,6 +164,17 @@ def build_eddypro_release_gate(
             "blocking_reasons": blocking_reasons,
             "closure_gate_status": str(closure_gate.get("status", "")),
             "closure_open_item_count": int(closure_gate.get("open_item_count", 0) or 0),
+            "surrogate_evidence_closure_status": str(surrogate_closure.get("status", "not_configured")),
+            "surrogate_evidence_closure_gate_status": str(
+                surrogate_closure.get("gate_status", surrogate_closure.get("status", "not_configured"))
+            ),
+            "can_claim_source_derived_functional_parity": bool(
+                coverage_audit.get("can_claim_source_derived_functional_parity", False)
+            ),
+            "can_release_source_derived_functional_parity": surrogate_release_pass,
+            "surrogate_accepted_item_count": int(surrogate_closure.get("accepted_item_count", 0) or 0),
+            "surrogate_missing_item_count": int(surrogate_closure.get("missing_item_count", 0) or 0),
+            "surrogate_failed_external_check_count": int(surrogate_closure.get("failed_external_check_count", 0) or 0),
             "official_raw_closure_run_status": str(closure_summary.get("status", "not_available")),
             "official_raw_closure_run_gate_status": str(closure_summary.get("gate_status", "not_available")),
             "official_raw_closure_run_fixture_id": str(closure_summary.get("fixture_id", "")),
@@ -177,13 +199,15 @@ def build_eddypro_release_gate(
         },
         "artifacts": artifacts,
         "coverage_audit": coverage_audit,
+        "surrogate_evidence_closure": surrogate_closure,
         "official_raw_closure_run": closure_run,
         "official_raw_closure_run_summary": closure_summary,
         "official_raw_evidence_pack": evidence_pack,
         "truthfulness_note": (
             "This release gate intentionally blocks full EddyPro parity release claims unless coverage audit, "
             "official raw fixture readiness, official EddyPro executable-run provenance, source provenance, "
-            "and evidence-pack acceptance all pass."
+            "and evidence-pack acceptance all pass. Source-derived functional parity has a separate surrogate "
+            "evidence gate and must not be described as official field numeric parity."
         ),
     }
 

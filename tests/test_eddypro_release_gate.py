@@ -272,6 +272,10 @@ def test_headless_cli_builds_eddypro_release_gate_for_current_repo(tmp_path: Pat
     assert payload["ci_exit_code"] == 2
     assert payload["summary"]["official_raw_acceptance_gate_status"] == "pass"
     assert payload["coverage_audit"]["claim_gate"]["status"] == "blocked"
+    assert payload["surrogate_evidence_closure"]["status"] == "pass"
+    assert payload["summary"]["surrogate_evidence_closure_gate_status"] == "pass"
+    assert payload["can_release_source_derived_functional_parity"] is True
+    assert payload["summary"]["can_claim_source_derived_functional_parity"] is True
 
 
 def test_headless_cli_builds_eddypro_release_gate_from_closure_run(tmp_path: Path) -> None:
@@ -299,6 +303,8 @@ def test_headless_cli_builds_eddypro_release_gate_from_closure_run(tmp_path: Pat
     assert payload["summary"]["official_raw_closure_run_gate_status"] == "pass"
     assert payload["summary"]["official_raw_acceptance_gate_status"] == "pass"
     assert payload["coverage_audit"]["claim_gate"]["status"] == "blocked"
+    assert payload["surrogate_evidence_closure"]["status"] == "pass"
+    assert payload["can_release_source_derived_functional_parity"] is True
 
 
 def test_release_gate_runner_script_writes_artifact_and_returns_gate_code(tmp_path: Path) -> None:

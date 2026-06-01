@@ -4604,23 +4604,36 @@ class StudioController(QObject):
             or build_public_eddypro_fixture_catalog(workspace_root=active_pack_root)
         )
         public_acquisition = dict(public_fixture_state.get("acquisition", {}) or {})
+        official_evidence_pack_for_audit = dict(official_bundle_state.get("evidence_pack", {}) or {}) or None
+        if official_evidence_pack_for_audit is not None:
+            gate_status = str(
+                official_evidence_pack_for_audit.get(
+                    "acceptance_gate_status",
+                    dict(official_evidence_pack_for_audit.get("acceptance_run", {}) or {}).get("gate_status", ""),
+                )
+            )
+            if gate_status != "pass":
+                official_evidence_pack_for_audit = None
         try:
             eddypro_coverage_audit = build_eddypro_coverage_audit(
                 fixture_pack_path=active_pack_path,
                 workspace_root=active_pack_root,
                 fixture_summary=summary,
                 official_raw_manifest=official_raw_manifest,
-                official_raw_evidence_pack=dict(official_bundle_state.get("evidence_pack", {}) or {}),
+                official_raw_evidence_pack=official_evidence_pack_for_audit,
             )
         except Exception as exc:  # pragma: no cover - defensive UI fallback
             eddypro_coverage_audit = {
                 "artifact_type": "eddypro_coverage_audit_v1",
                 "status": "audit_error",
                 "can_claim_full_eddypro_parity": False,
+                "can_claim_source_derived_functional_parity": False,
                 "capability_summary": {"completion_score": 0.0, "partial_count": 0, "missing_count": 0},
                 "claim_gate": {"status": "blocked", "blocking_reasons": [str(exc)]},
+                "surrogate_evidence_closure": {"status": "blocked", "accepted_item_count": 0, "missing_item_count": 0},
                 "gap_summary": {"top_gaps": []},
             }
+        surrogate_evidence_closure = dict(eddypro_coverage_audit.get("surrogate_evidence_closure", {}) or {})
 
         rows: list[tuple[str, str, str]] = [
             (
@@ -4664,6 +4677,17 @@ class StudioController(QObject):
                 (
                     f"score={float(dict(eddypro_coverage_audit.get('capability_summary', {}) or {}).get('completion_score', 0.0) or 0.0):.1%}; "
                     f"can_claim_full_parity={eddypro_coverage_audit.get('can_claim_full_eddypro_parity', False)}"
+                ),
+            ),
+            (
+                "eddypro_surrogate_evidence_closure",
+                str(surrogate_evidence_closure.get("status", "not_configured")),
+                (
+                    f"source_derived_functional_parity={eddypro_coverage_audit.get('can_claim_source_derived_functional_parity', False)}; "
+                    f"accepted={surrogate_evidence_closure.get('accepted_item_count', 0)}; "
+                    f"missing={surrogate_evidence_closure.get('missing_item_count', 0)}; "
+                    "blocked_claims="
+                    f"{('/'.join(str(item) for item in list(surrogate_evidence_closure.get('blocked_claims', []) or [])[:4]) or 'none')}"
                 ),
             ),
             (

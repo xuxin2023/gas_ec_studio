@@ -83,6 +83,7 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
             "official_raw_evidence_pack.json",
             "flux_correction_ledger.json",
             "eddypro_coverage_audit.json",
+            "eddypro_surrogate_evidence_closure.json",
             "eddypro_release_gate.json",
             "network_validation_summary.json",
             "fluxnet_half_hourly_foundation.json",
@@ -143,9 +144,13 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["eddypro_source_inventory"]["inventory_id"] == "eddypro_official_source_inventory_v1"
         assert summary_payload["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
         assert summary_payload["eddypro_coverage_audit"]["can_claim_full_eddypro_parity"] is False
+        assert summary_payload["eddypro_surrogate_evidence_closure"]["artifact_type"] == "eddypro_surrogate_evidence_closure_v1"
+        assert summary_payload["eddypro_surrogate_evidence_closure_status"] == "pass"
+        assert summary_payload["can_claim_source_derived_functional_parity"] is True
         assert summary_payload["eddypro_release_gate"]["artifact_type"] == "eddypro_release_gate_v1"
         assert summary_payload["eddypro_release_gate_status"] == "blocked"
         assert summary_payload["can_release_full_eddypro_parity"] is False
+        assert summary_payload["can_release_source_derived_functional_parity"] is True
         assert summary_payload["eddypro_closure_gate"]["artifact_type"] == "eddypro_closure_gate_v1"
         assert summary_payload["eddypro_closure_gate_status"] == "blocked"
         assert summary_payload["eddypro_closure_open_item_count"] >= 1
@@ -211,9 +216,13 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["eddypro_source_inventory"]["feature_count"] >= 10
         assert manifest_payload["eddypro_coverage_audit_artifact"].endswith("eddypro_coverage_audit.json")
         assert manifest_payload["eddypro_coverage_audit"]["claim_gate"]["status"] == "blocked"
+        assert manifest_payload["eddypro_surrogate_evidence_closure_artifact"].endswith("eddypro_surrogate_evidence_closure.json")
+        assert manifest_payload["eddypro_surrogate_evidence_closure"]["status"] == "pass"
+        assert manifest_payload["can_claim_source_derived_functional_parity"] is True
         assert manifest_payload["eddypro_release_gate_artifact"].endswith("eddypro_release_gate.json")
         assert manifest_payload["eddypro_release_gate"]["status"] == "blocked"
         assert manifest_payload["can_release_full_eddypro_parity"] is False
+        assert manifest_payload["can_release_source_derived_functional_parity"] is True
         assert manifest_payload["eddypro_closure_gate"]["status"] == "blocked"
         assert manifest_payload["eddypro_closure_plan"]["next_action_count"] >= 1
         assert manifest_payload["eddypro_closure_top_priority"] in {"P0", "P1"}

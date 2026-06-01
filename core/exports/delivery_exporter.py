@@ -112,6 +112,7 @@ def export_delivery_package(
         "official_eddypro_run": audit.get("official_eddypro_run", {}),
         "eddypro_source_inventory": audit.get("eddypro_source_inventory", {}),
         "eddypro_coverage_audit": audit.get("eddypro_coverage_audit", {}),
+        "eddypro_surrogate_evidence_closure": audit.get("eddypro_surrogate_evidence_closure", {}),
         "eddypro_release_gate": audit.get("eddypro_release_gate", {}),
         "eddypro_closure_gate": audit.get("eddypro_closure_gate", {}),
         "eddypro_closure_plan": audit.get("eddypro_closure_plan", {}),
@@ -316,6 +317,11 @@ def _build_delivery_audit(
     )
     eddypro_source_inventory = dict(result_manifest.get("eddypro_source_inventory", {}) or {})
     eddypro_coverage_audit = dict(result_manifest.get("eddypro_coverage_audit", {}) or {})
+    eddypro_surrogate_evidence_closure = dict(
+        result_manifest.get("eddypro_surrogate_evidence_closure", {})
+        or eddypro_coverage_audit.get("surrogate_evidence_closure", {})
+        or {}
+    )
     eddypro_release_gate = dict(result_manifest.get("eddypro_release_gate", {}) or {})
     eddypro_closure_gate = dict(result_manifest.get("eddypro_closure_gate", {}) or eddypro_coverage_audit.get("closure_gate", {}) or {})
     eddypro_closure_plan = dict(result_manifest.get("eddypro_closure_plan", {}) or eddypro_coverage_audit.get("closure_plan", {}) or {})
@@ -402,6 +408,7 @@ def _build_delivery_audit(
         "official_raw_evidence_pack_artifact",
         "eddypro_source_inventory_artifact",
         "eddypro_coverage_audit_artifact",
+        "eddypro_surrogate_evidence_closure_artifact",
         "eddypro_release_gate_artifact",
         "raw_to_final_parity_artifact",
         "benchmark_summary_artifact",
@@ -550,8 +557,22 @@ def _build_delivery_audit(
             "eddypro_coverage_audit_status": eddypro_coverage_audit.get("status", ""),
             "eddypro_coverage_completion_score": dict(eddypro_coverage_audit.get("capability_summary", {}) or {}).get("completion_score", 0.0),
             "can_claim_full_eddypro_parity": eddypro_coverage_audit.get("can_claim_full_eddypro_parity", False),
+            "can_claim_source_derived_functional_parity": result_manifest.get(
+                "can_claim_source_derived_functional_parity",
+                eddypro_coverage_audit.get("can_claim_source_derived_functional_parity", False),
+            ),
+            "eddypro_surrogate_evidence_closure_status": result_manifest.get(
+                "eddypro_surrogate_evidence_closure_status",
+                eddypro_surrogate_evidence_closure.get("status", ""),
+            ),
+            "eddypro_surrogate_accepted_item_count": eddypro_surrogate_evidence_closure.get("accepted_item_count", 0),
+            "eddypro_surrogate_missing_item_count": eddypro_surrogate_evidence_closure.get("missing_item_count", 0),
             "eddypro_release_gate_status": eddypro_release_gate.get("status", ""),
             "can_release_full_eddypro_parity": eddypro_release_gate.get("can_release_full_eddypro_parity", False),
+            "can_release_source_derived_functional_parity": result_manifest.get(
+                "can_release_source_derived_functional_parity",
+                eddypro_release_gate.get("can_release_source_derived_functional_parity", False),
+            ),
             "eddypro_release_gate_ci_exit_code": eddypro_release_gate.get("ci_exit_code", 2),
             "eddypro_closure_gate_status": eddypro_closure_gate.get("status", ""),
             "eddypro_closure_open_item_count": eddypro_closure_gate.get("open_item_count", 0),
@@ -591,6 +612,7 @@ def _build_delivery_audit(
         "official_eddypro_run": official_eddypro_run,
         "eddypro_source_inventory": eddypro_source_inventory,
         "eddypro_coverage_audit": eddypro_coverage_audit,
+        "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
         "eddypro_release_gate": eddypro_release_gate,
         "eddypro_closure_gate": eddypro_closure_gate,
         "eddypro_closure_plan": eddypro_closure_plan,

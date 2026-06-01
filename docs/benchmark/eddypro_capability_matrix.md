@@ -8,6 +8,12 @@ gas_ec_studio is not yet a complete EddyPro replacement. It already goes beyond 
 
 The machine-readable source of truth is `docs/benchmark/eddypro_capability_matrix.json`.
 
+## Evidence Closure Boundary
+
+When redistributable real raw or hardware evidence cannot be found, the project now uses a separate `surrogate_evidence_closure_policy` to close only source-derived functional parity. This allows CI, export, report, and delivery gates to move forward on source-derived conformance fixtures, official public anchors, and reproducible tests without pretending that these artifacts are real field golden-output evidence.
+
+This path can support `source_derived_functional_eddypro_parity`; it still blocks `official_field_numeric_parity`, `real_hardware_validated_parity`, and `vendor_certified_eddypro_equivalence` until real redistributable raw/hardware evidence and official EddyPro outputs are available.
+
 Primary EddyPro source-code references for parity work are:
 
 - EddyPro Engine: https://github.com/LI-COR-Environmental/eddypro-engine
