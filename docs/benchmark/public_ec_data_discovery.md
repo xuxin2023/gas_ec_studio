@@ -63,6 +63,46 @@ raise SystemExit(run_cli([
 
 For CI or documentation checks that must not touch the network, add `--skip-public-ec-network`. The probe records the source ledger path, provider status, NEON API/HDF5 HEAD verification, optional byte-range sample metadata, ICOS licence-flow status, and `can_change_full_parity_gate=false`.
 
+## NEON HDF5 Metadata Smoke
+
+After a probe artifact verifies the NEON HDF5 candidate, the file can be downloaded into ignored local artifacts and inspected for EC field candidates:
+
+```powershell
+@'
+from core.headless_batch_runner import run_cli
+
+raise SystemExit(run_cli([
+    "--download-neon-hdf5-candidate",
+    "artifacts/public_ec_data/public_ec_data_discovery_probe.json",
+    "--workspace-root", ".",
+    "--output", "artifacts/public_ec_data/neon_hdf5_download.json",
+    "--neon-hdf5-output-root", "artifacts/public_ec_data/neon",
+]))
+'@ | python -
+```
+
+Then run the metadata smoke on the downloaded `local_path`:
+
+```powershell
+@'
+import json
+from pathlib import Path
+from core.headless_batch_runner import run_cli
+
+download = json.loads(Path("artifacts/public_ec_data/neon_hdf5_download.json").read_text(encoding="utf-8"))
+raise SystemExit(run_cli([
+    "--build-neon-hdf5-metadata-smoke",
+    download["local_path"],
+    "--workspace-root", ".",
+    "--output", "artifacts/public_ec_data/neon_hdf5_metadata_smoke.json",
+    "--neon-hdf5-discovery-artifact", "artifacts/public_ec_data/public_ec_data_discovery_probe.json",
+    "--neon-hdf5-source-id", download["source_id"],
+]))
+'@ | python -
+```
+
+The smoke artifact records HDF5 readability, file hashes, group/dataset counts, root/dataset attributes, inferred canonical EC field mappings, missing fields, known limitations, and `ready_for_raw_to_final_registration=false`.
+
 ## Truthfulness Boundary
 
 Public discovery is not parity. A candidate becomes full-parity evidence only after it has:

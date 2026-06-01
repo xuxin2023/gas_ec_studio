@@ -24,6 +24,7 @@ from core.comparison.fixture_pack import (
     inspect_public_official_raw_archive,
     materialize_public_official_raw_bundle_draft,
 )
+from core.comparison.neon_hdf5_importer import build_neon_hdf5_metadata_smoke, download_neon_hdf5_candidate
 from core.comparison.public_ec_data_discovery import build_public_ec_data_discovery_probe
 from core.comparison.official_raw_fixture_bundle import (
     build_official_raw_fixture_bundle_manifest,
@@ -490,6 +491,14 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--public-ec-sample-bytes", default="", help="Optional byte count to sample from verified public EC candidates.")
     parser.add_argument("--public-ec-timeout-s", default="", help="Network timeout for public EC discovery probes.")
     parser.add_argument("--skip-public-ec-network", action="store_true", help="Build public EC discovery from the ledger without network probes.")
+    parser.add_argument("--download-neon-hdf5-candidate", default="", help="Discovery/probe JSON containing a verified NEON HDF5 candidate to download.")
+    parser.add_argument("--build-neon-hdf5-metadata-smoke", default="", help="Inspect a local NEON HDF5 file and infer EC field mapping candidates.")
+    parser.add_argument("--neon-hdf5-output-root", default="", help="Directory for downloaded NEON HDF5 candidates.")
+    parser.add_argument("--neon-hdf5-source-id", default="", help="NEON source id to select from a discovery/probe artifact.")
+    parser.add_argument("--neon-hdf5-candidate-name", default="", help="Exact NEON HDF5 candidate filename to select.")
+    parser.add_argument("--neon-hdf5-discovery-artifact", default="", help="Discovery/probe artifact path recorded in NEON HDF5 metadata smoke provenance.")
+    parser.add_argument("--neon-hdf5-max-datasets", default="", help="Maximum HDF5 dataset metadata records to include in the smoke artifact.")
+    parser.add_argument("--overwrite-neon-hdf5", action="store_true", help="Overwrite an existing downloaded NEON HDF5 candidate.")
     parser.add_argument("--capability-matrix", default="", help="Capability matrix path for EddyPro coverage/release gates.")
     parser.add_argument("--official-raw-evidence-pack", default="", help="Official raw evidence pack JSON used by the EddyPro coverage audit claim gate.")
     parser.add_argument("--official-raw-closure-run", default="", help="Official raw closure-run JSON used by the EddyPro release gate.")
@@ -549,6 +558,12 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     if args.build_public_ec_data_discovery:
         return _run_public_ec_data_discovery_cli(args, parser)
+
+    if args.download_neon_hdf5_candidate:
+        return _run_neon_hdf5_candidate_download_cli(args, parser)
+
+    if args.build_neon_hdf5_metadata_smoke:
+        return _run_neon_hdf5_metadata_smoke_cli(args, parser)
 
     if args.inspect_public_official_raw_archive:
         return _run_public_official_raw_archive_inspection_cli(args, parser)
@@ -713,6 +728,42 @@ def _run_public_ec_data_discovery_cli(args: argparse.Namespace, parser: argparse
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if payload.get("status") == "ok" else 2
+
+
+def _run_neon_hdf5_candidate_download_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --download-neon-hdf5-candidate.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    payload = download_neon_hdf5_candidate(
+        args.download_neon_hdf5_candidate,
+        workspace_root=workspace_root,
+        output_root=args.neon_hdf5_output_root or None,
+        source_id=args.neon_hdf5_source_id,
+        candidate_name=args.neon_hdf5_candidate_name,
+        overwrite=bool(args.overwrite_neon_hdf5),
+        timeout_s=float(args.public_ec_timeout_s or args.public_fixture_timeout_s or 300.0),
+    )
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0 if payload.get("status") == "pass" else 2
+
+
+def _run_neon_hdf5_metadata_smoke_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --build-neon-hdf5-metadata-smoke.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    payload = build_neon_hdf5_metadata_smoke(
+        args.build_neon_hdf5_metadata_smoke,
+        workspace_root=workspace_root,
+        source_id=args.neon_hdf5_source_id,
+        source_discovery_artifact=args.neon_hdf5_discovery_artifact or None,
+        max_datasets=int(args.neon_hdf5_max_datasets or 250),
+    )
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0 if bool(dict(payload.get("importer_smoke", {}) or {}).get("can_open_hdf5", False)) else 2
 
 
 def _run_public_official_raw_archive_inspection_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
