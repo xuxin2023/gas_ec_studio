@@ -1095,10 +1095,11 @@
       "gas_ec_status": "covered",
       "evidence": [
         "core/exports/result_exporter.py",
-        "tests/test_result_exports.py"
+        "tests/test_result_exports.py",
+        "tests/test_ghg_europe_exporter.py"
       ],
       "gap": "",
-      "next_action": "Add GHG-Europe legacy output if required by target users."
+      "next_action": "Maintain FLUXNET/AmeriFlux/ICOS/GHG-Europe validation parity and add network-specific golden-output fixtures when redistributable references are available."
     },
     {
       "id": "delivery_audit_benchmark",

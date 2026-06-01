@@ -1,6 +1,6 @@
 # EddyPro Capability Matrix
 
-Updated: 2026-05-30
+Updated: 2026-06-01
 
 ## Current Verdict
 
@@ -39,7 +39,7 @@ Primary public repositories to track:
 - RP/FCC pipeline basics: lag detection, detrending, coordinate rotation, planar-fit variants, QC matrix, random uncertainty, footprint families, closed-path density/mixing-ratio correction levels, CO2/H2O/energy outputs with H/LE/ET/TAU network semantics, Gill sonic W-boost, Nakai 2006/2012 angle-of-attack correction paths, explicit crosswind correction controls, spectral-correction method provenance, measured-cospectrum routing, reusable spectral assessment library artifacts, and a real public EddyPro-derived spectra/cospectra fixture subset.
 - Spectral outputs now include full per-window spectra/cospectra/ogives, log-frequency binned ensemble CSV/JSON artifacts, reusable `spectral_assessment_library_v1` artifacts with month/QC/risk stratification, ensemble standard deviations, stored-run persistence, formal-report visibility, delivery-chain packaging, and public Zenodo spectra/cospectra fixture validation.
 - Footprint v1 now exports 2D source-area grids, SVG contours, EPSG:4326 GeoJSON grid/peak features, tiled uncompressed float32 GeoTIFF rasters with an internal 2x overview IFD, configured land-cover overlay summaries, ESRI ASCII/JSON/GeoTIFF land-cover raster sampling, rotated GeoTIFF affine point sampling, EPSG:4326/EPSG:3857 built-in land-cover raster coordinate transforms, arbitrary EPSG CRS rasterio/GDAL subprocess reprojection, and a GIS validation artifact with GeoTIFF tag checks, raster overlap, CRS status, COG-readiness, IFD-chain checks, metadata-before-tile-data checks, monotonic tile offsets, tile-range bounds, external raster metadata, optional rasterio/GDAL smoke-read metadata, and optional rio-cogeo strict COG validator output when site/config context is available.
-- Export and delivery chain: full output, FLUXNET/AmeriFlux/ICOS validation summaries, formal report, package manifest, delivery audit.
+- Export and delivery chain: full output, FLUXNET/AmeriFlux/ICOS/GHG-Europe legacy validation summaries, formal report, package manifest, delivery audit.
 - Beyond-EddyPro auditability: method parity matrix, benchmark artifacts, reference provenance, flux-correction ledger artifacts, report center/cockpit integration.
 
 ## Partial

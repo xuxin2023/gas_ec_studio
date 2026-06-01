@@ -2414,6 +2414,7 @@ from core.ec_rp.analysis import (
 from core.exports.result_exporter import (
     FLUXNET_HALF_HOURLY_SCHEMA,
     AMERIFLUX_FIELD_MAP,
+    GHG_EUROPE_FIELD_MAP,
     ICOS_FIELD_MAP,
     NETWORK_SCHEMA_REGISTRY,
     validate_fluxnet_row,
@@ -2636,10 +2637,16 @@ class TestAmeriFluxICOSSchemaGroundwork:
         assert ICOS_FIELD_MAP["FC_QC"] == "Fc_QC"
         assert ICOS_FIELD_MAP["USTAR"] == "ustar"
 
+    def test_ghg_europe_field_map_exists(self):
+        assert "FC" in GHG_EUROPE_FIELD_MAP
+        assert GHG_EUROPE_FIELD_MAP["FC_QC"] == "FC_SSITC_TEST"
+        assert GHG_EUROPE_FIELD_MAP["FETCH_90"] == "FETCH_90"
+
     def test_network_schema_registry(self):
         assert "FLUXNET" in NETWORK_SCHEMA_REGISTRY
         assert "AmeriFlux" in NETWORK_SCHEMA_REGISTRY
         assert "ICOS" in NETWORK_SCHEMA_REGISTRY
+        assert "GHG-Europe" in NETWORK_SCHEMA_REGISTRY
         for name, schema in NETWORK_SCHEMA_REGISTRY.items():
             assert "field_map" in schema
             assert "timestamp_format" in schema
@@ -3001,6 +3008,7 @@ class TestHeadlessManifestSchemaTarget:
 
 from core.exports.result_exporter import (
     AMERIFLUX_FIELD_MAP,
+    GHG_EUROPE_FIELD_MAP,
     ICOS_FIELD_MAP,
     NETWORK_SCHEMA_REGISTRY,
     validate_fluxnet_row,

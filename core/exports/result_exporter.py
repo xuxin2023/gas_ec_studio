@@ -986,6 +986,7 @@ class ResultExporter:
                     public_ec_acquisition_claim_boundary.get("can_release_full_eddypro_parity", False)
                 ),
                 "network_validation": network_validation,
+                "network_supported_schema_targets": list(NETWORK_SCHEMA_REGISTRY.keys()),
                 "exported_files": exported_files,
             },
         )
@@ -1254,6 +1255,7 @@ class ResultExporter:
             "flux_correction_ledger_summary": self._flux_correction_ledger_summary(rp_result=rp_result),
             "flux_correction_ledger_artifact": str(flux_correction_ledger_path) if flux_correction_ledger_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
+            "network_supported_schema_targets": list(NETWORK_SCHEMA_REGISTRY.keys()),
             "network_validation_status": network_validation.get("validation_status", ""),
             "network_missing_fields": network_validation.get("missing_fields", []),
             "network_validation_summary": network_validation,
@@ -3943,6 +3945,21 @@ class ResultExporter:
                 csv_path = export_root / "icos_artifact.csv"
                 if csv_path.exists():
                     files["icos_csv"] = str(csv_path)
+        elif schema_target == "GHG-Europe":
+            artifact_path = self.export_ghg_europe_artifact(
+                rp_result=rp_result,
+                export_root=export_root,
+                timezone_offset_hours=float(config["timezone_offset_hours"]),
+                timestamp_refers_to=str(config["timestamp_refers_to"]),
+                gap_fill_value=float(config["gap_fill_value"]),
+                site_id=str(config["site_id"]),
+            )
+            if artifact_path is not None:
+                metadata_path = artifact_path
+                files["ghg_europe_artifact"] = str(artifact_path)
+                csv_path = export_root / "ghg_europe_legacy_artifact.csv"
+                if csv_path.exists():
+                    files["ghg_europe_csv"] = str(csv_path)
 
         summary = self._network_validation_summary_from_path(metadata_path, schema_target=schema_target)
         summary.update(
@@ -4723,6 +4740,143 @@ class ResultExporter:
             headers = list(rows[0].keys())
             self._write_csv(csv_path, rows, headers)
         return path
+
+    def export_ghg_europe_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+        timezone_offset_hours: float = 0.0,
+        timestamp_refers_to: str = "start",
+        gap_fill_value: float = -9999.0,
+        site_id: str = "",
+    ) -> Path | None:
+        if not rp_result or not rp_result.windows:
+            return None
+        from datetime import datetime as _dt, timedelta
+
+        rows: list[dict[str, Any]] = []
+        method_rows: list[dict[str, Any]] = []
+        for window in rp_result.windows:
+            internal_row = self._fluxnet_half_hourly_row(
+                window=window,
+                timezone_offset_hours=timezone_offset_hours,
+                timestamp_refers_to=timestamp_refers_to,
+                gap_fill_value=gap_fill_value,
+            )
+            ghg_row = self._remap_row(internal_row, GHG_EUROPE_FIELD_MAP)
+            local_start = window.start_time + timedelta(hours=timezone_offset_hours)
+            local_end = window.end_time + timedelta(hours=timezone_offset_hours)
+            ghg_row["TIMESTAMP_START"] = local_start.strftime("%Y%m%d%H%M")
+            ghg_row["TIMESTAMP_END"] = local_end.strftime("%Y%m%d%H%M")
+            ghg_row["NEE_PI"] = ghg_row.get("FC", gap_fill_value)
+            ghg_row.update(self._ghg_europe_footprint_fields(window=window, gap_fill_value=gap_fill_value))
+            rows.append(ghg_row)
+            diagnostics = dict(window.diagnostics or {})
+            method_rows.append(
+                {
+                    "TIMESTAMP_START": ghg_row["TIMESTAMP_START"],
+                    "TIMESTAMP_END": ghg_row["TIMESTAMP_END"],
+                    "FOOTPRINT_METHOD": diagnostics.get("footprint_method", ""),
+                    "UNCERTAINTY_METHOD": diagnostics.get("uncertainty_method", ""),
+                    "SPECTRAL_CORRECTION_METHOD": diagnostics.get("spectral_correction_method", ""),
+                    "METHOD_DEVIATION_NOTES": internal_row.get("METHOD_DEVIATION_NOTES", ""),
+                }
+            )
+        continuous = self.generate_continuous_dataset(rp_result=rp_result, averaging_period_minutes=30.0)
+        for cont_row in continuous:
+            if cont_row.get("anomaly_type") != "gap":
+                continue
+            gap_internal = self._fluxnet_gap_row(
+                cont_row=cont_row,
+                timezone_offset_hours=timezone_offset_hours,
+                timestamp_refers_to=timestamp_refers_to,
+                gap_fill_value=gap_fill_value,
+            )
+            ghg_gap = self._remap_row(gap_internal, GHG_EUROPE_FIELD_MAP)
+            try:
+                start_utc = _dt.fromisoformat(str(cont_row.get("start_time", "")))
+                end_utc = _dt.fromisoformat(str(cont_row.get("end_time", "")))
+                ghg_gap["TIMESTAMP_START"] = (start_utc + timedelta(hours=timezone_offset_hours)).strftime("%Y%m%d%H%M")
+                ghg_gap["TIMESTAMP_END"] = (end_utc + timedelta(hours=timezone_offset_hours)).strftime("%Y%m%d%H%M")
+            except (TypeError, ValueError):
+                pass
+            ghg_gap["NEE_PI"] = gap_fill_value
+            ghg_gap["FETCH_70"] = gap_fill_value
+            ghg_gap["FETCH_90"] = gap_fill_value
+            ghg_gap["FETCH_MAX"] = gap_fill_value
+            ghg_gap["FETCH_FILTER"] = 0
+            rows.append(ghg_gap)
+        rows.sort(key=lambda r: r.get("TIMESTAMP_START", ""))
+        all_errors: list[str] = []
+        for row in rows:
+            all_errors.extend(validate_fluxnet_row(row, schema_target="GHG-Europe"))
+        missing_fields = self._detect_missing_fields(rows, GHG_EUROPE_FIELD_MAP)
+        validation_status = "pass" if not all_errors else "errors_found"
+        metadata = {
+            "site_id": site_id,
+            "schema_target": "GHG-Europe",
+            "format_profile": "GHG-Europe legacy half-hourly flux table",
+            "timezone_offset_hours": timezone_offset_hours,
+            "timestamp_refers_to": "local_standard_start_end",
+            "requested_timestamp_refers_to": timestamp_refers_to,
+            "gap_fill_value": gap_fill_value,
+            "record_count": len(rows),
+            "validation_status": validation_status,
+            "error_count": len(all_errors),
+            "missing_fields": missing_fields,
+            "method_provenance_row_count": len(method_rows),
+            "method_provenance_fields": [
+                "FOOTPRINT_METHOD",
+                "UNCERTAINTY_METHOD",
+                "SPECTRAL_CORRECTION_METHOD",
+                "METHOD_DEVIATION_NOTES",
+            ],
+            "source_guidelines": [
+                "https://www.europe-fluxdata.eu/home/guidelines/obtaining-data/variables-and-formats",
+            ],
+            "known_limitations": [
+                "Legacy GHG-Europe-style exports are generated from the normalized RP result and do not certify upload acceptance by the original database operator.",
+                "Method provenance is kept in JSON sidecar rows to preserve traceability without polluting the legacy data table.",
+            ],
+            "exported_at": datetime.now().isoformat(),
+        }
+        artifact = {"metadata": metadata, "rows": rows, "method_provenance_rows": method_rows}
+        path = export_root / "ghg_europe_legacy_artifact.json"
+        self._write_json(path, artifact)
+        csv_path = export_root / "ghg_europe_legacy_artifact.csv"
+        if rows:
+            headers = list(rows[0].keys())
+            self._write_csv(csv_path, rows, headers)
+        return path
+
+    def _ghg_europe_footprint_fields(self, *, window: WindowRPResult, gap_fill_value: float) -> dict[str, Any]:
+        diagnostics = dict(window.diagnostics or {})
+        distances = diagnostics.get("footprint_contribution_distances", {})
+        if not isinstance(distances, dict):
+            distances = {}
+
+        def _distance(percent: int) -> float:
+            for key in (percent, str(percent), f"{percent}%", f"p{percent}", f"{percent}_percent"):
+                value = distances.get(key)
+                if isinstance(value, (int, float)) and math.isfinite(float(value)):
+                    return float(value)
+            return float(gap_fill_value)
+
+        fetch70 = _distance(70)
+        fetch90 = _distance(90)
+        peak = diagnostics.get("footprint_peak_distance_m", gap_fill_value)
+        try:
+            fetch_max = max(float(fetch90), float(peak))
+        except (TypeError, ValueError):
+            fetch_max = float(gap_fill_value)
+        fetch_filter = 1 if fetch70 != gap_fill_value or fetch90 != gap_fill_value else 0
+        return {
+            "FETCH_70": fetch70,
+            "FETCH_90": fetch90,
+            "FETCH_MAX": fetch_max,
+            "FETCH_FILTER": fetch_filter,
+        }
 
     def _remap_row(self, internal_row: dict[str, Any], field_map: dict[str, str]) -> dict[str, Any]:
         remapped: dict[str, Any] = {}
@@ -7622,6 +7776,33 @@ ICOS_FIELD_MAP = {
     "WIND_DIR": "WindDir",
 }
 
+GHG_EUROPE_FIELD_MAP = {
+    "TIMESTAMP_START": "TIMESTAMP_START",
+    "TIMESTAMP_END": "TIMESTAMP_END",
+    "DOY": "DOY",
+    "HOUR": "HOUR",
+    "MINUTE": "MINUTE",
+    "FC": "FC",
+    "FC_QC": "FC_SSITC_TEST",
+    "H": "H",
+    "LE": "LE",
+    "ET": "ET",
+    "TAU": "TAU",
+    "USTAR": "USTAR",
+    "TA": "TA",
+    "PA": "PA",
+    "CO2": "CO2",
+    "H2O": "H2O",
+    "FCH4": "FCH4",
+    "FCH4_QC": "FCH4_SSITC_TEST",
+    "FETCH_70": "FETCH_70",
+    "FETCH_90": "FETCH_90",
+    "FETCH_MAX": "FETCH_MAX",
+    "FETCH_FILTER": "FETCH_FILTER",
+    "WIND_SPEED": "WS",
+    "WIND_DIR": "WD",
+}
+
 NETWORK_SCHEMA_REGISTRY = {
     "FLUXNET": {
         "field_map": {k: k for k, _, _ in FLUXNET_HALF_HOURLY_SCHEMA},
@@ -7642,6 +7823,13 @@ NETWORK_SCHEMA_REGISTRY = {
         "timestamp_format": "ISO8601",
         "gap_value": -9999,
         "qc_scale": "0-2",
+        "averaging_period_min": 30,
+    },
+    "GHG-Europe": {
+        "field_map": GHG_EUROPE_FIELD_MAP,
+        "timestamp_format": "YYYYMMDDHHmm local standard start/end",
+        "gap_value": -9999,
+        "qc_scale": "0-2 SSITC-style",
         "averaging_period_min": 30,
     },
 }
