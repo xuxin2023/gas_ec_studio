@@ -122,6 +122,8 @@ def export_delivery_package(
         "raw_to_final_trace_gas_parity": audit.get("raw_to_final_trace_gas_parity", {}),
         "neon_hdf5_validation_package": audit.get("neon_hdf5_validation_package", {}),
         "neon_hdf5_summary": audit.get("neon_hdf5_summary", {}),
+        "public_raw_sample_validation_package": audit.get("public_raw_sample_validation_package", {}),
+        "public_raw_sample_summary": audit.get("public_raw_sample_summary", {}),
         "benchmark_summary": audit.get("benchmark_summary", {}),
         "method_artifact_keys": audit.get("method_artifact_keys", []),
         "notes": notes or ["交付包已完整导出。"],
@@ -289,6 +291,10 @@ def _build_delivery_audit(
         result_manifest.get("neon_hdf5_validation_package", {})
         or _read_json_file(result_files.get("neon_hdf5_validation_package_artifact", ""))
     )
+    public_raw_sample_validation = dict(
+        result_manifest.get("public_raw_sample_validation_package", {})
+        or _read_json_file(result_files.get("public_raw_sample_validation_package_artifact", ""))
+    )
     runtime_watchdog = dict(result_manifest.get("runtime_watchdog_summary", {}) or {})
     runtime_service = dict(result_manifest.get("runtime_service_summary", {}) or {})
     daemon_telemetry = dict(result_manifest.get("daemon_telemetry_summary", {}) or {})
@@ -424,6 +430,9 @@ def _build_delivery_audit(
         "neon_hdf5_metadata_smoke_artifact",
         "neon_hdf5_row_smoke_artifact",
         "neon_hdf5_rp_smoke_artifact",
+        "public_raw_sample_validation_package_artifact",
+        "public_raw_sample_importer_smoke_artifact",
+        "public_raw_sample_rp_smoke_artifact",
         "benchmark_summary_artifact",
         "parity_artifact",
         "reference_provenance_artifact",
@@ -624,6 +633,18 @@ def _build_delivery_audit(
                 "can_claim_eddypro_raw_to_final_parity",
                 False,
             ),
+            "public_raw_sample_validation_status": public_raw_sample_validation.get("status", ""),
+            "public_raw_sample_importer_status": public_raw_sample_validation.get("importer_status", ""),
+            "public_raw_sample_rp_status": public_raw_sample_validation.get("rp_status", ""),
+            "public_raw_sample_row_count": public_raw_sample_validation.get("row_count", 0),
+            "public_raw_sample_rp_window_count": public_raw_sample_validation.get("rp_window_count", 0),
+            "public_raw_sample_source_file": public_raw_sample_validation.get("source_file", ""),
+            "public_raw_sample_can_claim_engineering_validation": dict(
+                public_raw_sample_validation.get("claim_boundary", {}) or {}
+            ).get("can_claim_public_raw_engineering_validation", False),
+            "public_raw_sample_can_claim_eddypro_raw_to_final_parity": dict(
+                public_raw_sample_validation.get("claim_boundary", {}) or {}
+            ).get("can_claim_eddypro_raw_to_final_parity", False),
         },
         "network_validation_summary": network_validation,
         "neon_hdf5_validation_package": neon_validation,
@@ -640,6 +661,19 @@ def _build_delivery_audit(
                 "can_claim_eddypro_raw_to_final_parity",
                 False,
             ),
+        },
+        "public_raw_sample_validation_package": public_raw_sample_validation,
+        "public_raw_sample_summary": {
+            "status": public_raw_sample_validation.get("status", ""),
+            "source_file": public_raw_sample_validation.get("source_file", ""),
+            "row_count": public_raw_sample_validation.get("row_count", 0),
+            "rp_window_count": public_raw_sample_validation.get("rp_window_count", 0),
+            "can_claim_public_raw_engineering_validation": dict(
+                public_raw_sample_validation.get("claim_boundary", {}) or {}
+            ).get("can_claim_public_raw_engineering_validation", False),
+            "can_claim_eddypro_raw_to_final_parity": dict(
+                public_raw_sample_validation.get("claim_boundary", {}) or {}
+            ).get("can_claim_eddypro_raw_to_final_parity", False),
         },
         "runtime_watchdog_summary": runtime_watchdog,
         "runtime_service_summary": runtime_service,

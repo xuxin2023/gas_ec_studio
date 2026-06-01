@@ -669,11 +669,15 @@ class ResultExporter:
             export_root=export_root,
         )
         neon_hdf5_validation_package = dict(external_artifact_payloads.get("neon_hdf5_validation_package_artifact", {}) or {})
+        public_raw_sample_validation_package = dict(
+            external_artifact_payloads.get("public_raw_sample_validation_package_artifact", {}) or {}
+        )
         eddypro_partial_capability_closure = build_eddypro_partial_capability_closure(
             workspace_root=fixture_pack_workspace_root or None,
             coverage_audit=eddypro_coverage_audit,
             release_gate=eddypro_release_gate,
             neon_validation_package=neon_hdf5_validation_package or None,
+            public_raw_sample_validation_package=public_raw_sample_validation_package or None,
         )
         eddypro_partial_capability_closure_path = export_root / "eddypro_partial_capability_closure.json"
         self._write_json(eddypro_partial_capability_closure_path, eddypro_partial_capability_closure)
@@ -935,6 +939,11 @@ class ResultExporter:
                 "external_artifacts": external_artifact_files,
                 "neon_hdf5_validation_package": neon_hdf5_validation_package,
                 "neon_hdf5_validation_package_artifact": external_artifact_files.get("neon_hdf5_validation_package_artifact", ""),
+                "public_raw_sample_validation_package": public_raw_sample_validation_package,
+                "public_raw_sample_validation_package_artifact": external_artifact_files.get(
+                    "public_raw_sample_validation_package_artifact",
+                    "",
+                ),
                 "network_validation": network_validation,
                 "exported_files": exported_files,
             },
@@ -1062,6 +1071,30 @@ class ResultExporter:
             "neon_hdf5_validation_status": str(neon_hdf5_validation_package.get("status", "")),
             "neon_hdf5_row_status": str(neon_hdf5_validation_package.get("row_status", "")),
             "neon_hdf5_rp_status": str(neon_hdf5_validation_package.get("rp_status", "")),
+            "public_raw_sample_validation_package": public_raw_sample_validation_package,
+            "public_raw_sample_validation_package_artifact": external_artifact_files.get(
+                "public_raw_sample_validation_package_artifact",
+                "",
+            ),
+            "public_raw_sample_validation_status": str(public_raw_sample_validation_package.get("status", "")),
+            "public_raw_sample_importer_status": str(public_raw_sample_validation_package.get("importer_status", "")),
+            "public_raw_sample_rp_status": str(public_raw_sample_validation_package.get("rp_status", "")),
+            "public_raw_sample_row_count": int(public_raw_sample_validation_package.get("row_count", 0) or 0),
+            "public_raw_sample_rp_window_count": int(
+                public_raw_sample_validation_package.get("rp_window_count", 0) or 0
+            ),
+            "public_raw_sample_can_claim_engineering_validation": bool(
+                dict(public_raw_sample_validation_package.get("claim_boundary", {}) or {}).get(
+                    "can_claim_public_raw_engineering_validation",
+                    False,
+                )
+            ),
+            "public_raw_sample_can_claim_eddypro_raw_to_final_parity": bool(
+                dict(public_raw_sample_validation_package.get("claim_boundary", {}) or {}).get(
+                    "can_claim_eddypro_raw_to_final_parity",
+                    False,
+                )
+            ),
             "spectral_assessment": spectral_assessment_summary,
             "spectral_assessment_artifact": str(spectral_assessment_path) if spectral_assessment_path is not None else "",
             "spectral_assessment_files": spectral_assessment_companion_files,

@@ -162,6 +162,11 @@ def export_formal_report(
             "official_raw_fixture_detail": snapshot.get("delivery_audit", {}).get("official_raw_fixture_detail", {}),
             "eddypro_coverage_audit": snapshot.get("delivery_audit", {}).get("eddypro_coverage_audit", {}),
             "eddypro_partial_capability_closure": snapshot.get("delivery_audit", {}).get("eddypro_partial_capability_closure", {}),
+            "public_raw_sample_validation_package": snapshot.get("delivery_audit", {}).get(
+                "public_raw_sample_validation_package",
+                {},
+            ),
+            "public_raw_sample_summary": snapshot.get("delivery_audit", {}).get("public_raw_sample_summary", {}),
             "benchmark_summary": snapshot.get("delivery_audit", {}).get("benchmark_summary", {}),
         }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
