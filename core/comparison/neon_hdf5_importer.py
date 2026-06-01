@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from bisect import bisect_right
+from collections import Counter
 from copy import deepcopy
 from datetime import datetime
 import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import shutil
 from typing import Any
 from urllib.request import Request, urlopen
@@ -297,6 +299,9 @@ def build_neon_hdf5_row_extraction_smoke(
         "field_mappings": field_mappings,
         "field_units": extraction["field_units"],
         "qc_mapping": extraction["qc_mapping"],
+        "qc_flag_summary": extraction["qc_flag_summary"],
+        "units_conversion_audit": extraction["units_conversion_audit"],
+        "variable_context": extraction["variable_context"],
         "alignment_summary": extraction["alignment_summary"],
         "estimated_sample_rate_hz": extraction["estimated_sample_rate_hz"],
         "time_range": extraction["time_range"],
@@ -314,7 +319,95 @@ def build_neon_hdf5_row_extraction_smoke(
     }
     if include_row_records:
         payload["row_records"] = rows
+    payload["validation_warnings"] = _neon_row_validation_warnings(payload)
     return payload
+
+
+def build_neon_hdf5_validation_package(
+    hdf5_path: str | Path,
+    *,
+    workspace_root: str | Path | None = None,
+    metadata_smoke_path: str | Path | None = None,
+    row_smoke_path: str | Path | None = None,
+    rp_smoke_path: str | Path | None = None,
+    source_id: str = "",
+    max_rows: int = 160,
+    start_index: int = 0,
+    max_time_gap_s: float = 900.0,
+) -> dict[str, Any]:
+    """Build a claim-gated NEON validation package from metadata, row, and RP smoke evidence."""
+
+    root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
+    path = _resolve(root, hdf5_path)
+    metadata_path = _resolve(root, metadata_smoke_path) if metadata_smoke_path else None
+    row_path = _resolve(root, row_smoke_path) if row_smoke_path else None
+    rp_path = _resolve(root, rp_smoke_path) if rp_smoke_path else None
+
+    metadata_smoke = _read_json(metadata_path) if metadata_path else build_neon_hdf5_metadata_smoke(
+        path,
+        workspace_root=root,
+        source_id=source_id,
+    )
+    row_smoke = _read_json(row_path) if row_path else build_neon_hdf5_row_extraction_smoke(
+        path,
+        workspace_root=root,
+        metadata_smoke_path=metadata_path,
+        source_id=source_id,
+        max_rows=max_rows,
+        start_index=start_index,
+        max_time_gap_s=max_time_gap_s,
+    )
+    rp_smoke = _read_json(rp_path) if rp_path else {}
+    claim_boundary = {
+        "can_change_full_parity_gate": False,
+        "can_claim_neon_engineering_validation": _neon_validation_core_ok(metadata_smoke, row_smoke),
+        "can_claim_eddypro_raw_to_final_parity": False,
+        "can_release_full_eddypro_parity": False,
+    }
+    status = _neon_validation_package_status(metadata_smoke=metadata_smoke, row_smoke=row_smoke, rp_smoke=rp_smoke)
+    rp_result = dict(rp_smoke.get("rp_result", {}) or {})
+    rp_summary = dict(rp_result.get("summary", {}) or {})
+    return {
+        "artifact_type": "neon_hdf5_validation_package_v1",
+        "generated_at": datetime.now().isoformat(),
+        "status": status,
+        "source_id": source_id or str(metadata_smoke.get("source_id", row_smoke.get("source_id", ""))),
+        "source_file": str(path),
+        "metadata_smoke_artifact": str(metadata_path) if metadata_path else "",
+        "row_smoke_artifact": str(row_path) if row_path else "",
+        "rp_smoke_artifact": str(rp_path) if rp_path else "",
+        "metadata_status": str(metadata_smoke.get("status", "")),
+        "row_status": str(row_smoke.get("status", "")),
+        "rp_status": str(rp_smoke.get("status", "not_run")),
+        "row_count": int(row_smoke.get("row_count", 0) or 0),
+        "rp_window_count": int(rp_smoke.get("window_count", 0) or 0),
+        "row_estimated_sample_rate_hz": float(row_smoke.get("estimated_sample_rate_hz", 0.0) or 0.0),
+        "rp_pipeline_sample_rate_hz": float(rp_summary.get("sample_rate_hz", 0.0) or 0.0),
+        "field_mappings": dict(row_smoke.get("field_mappings", {}) or metadata_smoke.get("field_mappings", {}) or {}),
+        "field_units": dict(row_smoke.get("field_units", {}) or {}),
+        "units_conversion_audit": dict(row_smoke.get("units_conversion_audit", {}) or {}),
+        "qc_mapping": dict(row_smoke.get("qc_mapping", {}) or {}),
+        "qc_flag_summary": dict(row_smoke.get("qc_flag_summary", {}) or {}),
+        "variable_context": dict(row_smoke.get("variable_context", {}) or {}),
+        "alignment_summary": dict(row_smoke.get("alignment_summary", {}) or {}),
+        "validation_warnings": _neon_validation_warnings(row_smoke),
+        "time_range": dict(row_smoke.get("time_range", {}) or {}),
+        "claim_boundary": claim_boundary,
+        "can_change_full_parity_gate": False,
+        "ready_for_raw_to_final_registration": False,
+        "truthfulness_boundary": (
+            "This package validates a public NEON HDF5 engineering path through metadata mapping, row "
+            "normalization, QC/unit audits, and optional local RP smoke. It is not an EddyPro official "
+            "raw-to-final parity fixture because it lacks an EddyPro project/settings bundle and official EddyPro output."
+        ),
+        "known_limitations": [
+            "NEON DP4 HDF5 variables are aggregated products rather than raw high-frequency EddyPro input files.",
+            "Some variables can originate from different NEON product families, heights, or averaging intervals.",
+            "QC is preserved as NEON qfFinl flags; no EddyPro flag equivalence is claimed.",
+            "Unit conversion rules are audited and explicit, but density-to-mixing-ratio conversions still require site thermodynamic context for parity claims.",
+        ],
+        "next_action": _neon_validation_next_action(status),
+    }
 
 
 def row_records_to_normalized_frames(records: list[dict[str, Any]]) -> list[NormalizedHFFrame]:
@@ -353,6 +446,8 @@ def _extract_neon_rows_from_hdf(
     series_by_field: dict[str, list[dict[str, Any]]] = {}
     field_units: dict[str, str] = {}
     qc_mapping: dict[str, Any] = {}
+    qc_series_by_field: dict[str, list[dict[str, Any]]] = {}
+    variable_context: dict[str, dict[str, Any]] = {}
     fields = [
         "time",
         "u",
@@ -373,12 +468,16 @@ def _extract_neon_rows_from_hdf(
         dataset = hdf[dataset_path]
         unit = _mean_unit(dataset.attrs)
         field_units[field] = unit
-        series_by_field[field] = _read_neon_dataset_series(dataset, field=field, unit=unit)
+        series = _read_neon_dataset_series(dataset, field=field, unit=unit)
+        series_by_field[field] = series
         qc_mapping[field] = _read_neon_qc_mapping(hdf, dataset_path)
+        qc_series_by_field[field] = _read_neon_qc_series(hdf, qc_mapping[field])
+        variable_context[field] = _variable_context_from_mapping(field, mapping=mapping, series=series)
 
     base_field = "time" if series_by_field.get("time") else "u"
     base_series = series_by_field.get(base_field, [])
     indexed = {field: _index_series(series) for field, series in series_by_field.items()}
+    qc_indexed = {field: _index_series(series) for field, series in qc_series_by_field.items() if series}
     resolved_start = _first_complete_base_index(
         base_series,
         indexed=indexed,
@@ -396,6 +495,11 @@ def _extract_neon_rows_from_hdf(
                 for field in series_by_field
                 if field != "time"
             }
+            matched_qc = {
+                field: _series_item_at_time(qc_indexed.get(field, {}), timestamp, max_time_gap_s=max_time_gap_s)
+                for field in series_by_field
+                if field != "time" and field in qc_indexed
+            }
             required_missing = [field for field in ROW_EXTRACTION_REQUIRED_FIELDS if matched.get(field) is None]
             if required_missing:
                 continue
@@ -403,6 +507,7 @@ def _extract_neon_rows_from_hdf(
                 _build_neon_row_record(
                     timestamp=timestamp,
                     matched=matched,
+                    qc_flags={field: _item_qc_flag(item) for field, item in matched_qc.items() if item is not None},
                     field_units=field_units,
                     qc_mapping=qc_mapping,
                     source_file=source_file,
@@ -411,22 +516,28 @@ def _extract_neon_rows_from_hdf(
             )
 
     estimated_sample_rate_hz = _estimate_sample_rate_from_records(rows)
+    alignment_summary = {
+        "base_field": base_field,
+        "base_path": str(dict(field_mappings.get(base_field, {}) or {}).get("path", "")),
+        "base_series_count": len(base_series),
+        "resolved_start_index": resolved_start,
+        "requested_start_index": int(start_index),
+        "max_time_gap_s": float(max_time_gap_s),
+        "series_counts": {field: len(series) for field, series in series_by_field.items()},
+        "qc_series_counts": {field: len(series) for field, series in qc_series_by_field.items() if series},
+        "required_fields": ROW_EXTRACTION_REQUIRED_FIELDS,
+    }
+    alignment_summary.update(_alignment_context_summary(variable_context))
     return {
         "rows": rows,
         "field_units": field_units,
         "qc_mapping": qc_mapping,
+        "qc_flag_summary": _qc_flag_summary(rows, qc_mapping),
+        "units_conversion_audit": _units_conversion_audit(field_units, field_mappings),
+        "variable_context": variable_context,
         "estimated_sample_rate_hz": estimated_sample_rate_hz,
         "time_range": _row_time_range(rows),
-        "alignment_summary": {
-            "base_field": base_field,
-            "base_path": str(dict(field_mappings.get(base_field, {}) or {}).get("path", "")),
-            "base_series_count": len(base_series),
-            "resolved_start_index": resolved_start,
-            "requested_start_index": int(start_index),
-            "max_time_gap_s": float(max_time_gap_s),
-            "series_counts": {field: len(series) for field, series in series_by_field.items()},
-            "required_fields": ROW_EXTRACTION_REQUIRED_FIELDS,
-        },
+        "alignment_summary": alignment_summary,
     }
 
 
@@ -494,6 +605,39 @@ def _read_neon_qc_mapping(hdf: Any, dataset_path: str) -> dict[str, Any]:
     }
 
 
+def _read_neon_qc_series(hdf: Any, qc_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    if str(qc_payload.get("status", "")) != "mapped":
+        return []
+    path = str(qc_payload.get("path", ""))
+    flag_field = str(qc_payload.get("flag_field", ""))
+    if not path or not flag_field or path.strip("/") not in hdf:
+        return []
+    dataset = hdf[path]
+    data = dataset[:]
+    dtype_fields = list((dataset.dtype.fields or {}).keys())
+    names = {str(name).lower(): str(name) for name in dtype_fields}
+    start_name = names.get("timebgn") or names.get("time_bgn")
+    end_name = names.get("timeend") or names.get("time_end")
+    series: list[dict[str, Any]] = []
+    for index, record in enumerate(data):
+        flag = _optional_number(record[flag_field])
+        start = _parse_datetime(_decode_scalar(record[start_name])) if start_name else None
+        end = _parse_datetime(_decode_scalar(record[end_name])) if end_name else start
+        if flag is None or start is None:
+            continue
+        end = end or start
+        series.append(
+            {
+                "index": index,
+                "start": start,
+                "end": end,
+                "center": _midpoint_datetime(start, end),
+                "flag": int(flag) if float(flag).is_integer() else float(flag),
+            }
+        )
+    return series
+
+
 def _index_series(series: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "series": series,
@@ -540,6 +684,7 @@ def _build_neon_row_record(
     *,
     timestamp: datetime,
     matched: dict[str, dict[str, Any] | None],
+    qc_flags: dict[str, Any],
     field_units: dict[str, str],
     qc_mapping: dict[str, Any],
     source_file: Path,
@@ -567,6 +712,7 @@ def _build_neon_row_record(
             if item is not None
         },
         "neon_qc_mapping": qc_mapping,
+        "neon_qc_flags": qc_flags,
     }
     ch4_ppb = _item_value(matched.get("ch4"))
     if ch4_ppb is not None:
@@ -675,6 +821,292 @@ def _item_num_samp(item: dict[str, Any] | None) -> float | None:
     if not item:
         return None
     return _optional_number(item.get("num_samp"))
+
+
+def _item_qc_flag(item: dict[str, Any] | None) -> int | float | None:
+    if not item:
+        return None
+    value = _optional_number(item.get("flag"))
+    if value is None:
+        return None
+    return int(value) if float(value).is_integer() else float(value)
+
+
+def _qc_flag_summary(rows: list[dict[str, Any]], qc_mapping: dict[str, Any]) -> dict[str, Any]:
+    summaries: dict[str, Any] = {}
+    for field, mapping in qc_mapping.items():
+        mapping_payload = dict(mapping or {})
+        counts: Counter[str] = Counter()
+        for row in rows:
+            try:
+                raw_payload = json.loads(str(row.get("raw_text", "") or "{}"))
+            except json.JSONDecodeError:
+                continue
+            flag_payload = dict(raw_payload.get("neon_qc_flags", {}) or {})
+            if field not in flag_payload or flag_payload[field] is None:
+                continue
+            counts[str(flag_payload[field])] += 1
+        nonzero_count = sum(count for flag, count in counts.items() if flag not in {"0", "0.0"})
+        summaries[str(field)] = {
+            "mapped": mapping_payload.get("status") == "mapped",
+            "path": str(mapping_payload.get("path", "")),
+            "flag_field": str(mapping_payload.get("flag_field", "")),
+            "matched_flag_count": int(sum(counts.values())),
+            "nonzero_count": int(nonzero_count),
+            "flag_counts": dict(sorted(counts.items())),
+        }
+    return summaries
+
+
+def _units_conversion_audit(field_units: dict[str, str], field_mappings: dict[str, Any]) -> dict[str, Any]:
+    return {
+        field: _unit_conversion_audit_item(field, unit=str(field_units.get(field, "")), mapping=dict(field_mappings.get(field, {}) or {}))
+        for field in sorted(set(field_mappings) | set(field_units))
+        if field != "time"
+    }
+
+
+def _unit_conversion_audit_item(field: str, *, unit: str, mapping: dict[str, Any]) -> dict[str, Any]:
+    target_units = {
+        "u": "m s-1",
+        "v": "m s-1",
+        "w": "m s-1",
+        "co2": "ppm / umol mol-1",
+        "h2o": "mmol mol-1",
+        "ch4": "ppb / nmol mol-1",
+        "pressure": "kPa",
+        "sonic_temperature": "deg C",
+        "air_temperature": "deg C",
+    }
+    unit_key = unit.lower().replace(" ", "")
+    rule = "not_extracted"
+    status = "not_extracted"
+    if unit:
+        rule = "identity"
+        status = "ok"
+    if field == "co2":
+        if "umol" in unit_key or "ppm" in unit_key:
+            rule = "identity_umol_mol_to_ppm"
+        elif "mol-1" in unit_key:
+            rule = "multiply_by_1000000_mol_mol_to_ppm"
+        elif "mmol" in unit_key:
+            rule = "multiply_by_1000_mmol_to_ppm_legacy_smoke"
+            status = "review_required"
+        elif unit:
+            rule = "unknown_co2_unit"
+            status = "unknown_unit"
+    elif field == "h2o":
+        if "mmol" in unit_key:
+            rule = "identity_mmol_mol"
+        elif "umol" in unit_key:
+            rule = "divide_by_1000_umol_mol_to_mmol_mol"
+        elif "mol-1" in unit_key:
+            rule = "multiply_by_1000_mol_mol_to_mmol_mol"
+        elif unit:
+            rule = "unknown_h2o_unit"
+            status = "unknown_unit"
+    elif field == "ch4":
+        if "nmol" in unit_key or "ppb" in unit_key:
+            rule = "identity_nmol_mol_to_ppb"
+        elif "umol" in unit_key or "ppm" in unit_key:
+            rule = "multiply_by_1000_ppm_to_ppb"
+        elif "mmol" in unit_key:
+            rule = "multiply_by_1000000_mmol_mol_to_ppb"
+        elif "mol-1" in unit_key:
+            rule = "multiply_by_1000000000_mol_mol_to_ppb"
+        elif unit:
+            rule = "unknown_ch4_unit"
+            status = "unknown_unit"
+    elif field == "pressure":
+        if unit_key == "pa":
+            rule = "divide_by_1000_pa_to_kpa"
+        elif "hpa" in unit_key or "mbar" in unit_key:
+            rule = "divide_by_10_hpa_or_mbar_to_kpa"
+        elif "kpa" in unit_key:
+            rule = "identity_kpa"
+        elif unit:
+            rule = "unknown_pressure_unit"
+            status = "unknown_unit"
+    elif field in {"sonic_temperature", "air_temperature"}:
+        if unit_key in {"k", "kelvin"}:
+            rule = "subtract_273_15_kelvin_to_celsius"
+        elif unit_key in {"c", "degc", "degreec", "degreescelsius", "celsius"}:
+            rule = "identity_celsius"
+        elif unit:
+            rule = "unknown_temperature_unit"
+            status = "unknown_unit"
+    return {
+        "source_unit": unit,
+        "target_field": field,
+        "target_unit": target_units.get(field, ""),
+        "conversion_rule": rule,
+        "status": status,
+        "source_path": str(mapping.get("path", "")),
+    }
+
+
+def _variable_context_from_mapping(field: str, *, mapping: dict[str, Any], series: list[dict[str, Any]]) -> dict[str, Any]:
+    path = str(mapping.get("path", ""))
+    segments = [segment for segment in path.strip("/").split("/") if segment]
+    measurement_token = ""
+    product_family = ""
+    for index, segment in enumerate(segments):
+        if re.match(r"^\d{3}_\d{3}_\d{2,3}m$", segment):
+            measurement_token = segment
+            product_family = segments[index - 1] if index > 0 else ""
+            break
+    durations = [
+        float((item["end"] - item["start"]).total_seconds())
+        for item in series[: min(len(series), 256)]
+        if item.get("start") is not None and item.get("end") is not None and (item["end"] - item["start"]).total_seconds() >= 0
+    ]
+    duration = _median_float(durations)
+    height_m = _height_from_measurement_token(measurement_token)
+    return {
+        "field": field,
+        "path": path,
+        "site_code": segments[0] if segments else "",
+        "product_family": product_family,
+        "measurement_token": measurement_token,
+        "height_m": height_m,
+        "dataset_name": segments[-1] if segments else "",
+        "record_count": len(series),
+        "averaging_seconds_median": duration,
+        "averaging_seconds_min": min(durations) if durations else None,
+        "averaging_seconds_max": max(durations) if durations else None,
+    }
+
+
+def _alignment_context_summary(variable_context: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    height_groups: dict[str, list[str]] = {}
+    intervals: dict[str, float] = {}
+    product_families: dict[str, str] = {}
+    for field, context in variable_context.items():
+        height = context.get("height_m")
+        height_key = "unknown" if height is None else f"{float(height):.3f}"
+        height_groups.setdefault(height_key, []).append(field)
+        interval = context.get("averaging_seconds_median")
+        if interval is not None:
+            intervals[field] = round(float(interval), 6)
+        if context.get("product_family"):
+            product_families[field] = str(context.get("product_family", ""))
+    distinct_intervals = sorted(set(intervals.values()))
+    return {
+        "height_groups": {key: sorted(fields) for key, fields in sorted(height_groups.items())},
+        "product_families": product_families,
+        "averaging_seconds_by_field": intervals,
+        "mixed_averaging_intervals": len(distinct_intervals) > 1,
+        "distinct_averaging_seconds": distinct_intervals,
+    }
+
+
+def _height_from_measurement_token(token: str) -> float | None:
+    match = re.search(r"_(\d{2,3})m$", token or "")
+    if not match:
+        return None
+    return float(int(match.group(1)))
+
+
+def _median_float(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(float(value) for value in values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+def _neon_validation_core_ok(metadata_smoke: dict[str, Any], row_smoke: dict[str, Any]) -> bool:
+    return (
+        str(metadata_smoke.get("status", "")) == "mapping_ready_for_importer_smoke"
+        and str(row_smoke.get("status", "")) == "pass"
+        and int(row_smoke.get("row_count", 0) or 0) > 0
+    )
+
+
+def _neon_validation_package_status(
+    *,
+    metadata_smoke: dict[str, Any],
+    row_smoke: dict[str, Any],
+    rp_smoke: dict[str, Any],
+) -> str:
+    if not _neon_validation_core_ok(metadata_smoke, row_smoke):
+        return "blocked"
+    rp_status = str(rp_smoke.get("status", "not_run"))
+    if rp_status == "pass":
+        return "pass"
+    if not rp_smoke:
+        return "row_validated_no_rp"
+    return "row_validated_rp_incomplete"
+
+
+def _neon_row_validation_warnings(row_smoke: dict[str, Any]) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    alignment = dict(row_smoke.get("alignment_summary", {}) or {})
+    variable_context = dict(row_smoke.get("variable_context", {}) or {})
+    if alignment.get("mixed_averaging_intervals"):
+        warnings.append(
+            {
+                "code": "mixed_averaging_intervals",
+                "severity": "review",
+                "message": "Mapped NEON variables use more than one aggregation interval; row alignment is smoke evidence, not EddyPro parity.",
+                "details": dict(alignment.get("averaging_seconds_by_field", {}) or {}),
+            }
+        )
+    height_groups = dict(alignment.get("height_groups", {}) or {})
+    if len(height_groups) > 1:
+        warnings.append(
+            {
+                "code": "mixed_measurement_heights",
+                "severity": "review",
+                "message": "Mapped NEON variables span multiple measurement heights.",
+                "details": height_groups,
+            }
+        )
+    h2o_context = dict(variable_context.get("h2o", {}) or {})
+    if h2o_context and str(h2o_context.get("product_family", "")).lower() not in {"h2oturb", "co2turb"}:
+        warnings.append(
+            {
+                "code": "h2o_non_turbulence_family",
+                "severity": "review",
+                "message": "The selected H2O source is not a primary h2oTurb/co2Turb family dataset.",
+                "details": h2o_context,
+            }
+        )
+    qc_summary = dict(row_smoke.get("qc_flag_summary", {}) or {})
+    nonzero_qc = {
+        field: int(dict(summary or {}).get("nonzero_count", 0) or 0)
+        for field, summary in qc_summary.items()
+        if int(dict(summary or {}).get("nonzero_count", 0) or 0) > 0
+    }
+    if nonzero_qc:
+        warnings.append(
+            {
+                "code": "nonzero_neon_qc_flags",
+                "severity": "review",
+                "message": "One or more mapped NEON qfFinl streams contain non-zero flags.",
+                "details": nonzero_qc,
+            }
+        )
+    return warnings
+
+
+def _neon_validation_warnings(row_smoke: dict[str, Any]) -> list[dict[str, Any]]:
+    warnings = list(row_smoke.get("validation_warnings", []) or [])
+    if not warnings:
+        warnings = _neon_row_validation_warnings(row_smoke)
+    return warnings
+
+
+def _neon_validation_next_action(status: str) -> str:
+    if status == "pass":
+        return "Use this package as NEON engineering validation evidence while keeping full EddyPro parity gates blocked."
+    if status == "row_validated_no_rp":
+        return "Run --run-neon-hdf5-rp-smoke and rebuild the validation package to close the local RP path."
+    if status == "row_validated_rp_incomplete":
+        return "Inspect the RP smoke errors/window count before using this NEON package as engineering evidence."
+    return "Resolve metadata mapping or row extraction before claiming any NEON importer validation."
 
 
 def _midpoint_datetime(start: datetime, end: datetime) -> datetime:

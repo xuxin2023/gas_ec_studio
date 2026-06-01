@@ -8,6 +8,7 @@ from zipfile import ZipFile
 import numpy as np
 
 from app.studio import StudioController
+from core.exports.delivery_exporter import export_delivery_package
 from models.hf_models import FrameQuality, NormalizedHFFrame
 
 
@@ -267,3 +268,65 @@ def test_delivery_package_includes_compare_and_attribution(monkeypatch, tmp_path
         assert any(name.endswith("attribution_summary.json") for name in names)
     finally:
         controller.shutdown()
+
+
+def test_delivery_package_indexes_neon_hdf5_validation_package(tmp_path: Path) -> None:
+    result_root = tmp_path / "result_bundle"
+    result_root.mkdir(parents=True)
+    validation_payload = {
+        "artifact_type": "neon_hdf5_validation_package_v1",
+        "status": "pass",
+        "source_file": "NEON.TEST.h5",
+        "metadata_status": "mapping_ready_for_importer_smoke",
+        "row_status": "pass",
+        "rp_status": "pass",
+        "row_count": 120,
+        "rp_window_count": 1,
+        "claim_boundary": {
+            "can_claim_neon_engineering_validation": True,
+            "can_claim_eddypro_raw_to_final_parity": False,
+        },
+    }
+    validation_path = result_root / "neon_hdf5_validation_package.json"
+    validation_path.write_text(json.dumps(validation_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    manifest_path = result_root / "export_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "full_output_mode": "only_available",
+                "schema_target": "FLUXNET",
+                "network_validation_status": "pass",
+                "network_missing_fields": [],
+                "network_validation_summary": {"schema_target": "FLUXNET", "validation_status": "pass", "missing_fields": []},
+                "neon_hdf5_validation_package": validation_payload,
+                "neon_hdf5_validation_package_artifact": str(validation_path),
+                "exported_files": ["export_manifest.json", "neon_hdf5_validation_package.json"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    delivery = export_delivery_package(
+        runtime_root=tmp_path / "runtime_data",
+        formal_report={"files": {}, "pdf_status": "fallback_html_only"},
+        result_bundle={
+            "export_root": str(result_root),
+            "files": {
+                "export_manifest": str(manifest_path),
+                "neon_hdf5_validation_package_artifact": str(validation_path),
+            },
+        },
+        evidence_bundle=None,
+        compare_manifest=None,
+        attribution_result=None,
+        current_batch_id="batch-neon",
+    )
+    manifest = json.loads(Path(delivery["files"]["package_manifest"]).read_text(encoding="utf-8"))
+
+    assert manifest["artifact_index"]["neon_hdf5_validation_package_artifact"]["packaged"] is True
+    assert manifest["neon_hdf5_validation_package"]["status"] == "pass"
+    assert manifest["neon_hdf5_summary"]["can_claim_neon_engineering_validation"] is True
+    assert manifest["neon_hdf5_summary"]["can_claim_eddypro_raw_to_final_parity"] is False
+    assert manifest["result_manifest_summary"]["neon_hdf5_validation_status"] == "pass"

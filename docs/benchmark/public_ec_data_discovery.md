@@ -146,6 +146,29 @@ raise SystemExit(run_cli([
 
 The row/RP smoke artifacts are delivery-chain evidence that the importer bridge can understand a real NEON HDF5 product and feed local RP processing. They still set `ready_for_raw_to_final_registration=false` because NEON DP4 is an aggregated public product, not a paired EddyPro raw/settings/Full_Output bundle.
 
+Close the NEON-specific engineering validation loop with the validation package:
+
+```powershell
+@'
+import json
+from pathlib import Path
+from core.headless_batch_runner import run_cli
+
+download = json.loads(Path("artifacts/public_ec_data/neon_hdf5_download.json").read_text(encoding="utf-8"))
+raise SystemExit(run_cli([
+    "--build-neon-hdf5-validation-package",
+    download["local_path"],
+    "--workspace-root", ".",
+    "--output", "artifacts/public_ec_data/neon_hdf5_validation_package.json",
+    "--neon-hdf5-metadata-smoke", "artifacts/public_ec_data/neon_hdf5_metadata_smoke.json",
+    "--neon-hdf5-row-smoke", "artifacts/public_ec_data/neon_hdf5_row_smoke.json",
+    "--neon-hdf5-rp-smoke", "artifacts/public_ec_data/neon_hdf5_rp_smoke.json",
+]))
+'@ | python -
+```
+
+The package preserves the source file path, row/RP statuses, `qc_flag_summary`, `units_conversion_audit`, variable height/product context, and a claim boundary that allows NEON engineering-validation evidence while keeping EddyPro raw-to-final parity claims blocked.
+
 ## Truthfulness Boundary
 
 Public discovery is not parity. A candidate becomes full-parity evidence only after it has:

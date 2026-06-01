@@ -27,6 +27,7 @@ from core.comparison.fixture_pack import (
 from core.comparison.neon_hdf5_importer import (
     build_neon_hdf5_metadata_smoke,
     build_neon_hdf5_row_extraction_smoke,
+    build_neon_hdf5_validation_package,
     download_neon_hdf5_candidate,
     row_records_to_normalized_frames,
 )
@@ -500,11 +501,14 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--build-neon-hdf5-metadata-smoke", default="", help="Inspect a local NEON HDF5 file and infer EC field mapping candidates.")
     parser.add_argument("--build-neon-hdf5-row-smoke", default="", help="Extract a small NEON HDF5 window into normalized EC row records.")
     parser.add_argument("--run-neon-hdf5-rp-smoke", default="", help="Extract NEON HDF5 rows and run a small RP smoke without changing parity gates.")
+    parser.add_argument("--build-neon-hdf5-validation-package", default="", help="Build a NEON HDF5 validation package from metadata, row, and RP smoke artifacts.")
     parser.add_argument("--neon-hdf5-output-root", default="", help="Directory for downloaded NEON HDF5 candidates.")
     parser.add_argument("--neon-hdf5-source-id", default="", help="NEON source id to select from a discovery/probe artifact.")
     parser.add_argument("--neon-hdf5-candidate-name", default="", help="Exact NEON HDF5 candidate filename to select.")
     parser.add_argument("--neon-hdf5-discovery-artifact", default="", help="Discovery/probe artifact path recorded in NEON HDF5 metadata smoke provenance.")
     parser.add_argument("--neon-hdf5-metadata-smoke", default="", help="Metadata smoke artifact used by NEON HDF5 row/RP smoke commands.")
+    parser.add_argument("--neon-hdf5-row-smoke", default="", help="Row smoke artifact used by --build-neon-hdf5-validation-package.")
+    parser.add_argument("--neon-hdf5-rp-smoke", default="", help="RP smoke artifact used by --build-neon-hdf5-validation-package.")
     parser.add_argument("--neon-hdf5-row-output", default="", help="Optional JSON rows output written by --build-neon-hdf5-row-smoke.")
     parser.add_argument("--neon-hdf5-max-datasets", default="", help="Maximum HDF5 dataset metadata records to include in the smoke artifact.")
     parser.add_argument("--neon-hdf5-max-rows", default="", help="Maximum normalized NEON rows to extract for row/RP smoke.")
@@ -583,6 +587,9 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     if args.run_neon_hdf5_rp_smoke:
         return _run_neon_hdf5_rp_smoke_cli(args, parser)
+
+    if args.build_neon_hdf5_validation_package:
+        return _run_neon_hdf5_validation_package_cli(args, parser)
 
     if args.inspect_public_official_raw_archive:
         return _run_public_official_raw_archive_inspection_cli(args, parser)
@@ -875,6 +882,27 @@ def _run_neon_hdf5_rp_smoke_cli(args: argparse.Namespace, parser: argparse.Argum
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if status == "pass" else 2
+
+
+def _run_neon_hdf5_validation_package_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --build-neon-hdf5-validation-package.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    payload = build_neon_hdf5_validation_package(
+        args.build_neon_hdf5_validation_package,
+        workspace_root=workspace_root,
+        metadata_smoke_path=args.neon_hdf5_metadata_smoke or None,
+        row_smoke_path=args.neon_hdf5_row_smoke or None,
+        rp_smoke_path=args.neon_hdf5_rp_smoke or None,
+        source_id=args.neon_hdf5_source_id,
+        max_rows=int(args.neon_hdf5_max_rows or 160),
+        start_index=int(args.neon_hdf5_start_index or 0),
+        max_time_gap_s=float(args.neon_hdf5_max_time_gap_s or 900.0),
+    )
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0 if payload.get("status") in {"pass", "row_validated_no_rp"} else 2
 
 
 def _run_public_official_raw_archive_inspection_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

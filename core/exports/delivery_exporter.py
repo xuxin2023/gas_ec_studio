@@ -119,6 +119,8 @@ def export_delivery_package(
         "raw_to_final_parity": audit.get("raw_to_final_parity", {}),
         "raw_to_final_parity_diagnostics": audit.get("raw_to_final_parity_diagnostics", {}),
         "raw_to_final_trace_gas_parity": audit.get("raw_to_final_trace_gas_parity", {}),
+        "neon_hdf5_validation_package": audit.get("neon_hdf5_validation_package", {}),
+        "neon_hdf5_summary": audit.get("neon_hdf5_summary", {}),
         "benchmark_summary": audit.get("benchmark_summary", {}),
         "method_artifact_keys": audit.get("method_artifact_keys", []),
         "notes": notes or ["交付包已完整导出。"],
@@ -282,6 +284,10 @@ def _build_delivery_audit(
     result_manifest = _read_json_file(result_files.get("export_manifest", ""))
     method_parity = _read_json_file(result_files.get("method_parity_matrix_artifact", ""))
     network_validation = dict(result_manifest.get("network_validation_summary", {}) or {})
+    neon_validation = dict(
+        result_manifest.get("neon_hdf5_validation_package", {})
+        or _read_json_file(result_files.get("neon_hdf5_validation_package_artifact", ""))
+    )
     runtime_watchdog = dict(result_manifest.get("runtime_watchdog_summary", {}) or {})
     runtime_service = dict(result_manifest.get("runtime_service_summary", {}) or {})
     daemon_telemetry = dict(result_manifest.get("daemon_telemetry_summary", {}) or {})
@@ -411,6 +417,10 @@ def _build_delivery_audit(
         "eddypro_surrogate_evidence_closure_artifact",
         "eddypro_release_gate_artifact",
         "raw_to_final_parity_artifact",
+        "neon_hdf5_validation_package_artifact",
+        "neon_hdf5_metadata_smoke_artifact",
+        "neon_hdf5_row_smoke_artifact",
+        "neon_hdf5_rp_smoke_artifact",
         "benchmark_summary_artifact",
         "parity_artifact",
         "reference_provenance_artifact",
@@ -587,8 +597,38 @@ def _build_delivery_audit(
             "raw_to_final_trace_gas_pass_rate": raw_to_final_trace_gas.get("pass_rate", 0.0),
             "raw_to_final_trace_gas_failed_fields": list(raw_to_final_trace_gas.get("failed_fields", []) or []),
             "raw_to_final_trace_gas_coefficient_profile_id": raw_to_final_trace_gas.get("coefficient_profile_id", ""),
+            "neon_hdf5_validation_status": neon_validation.get("status", ""),
+            "neon_hdf5_metadata_status": neon_validation.get("metadata_status", ""),
+            "neon_hdf5_row_status": neon_validation.get("row_status", ""),
+            "neon_hdf5_rp_status": neon_validation.get("rp_status", ""),
+            "neon_hdf5_row_count": neon_validation.get("row_count", 0),
+            "neon_hdf5_rp_window_count": neon_validation.get("rp_window_count", 0),
+            "neon_hdf5_source_file": neon_validation.get("source_file", ""),
+            "neon_hdf5_can_claim_engineering_validation": dict(neon_validation.get("claim_boundary", {}) or {}).get(
+                "can_claim_neon_engineering_validation",
+                False,
+            ),
+            "neon_hdf5_can_claim_eddypro_raw_to_final_parity": dict(neon_validation.get("claim_boundary", {}) or {}).get(
+                "can_claim_eddypro_raw_to_final_parity",
+                False,
+            ),
         },
         "network_validation_summary": network_validation,
+        "neon_hdf5_validation_package": neon_validation,
+        "neon_hdf5_summary": {
+            "status": neon_validation.get("status", ""),
+            "source_file": neon_validation.get("source_file", ""),
+            "row_count": neon_validation.get("row_count", 0),
+            "rp_window_count": neon_validation.get("rp_window_count", 0),
+            "can_claim_neon_engineering_validation": dict(neon_validation.get("claim_boundary", {}) or {}).get(
+                "can_claim_neon_engineering_validation",
+                False,
+            ),
+            "can_claim_eddypro_raw_to_final_parity": dict(neon_validation.get("claim_boundary", {}) or {}).get(
+                "can_claim_eddypro_raw_to_final_parity",
+                False,
+            ),
+        },
         "runtime_watchdog_summary": runtime_watchdog,
         "runtime_service_summary": runtime_service,
         "daemon_telemetry_summary": daemon_telemetry,

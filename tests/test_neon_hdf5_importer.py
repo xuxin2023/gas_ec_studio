@@ -11,6 +11,7 @@ from core.comparison import neon_hdf5_importer
 from core.comparison.neon_hdf5_importer import (
     build_neon_hdf5_metadata_smoke,
     build_neon_hdf5_row_extraction_smoke,
+    build_neon_hdf5_validation_package,
     download_neon_hdf5_candidate,
     row_records_to_normalized_frames,
 )
@@ -145,6 +146,12 @@ def test_neon_hdf5_row_extraction_smoke_writes_normalized_rows(tmp_path: Path) -
     assert payload["rp_smoke_ready"] is True
     assert payload["estimated_sample_rate_hz"] == 0.01666667
     assert payload["qc_mapping"]["u"]["status"] == "mapped"
+    assert payload["qc_flag_summary"]["u"]["matched_flag_count"] == 80
+    assert payload["qc_flag_summary"]["u"]["flag_counts"] == {"0": 80}
+    assert payload["units_conversion_audit"]["co2"]["conversion_rule"] == "identity_umol_mol_to_ppm"
+    assert payload["variable_context"]["co2"]["product_family"] == "co2Turb"
+    assert payload["variable_context"]["co2"]["height_m"] == 1.0
+    assert payload["alignment_summary"]["mixed_averaging_intervals"] is False
     assert rows_path.exists()
     assert frames[0].co2_ppm is not None and frames[0].co2_ppm > 390.0
     assert frames[0].h2o_mmol is not None and frames[0].h2o_mmol > 9.0
@@ -179,6 +186,90 @@ def test_headless_cli_runs_neon_hdf5_rp_smoke(tmp_path: Path) -> None:
     assert payload["window_count"] >= 1
     assert payload["row_smoke"]["row_count"] == 130
     assert payload["can_change_full_parity_gate"] is False
+
+
+def test_neon_hdf5_validation_package_closes_metadata_row_and_rp_smoke(tmp_path: Path) -> None:
+    hdf5_path = _write_neon_compound_alias_hdf5(tmp_path / "neon_validation.h5", rows=150)
+    metadata_path = tmp_path / "metadata.json"
+    row_path = tmp_path / "row.json"
+    rp_path = tmp_path / "rp.json"
+    package_path = tmp_path / "validation_package.json"
+
+    assert run_cli(
+        [
+            "--build-neon-hdf5-metadata-smoke",
+            str(hdf5_path),
+            "--workspace-root",
+            str(tmp_path),
+            "--output",
+            str(metadata_path),
+        ]
+    ) == 0
+    assert run_cli(
+        [
+            "--build-neon-hdf5-row-smoke",
+            str(hdf5_path),
+            "--workspace-root",
+            str(tmp_path),
+            "--output",
+            str(row_path),
+            "--neon-hdf5-metadata-smoke",
+            str(metadata_path),
+            "--neon-hdf5-max-rows",
+            "120",
+        ]
+    ) == 0
+    assert run_cli(
+        [
+            "--run-neon-hdf5-rp-smoke",
+            str(hdf5_path),
+            "--workspace-root",
+            str(tmp_path),
+            "--output",
+            str(rp_path),
+            "--neon-hdf5-metadata-smoke",
+            str(metadata_path),
+            "--neon-hdf5-max-rows",
+            "120",
+        ]
+    ) == 0
+    code = run_cli(
+        [
+            "--build-neon-hdf5-validation-package",
+            str(hdf5_path),
+            "--workspace-root",
+            str(tmp_path),
+            "--output",
+            str(package_path),
+            "--neon-hdf5-metadata-smoke",
+            str(metadata_path),
+            "--neon-hdf5-row-smoke",
+            str(row_path),
+            "--neon-hdf5-rp-smoke",
+            str(rp_path),
+        ]
+    )
+    payload = json.loads(package_path.read_text(encoding="utf-8"))
+    direct_payload = build_neon_hdf5_validation_package(
+        hdf5_path,
+        workspace_root=tmp_path,
+        metadata_smoke_path=metadata_path,
+        row_smoke_path=row_path,
+        rp_smoke_path=rp_path,
+    )
+
+    assert code == 0
+    assert payload["artifact_type"] == "neon_hdf5_validation_package_v1"
+    assert payload["status"] == "pass"
+    assert payload["metadata_status"] == "mapping_ready_for_importer_smoke"
+    assert payload["row_status"] == "pass"
+    assert payload["rp_status"] == "pass"
+    assert payload["claim_boundary"]["can_claim_neon_engineering_validation"] is True
+    assert payload["claim_boundary"]["can_claim_eddypro_raw_to_final_parity"] is False
+    assert payload["qc_flag_summary"]["u"]["flag_counts"] == {"0": 120}
+    assert payload["units_conversion_audit"]["h2o"]["conversion_rule"] == "identity_mmol_mol"
+    assert payload["variable_context"]["u"]["product_family"] == "soni"
+    assert direct_payload["status"] == "pass"
 
 
 class _FakeResponse:

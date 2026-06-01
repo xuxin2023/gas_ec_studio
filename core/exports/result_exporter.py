@@ -291,6 +291,7 @@ class ResultExporter:
         report_payload: dict[str, Any],
         report_key: str,
         full_output_mode: str = "only_available",
+        external_artifacts: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         timestamp = datetime.now()
         suffix = self._bundle_suffix(rp_result=rp_result, spectral_result=spectral_result, timestamp=timestamp)
@@ -660,6 +661,13 @@ class ResultExporter:
             if str(item.get("category", ""))
         ]
         raw_to_final_parity_top_failed_fields = list(raw_to_final_parity_diagnostics.get("top_failed_fields", []) or [])
+        configured_external_artifacts = dict(rp_config_snapshot.get("external_artifacts", {}) or {})
+        configured_external_artifacts.update(dict(external_artifacts or {}))
+        external_artifact_files, external_artifact_payloads = self._copy_external_artifacts(
+            configured_external_artifacts,
+            export_root=export_root,
+        )
+        neon_hdf5_validation_package = dict(external_artifact_payloads.get("neon_hdf5_validation_package_artifact", {}) or {})
 
         exported_files = [
             "rp_results.csv",
@@ -760,6 +768,8 @@ class ResultExporter:
         if raw_to_final_parity_path is not None:
             exported_files.append(raw_to_final_parity_path.name)
         for path in network_files.values():
+            exported_files.append(Path(path).name)
+        for path in external_artifact_files.values():
             exported_files.append(Path(path).name)
         exported_files = list(dict.fromkeys(exported_files))
         self._write_json(
@@ -899,6 +909,9 @@ class ResultExporter:
                 "raw_to_final_trace_gas_failed_fields": list(raw_to_final_trace_gas_parity.get("failed_fields", []) or []),
                 "raw_to_final_trace_gas_coefficient_profile_id": str(raw_to_final_trace_gas_parity.get("coefficient_profile_id", "")),
                 "raw_to_final_parity_artifact": str(raw_to_final_parity_path) if raw_to_final_parity_path is not None else "",
+                "external_artifacts": external_artifact_files,
+                "neon_hdf5_validation_package": neon_hdf5_validation_package,
+                "neon_hdf5_validation_package_artifact": external_artifact_files.get("neon_hdf5_validation_package_artifact", ""),
                 "network_validation": network_validation,
                 "exported_files": exported_files,
             },
@@ -1007,6 +1020,12 @@ class ResultExporter:
             "raw_to_final_trace_gas_failed_fields": list(raw_to_final_trace_gas_parity.get("failed_fields", []) or []),
             "raw_to_final_trace_gas_coefficient_profile_id": str(raw_to_final_trace_gas_parity.get("coefficient_profile_id", "")),
             "raw_to_final_parity_artifact": str(raw_to_final_parity_path) if raw_to_final_parity_path is not None else "",
+            "external_artifacts": external_artifact_files,
+            "neon_hdf5_validation_package": neon_hdf5_validation_package,
+            "neon_hdf5_validation_package_artifact": external_artifact_files.get("neon_hdf5_validation_package_artifact", ""),
+            "neon_hdf5_validation_status": str(neon_hdf5_validation_package.get("status", "")),
+            "neon_hdf5_row_status": str(neon_hdf5_validation_package.get("row_status", "")),
+            "neon_hdf5_rp_status": str(neon_hdf5_validation_package.get("rp_status", "")),
             "spectral_assessment": spectral_assessment_summary,
             "spectral_assessment_artifact": str(spectral_assessment_path) if spectral_assessment_path is not None else "",
             "spectral_assessment_files": spectral_assessment_companion_files,
@@ -1363,6 +1382,7 @@ class ResultExporter:
         if raw_to_final_parity_path is not None:
             files["raw_to_final_parity_artifact"] = str(raw_to_final_parity_path)
         files.update(network_files)
+        files.update(external_artifact_files)
         return {
             "export_root": str(export_root),
             "summary_text": self._summary_text(rp_result=rp_result, spectral_result=spectral_result),
@@ -1887,6 +1907,30 @@ class ResultExporter:
         except (json.JSONDecodeError, OSError):
             return {}
         return dict(payload) if isinstance(payload, dict) else {}
+
+    def _copy_external_artifacts(self, artifacts: dict[str, Any], *, export_root: Path) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
+        files: dict[str, str] = {}
+        payloads: dict[str, dict[str, Any]] = {}
+        for raw_key, path_value in artifacts.items():
+            if not path_value:
+                continue
+            key = str(raw_key)
+            if not key.endswith("_artifact"):
+                key = f"{key}_artifact"
+            source = Path(str(path_value))
+            if not source.exists() or not source.is_file():
+                continue
+            target = export_root / source.name
+            try:
+                if source.resolve() != target.resolve():
+                    if target.exists():
+                        target = export_root / f"{key.removesuffix('_artifact')}_{source.name}"
+                    shutil.copy2(source, target)
+            except OSError:
+                continue
+            files[key] = str(target)
+            payloads[key] = self._read_json_if_available(target)
+        return files, payloads
 
     def export_spectral_assessment_artifact(
         self,
