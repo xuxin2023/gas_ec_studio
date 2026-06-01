@@ -853,10 +853,13 @@
       "gas_ec_status": "covered",
       "evidence": [
         "core/ec_rp/analysis.py",
+        "core/ec_rp/pipeline.py",
+        "core/exports/result_exporter.py",
+        "tests/test_planar_fit_library.py",
         "tests/test_advanced_parity_v3b.py"
       ],
       "gap": "",
-      "next_action": "Persist long-period planar-fit coefficient libraries."
+      "next_action": "Add multi-season official EddyPro planar-fit coefficient references when redistributable fixtures are available."
     },
     {
       "id": "head_flow_angle_corrections",

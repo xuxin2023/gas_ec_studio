@@ -214,6 +214,19 @@ FULL_OUTPUT_SCHEMA = [
     ("trace_gas_family", "trace_gas", "real"),
     ("requested_rotation_mode", "rotation", "real"),
     ("applied_rotation_impl", "rotation", "real"),
+    ("planar_fit_library_status", "rotation", "real"),
+    ("planar_fit_library_source", "rotation", "real"),
+    ("planar_fit_library_path", "rotation", "real"),
+    ("planar_fit_library_save_status", "rotation", "real"),
+    ("planar_fit_library_saved_path", "rotation", "real"),
+    ("planar_fit_library_id", "rotation", "real"),
+    ("planar_fit_sector_count", "rotation", "real"),
+    ("planar_fit_valid_sector_count", "rotation", "real"),
+    ("planar_fit_selected_sector", "rotation", "real"),
+    ("planar_fit_selected_sector_window_count", "rotation", "real"),
+    ("planar_fit_selected_sector_r_squared", "rotation", "real"),
+    ("planar_fit_wind_direction_deg", "rotation", "real"),
+    ("planar_fit_library_detail", "rotation", "real"),
     ("lag_fallback_reason", "lag", "real"),
     ("screening_summary", "diagnostics", "real"),
     ("qc_details", "diagnostics", "real"),
@@ -347,6 +360,11 @@ class ResultExporter:
             rp_config_snapshot=rp_config_snapshot,
             export_root=export_root,
         )
+        planar_fit_library_path = self.export_planar_fit_library_artifact(
+            rp_result=rp_result,
+            export_root=export_root,
+        )
+        planar_fit_library_summary = self._planar_fit_library_summary(rp_result=rp_result)
         footprint_2d_path = self.export_footprint_2d_artifact(
             rp_result=rp_result,
             export_root=export_root,
@@ -726,6 +744,8 @@ class ResultExporter:
             exported_files.append(benchmark_summary_path.name)
         if method_rollup_path is not None:
             exported_files.append(method_rollup_path.name)
+        if planar_fit_library_path is not None:
+            exported_files.append(planar_fit_library_path.name)
         if li7700_wms_fit_acceptance_path is not None:
             exported_files.append(li7700_wms_fit_acceptance_path.name)
         if spectral_assessment_path is not None:
@@ -1019,6 +1039,12 @@ class ResultExporter:
             "pass_rate": benchmark_rollup["pass_rate"],
             "failed_fields": benchmark_rollup["failed_fields"],
             "reference_provenance": reference_provenance,
+            "planar_fit_library": planar_fit_library_summary,
+            "planar_fit_library_artifact": str(planar_fit_library_path) if planar_fit_library_path is not None else "",
+            "planar_fit_library_status": planar_fit_library_summary.get("status", ""),
+            "planar_fit_library_source": planar_fit_library_summary.get("source", ""),
+            "planar_fit_library_path": planar_fit_library_summary.get("coefficient_library_path", ""),
+            "planar_fit_valid_sector_count": int(planar_fit_library_summary.get("valid_sector_count", 0) or 0),
             "fixture_pack_path": fixture_pack_path,
             "fixture_pack_summary": fixture_pack_summary,
             "fixture_pack_summary_artifact": str(fixture_pack_summary_path),
@@ -1187,6 +1213,12 @@ class ResultExporter:
             "spectral_correction_summary": method_summary.get("spectral_correction_summary", {}),
             "spectral_correction_provenance": method_summary.get("spectral_correction_summary", {}).get("provenance", ""),
             "method_rollup": method_summary,
+            "planar_fit_library": planar_fit_library_summary,
+            "planar_fit_library_artifact": str(planar_fit_library_path) if planar_fit_library_path is not None else "",
+            "planar_fit_library_status": planar_fit_library_summary.get("status", ""),
+            "planar_fit_library_source": planar_fit_library_summary.get("source", ""),
+            "planar_fit_library_path": planar_fit_library_summary.get("coefficient_library_path", ""),
+            "planar_fit_valid_sector_count": int(planar_fit_library_summary.get("valid_sector_count", 0) or 0),
             "trace_gas_summary": trace_gas_summary,
             "li7700_wms_fit_acceptance": li7700_wms_fit_acceptance,
             "li7700_wms_fit_acceptance_artifact": str(li7700_wms_fit_acceptance_path) if li7700_wms_fit_acceptance_path is not None else "",
@@ -1332,6 +1364,11 @@ class ResultExporter:
                 "primary_flux_source",
                 "applied_rotation_impl",
                 "requested_rotation_mode",
+                "planar_fit_library_status",
+                "planar_fit_library_source",
+                "planar_fit_library_path",
+                "planar_fit_selected_sector",
+                "planar_fit_selected_sector_r_squared",
                 "lag_strategy",
                 "lag_fallback_reason",
                 "density_correction_mode",
@@ -1399,6 +1436,10 @@ class ResultExporter:
                 "runtime_deployment_feedback_status",
                 "screening_config",
                 "screening_summary",
+                "planar_fit_library_status",
+                "planar_fit_library_source",
+                "planar_fit_library_path",
+                "planar_fit_selected_sector",
                 "footprint_method",
                 "footprint_provenance",
                 "uncertainty_method",
@@ -1433,6 +1474,8 @@ class ResultExporter:
             files["benchmark_summary_artifact"] = str(benchmark_summary_path)
         if method_rollup_path is not None:
             files["method_rollup_artifact"] = str(method_rollup_path)
+        if planar_fit_library_path is not None:
+            files["planar_fit_library_artifact"] = str(planar_fit_library_path)
         if li7700_wms_fit_acceptance_path is not None:
             files["li7700_wms_fit_acceptance_artifact"] = str(li7700_wms_fit_acceptance_path)
         if spectral_assessment_path is not None:
@@ -1946,6 +1989,19 @@ class ResultExporter:
                 "trace_gas_family": json.dumps(diagnostics.get("trace_gas_family", {}), ensure_ascii=False) if diagnostics and diagnostics.get("trace_gas_family") else "",
                 "requested_rotation_mode": diagnostics.get("requested_rotation_mode", "") if diagnostics else "",
                 "applied_rotation_impl": diagnostics.get("applied_rotation_impl", "") if diagnostics else "",
+                "planar_fit_library_status": diagnostics.get("planar_fit_library_status", "") if diagnostics else "",
+                "planar_fit_library_source": diagnostics.get("planar_fit_library_source", "") if diagnostics else "",
+                "planar_fit_library_path": diagnostics.get("planar_fit_library_path", "") if diagnostics else "",
+                "planar_fit_library_save_status": diagnostics.get("planar_fit_library_save_status", "") if diagnostics else "",
+                "planar_fit_library_saved_path": diagnostics.get("planar_fit_library_saved_path", "") if diagnostics else "",
+                "planar_fit_library_id": diagnostics.get("planar_fit_library_id", "") if diagnostics else "",
+                "planar_fit_sector_count": diagnostics.get("planar_fit_sector_count", "") if diagnostics else "",
+                "planar_fit_valid_sector_count": diagnostics.get("planar_fit_valid_sector_count", "") if diagnostics else "",
+                "planar_fit_selected_sector": diagnostics.get("planar_fit_selected_sector", "") if diagnostics else "",
+                "planar_fit_selected_sector_window_count": diagnostics.get("planar_fit_selected_sector_window_count", "") if diagnostics else "",
+                "planar_fit_selected_sector_r_squared": diagnostics.get("planar_fit_selected_sector_r_squared", "") if diagnostics else "",
+                "planar_fit_wind_direction_deg": diagnostics.get("planar_fit_wind_direction_deg", "") if diagnostics else "",
+                "planar_fit_library_detail": json.dumps(diagnostics.get("planar_fit_library_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("planar_fit_library_detail") else "",
                 "lag_fallback_reason": diagnostics.get("lag_fallback_reason", "") if diagnostics else "",
                 "screening_summary": diagnostics.get("screening_summary", "") if diagnostics else "",
                 "qc_details": json.dumps(diagnostics.get("qc_details", {}), ensure_ascii=False) if diagnostics and diagnostics.get("qc_details") else "",
@@ -2700,6 +2756,37 @@ class ResultExporter:
             "method_compare_summary": dict(first_diag.get("method_compare_summary", {}) or {}),
             "method_compare_recommendations": dict(first_diag.get("method_compare_recommendations", {}) or {}),
         }
+
+    def _planar_fit_library_summary(self, *, rp_result: RPRunResult | None) -> dict[str, Any]:
+        if rp_result is None:
+            return {}
+        artifacts = dict(rp_result.artifacts or {})
+        artifact_summary = artifacts.get("planar_fit_library")
+        if isinstance(artifact_summary, dict) and artifact_summary:
+            return dict(artifact_summary)
+        summary = dict(rp_result.summary or {})
+        summary_payload = summary.get("planar_fit_library")
+        if isinstance(summary_payload, dict) and summary_payload:
+            return dict(summary_payload)
+        for window in rp_result.windows or []:
+            diagnostics = dict(window.diagnostics or {})
+            detail = diagnostics.get("planar_fit_library_detail")
+            if isinstance(detail, dict) and detail:
+                return dict(detail)
+        return {}
+
+    def export_planar_fit_library_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+    ) -> Path | None:
+        summary = self._planar_fit_library_summary(rp_result=rp_result)
+        if not summary or summary.get("status") in {"not_requested", ""}:
+            return None
+        path = export_root / "planar_fit_library.json"
+        self._write_json(path, summary)
+        return path
 
     def export_method_rollup_artifact(
         self,

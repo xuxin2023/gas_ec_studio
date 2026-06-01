@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+import json
 import math
 import time
 
@@ -51,6 +52,7 @@ from core.ec_rp.analysis import (
     generate_reference_provenance,
     run_benchmark_comparison,
     load_eddypro_reference_json,
+    PlanarFitCoefficients,
 )
 from core.ec_rp.qc import classify_window_qc
 from core.storage.clock_sync import apply_clock_sync_to_rows, clock_sync_diagnostics
@@ -140,11 +142,19 @@ class ECRPPipeline:
         sonic_correction_config = _extract_sonic_correction_config(config)
         crosswind_correction_config = _extract_crosswind_correction_config(config)
         method_compare_config = _extract_method_compare_config(config)
+        planar_fit_library_config = _extract_planar_fit_library_config(config)
         biomet_context = _build_biomet_context(config)
         dynamic_metadata_context = _build_dynamic_metadata_context(config, site=site)
         configured_ambient_context = _build_configured_ambient_context(config)
         benchmark_summary = _default_benchmark_summary(benchmark_config=benchmark_config, window_count=0)
         reference_provenance = _build_reference_provenance_artifact(benchmark_config.get("reference_id", ""))
+        planar_fit_library_summary = _summarize_planar_fit_library(
+            coefficients=None,
+            config=planar_fit_library_config,
+            status="not_requested",
+            source="not_configured",
+            rotation_mode=rotation_mode,
+        )
         method_summary = _summarize_method_outputs(
             windows=[],
             footprint_config=footprint_config,
@@ -176,6 +186,7 @@ class ECRPPipeline:
                     method_summary=method_summary,
                     clock_sync_summary=clock_sync_summary,
                     performance_profile=performance_profile,
+                    planar_fit_library_summary=planar_fit_library_summary,
                 ),
                 windows=[],
                 artifacts=_artifacts(
@@ -191,12 +202,20 @@ class ECRPPipeline:
                     method_summary=method_summary,
                     clock_sync_summary=clock_sync_summary,
                     performance_profile=performance_profile,
+                    planar_fit_library_summary=planar_fit_library_summary,
                 ),
             )
 
         windows: list[WindowRPResult] = []
-        planar_fit_coefficients = None
-        if rotation_mode in ("planar_fit", "sector_wise_planar_fit", "sector_wise_planar_fit_no_velocity_bias"):
+        planar_fit_coefficients: dict[str, PlanarFitCoefficients] | None = None
+        if rotation_mode in ("sector_wise_planar_fit", "sector_wise_planar_fit_no_velocity_bias"):
+            loaded_coefficients, loaded_summary = _load_planar_fit_coefficient_library(planar_fit_library_config)
+            if loaded_coefficients:
+                planar_fit_coefficients = loaded_coefficients
+                planar_fit_library_summary = loaded_summary
+            else:
+                planar_fit_library_summary = loaded_summary
+        if rotation_mode in ("sector_wise_planar_fit", "sector_wise_planar_fit_no_velocity_bias") and not planar_fit_coefficients:
             first_pass_windows: list[WindowRPResult] = []
             for index, (start, end) in enumerate(slices, start=1):
                 window_rows = sorted_rows[start:end]
@@ -226,6 +245,7 @@ class ECRPPipeline:
                             crosswind_correction_config=crosswind_correction_config,
                             method_compare_config=method_compare_config,
                             clock_sync_summary=clock_sync_summary,
+                            planar_fit_library_summary=planar_fit_library_summary,
                             biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                             dynamic_metadata_override=_dynamic_metadata_override_for_rows(window_rows, dynamic_metadata_context),
                             configured_ambient_context=configured_ambient_context,
@@ -246,7 +266,25 @@ class ECRPPipeline:
                     u_list = [p.u for p in prepared_list]
                     v_list = [p.v for p in prepared_list]
                     w_list = [p.w for p in prepared_list]
-                planar_fit_coefficients = compute_planar_fit_coefficients(u_list, v_list, w_list)
+                planar_fit_coefficients = compute_planar_fit_coefficients(
+                    u_list,
+                    v_list,
+                    w_list,
+                    n_sectors=int(planar_fit_library_config.get("n_sectors", 12) or 12),
+                    min_windows_per_sector=int(planar_fit_library_config.get("min_windows_per_sector", 5) or 5),
+                )
+                planar_fit_library_summary = _summarize_planar_fit_library(
+                    coefficients=planar_fit_coefficients,
+                    config=planar_fit_library_config,
+                    status="generated",
+                    source="current_run",
+                    rotation_mode=rotation_mode,
+                )
+                planar_fit_library_summary = _write_planar_fit_coefficient_library(
+                    planar_fit_library_config,
+                    planar_fit_coefficients,
+                    planar_fit_library_summary,
+                )
 
         for index, (start, end) in enumerate(slices, start=1):
             window_rows = sorted_rows[start:end]
@@ -265,6 +303,7 @@ class ECRPPipeline:
                         expected_lag_s=expected_lag_s,
                         screening_config=screening_config,
                         planar_fit_coefficients=planar_fit_coefficients,
+                        planar_fit_library_summary=planar_fit_library_summary,
                         advanced_test_config=advanced_test_config,
                         benchmark_config=benchmark_config,
                         qc_config=qc_config,
@@ -329,6 +368,7 @@ class ECRPPipeline:
                 method_summary=method_summary,
                 clock_sync_summary=clock_sync_summary,
                 performance_profile=performance_profile,
+                planar_fit_library_summary=planar_fit_library_summary,
             ),
             windows=windows,
             artifacts=_artifacts(
@@ -344,6 +384,7 @@ class ECRPPipeline:
                 method_summary=method_summary,
                 clock_sync_summary=clock_sync_summary,
                 performance_profile=performance_profile,
+                planar_fit_library_summary=planar_fit_library_summary,
             ),
         )
 
@@ -374,6 +415,7 @@ class ECRPPipeline:
         crosswind_correction_config: dict[str, Any] | None = None,
         method_compare_config: dict[str, Any] | None = None,
         clock_sync_summary: dict[str, Any] | None = None,
+        planar_fit_library_summary: dict[str, Any] | None = None,
         biomet_override: dict[str, Any] | None = None,
         dynamic_metadata_override: dict[str, Any] | None = None,
         configured_ambient_context: dict[str, Any] | None = None,
@@ -395,11 +437,18 @@ class ECRPPipeline:
         if crosswind_result.detail.get("applied"):
             prepared.temp_c = crosswind_result.temp_c
         crosswind_correction_detail = crosswind_result.detail
+        planar_fit_window_detail = _planar_fit_window_detail(
+            planar_fit_library_summary,
+            selected_sector="",
+            coefficients=None,
+            sector_count=len(planar_fit_coefficients or {}),
+            wind_direction_deg=None,
+        )
         if rotation_mode in ("sector_wise_planar_fit", "sector_wise_planar_fit_no_velocity_bias") and planar_fit_coefficients:
             mean_u = float(np.mean(prepared.u))
             mean_v = float(np.mean(prepared.v))
             wind_dir = math.degrees(math.atan2(mean_v, mean_u)) % 360.0
-            n_sectors = len(planar_fit_coefficients)
+            n_sectors = int(planar_fit_window_detail.get("n_sectors_configured", len(planar_fit_coefficients)) or len(planar_fit_coefficients))
             sector_width = 360.0 / max(1, n_sectors)
             sector_idx = min(int(wind_dir / sector_width), n_sectors - 1)
             sector_label = f"S{sector_idx:02d}"
@@ -410,6 +459,13 @@ class ECRPPipeline:
                 rotation = apply_planar_fit_rotation(prepared.u, prepared.v, prepared.w, coefficients)
             else:
                 rotation = rotate_wind(prepared.u, prepared.v, prepared.w, "double")
+            planar_fit_window_detail = _planar_fit_window_detail(
+                planar_fit_library_summary,
+                selected_sector=sector_label,
+                coefficients=coefficients,
+                sector_count=n_sectors,
+                wind_direction_deg=wind_dir,
+            )
         elif rotation_mode in ("planar_fit", "sector_wise_planar_fit", "sector_wise_planar_fit_no_velocity_bias"):
             rotation = rotate_wind(prepared.u, prepared.v, prepared.w, "planar_fit")
         else:
@@ -536,6 +592,19 @@ class ECRPPipeline:
             "rotation_reason": rotation.reason,
             "requested_rotation_mode": rotation_mode,
             "applied_rotation_impl": rotation.mode,
+            "planar_fit_library_status": planar_fit_window_detail.get("status", ""),
+            "planar_fit_library_source": planar_fit_window_detail.get("source", ""),
+            "planar_fit_library_path": planar_fit_window_detail.get("coefficient_library_path", ""),
+            "planar_fit_library_save_status": planar_fit_window_detail.get("save_status", ""),
+            "planar_fit_library_saved_path": planar_fit_window_detail.get("saved_library_path", ""),
+            "planar_fit_library_id": planar_fit_window_detail.get("library_id", ""),
+            "planar_fit_sector_count": planar_fit_window_detail.get("sector_count", 0),
+            "planar_fit_valid_sector_count": planar_fit_window_detail.get("valid_sector_count", 0),
+            "planar_fit_selected_sector": planar_fit_window_detail.get("selected_sector", ""),
+            "planar_fit_selected_sector_window_count": planar_fit_window_detail.get("selected_sector_window_count"),
+            "planar_fit_selected_sector_r_squared": planar_fit_window_detail.get("selected_sector_r_squared"),
+            "planar_fit_wind_direction_deg": planar_fit_window_detail.get("wind_direction_deg"),
+            "planar_fit_library_detail": planar_fit_window_detail,
             "rotation_alpha_deg": float(rotation.alpha_deg),
             "rotation_beta_deg": float(rotation.beta_deg),
             "max_gap_seconds": float(prepared.max_gap_seconds),
@@ -1162,6 +1231,306 @@ def _config_value(config: dict[str, Any], *paths: str, default: Any) -> Any:
         if found and current not in (None, ""):
             return current
     return default
+
+
+def _safe_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _extract_planar_fit_library_config(config: dict[str, Any]) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for path in ("planar_fit", "steps.planar_fit"):
+        candidate = _config_value(config, path, default={})
+        if isinstance(candidate, dict):
+            merged.update(candidate)
+    inline_coefficients = _config_value(
+        config,
+        "planar_fit.coefficients",
+        "steps.planar_fit.coefficients",
+        default=merged.get("coefficients"),
+    )
+    return {
+        "library_id": str(
+            _config_value(
+                config,
+                "planar_fit.library_id",
+                "steps.planar_fit.library_id",
+                default=merged.get("library_id", "planar_fit_coefficient_library"),
+            )
+            or "planar_fit_coefficient_library"
+        ),
+        "coefficient_library_path": str(
+            _config_value(
+                config,
+                "planar_fit.coefficient_library_path",
+                "steps.planar_fit.coefficient_library_path",
+                "rotation.planar_fit_library_path",
+                "steps.rotation.planar_fit_library_path",
+                default=merged.get("coefficient_library_path", merged.get("library_path", "")),
+            )
+            or ""
+        ),
+        "save_coefficient_library_path": str(
+            _config_value(
+                config,
+                "planar_fit.save_coefficient_library_path",
+                "steps.planar_fit.save_coefficient_library_path",
+                "rotation.save_planar_fit_library_path",
+                "steps.rotation.save_planar_fit_library_path",
+                default=merged.get("save_coefficient_library_path", merged.get("save_path", "")),
+            )
+            or ""
+        ),
+        "source": str(
+            _config_value(
+                config,
+                "planar_fit.source",
+                "steps.planar_fit.source",
+                "planar_fit.mode",
+                "steps.planar_fit.mode",
+                default=merged.get("source", "auto"),
+            )
+            or "auto"
+        ),
+        "n_sectors": max(
+            1,
+            _safe_int(
+                _config_value(
+                    config,
+                    "planar_fit.n_sectors",
+                    "steps.planar_fit.n_sectors",
+                    default=merged.get("n_sectors", 12),
+                ),
+                12,
+            ),
+        ),
+        "min_windows_per_sector": max(
+            1,
+            _safe_int(
+                _config_value(
+                    config,
+                    "planar_fit.min_windows_per_sector",
+                    "steps.planar_fit.min_windows_per_sector",
+                    default=merged.get("min_windows_per_sector", 5),
+                ),
+                5,
+            ),
+        ),
+        "inline_coefficients": inline_coefficients,
+    }
+
+
+def _planar_fit_coefficients_from_payload(payload: Any) -> dict[str, PlanarFitCoefficients]:
+    if not isinstance(payload, dict):
+        return {}
+    coefficients_payload = payload.get("coefficients", payload)
+    items: list[tuple[str, Any]] = []
+    if isinstance(coefficients_payload, dict):
+        items = [(str(label), value) for label, value in coefficients_payload.items()]
+    elif isinstance(coefficients_payload, list):
+        items = [(str(value.get("sector", "")), value) for value in coefficients_payload if isinstance(value, dict)]
+    coefficients: dict[str, PlanarFitCoefficients] = {}
+    for label, raw in items:
+        if not label or not isinstance(raw, dict):
+            continue
+        b0 = _safe_float(raw.get("b0"))
+        b1 = _safe_float(raw.get("b1"))
+        b2 = _safe_float(raw.get("b2"))
+        if b0 is None or b1 is None or b2 is None:
+            continue
+        sector = str(raw.get("sector") or label)
+        coefficients[sector] = PlanarFitCoefficients(
+            b0=float(b0),
+            b1=float(b1),
+            b2=float(b2),
+            sector=sector,
+            window_count=max(0, _safe_int(raw.get("window_count", raw.get("n", 0)), 0)),
+            r_squared=float(_safe_float(raw.get("r_squared", raw.get("r2", 0.0))) or 0.0),
+        )
+    return dict(sorted(coefficients.items()))
+
+
+def _planar_fit_coefficients_to_dict(
+    coefficients: dict[str, PlanarFitCoefficients] | None,
+) -> dict[str, dict[str, Any]]:
+    payload: dict[str, dict[str, Any]] = {}
+    for label, coeff in sorted((coefficients or {}).items()):
+        payload[str(label)] = {
+            "sector": coeff.sector,
+            "b0": round(float(coeff.b0), 12),
+            "b1": round(float(coeff.b1), 12),
+            "b2": round(float(coeff.b2), 12),
+            "window_count": int(coeff.window_count),
+            "r_squared": round(float(coeff.r_squared), 6),
+        }
+    return payload
+
+
+def _summarize_planar_fit_library(
+    *,
+    coefficients: dict[str, PlanarFitCoefficients] | None,
+    config: dict[str, Any],
+    status: str,
+    source: str,
+    rotation_mode: str,
+    message: str = "",
+) -> dict[str, Any]:
+    coefficient_payload = _planar_fit_coefficients_to_dict(coefficients)
+    application_min_windows = max(5, int(config.get("min_windows_per_sector", 5) or 5))
+    valid_coefficients = [
+        coeff
+        for coeff in (coefficients or {}).values()
+        if int(coeff.window_count) >= application_min_windows
+        and not (abs(float(coeff.b0)) < 1e-12 and abs(float(coeff.b1)) < 1e-12 and abs(float(coeff.b2)) < 1e-12)
+    ]
+    return {
+        "artifact_type": "planar_fit_coefficient_library_v1",
+        "status": status,
+        "source": source,
+        "message": message,
+        "library_id": str(config.get("library_id", "planar_fit_coefficient_library") or "planar_fit_coefficient_library"),
+        "rotation_mode": rotation_mode,
+        "coefficient_library_path": str(config.get("coefficient_library_path", "") or ""),
+        "save_coefficient_library_path": str(config.get("save_coefficient_library_path", "") or ""),
+        "save_status": "not_requested",
+        "saved_library_path": "",
+        "n_sectors_configured": int(config.get("n_sectors", 12) or 12),
+        "min_windows_per_sector": int(config.get("min_windows_per_sector", 5) or 5),
+        "application_min_windows_per_sector": application_min_windows,
+        "sector_count": len(coefficient_payload),
+        "valid_sector_count": len(valid_coefficients),
+        "total_source_windows": int(sum(int(coeff.window_count) for coeff in (coefficients or {}).values())),
+        "coefficients": coefficient_payload,
+        "provenance": (
+            "Planar-fit coefficients are loaded from the configured coefficient library "
+            "or generated from the current run's first-pass double-rotation window means."
+        ),
+        "limitations": [
+            "Generated current-run coefficients are suitable for workflow closure and regression testing, but production EddyPro parity should prefer long-period sector libraries.",
+            "A sector with too few source windows is retained with zero coefficients and falls back to double rotation for that sector.",
+        ],
+    }
+
+
+def _load_planar_fit_coefficient_library(
+    config: dict[str, Any],
+) -> tuple[dict[str, PlanarFitCoefficients] | None, dict[str, Any]]:
+    inline_coefficients = config.get("inline_coefficients")
+    if inline_coefficients:
+        payload = {"coefficients": inline_coefficients}
+        coefficients = _planar_fit_coefficients_from_payload(payload)
+        return coefficients or None, _summarize_planar_fit_library(
+            coefficients=coefficients,
+            config=config,
+            status="loaded" if coefficients else "invalid",
+            source="inline",
+            rotation_mode="sector_wise_planar_fit",
+            message="" if coefficients else "Inline planar-fit coefficients were configured but no valid sector coefficients were parsed.",
+        )
+
+    path_text = str(config.get("coefficient_library_path", "") or "").strip()
+    if not path_text:
+        return None, _summarize_planar_fit_library(
+            coefficients=None,
+            config=config,
+            status="not_configured",
+            source="current_run",
+            rotation_mode="sector_wise_planar_fit",
+        )
+    path = Path(path_text)
+    if not path.exists():
+        return None, _summarize_planar_fit_library(
+            coefficients=None,
+            config=config,
+            status="missing",
+            source="file",
+            rotation_mode="sector_wise_planar_fit",
+            message=f"Configured planar-fit coefficient library was not found: {path_text}",
+        )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, _summarize_planar_fit_library(
+            coefficients=None,
+            config=config,
+            status="invalid",
+            source="file",
+            rotation_mode="sector_wise_planar_fit",
+            message=f"Configured planar-fit coefficient library could not be read: {exc}",
+        )
+    coefficients = _planar_fit_coefficients_from_payload(payload)
+    summary = _summarize_planar_fit_library(
+        coefficients=coefficients,
+        config={**config, "coefficient_library_path": str(path)},
+        status="loaded" if coefficients else "invalid",
+        source="file",
+        rotation_mode=str(payload.get("rotation_mode", "sector_wise_planar_fit")) if isinstance(payload, dict) else "sector_wise_planar_fit",
+        message="" if coefficients else "Planar-fit coefficient library file did not contain valid coefficients.",
+    )
+    if isinstance(payload, dict):
+        summary["library_id"] = str(payload.get("library_id", summary.get("library_id", "")) or summary.get("library_id", ""))
+        summary["loaded_at"] = datetime.now().isoformat()
+    return coefficients or None, summary
+
+
+def _write_planar_fit_coefficient_library(
+    config: dict[str, Any],
+    coefficients: dict[str, PlanarFitCoefficients] | None,
+    summary: dict[str, Any],
+) -> dict[str, Any]:
+    save_path_text = str(config.get("save_coefficient_library_path", "") or "").strip()
+    if not save_path_text or not coefficients:
+        return summary
+    next_summary = dict(summary)
+    path = Path(save_path_text)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            **next_summary,
+            "status": "generated",
+            "source": "current_run",
+            "generated_at": datetime.now().isoformat(),
+            "coefficients": _planar_fit_coefficients_to_dict(coefficients),
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as exc:
+        next_summary["save_status"] = "failed"
+        next_summary["message"] = f"{next_summary.get('message', '')} save failed: {exc}".strip()
+        return next_summary
+    next_summary["save_status"] = "saved"
+    next_summary["saved_library_path"] = str(path)
+    next_summary["coefficient_library_path"] = str(path)
+    return next_summary
+
+
+def _planar_fit_window_detail(
+    summary: dict[str, Any] | None,
+    *,
+    selected_sector: str,
+    coefficients: PlanarFitCoefficients | None,
+    sector_count: int,
+    wind_direction_deg: float | None,
+) -> dict[str, Any]:
+    base = dict(summary or {})
+    base.update(
+        {
+            "selected_sector": selected_sector,
+            "selected_sector_window_count": int(coefficients.window_count) if coefficients else None,
+            "selected_sector_r_squared": round(float(coefficients.r_squared), 6) if coefficients else None,
+            "sector_count": int(sector_count or base.get("sector_count", 0) or 0),
+            "wind_direction_deg": round(float(wind_direction_deg), 6) if wind_direction_deg is not None else None,
+        }
+    )
+    if coefficients:
+        base["selected_coefficients"] = {
+            "b0": round(float(coefficients.b0), 12),
+            "b1": round(float(coefficients.b1), 12),
+            "b2": round(float(coefficients.b2), 12),
+        }
+    return base
 
 
 def _prepare_window_series(
@@ -1946,6 +2315,7 @@ def _empty_summary(
     method_summary: dict[str, Any] | None = None,
     clock_sync_summary: dict[str, Any] | None = None,
     performance_profile: dict[str, Any] | None = None,
+    planar_fit_library_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     summary = {
         "status": "empty",
@@ -1986,6 +2356,7 @@ def _empty_summary(
         method_summary=method_summary or {},
         clock_sync_summary=clock_sync_summary or {},
         performance_profile=performance_profile or {},
+        planar_fit_library_summary=planar_fit_library_summary or {},
     )
 
 
@@ -2002,6 +2373,7 @@ def _build_summary(
     method_summary: dict[str, Any] | None = None,
     clock_sync_summary: dict[str, Any] | None = None,
     performance_profile: dict[str, Any] | None = None,
+    planar_fit_library_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not windows:
         return _empty_summary(
@@ -2016,6 +2388,7 @@ def _build_summary(
             method_summary=method_summary,
             clock_sync_summary=clock_sync_summary,
             performance_profile=performance_profile,
+            planar_fit_library_summary=planar_fit_library_summary,
         )
     summary = {
         "status": "ok",
@@ -2051,6 +2424,7 @@ def _build_summary(
         method_summary=method_summary or {},
         clock_sync_summary=clock_sync_summary or {},
         performance_profile=performance_profile or {},
+        planar_fit_library_summary=planar_fit_library_summary or {},
     )
 
 
@@ -2068,6 +2442,7 @@ def _artifacts(
     method_summary: dict[str, Any] | None = None,
     clock_sync_summary: dict[str, Any] | None = None,
     performance_profile: dict[str, Any] | None = None,
+    planar_fit_library_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "project_snapshot": asdict(project),
@@ -2080,6 +2455,7 @@ def _artifacts(
         "network_output": network_output_config or {},
         "method_rollup": method_summary or {},
         "method_provenance": method_summary or {},
+        "planar_fit_library": planar_fit_library_summary or {},
         "clock_sync": clock_sync_summary or {},
         "performance_profile": performance_profile or {},
         "flux_correction_ledger": _build_flux_correction_ledger_artifact(windows or []),
@@ -3080,6 +3456,7 @@ def _with_summary_context(
     method_summary: dict[str, Any],
     clock_sync_summary: dict[str, Any],
     performance_profile: dict[str, Any] | None = None,
+    planar_fit_library_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     benchmark_deviation_summary = dict(benchmark_summary.get("benchmark_deviation_summary", {}))
     footprint_summary = dict(method_summary.get("footprint_summary", {}))
@@ -3087,6 +3464,7 @@ def _with_summary_context(
     uncertainty_summary = dict(method_summary.get("uncertainty_summary", {}))
     spectral_summary = dict(method_summary.get("spectral_correction_summary", {}))
     method_compare_summary = dict(method_summary.get("method_compare_summary", {}) or {})
+    planar_fit_library = dict(planar_fit_library_summary or {})
     summary.update(
         {
             "benchmark_status": benchmark_summary.get("benchmark_status", ""),
@@ -3097,6 +3475,15 @@ def _with_summary_context(
             "pass_rate": float(benchmark_summary.get("pass_rate", 0.0) or 0.0),
             "failed_fields": list(benchmark_summary.get("failed_fields", [])),
             "reference_provenance": reference_provenance,
+            "planar_fit_library": planar_fit_library,
+            "planar_fit_library_status": planar_fit_library.get("status", ""),
+            "planar_fit_library_source": planar_fit_library.get("source", ""),
+            "planar_fit_library_path": planar_fit_library.get("coefficient_library_path", ""),
+            "planar_fit_library_save_status": planar_fit_library.get("save_status", ""),
+            "planar_fit_library_saved_path": planar_fit_library.get("saved_library_path", ""),
+            "planar_fit_library_id": planar_fit_library.get("library_id", ""),
+            "planar_fit_sector_count": int(planar_fit_library.get("sector_count", 0) or 0),
+            "planar_fit_valid_sector_count": int(planar_fit_library.get("valid_sector_count", 0) or 0),
             "schema_target": network_output_config.get("schema_target", ""),
             "fluxnet_timestamp_refers_to": network_output_config.get("timestamp_refers_to", "start"),
             "fluxnet_timezone_offset_h": float(network_output_config.get("timezone_offset_hours", 0.0) or 0.0),
