@@ -24,7 +24,12 @@ from core.comparison.fixture_pack import (
     inspect_public_official_raw_archive,
     materialize_public_official_raw_bundle_draft,
 )
-from core.comparison.neon_hdf5_importer import build_neon_hdf5_metadata_smoke, download_neon_hdf5_candidate
+from core.comparison.neon_hdf5_importer import (
+    build_neon_hdf5_metadata_smoke,
+    build_neon_hdf5_row_extraction_smoke,
+    download_neon_hdf5_candidate,
+    row_records_to_normalized_frames,
+)
 from core.comparison.public_ec_data_discovery import build_public_ec_data_discovery_probe
 from core.comparison.official_raw_fixture_bundle import (
     build_official_raw_fixture_bundle_manifest,
@@ -48,7 +53,7 @@ from core.storage.ghg_bundle import load_ghg_normalized_frames
 from core.storage.clock_sync import apply_clock_sync_to_rows
 from core.storage.raw_importer import can_load_raw_native, can_load_raw_text, load_raw_native_frames, load_raw_text_frames
 from models.hf_models import FrameQuality, NormalizedHFFrame
-from models.station_models import MetadataBundle
+from models.station_models import MetadataBundle, ProjectProfile, SiteProfile
 
 
 def run_headless_batch(
@@ -493,11 +498,19 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-public-ec-network", action="store_true", help="Build public EC discovery from the ledger without network probes.")
     parser.add_argument("--download-neon-hdf5-candidate", default="", help="Discovery/probe JSON containing a verified NEON HDF5 candidate to download.")
     parser.add_argument("--build-neon-hdf5-metadata-smoke", default="", help="Inspect a local NEON HDF5 file and infer EC field mapping candidates.")
+    parser.add_argument("--build-neon-hdf5-row-smoke", default="", help="Extract a small NEON HDF5 window into normalized EC row records.")
+    parser.add_argument("--run-neon-hdf5-rp-smoke", default="", help="Extract NEON HDF5 rows and run a small RP smoke without changing parity gates.")
     parser.add_argument("--neon-hdf5-output-root", default="", help="Directory for downloaded NEON HDF5 candidates.")
     parser.add_argument("--neon-hdf5-source-id", default="", help="NEON source id to select from a discovery/probe artifact.")
     parser.add_argument("--neon-hdf5-candidate-name", default="", help="Exact NEON HDF5 candidate filename to select.")
     parser.add_argument("--neon-hdf5-discovery-artifact", default="", help="Discovery/probe artifact path recorded in NEON HDF5 metadata smoke provenance.")
+    parser.add_argument("--neon-hdf5-metadata-smoke", default="", help="Metadata smoke artifact used by NEON HDF5 row/RP smoke commands.")
+    parser.add_argument("--neon-hdf5-row-output", default="", help="Optional JSON rows output written by --build-neon-hdf5-row-smoke.")
     parser.add_argument("--neon-hdf5-max-datasets", default="", help="Maximum HDF5 dataset metadata records to include in the smoke artifact.")
+    parser.add_argument("--neon-hdf5-max-rows", default="", help="Maximum normalized NEON rows to extract for row/RP smoke.")
+    parser.add_argument("--neon-hdf5-start-index", default="", help="Requested base-series start index for NEON row extraction.")
+    parser.add_argument("--neon-hdf5-max-time-gap-s", default="", help="Maximum timestamp matching gap for NEON row extraction.")
+    parser.add_argument("--neon-hdf5-rp-block-minutes", default="", help="RP block size in minutes for --run-neon-hdf5-rp-smoke.")
     parser.add_argument("--overwrite-neon-hdf5", action="store_true", help="Overwrite an existing downloaded NEON HDF5 candidate.")
     parser.add_argument("--capability-matrix", default="", help="Capability matrix path for EddyPro coverage/release gates.")
     parser.add_argument("--official-raw-evidence-pack", default="", help="Official raw evidence pack JSON used by the EddyPro coverage audit claim gate.")
@@ -564,6 +577,12 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     if args.build_neon_hdf5_metadata_smoke:
         return _run_neon_hdf5_metadata_smoke_cli(args, parser)
+
+    if args.build_neon_hdf5_row_smoke:
+        return _run_neon_hdf5_row_smoke_cli(args, parser)
+
+    if args.run_neon_hdf5_rp_smoke:
+        return _run_neon_hdf5_rp_smoke_cli(args, parser)
 
     if args.inspect_public_official_raw_archive:
         return _run_public_official_raw_archive_inspection_cli(args, parser)
@@ -764,6 +783,98 @@ def _run_neon_hdf5_metadata_smoke_cli(args: argparse.Namespace, parser: argparse
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if bool(dict(payload.get("importer_smoke", {}) or {}).get("can_open_hdf5", False)) else 2
+
+
+def _run_neon_hdf5_row_smoke_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --build-neon-hdf5-row-smoke.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    payload = build_neon_hdf5_row_extraction_smoke(
+        args.build_neon_hdf5_row_smoke,
+        workspace_root=workspace_root,
+        metadata_smoke_path=args.neon_hdf5_metadata_smoke or None,
+        source_id=args.neon_hdf5_source_id,
+        rows_output_path=args.neon_hdf5_row_output or None,
+        max_rows=int(args.neon_hdf5_max_rows or 128),
+        start_index=int(args.neon_hdf5_start_index or 0),
+        max_time_gap_s=float(args.neon_hdf5_max_time_gap_s or 900.0),
+    )
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0 if payload.get("status") in {"pass", "partial"} else 2
+
+
+def _run_neon_hdf5_rp_smoke_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --run-neon-hdf5-rp-smoke.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    row_payload = build_neon_hdf5_row_extraction_smoke(
+        args.run_neon_hdf5_rp_smoke,
+        workspace_root=workspace_root,
+        metadata_smoke_path=args.neon_hdf5_metadata_smoke or None,
+        source_id=args.neon_hdf5_source_id,
+        max_rows=int(args.neon_hdf5_max_rows or 160),
+        start_index=int(args.neon_hdf5_start_index or 0),
+        max_time_gap_s=float(args.neon_hdf5_max_time_gap_s or 900.0),
+        include_row_records=True,
+    )
+    rows = row_records_to_normalized_frames(list(row_payload.get("row_records", []) or []))
+    bundle = MetadataBundle(
+        project=ProjectProfile(code="NEON-HDF5-SMOKE", name="NEON HDF5 importer smoke"),
+        site=SiteProfile(station_code=str(row_payload.get("source_id", "NEON")), station_name="NEON HDF5 smoke site"),
+    )
+    sample_hz = float(row_payload.get("estimated_sample_rate_hz", 1.0) or 1.0)
+    config = {
+        "sample_hz": sample_hz,
+        "block_minutes": float(args.neon_hdf5_rp_block_minutes or 64.0),
+        "rotation_mode": "double",
+        "detrend_mode": "block_mean",
+        "density_correction_mode": "mixing_ratio",
+        "lag_phase": {"strategy": "none", "search_window_s": 0.0},
+        "benchmark": {"status": "inactive", "target": "neon_hdf5_smoke"},
+    }
+    rp_dict: dict[str, Any] = {}
+    status = "blocked"
+    errors: list[str] = []
+    if len(rows) >= 64:
+        try:
+            batch = run_headless_batch(
+                config=config,
+                metadata=bundle,
+                rows=rows,
+                data_source="neon_hdf5_row_smoke",
+                time_range=f"{dict(row_payload.get('time_range', {}) or {}).get('start', '')}~{dict(row_payload.get('time_range', {}) or {}).get('end', '')}",
+            )
+            rp_result = batch["rp_result"]
+            rp_dict = rp_result.to_dict()
+            status = "pass" if rp_result.windows else "no_rp_windows"
+        except Exception as exc:  # pragma: no cover - defensive CLI guard
+            errors.append(str(exc))
+            status = "rp_failed"
+    else:
+        errors.append("NEON row extraction did not produce the 64 rows required for RP smoke.")
+    payload = {
+        "artifact_type": "neon_hdf5_rp_smoke_v1",
+        "generated_at": datetime.now().isoformat(),
+        "status": status,
+        "source_file": str(args.run_neon_hdf5_rp_smoke),
+        "row_smoke": {key: value for key, value in row_payload.items() if key != "row_records"},
+        "rp_config": config,
+        "rp_result": rp_dict,
+        "window_count": len(rp_dict.get("windows", []) or []),
+        "errors": errors,
+        "can_change_full_parity_gate": False,
+        "ready_for_raw_to_final_registration": False,
+        "truthfulness_boundary": (
+            "This RP smoke proves the normalized-row bridge can enter the local RP pipeline. It uses NEON "
+            "aggregated products and is not an EddyPro official raw-to-final parity run."
+        ),
+    }
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0 if status == "pass" else 2
 
 
 def _run_public_official_raw_archive_inspection_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

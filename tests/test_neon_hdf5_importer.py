@@ -10,7 +10,9 @@ import numpy as np
 from core.comparison import neon_hdf5_importer
 from core.comparison.neon_hdf5_importer import (
     build_neon_hdf5_metadata_smoke,
+    build_neon_hdf5_row_extraction_smoke,
     download_neon_hdf5_candidate,
+    row_records_to_normalized_frames,
 )
 from core.headless_batch_runner import run_cli
 
@@ -76,7 +78,7 @@ def test_neon_hdf5_metadata_smoke_detects_neon_sonic_compound_aliases(tmp_path: 
     assert payload["field_mappings"]["v"]["path"].endswith("/veloYaxsErth")
     assert payload["field_mappings"]["w"]["path"].endswith("/veloZaxsErth")
     assert payload["field_mappings"]["sonic_temperature"]["path"].endswith("/tempSoni")
-    assert payload["field_mappings"]["co2"]["path"].endswith("/densMoleCo2")
+    assert payload["field_mappings"]["co2"]["path"].endswith("/rtioMoleDryCo2")
     assert payload["field_mappings"]["co2"]["confidence"] > 0.9
 
 
@@ -122,6 +124,61 @@ def test_neon_hdf5_candidate_download_validates_provider_md5(monkeypatch, tmp_pa
     assert Path(download["local_path"]).exists()
     assert download["md5"] == hashlib.md5(hdf5_bytes).hexdigest()  # noqa: S324
     assert smoke["status"] == "mapping_ready_for_importer_smoke"
+
+
+def test_neon_hdf5_row_extraction_smoke_writes_normalized_rows(tmp_path: Path) -> None:
+    hdf5_path = _write_neon_compound_alias_hdf5(tmp_path / "neon_rows.h5", rows=96)
+    rows_path = tmp_path / "neon_rows.json"
+
+    payload = build_neon_hdf5_row_extraction_smoke(
+        hdf5_path,
+        workspace_root=tmp_path,
+        rows_output_path=rows_path,
+        max_rows=80,
+        include_row_records=True,
+    )
+    frames = row_records_to_normalized_frames(list(payload["row_records"]))
+
+    assert payload["artifact_type"] == "neon_hdf5_row_extraction_smoke_v1"
+    assert payload["status"] == "pass"
+    assert payload["row_count"] == 80
+    assert payload["rp_smoke_ready"] is True
+    assert payload["estimated_sample_rate_hz"] == 0.01666667
+    assert payload["qc_mapping"]["u"]["status"] == "mapped"
+    assert rows_path.exists()
+    assert frames[0].co2_ppm is not None and frames[0].co2_ppm > 390.0
+    assert frames[0].h2o_mmol is not None and frames[0].h2o_mmol > 9.0
+    assert frames[0].pressure_kpa == 101.3
+    assert '"w"' in frames[0].raw_text
+    assert payload["ready_for_raw_to_final_registration"] is False
+
+
+def test_headless_cli_runs_neon_hdf5_rp_smoke(tmp_path: Path) -> None:
+    hdf5_path = _write_neon_compound_alias_hdf5(tmp_path / "neon_rp.h5", rows=140)
+    output = tmp_path / "neon_rp_smoke.json"
+
+    code = run_cli(
+        [
+            "--run-neon-hdf5-rp-smoke",
+            str(hdf5_path),
+            "--workspace-root",
+            str(tmp_path),
+            "--output",
+            str(output),
+            "--neon-hdf5-max-rows",
+            "130",
+            "--neon-hdf5-rp-block-minutes",
+            "64",
+        ]
+    )
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["artifact_type"] == "neon_hdf5_rp_smoke_v1"
+    assert payload["status"] == "pass"
+    assert payload["window_count"] >= 1
+    assert payload["row_smoke"]["row_count"] == 130
+    assert payload["can_change_full_parity_gate"] is False
 
 
 class _FakeResponse:
@@ -176,7 +233,7 @@ def _write_neon_like_hdf5(path: Path) -> Path:
     return path
 
 
-def _write_neon_compound_alias_hdf5(path: Path) -> Path:
+def _write_neon_compound_alias_hdf5(path: Path, *, rows: int = 4) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     dtype = np.dtype(
         [
@@ -189,17 +246,55 @@ def _write_neon_compound_alias_hdf5(path: Path) -> Path:
             ("timeEnd", "S24"),
         ]
     )
-    rows = np.zeros(4, dtype=dtype)
-    rows["timeBgn"] = b"2023-07-01T00:00:00.000Z"
-    rows["timeEnd"] = b"2023-07-01T00:00:00.100Z"
+    data = np.zeros(rows, dtype=dtype)
+    for index in range(rows):
+        minute = index % 60
+        hour = index // 60
+        data["timeBgn"][index] = f"2023-07-01T{hour:02d}:{minute:02d}:00.000Z".encode("ascii")
+        data["timeEnd"][index] = f"2023-07-01T{hour:02d}:{minute:02d}:59.950Z".encode("ascii")
+        data["mean"][index] = float(index)
+        data["min"][index] = float(index) - 0.1
+        data["max"][index] = float(index) + 0.1
+        data["vari"][index] = 0.01
+        data["numSamp"][index] = 1200.0
     with h5py.File(path, "w") as hdf:
         soni = hdf.create_group("HARV/dp01/data/soni/000_060_01m")
-        soni.create_dataset("veloXaxsErth", data=rows)
-        soni.create_dataset("veloYaxsErth", data=rows)
-        soni.create_dataset("veloZaxsErth", data=rows)
-        soni.create_dataset("tempSoni", data=rows)
+        velo_x = data.copy()
+        velo_x["mean"] = 1.2 + 0.05 * np.sin(np.arange(rows) / 8.0)
+        velo_y = data.copy()
+        velo_y["mean"] = 0.4 + 0.04 * np.cos(np.arange(rows) / 9.0)
+        velo_z = data.copy()
+        velo_z["mean"] = 0.15 * np.sin(np.arange(rows) / 5.0)
+        temp_soni = data.copy()
+        temp_soni["mean"] = 22.0 + 0.2 * np.cos(np.arange(rows) / 24.0)
+        for name, values, unit in [
+            ("veloXaxsErth", velo_x, "m s-1"),
+            ("veloYaxsErth", velo_y, "m s-1"),
+            ("veloZaxsErth", velo_z, "m s-1"),
+            ("tempSoni", temp_soni, "C"),
+        ]:
+            dataset = soni.create_dataset(name, data=values)
+            dataset.attrs["unit"] = np.array([unit, unit, unit, unit, "NA", "NA", "NA"], dtype="S12")
         co2 = hdf.create_group("HARV/dp01/data/co2Turb/000_060_01m")
-        co2.create_dataset("densMoleCo2", data=rows)
+        co2_values = data.copy()
+        co2_values["mean"] = 410.0 + 8.0 * np.sin(np.arange(rows) / 5.0)
+        co2_dataset = co2.create_dataset("rtioMoleDryCo2", data=co2_values)
+        co2_dataset.attrs["unit"] = np.array(["umolCo2 mol-1", "umolCo2 mol-1", "umolCo2 mol-1", "umol2Co2 mol-2", "NA", "NA", "NA"], dtype="S18")
         h2o = hdf.create_group("HARV/dp01/data/h2oTurb/000_060_01m")
-        h2o.create_dataset("rtioMoleWetH2o", data=rows)
+        h2o_values = data.copy()
+        h2o_values["mean"] = 12.0 + 1.1 * np.cos(np.arange(rows) / 7.0)
+        h2o_dataset = h2o.create_dataset("rtioMoleWetH2o", data=h2o_values)
+        h2o_dataset.attrs["unit"] = np.array(["mmolH2o mol-1", "mmolH2o mol-1", "mmolH2o mol-1", "mmol2H2o mol-2", "NA", "NA", "NA"], dtype="S18")
+        pressure = hdf.create_group("HARV/dp01/data/presBaro/000_060_01m")
+        pressure_values = data.copy()
+        pressure_values["mean"] = 101.3
+        pressure_dataset = pressure.create_dataset("presAtm", data=pressure_values)
+        pressure_dataset.attrs["unit"] = np.array(["kPa", "kPa", "kPa", "kPa2", "NA", "NA", "NA"], dtype="S8")
+        qf = hdf.create_group("HARV/dp01/qfqm/soni/000_060_01m")
+        qf_dtype = np.dtype([("qfFinl", "<i4"), ("timeBgn", "S24"), ("timeEnd", "S24")])
+        qf_values = np.zeros(rows, dtype=qf_dtype)
+        qf_values["timeBgn"] = data["timeBgn"]
+        qf_values["timeEnd"] = data["timeEnd"]
+        for name in ["veloXaxsErth", "veloYaxsErth", "veloZaxsErth", "tempSoni"]:
+            qf.create_dataset(name, data=qf_values)
     return path

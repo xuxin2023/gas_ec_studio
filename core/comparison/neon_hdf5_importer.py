@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 from copy import deepcopy
 from datetime import datetime
 import hashlib
 import json
+import math
 from pathlib import Path
 import shutil
 from typing import Any
 from urllib.request import Request, urlopen
 
+from models.hf_models import FrameQuality, NormalizedHFFrame
+
 
 DEFAULT_NEON_HDF5_OUTPUT_ROOT = Path("artifacts/public_ec_data/neon")
 REQUIRED_RAW_TO_FINAL_FIELDS = ["time", "u", "v", "w", "sonic_temperature", "co2", "h2o"]
+ROW_EXTRACTION_REQUIRED_FIELDS = ["u", "v", "w", "co2", "h2o", "sonic_temperature"]
 
 
 def download_neon_hdf5_candidate(
@@ -210,6 +215,506 @@ def build_neon_hdf5_metadata_smoke(
     }
 
 
+def build_neon_hdf5_row_extraction_smoke(
+    hdf5_path: str | Path,
+    *,
+    workspace_root: str | Path | None = None,
+    metadata_smoke_path: str | Path | None = None,
+    source_id: str = "",
+    rows_output_path: str | Path | None = None,
+    max_rows: int = 128,
+    start_index: int = 0,
+    max_time_gap_s: float = 900.0,
+    include_row_records: bool = False,
+) -> dict[str, Any]:
+    """Extract a small NEON HDF5 row window into the project's normalized row contract."""
+
+    root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
+    path = _resolve(root, hdf5_path)
+    metadata_path = _resolve(root, metadata_smoke_path) if metadata_smoke_path else None
+    dependency = _load_h5py()
+    metadata_smoke = _read_json(metadata_path) if metadata_path else build_neon_hdf5_metadata_smoke(
+        path,
+        workspace_root=root,
+        source_id=source_id,
+    )
+    base = {
+        "artifact_type": "neon_hdf5_row_extraction_smoke_v1",
+        "generated_at": datetime.now().isoformat(),
+        "source_id": source_id or str(metadata_smoke.get("source_id", "")),
+        "source_file": str(path),
+        "metadata_smoke_artifact": str(metadata_path) if metadata_path else "",
+        "metadata_smoke_status": str(metadata_smoke.get("status", "")),
+        "hdf5_dependency": dependency["summary"],
+        "status": "blocked",
+        "can_change_full_parity_gate": False,
+        "ready_for_raw_to_final_registration": False,
+        "truthfulness_boundary": (
+            "This artifact converts a small NEON HDF5 aggregated-data window into normalized rows for importer "
+            "smoke testing only. NEON DP4 HDF5 is not an EddyPro raw bundle and this does not provide official "
+            "EddyPro output parity."
+        ),
+    }
+    if not dependency["available"]:
+        return {**base, "status": "missing_hdf5_dependency", "errors": ["Install h5py to extract NEON HDF5 rows."]}
+    if not path.exists() or not path.is_file():
+        return {**base, "status": "file_missing", "errors": [f"HDF5 file missing: {path}"]}
+    field_mappings = dict(metadata_smoke.get("field_mappings", {}) or {})
+    missing_mapping = [field for field in ROW_EXTRACTION_REQUIRED_FIELDS if field not in field_mappings]
+    if missing_mapping:
+        return {
+            **base,
+            "status": "mapping_incomplete",
+            "missing_required_mappings": missing_mapping,
+            "field_mappings": field_mappings,
+        }
+
+    h5py = dependency["module"]
+    try:
+        with h5py.File(path, "r") as hdf:
+            extraction = _extract_neon_rows_from_hdf(
+                hdf,
+                field_mappings=field_mappings,
+                source_file=path,
+                source_id=str(base["source_id"] or "neon_hdf5"),
+                max_rows=max_rows,
+                start_index=start_index,
+                max_time_gap_s=max_time_gap_s,
+            )
+    except Exception as exc:
+        return {**base, "status": "row_extraction_failed", "errors": [str(exc)]}
+
+    rows = list(extraction.pop("rows"))
+    rows_output = _write_row_records(root, rows_output_path, rows) if rows_output_path else {}
+    row_count = len(rows)
+    status = "pass" if row_count >= min(64, max(1, int(max_rows))) else ("partial" if row_count else "no_complete_rows")
+    payload: dict[str, Any] = {
+        **base,
+        "status": status,
+        "row_count": row_count,
+        "row_preview": rows[:5],
+        "rows_output": rows_output,
+        "field_mappings": field_mappings,
+        "field_units": extraction["field_units"],
+        "qc_mapping": extraction["qc_mapping"],
+        "alignment_summary": extraction["alignment_summary"],
+        "estimated_sample_rate_hz": extraction["estimated_sample_rate_hz"],
+        "time_range": extraction["time_range"],
+        "rp_smoke_ready": row_count >= 64,
+        "known_limitations": [
+            "Rows are extracted from NEON aggregated HDF5 products, not high-frequency EddyPro raw samples.",
+            "Different NEON variables may have different averaging intervals and instrument heights.",
+            "QC flags are carried as NEON qfFinl values when matching qfqm datasets exist; EddyPro flag parity is not claimed.",
+        ],
+        "next_action": (
+            "Run the NEON HDF5 RP smoke and then implement a declared NEON-specific validation target."
+            if row_count >= 64
+            else "Increase max_rows or adjust start_index after the first complete CO2/H2O/sonic overlap."
+        ),
+    }
+    if include_row_records:
+        payload["row_records"] = rows
+    return payload
+
+
+def row_records_to_normalized_frames(records: list[dict[str, Any]]) -> list[NormalizedHFFrame]:
+    frames: list[NormalizedHFFrame] = []
+    for record in records:
+        frames.append(
+            NormalizedHFFrame(
+                timestamp=_parse_datetime(str(record["timestamp"])),
+                device_uid=str(record.get("device_uid", "neon_hdf5")),
+                device_id=str(record.get("device_id", "NEON")),
+                mode=int(record.get("mode", 2)),
+                frame_quality=FrameQuality(str(record.get("frame_quality", FrameQuality.FULL.value))),
+                co2_ppm=_optional_number(record.get("co2_ppm")),
+                h2o_mmol=_optional_number(record.get("h2o_mmol")),
+                pressure_kpa=_optional_number(record.get("pressure_kpa")),
+                chamber_temp_c=_optional_number(record.get("chamber_temp_c")),
+                case_temp_c=_optional_number(record.get("case_temp_c")),
+                ch4_ppb=_optional_number(record.get("ch4_ppb")),
+                status_text=str(record.get("status_text", "")) or None,
+                raw_text=str(record.get("raw_text", "")),
+            )
+        )
+    return frames
+
+
+def _extract_neon_rows_from_hdf(
+    hdf: Any,
+    *,
+    field_mappings: dict[str, Any],
+    source_file: Path,
+    source_id: str,
+    max_rows: int,
+    start_index: int,
+    max_time_gap_s: float,
+) -> dict[str, Any]:
+    series_by_field: dict[str, list[dict[str, Any]]] = {}
+    field_units: dict[str, str] = {}
+    qc_mapping: dict[str, Any] = {}
+    fields = [
+        "time",
+        "u",
+        "v",
+        "w",
+        "co2",
+        "h2o",
+        "sonic_temperature",
+        "air_temperature",
+        "pressure",
+        "ch4",
+    ]
+    for field in fields:
+        mapping = dict(field_mappings.get(field, {}) or {})
+        dataset_path = str(mapping.get("path", ""))
+        if not dataset_path or dataset_path.strip("/") not in hdf:
+            continue
+        dataset = hdf[dataset_path]
+        unit = _mean_unit(dataset.attrs)
+        field_units[field] = unit
+        series_by_field[field] = _read_neon_dataset_series(dataset, field=field, unit=unit)
+        qc_mapping[field] = _read_neon_qc_mapping(hdf, dataset_path)
+
+    base_field = "time" if series_by_field.get("time") else "u"
+    base_series = series_by_field.get(base_field, [])
+    indexed = {field: _index_series(series) for field, series in series_by_field.items()}
+    resolved_start = _first_complete_base_index(
+        base_series,
+        indexed=indexed,
+        requested_start=max(0, int(start_index)),
+        max_time_gap_s=max_time_gap_s,
+    )
+    rows: list[dict[str, Any]] = []
+    if resolved_start >= 0:
+        for base_item in base_series[resolved_start:]:
+            if len(rows) >= max(0, int(max_rows)):
+                break
+            timestamp = base_item["center"]
+            matched = {
+                field: _series_item_at_time(indexed.get(field, {}), timestamp, max_time_gap_s=max_time_gap_s)
+                for field in series_by_field
+                if field != "time"
+            }
+            required_missing = [field for field in ROW_EXTRACTION_REQUIRED_FIELDS if matched.get(field) is None]
+            if required_missing:
+                continue
+            rows.append(
+                _build_neon_row_record(
+                    timestamp=timestamp,
+                    matched=matched,
+                    field_units=field_units,
+                    qc_mapping=qc_mapping,
+                    source_file=source_file,
+                    source_id=source_id,
+                )
+            )
+
+    estimated_sample_rate_hz = _estimate_sample_rate_from_records(rows)
+    return {
+        "rows": rows,
+        "field_units": field_units,
+        "qc_mapping": qc_mapping,
+        "estimated_sample_rate_hz": estimated_sample_rate_hz,
+        "time_range": _row_time_range(rows),
+        "alignment_summary": {
+            "base_field": base_field,
+            "base_path": str(dict(field_mappings.get(base_field, {}) or {}).get("path", "")),
+            "base_series_count": len(base_series),
+            "resolved_start_index": resolved_start,
+            "requested_start_index": int(start_index),
+            "max_time_gap_s": float(max_time_gap_s),
+            "series_counts": {field: len(series) for field, series in series_by_field.items()},
+            "required_fields": ROW_EXTRACTION_REQUIRED_FIELDS,
+        },
+    }
+
+
+def _read_neon_dataset_series(dataset: Any, *, field: str, unit: str) -> list[dict[str, Any]]:
+    data = dataset[:]
+    dtype_fields = list((dataset.dtype.fields or {}).keys())
+    if dtype_fields:
+        names = {str(name).lower(): str(name) for name in dtype_fields}
+        value_name = names.get("mean") or _first_numeric_compound_field(data, dtype_fields)
+        start_name = names.get("timebgn") or names.get("time_bgn")
+        end_name = names.get("timeend") or names.get("time_end")
+        if not value_name:
+            return []
+        series: list[dict[str, Any]] = []
+        for index, record in enumerate(data):
+            value = _optional_number(record[value_name])
+            start = _parse_datetime(_decode_scalar(record[start_name])) if start_name else None
+            end = _parse_datetime(_decode_scalar(record[end_name])) if end_name else start
+            if value is None or start is None:
+                continue
+            end = end or start
+            series.append(
+                {
+                    "index": index,
+                    "start": start,
+                    "end": end,
+                    "center": _midpoint_datetime(start, end),
+                    "value": _convert_neon_value(field, value, unit),
+                    "raw_value": value,
+                    "unit": unit,
+                    "num_samp": _optional_number(record[names["numsamp"]]) if "numsamp" in names else None,
+                }
+            )
+        return series
+
+    return []
+
+
+def _first_numeric_compound_field(data: Any, fields: list[str]) -> str:
+    for field in fields:
+        try:
+            value = data[field][0] if len(data) else None
+        except Exception:
+            continue
+        if _optional_number(value) is not None:
+            return str(field)
+    return ""
+
+
+def _read_neon_qc_mapping(hdf: Any, dataset_path: str) -> dict[str, Any]:
+    normalized = "/" + dataset_path.strip("/")
+    qc_path = normalized.replace("/data/", "/qfqm/", 1)
+    if qc_path.strip("/") not in hdf:
+        return {"status": "not_found", "path": qc_path, "flag_field": ""}
+    dataset = hdf[qc_path]
+    fields = list((dataset.dtype.fields or {}).keys())
+    lowered = {str(field).lower(): str(field) for field in fields}
+    flag_field = lowered.get("qffinl") or lowered.get("qf") or lowered.get("flag") or ""
+    return {
+        "status": "mapped" if flag_field else "dataset_found_no_flag_field",
+        "path": qc_path,
+        "flag_field": flag_field,
+        "dtype": str(dataset.dtype),
+        "shape": list(dataset.shape or []),
+    }
+
+
+def _index_series(series: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "series": series,
+        "starts": [item["start"] for item in series],
+        "centers": [item["center"] for item in series],
+    }
+
+
+def _first_complete_base_index(
+    base_series: list[dict[str, Any]],
+    *,
+    indexed: dict[str, dict[str, Any]],
+    requested_start: int,
+    max_time_gap_s: float,
+) -> int:
+    for index in range(max(0, requested_start), len(base_series)):
+        timestamp = base_series[index]["center"]
+        if all(_series_item_at_time(indexed.get(field, {}), timestamp, max_time_gap_s=max_time_gap_s) for field in ROW_EXTRACTION_REQUIRED_FIELDS):
+            return index
+    return -1
+
+
+def _series_item_at_time(indexed: dict[str, Any], timestamp: datetime, *, max_time_gap_s: float) -> dict[str, Any] | None:
+    series = list(indexed.get("series", []) or [])
+    starts = list(indexed.get("starts", []) or [])
+    if not series:
+        return None
+    index = bisect_right(starts, timestamp) - 1
+    candidates = [idx for idx in (index, index + 1) if 0 <= idx < len(series)]
+    best: dict[str, Any] | None = None
+    best_gap = math.inf
+    for candidate_index in candidates:
+        item = series[candidate_index]
+        if item["start"] <= timestamp <= item["end"]:
+            return item
+        gap = abs((item["center"] - timestamp).total_seconds())
+        if gap < best_gap:
+            best = item
+            best_gap = gap
+    return best if best is not None and best_gap <= float(max_time_gap_s) else None
+
+
+def _build_neon_row_record(
+    *,
+    timestamp: datetime,
+    matched: dict[str, dict[str, Any] | None],
+    field_units: dict[str, str],
+    qc_mapping: dict[str, Any],
+    source_file: Path,
+    source_id: str,
+) -> dict[str, Any]:
+    raw_payload: dict[str, Any] = {
+        "raw_source": str(source_file),
+        "source_id": source_id,
+        "source_format": "NEON_HDF5_DP4",
+        "u": _item_value(matched.get("u")),
+        "v": _item_value(matched.get("v")),
+        "w": _item_value(matched.get("w")),
+        "neon_units": field_units,
+        "neon_num_samp": {
+            field: _item_num_samp(item)
+            for field, item in matched.items()
+            if item is not None and _item_num_samp(item) is not None
+        },
+        "neon_interval": {
+            field: {
+                "start": item["start"].isoformat(),
+                "end": item["end"].isoformat(),
+            }
+            for field, item in matched.items()
+            if item is not None
+        },
+        "neon_qc_mapping": qc_mapping,
+    }
+    ch4_ppb = _item_value(matched.get("ch4"))
+    if ch4_ppb is not None:
+        raw_payload["ch4_ppb"] = ch4_ppb
+    return NormalizedHFFrame(
+        timestamp=timestamp,
+        device_uid="neon_hdf5",
+        device_id=source_id or "NEON",
+        mode=2,
+        frame_quality=FrameQuality.FULL,
+        co2_ppm=_item_value(matched.get("co2")),
+        h2o_mmol=_item_value(matched.get("h2o")),
+        pressure_kpa=_item_value(matched.get("pressure")),
+        chamber_temp_c=_item_value(matched.get("sonic_temperature")),
+        case_temp_c=_item_value(matched.get("air_temperature")),
+        ch4_ppb=ch4_ppb,
+        status_text="neon_hdf5_row_smoke",
+        raw_text=json.dumps(raw_payload, ensure_ascii=False, sort_keys=True),
+    ).to_record()
+
+
+def _write_row_records(root: Path, rows_output_path: str | Path | None, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    if not rows_output_path:
+        return {}
+    path = _resolve(root, rows_output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"path": str(path), "row_count": len(rows)}
+
+
+def _row_time_range(rows: list[dict[str, Any]]) -> dict[str, str]:
+    if not rows:
+        return {"start": "", "end": ""}
+    return {"start": str(rows[0].get("timestamp", "")), "end": str(rows[-1].get("timestamp", ""))}
+
+
+def _estimate_sample_rate_from_records(rows: list[dict[str, Any]]) -> float:
+    if len(rows) < 2:
+        return 1.0
+    timestamps = [_parse_datetime(str(row["timestamp"])) for row in rows[: min(len(rows), 16)]]
+    deltas = [
+        (right - left).total_seconds()
+        for left, right in zip(timestamps[:-1], timestamps[1:])
+        if (right - left).total_seconds() > 0
+    ]
+    if not deltas:
+        return 1.0
+    deltas_sorted = sorted(deltas)
+    median = deltas_sorted[len(deltas_sorted) // 2]
+    return round(1.0 / median, 8) if median > 0 else 1.0
+
+
+def _mean_unit(attrs: Any) -> str:
+    for key in ("unit", "units", "Unit", "UNITS"):
+        if key not in attrs:
+            continue
+        value = _json_value(attrs[key])
+        if isinstance(value, list) and value:
+            return str(value[0])
+        return str(value)
+    return ""
+
+
+def _convert_neon_value(field: str, value: float, unit: str) -> float:
+    unit_key = unit.lower().replace(" ", "")
+    if field == "co2":
+        if "mmol" in unit_key:
+            return float(value) * 1000.0
+        if "mol-1" in unit_key and "umol" not in unit_key and "ppm" not in unit_key:
+            return float(value) * 1_000_000.0
+        return float(value)
+    if field == "h2o":
+        if "umol" in unit_key:
+            return float(value) / 1000.0
+        if "mol-1" in unit_key and "mmol" not in unit_key:
+            return float(value) * 1000.0
+        return float(value)
+    if field == "ch4":
+        if "nmol" in unit_key or "ppb" in unit_key:
+            return float(value)
+        if "umol" in unit_key or "ppm" in unit_key:
+            return float(value) * 1000.0
+        if "mmol" in unit_key:
+            return float(value) * 1_000_000.0
+        if "mol-1" in unit_key:
+            return float(value) * 1_000_000_000.0
+        return float(value)
+    if field == "pressure":
+        if "pa" == unit_key or unit_key.endswith(" pa"):
+            return float(value) / 1000.0
+        if "hpa" in unit_key or "mbar" in unit_key:
+            return float(value) / 10.0
+        return float(value)
+    if field in {"sonic_temperature", "air_temperature"} and unit_key in {"k", "kelvin"}:
+        return float(value) - 273.15
+    return float(value)
+
+
+def _item_value(item: dict[str, Any] | None) -> float | None:
+    if not item:
+        return None
+    return _optional_number(item.get("value"))
+
+
+def _item_num_samp(item: dict[str, Any] | None) -> float | None:
+    if not item:
+        return None
+    return _optional_number(item.get("num_samp"))
+
+
+def _midpoint_datetime(start: datetime, end: datetime) -> datetime:
+    return start + (end - start) / 2
+
+
+def _parse_datetime(value: str) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(text)
+    return parsed.replace(tzinfo=None)
+
+
+def _decode_scalar(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    if hasattr(value, "item"):
+        try:
+            item = value.item()
+            if isinstance(item, bytes):
+                return item.decode("utf-8", "replace")
+            return str(item)
+        except Exception:
+            pass
+    return str(value)
+
+
+def _optional_number(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _inspect_hdf5_tree(hdf: Any, *, max_datasets: int, max_attrs: int) -> dict[str, Any]:
     datasets: list[dict[str, Any]] = []
     group_count = 1
@@ -337,7 +842,11 @@ def _dataset_field_candidates(dataset: dict[str, Any]) -> list[dict[str, Any]]:
     elif "verticalwind" in compact or "wcomponent" in compact:
         add("w", 0.84, "dataset metadata suggests vertical wind")
 
-    if "co2" in last_compact or "carbondioxide" in _normalize_text(long_name).replace(" ", ""):
+    if last_compact in {"rtiomoledryco2", "rtiomolewetco2"} and "/data/co2turb/" in path.lower().replace("\\", "/"):
+        add("co2", 0.98, "NEON co2Turb mole-ratio dataset maps to CO2 mixing ratio")
+    elif last_compact == "densmoleco2" and "/data/co2turb/" in path.lower().replace("\\", "/"):
+        add("co2", 0.95, "NEON co2Turb density dataset maps to CO2 concentration")
+    elif "co2" in last_compact or "carbondioxide" in _normalize_text(long_name).replace(" ", ""):
         add("co2", 0.94, "dataset metadata indicates CO2")
     elif "co2" in compact:
         add("co2", 0.7, "dataset parent path mentions CO2")
@@ -365,7 +874,11 @@ def _dataset_field_candidates(dataset: dict[str, Any]) -> list[dict[str, Any]]:
         segments, {"air_temperature", "tair", "ta"}
     ):
         add("air_temperature", 0.82, "dataset metadata indicates air temperature")
-    if last_compact in {"pres", "presatm", "pressum"} or "pressure" in normalized or "barometric" in normalized or _has_segment(
+    if last_compact == "presatm":
+        add("pressure", 0.9, "NEON atmospheric pressure dataset")
+    elif last_compact == "pressum":
+        add("pressure", 0.86, "NEON pressure summary dataset")
+    elif last_compact == "pres" or "pressure" in normalized or "barometric" in normalized or _has_segment(
         segments, {"pressure", "press", "pa"}
     ):
         add("pressure", 0.78, "dataset metadata indicates pressure")
