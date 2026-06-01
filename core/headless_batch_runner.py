@@ -33,6 +33,7 @@ from core.comparison.neon_hdf5_importer import (
     row_records_to_normalized_frames,
 )
 from core.comparison.public_ec_data_discovery import (
+    build_public_ec_acquisition_closure,
     build_public_ec_data_discovery_probe,
     build_public_raw_importer_smoke_plan,
     build_public_raw_sample_importer_smoke,
@@ -520,6 +521,8 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--public-ec-discovery-probe", default="", help="Public EC discovery probe JSON used by --build-public-raw-importer-smoke-plan.")
     parser.add_argument("--public-ec-timeout-s", default="", help="Network timeout for public EC discovery probes.")
     parser.add_argument("--skip-public-ec-network", action="store_true", help="Build public EC discovery from the ledger without network probes.")
+    parser.add_argument("--build-public-ec-acquisition-closure", action="store_true", help="Build the non-blocking public real-data acquisition closure artifact.")
+    parser.add_argument("--public-raw-importer-smoke-plan", default="", help="Public raw importer smoke plan used by --build-public-ec-acquisition-closure.")
     parser.add_argument("--download-neon-hdf5-candidate", default="", help="Discovery/probe JSON containing a verified NEON HDF5 candidate to download.")
     parser.add_argument("--build-neon-hdf5-metadata-smoke", default="", help="Inspect a local NEON HDF5 file and infer EC field mapping candidates.")
     parser.add_argument("--build-neon-hdf5-row-smoke", default="", help="Extract a small NEON HDF5 window into normalized EC row records.")
@@ -538,6 +541,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--neon-hdf5-start-index", default="", help="Requested base-series start index for NEON row extraction.")
     parser.add_argument("--neon-hdf5-max-time-gap-s", default="", help="Maximum timestamp matching gap for NEON row extraction.")
     parser.add_argument("--neon-hdf5-rp-block-minutes", default="", help="RP block size in minutes for --run-neon-hdf5-rp-smoke.")
+    parser.add_argument("--neon-hdf5-download", default="", help="NEON HDF5 download artifact used by --build-public-ec-acquisition-closure.")
     parser.add_argument("--neon-hdf5-validation-package", default="", help="NEON HDF5 validation package used by partial capability closure.")
     parser.add_argument("--public-raw-sample-validation-package", default="", help="Public raw sample validation package used by partial capability closure.")
     parser.add_argument("--overwrite-neon-hdf5", action="store_true", help="Overwrite an existing downloaded NEON HDF5 candidate.")
@@ -615,6 +619,9 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     if args.build_public_raw_sample_validation_package:
         return _run_public_raw_sample_validation_package_cli(args, parser)
+
+    if args.build_public_ec_acquisition_closure:
+        return _run_public_ec_acquisition_closure_cli(args, parser)
 
     if args.download_neon_hdf5_candidate:
         return _run_neon_hdf5_candidate_download_cli(args, parser)
@@ -887,6 +894,25 @@ def _run_public_raw_sample_validation_package_cli(args: argparse.Namespace, pars
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if payload.get("status") == "pass" else 2
+
+
+def _run_public_ec_acquisition_closure_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --build-public-ec-acquisition-closure.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    payload = build_public_ec_acquisition_closure(
+        discovery_probe_path=args.public_ec_discovery_probe or None,
+        smoke_plan_path=args.public_raw_importer_smoke_plan or None,
+        workspace_root=workspace_root,
+        manifest_path=args.public_ec_data_sources or None,
+        neon_download_path=args.neon_hdf5_download or None,
+        neon_validation_package_path=args.neon_hdf5_validation_package or None,
+        public_raw_sample_validation_package_path=args.public_raw_sample_validation_package or None,
+    )
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0 if payload.get("artifact_type") == "public_ec_acquisition_closure_v1" else 2
 
 
 def _run_neon_hdf5_candidate_download_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

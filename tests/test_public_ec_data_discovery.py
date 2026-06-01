@@ -8,6 +8,7 @@ from pathlib import Path
 
 from core.comparison import public_ec_data_discovery
 from core.comparison.public_ec_data_discovery import (
+    build_public_ec_acquisition_closure,
     build_public_ec_data_discovery_probe,
     build_public_raw_importer_smoke_plan,
     build_public_raw_sample_importer_smoke,
@@ -375,6 +376,73 @@ def test_public_raw_sample_validation_package_cli_closes_importer_and_rp_smoke(t
     assert payload["ready_for_raw_to_final_registration"] is False
 
 
+def test_public_ec_acquisition_closure_summarizes_downloaded_and_blocked_sources(tmp_path: Path) -> None:
+    inputs = _write_acquisition_closure_inputs(tmp_path)
+
+    payload = build_public_ec_acquisition_closure(
+        discovery_probe_path=inputs["probe"],
+        smoke_plan_path=inputs["plan"],
+        neon_download_path=inputs["neon_download"],
+        neon_validation_package_path=inputs["neon_validation"],
+        public_raw_sample_validation_package_path=inputs["public_raw_validation"],
+        workspace_root=tmp_path,
+    )
+
+    sources = {item["source_id"]: item for item in payload["sources"]}
+    assert payload["artifact_type"] == "public_ec_acquisition_closure_v1"
+    assert payload["status"] == "engineering_validation_closed_full_parity_blocked"
+    assert payload["summary"]["source_count"] == 4
+    assert payload["summary"]["candidate_count"] == 3
+    assert payload["summary"]["downloaded_candidate_count"] == 1
+    assert payload["summary"]["engineering_validation_pass_count"] == 2
+    assert payload["summary"]["ready_to_register_candidate_count"] == 0
+    assert payload["summary"]["status_counts"]["public_download_engineering_validated"] == 1
+    assert payload["summary"]["status_counts"]["blocked_operator_subset_required"] == 1
+    assert payload["summary"]["status_counts"]["blocked_license_or_operator_subset_required"] == 1
+    assert payload["neon_download_summary"]["status"] == "pass"
+    assert payload["neon_validation_summary"]["status"] == "pass"
+    assert payload["public_raw_sample_validation_summary"]["status"] == "pass"
+    assert sources["neon_test"]["acquisition_status"] == "public_download_engineering_validated"
+    assert sources["crocus_test"]["acquisition_status"] == "blocked_operator_subset_required"
+    assert sources["icos_test"]["acquisition_status"] == "blocked_license_or_operator_subset_required"
+    assert sources["licor_anchor"]["acquisition_status"] == "registered_anchor"
+    assert payload["claim_boundary"]["can_claim_public_raw_engineering_validation"] is True
+    assert payload["claim_boundary"]["can_claim_eddypro_raw_to_final_parity"] is False
+    assert payload["claim_boundary"]["can_release_full_eddypro_parity"] is False
+    assert any("official Full_Output" in blocker for blocker in payload["blockers"])
+
+
+def test_public_ec_acquisition_closure_cli_writes_non_blocking_artifact(tmp_path: Path) -> None:
+    inputs = _write_acquisition_closure_inputs(tmp_path)
+    output = tmp_path / "public_ec_acquisition_closure.json"
+
+    code = run_cli(
+        [
+            "--build-public-ec-acquisition-closure",
+            "--workspace-root",
+            str(tmp_path),
+            "--public-ec-discovery-probe",
+            str(inputs["probe"]),
+            "--public-raw-importer-smoke-plan",
+            str(inputs["plan"]),
+            "--neon-hdf5-download",
+            str(inputs["neon_download"]),
+            "--neon-hdf5-validation-package",
+            str(inputs["neon_validation"]),
+            "--public-raw-sample-validation-package",
+            str(inputs["public_raw_validation"]),
+            "--output",
+            str(output),
+        ]
+    )
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["artifact_type"] == "public_ec_acquisition_closure_v1"
+    assert payload["summary"]["can_change_full_parity_gate"] is False
+    assert payload["truthfulness_boundary"].startswith("This artifact closes the acquisition/engineering round only.")
+
+
 def _write_public_raw_rp_sample(path: Path, *, rows: int) -> Path:
     start = datetime(2023, 7, 1, 0, 0, 0)
     lines = ["timestamp,u,v,w,co2_ppm,h2o_mmol,pressure_kpa,ch4_ppb"]
@@ -400,6 +468,167 @@ def _write_public_raw_rp_sample(path: Path, *, rows: int) -> Path:
         )
     path.write_text("\n".join(lines), encoding="utf-8-sig")
     return path
+
+
+def _write_acquisition_closure_inputs(tmp_path: Path) -> dict[str, Path]:
+    probe = tmp_path / "probe.json"
+    plan = tmp_path / "plan.json"
+    neon_download = tmp_path / "neon_download.json"
+    neon_validation = tmp_path / "neon_validation.json"
+    public_raw_validation = tmp_path / "public_raw_validation.json"
+    probe.write_text(
+        json.dumps(
+            {
+                "artifact_type": "public_ec_data_discovery_probe_v1",
+                "sources": [
+                    {
+                        "source_id": "neon_test",
+                        "provider": "NEON",
+                        "source_url": "https://example.test/neon",
+                        "status": "candidate_verified",
+                        "registration_outcome": "not_registered",
+                        "parity_value": "real_ec_hdf5_candidate_not_eddypro_output",
+                    },
+                    {
+                        "source_id": "crocus_test",
+                        "provider": "DOE OSTI / CROCUS",
+                        "source_url": "https://example.test/crocus",
+                        "status": "landing_verified",
+                        "registration_outcome": "not_registered",
+                        "parity_value": "real_high_frequency_raw_candidate_not_eddypro_output",
+                    },
+                    {
+                        "source_id": "icos_test",
+                        "provider": "ICOS Carbon Portal",
+                        "source_url": "https://example.test/icos",
+                        "status": "licence_flow_verified",
+                        "registration_outcome": "not_programmatically_registered",
+                        "parity_value": "real_raw_ascii_candidate_not_registered",
+                    },
+                    {
+                        "source_id": "licor_anchor",
+                        "provider": "LI-COR",
+                        "source_url": "https://example.test/licor",
+                        "status": "static_ledger_only",
+                        "registration_outcome": "registered_and_accepted",
+                        "parity_value": "official_public_raw_anchor",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    missing = [
+        "eddypro_project_or_settings",
+        "official_eddypro_full_output",
+        "normalized_reference",
+        "normalization_provenance",
+        "acceptance_evidence",
+    ]
+    plan.write_text(
+        json.dumps(
+            {
+                "artifact_type": "public_raw_importer_smoke_plan_v1",
+                "candidate_plans": [
+                    {
+                        "source_id": "neon_test",
+                        "provider": "NEON",
+                        "source_url": "https://example.test/neon",
+                        "sample_mode": "byte_range",
+                        "downloadable_file_count": 1,
+                        "registration_readiness_status": "blocked_missing_registration_evidence",
+                        "missing_for_eddypro_parity": missing,
+                        "can_register_as_eddypro_parity_fixture": False,
+                    },
+                    {
+                        "source_id": "crocus_test",
+                        "provider": "DOE OSTI / CROCUS",
+                        "source_url": "https://example.test/crocus",
+                        "sample_mode": "operator_subset",
+                        "registration_readiness_status": "blocked_missing_registration_evidence",
+                        "missing_for_eddypro_parity": missing,
+                        "can_register_as_eddypro_parity_fixture": False,
+                    },
+                    {
+                        "source_id": "icos_test",
+                        "provider": "ICOS Carbon Portal",
+                        "source_url": "https://example.test/icos",
+                        "sample_mode": "operator_subset",
+                        "registration_readiness_status": "blocked_missing_registration_evidence",
+                        "missing_for_eddypro_parity": missing,
+                        "can_register_as_eddypro_parity_fixture": False,
+                    },
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    neon_download.write_text(
+        json.dumps(
+            {
+                "status": "pass",
+                "source_id": "neon_test",
+                "candidate_name": "NEON.TEST.DP4.00200.001.nsae.2023-07.basic.h5",
+                "local_path": str(tmp_path / "neon.h5"),
+                "size_bytes": 156344090,
+                "md5": "02c7e93f6f8f7309915831c8306ab8c4",
+                "sha256": "A2C1BC67BF54123FAB0014CB78427C00BCFE46334169AC56EB9A6036E80E821C",
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    neon_validation.write_text(
+        json.dumps(
+            {
+                "status": "pass",
+                "source_id": "neon_test",
+                "source_file": str(tmp_path / "neon.h5"),
+                "row_count": 160,
+                "rp_status": "pass",
+                "rp_window_count": 1,
+                "claim_boundary": {
+                    "can_claim_neon_engineering_validation": True,
+                    "can_claim_eddypro_raw_to_final_parity": False,
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    public_raw_validation.write_text(
+        json.dumps(
+            {
+                "status": "pass",
+                "source_id": "operator_subset_global",
+                "source_file": str(tmp_path / "operator_subset.csv"),
+                "row_count": 120,
+                "importer_status": "pass",
+                "rp_status": "pass",
+                "rp_window_count": 1,
+                "claim_boundary": {
+                    "can_claim_public_raw_engineering_validation": True,
+                    "can_claim_eddypro_raw_to_final_parity": False,
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "probe": probe,
+        "plan": plan,
+        "neon_download": neon_download,
+        "neon_validation": neon_validation,
+        "public_raw_validation": public_raw_validation,
+    }
 
 
 class _FakeResponse:

@@ -242,6 +242,29 @@ raise SystemExit(run_cli([
 
 The package preserves the source file path, row/RP statuses, `qc_flag_summary`, `units_conversion_audit`, variable height/product context, and a claim boundary that allows NEON engineering-validation evidence while keeping EddyPro raw-to-final parity claims blocked.
 
+## Public Acquisition Closure
+
+When public discovery, NEON HDF5 validation, and operator-supplied subset validation have all been attempted, close the round with one non-blocking acquisition artifact:
+
+```powershell
+@'
+from core.headless_batch_runner import run_cli
+
+raise SystemExit(run_cli([
+    "--build-public-ec-acquisition-closure",
+    "--workspace-root", ".",
+    "--public-ec-discovery-probe", "artifacts/public_ec_data/public_ec_data_discovery_probe_latest.json",
+    "--public-raw-importer-smoke-plan", "artifacts/public_ec_data/public_raw_importer_smoke_plan_latest.json",
+    "--neon-hdf5-download", "artifacts/public_ec_data/neon_hdf5_download.json",
+    "--neon-hdf5-validation-package", "artifacts/public_ec_data/neon_hdf5_validation_package.json",
+    "--public-raw-sample-validation-package", "artifacts/public_ec_data/public_raw_sample_validation_package.json",
+    "--output", "artifacts/public_ec_data/public_ec_acquisition_closure.json",
+]))
+'@ | python -
+```
+
+The closure artifact records candidate status counts, downloaded/validated NEON evidence, operator-subset validation evidence, licence/operator blockers, and next actions. It is intentionally truthfulness-preserving: a passing engineering validation can be reported, but the artifact still keeps `can_claim_eddypro_raw_to_final_parity=false`, `can_release_full_eddypro_parity=false`, and `can_change_full_parity_gate=false` until a single source has the complete raw input, EddyPro project/settings, official Full_Output, normalized reference, normalization provenance, and acceptance evidence set.
+
 ## Truthfulness Boundary
 
 Public discovery is not parity. A candidate becomes full-parity evidence only after it has:

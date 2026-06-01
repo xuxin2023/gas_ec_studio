@@ -22,6 +22,12 @@ from models.station_models import MetadataBundle
 DEFAULT_PUBLIC_EC_DATA_SOURCES_PATH = Path("references/eddypro/public_raw_search/ec_public_data_sources.json")
 DEFAULT_PUBLIC_EC_SAMPLE_ROOT = Path("artifacts/public_ec_data")
 DEFAULT_PUBLIC_EC_DISCOVERY_PROBE_PATH = Path("artifacts/public_ec_data/public_ec_data_discovery_probe.json")
+DEFAULT_PUBLIC_RAW_IMPORTER_SMOKE_PLAN_PATH = Path("artifacts/public_ec_data/public_raw_importer_smoke_plan.json")
+DEFAULT_NEON_HDF5_DOWNLOAD_PATH = Path("artifacts/public_ec_data/neon_hdf5_download.json")
+DEFAULT_NEON_HDF5_VALIDATION_PACKAGE_PATH = Path("artifacts/public_ec_data/neon_hdf5_validation_package.json")
+DEFAULT_PUBLIC_RAW_SAMPLE_VALIDATION_PACKAGE_PATH = Path(
+    "artifacts/public_ec_data/public_raw_sample_validation_package.json"
+)
 
 
 def build_public_ec_data_discovery_probe(
@@ -446,6 +452,144 @@ def build_public_raw_sample_validation_package(
             "QC equivalence, full run segmentation, and vendor-specific preprocessing remain outside this claim scope.",
         ],
         "next_action": _public_raw_validation_next_action(status),
+    }
+
+
+def build_public_ec_acquisition_closure(
+    *,
+    discovery_probe_path: str | Path | None = None,
+    smoke_plan_path: str | Path | None = None,
+    workspace_root: str | Path | None = None,
+    manifest_path: str | Path | None = None,
+    neon_download_path: str | Path | None = None,
+    neon_validation_package_path: str | Path | None = None,
+    public_raw_sample_validation_package_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Close the public-real-data acquisition round without over-claiming parity."""
+
+    root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
+    probe_path = _resolve(root, discovery_probe_path or DEFAULT_PUBLIC_EC_DISCOVERY_PROBE_PATH)
+    plan_path = _resolve(root, smoke_plan_path or DEFAULT_PUBLIC_RAW_IMPORTER_SMOKE_PLAN_PATH)
+    probe = _read_json(probe_path) if probe_path.exists() else build_public_ec_data_discovery_probe(
+        manifest_path=manifest_path,
+        workspace_root=root,
+        run_network=False,
+    )
+    plan = _read_json(plan_path) if plan_path.exists() else build_public_raw_importer_smoke_plan(
+        discovery_probe_path=probe_path if probe_path.exists() else None,
+        manifest_path=manifest_path,
+        workspace_root=root,
+    )
+    neon_download_file = _resolve(root, neon_download_path or DEFAULT_NEON_HDF5_DOWNLOAD_PATH)
+    neon_validation_file = _resolve(root, neon_validation_package_path or DEFAULT_NEON_HDF5_VALIDATION_PACKAGE_PATH)
+    public_raw_sample_file = _resolve(
+        root,
+        public_raw_sample_validation_package_path or DEFAULT_PUBLIC_RAW_SAMPLE_VALIDATION_PACKAGE_PATH,
+    )
+    neon_download = _read_json(neon_download_file)
+    neon_validation = _read_json(neon_validation_file)
+    public_raw_sample_validation = _read_json(public_raw_sample_file)
+    source_probes = {
+        str(item.get("source_id", "")): dict(item or {})
+        for item in list(probe.get("sources", []) or [])
+        if isinstance(item, dict)
+    }
+    candidate_plans = [
+        dict(item or {})
+        for item in list(plan.get("candidate_plans", []) or [])
+        if isinstance(item, dict)
+    ]
+    candidate_ids = {str(item.get("source_id", "")) for item in candidate_plans}
+    registered_anchor_records = [
+        _acquisition_registered_anchor_record(item)
+        for source_id, item in source_probes.items()
+        if source_id not in candidate_ids and str(item.get("registration_outcome", "")) == "registered_and_accepted"
+    ]
+    candidate_records = [
+        _acquisition_candidate_record(
+            plan_item,
+            source_probe=source_probes.get(str(plan_item.get("source_id", "")), {}),
+            neon_download=neon_download,
+            neon_validation=neon_validation,
+            public_raw_sample_validation=public_raw_sample_validation,
+            neon_download_path=neon_download_file,
+            neon_validation_path=neon_validation_file,
+            public_raw_sample_validation_path=public_raw_sample_file,
+        )
+        for plan_item in candidate_plans
+    ]
+    records = [*registered_anchor_records, *candidate_records]
+    status_counts: dict[str, int] = {}
+    for record in records:
+        status = str(record.get("acquisition_status", "unknown"))
+        status_counts[status] = status_counts.get(status, 0) + 1
+    engineering_validations = _engineering_validation_summaries(
+        neon_validation=neon_validation,
+        public_raw_sample_validation=public_raw_sample_validation,
+        neon_validation_path=neon_validation_file,
+        public_raw_sample_validation_path=public_raw_sample_file,
+    )
+    ready_to_register_count = sum(1 for item in records if bool(item.get("can_register_as_eddypro_parity_fixture", False)))
+    blockers = _acquisition_closure_blockers(records, engineering_validations=engineering_validations)
+    status = "ready_to_register_candidate_found" if ready_to_register_count else (
+        "engineering_validation_closed_full_parity_blocked" if engineering_validations else "acquisition_blocked"
+    )
+    return {
+        "artifact_type": "public_ec_acquisition_closure_v1",
+        "generated_at": datetime.now().isoformat(),
+        "status": status,
+        "workspace_root": str(root),
+        "inputs": {
+            "discovery_probe_path": str(probe_path),
+            "smoke_plan_path": str(plan_path),
+            "neon_download_path": str(neon_download_file),
+            "neon_validation_package_path": str(neon_validation_file),
+            "public_raw_sample_validation_package_path": str(public_raw_sample_file),
+        },
+        "summary": {
+            "source_count": len(source_probes),
+            "candidate_count": len(candidate_plans),
+            "status_counts": status_counts,
+            "registered_anchor_count": int(status_counts.get("registered_anchor", 0) or 0),
+            "downloaded_candidate_count": int(status_counts.get("public_download_engineering_validated", 0) or 0),
+            "download_validated_count": int(status_counts.get("public_download_engineering_validated", 0) or 0),
+            "operator_subset_required_count": int(status_counts.get("blocked_operator_subset_required", 0) or 0),
+            "licence_required_count": int(status_counts.get("blocked_license_or_operator_subset_required", 0) or 0),
+            "engineering_validation_count": len(engineering_validations),
+            "engineering_validation_pass_count": len(engineering_validations),
+            "ready_to_register_candidate_count": ready_to_register_count,
+            "can_change_full_parity_gate": False,
+        },
+        "neon_download_summary": _acquisition_artifact_summary(
+            neon_download,
+            artifact_path=neon_download_file,
+            fields=("status", "source_id", "candidate_name", "local_path", "size_bytes", "md5", "sha256"),
+        ),
+        "neon_validation_summary": _acquisition_artifact_summary(
+            neon_validation,
+            artifact_path=neon_validation_file,
+            fields=("status", "source_id", "source_file", "row_count", "rp_status", "rp_window_count"),
+        ),
+        "public_raw_sample_validation_summary": _acquisition_artifact_summary(
+            public_raw_sample_validation,
+            artifact_path=public_raw_sample_file,
+            fields=("status", "source_id", "source_file", "row_count", "importer_status", "rp_status", "rp_window_count"),
+        ),
+        "engineering_validations": engineering_validations,
+        "sources": records,
+        "blockers": blockers,
+        "next_actions": _acquisition_closure_next_actions(records, blockers=blockers),
+        "claim_boundary": {
+            "can_claim_public_raw_engineering_validation": bool(engineering_validations),
+            "can_claim_eddypro_raw_to_final_parity": ready_to_register_count > 0,
+            "can_release_full_eddypro_parity": False,
+            "can_change_full_parity_gate": False,
+        },
+        "truthfulness_boundary": (
+            "This artifact closes the acquisition/engineering round only. Full EddyPro parity remains blocked "
+            "until the same source has raw input, EddyPro project/settings, official Full_Output, normalized "
+            "reference, normalization provenance, and acceptance evidence."
+        ),
     }
 
 
@@ -970,6 +1114,243 @@ def _public_raw_validation_next_action(status: str) -> str:
     if status == "importer_only":
         return "Increase the real subset duration/field coverage and rerun RP smoke before attempting registration."
     return "Repair importer metadata, file format support, or field mappings before rerunning the public raw package."
+
+
+def _acquisition_artifact_summary(
+    artifact: dict[str, Any],
+    *,
+    artifact_path: Path,
+    fields: tuple[str, ...],
+) -> dict[str, Any]:
+    summary = {
+        "artifact_path": str(artifact_path),
+        "available": bool(artifact) and not bool(artifact.get("errors")),
+    }
+    for field in fields:
+        summary[field] = artifact.get(field, "")
+    if artifact.get("errors"):
+        summary["errors"] = list(artifact.get("errors", []) or [])
+    claim_boundary = artifact.get("claim_boundary")
+    if isinstance(claim_boundary, dict):
+        summary["claim_boundary"] = deepcopy(claim_boundary)
+    return summary
+
+
+def _acquisition_registered_anchor_record(source_probe: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source_id": str(source_probe.get("source_id", "")),
+        "provider": str(source_probe.get("provider", "")),
+        "source_url": str(source_probe.get("source_url", "")),
+        "acquisition_status": "registered_anchor",
+        "registration_readiness_status": "registered_and_accepted",
+        "missing_for_eddypro_parity": [],
+        "can_register_as_eddypro_parity_fixture": False,
+        "can_change_full_parity_gate": False,
+        "evidence": {
+            "registration_outcome": str(source_probe.get("registration_outcome", "")),
+            "parity_value": str(source_probe.get("parity_value", "")),
+        },
+        "next_action": "Use this accepted anchor as existing evidence; continue seeking additional independent public raw-to-final pairs.",
+    }
+
+
+def _acquisition_candidate_record(
+    plan_item: dict[str, Any],
+    *,
+    source_probe: dict[str, Any],
+    neon_download: dict[str, Any],
+    neon_validation: dict[str, Any],
+    public_raw_sample_validation: dict[str, Any],
+    neon_download_path: Path,
+    neon_validation_path: Path,
+    public_raw_sample_validation_path: Path,
+) -> dict[str, Any]:
+    source_id = str(plan_item.get("source_id", ""))
+    source_id_folded = source_id.lower()
+    provider_folded = str(plan_item.get("provider", "")).lower()
+    missing = list(plan_item.get("missing_for_eddypro_parity", []) or [])
+    sample_mode = str(plan_item.get("sample_mode", ""))
+    acquisition_status = "blocked_missing_eddypro_pair"
+    evidence: dict[str, Any] = {
+        "probe_status": str(source_probe.get("status", plan_item.get("status", ""))),
+        "sample_mode": sample_mode,
+        "downloadable_file_count": int(plan_item.get("downloadable_file_count", 0) or 0),
+    }
+    if "neon" in source_id_folded or "neon" in provider_folded:
+        neon_claim = dict(neon_validation.get("claim_boundary", {}) or {})
+        evidence.update(
+            {
+                "download_artifact": str(neon_download_path) if neon_download else "",
+                "download_status": str(neon_download.get("status", "")),
+                "downloaded_size_bytes": int(neon_download.get("size_bytes", 0) or 0),
+                "validation_artifact": str(neon_validation_path) if neon_validation else "",
+                "validation_status": str(neon_validation.get("status", "")),
+                "rp_status": str(neon_validation.get("rp_status", "")),
+                "can_claim_neon_engineering_validation": bool(
+                    neon_claim.get("can_claim_neon_engineering_validation", False)
+                ),
+            }
+        )
+        if str(neon_validation.get("status", "")) == "pass":
+            acquisition_status = "public_download_engineering_validated"
+        else:
+            acquisition_status = "ready_for_public_download_or_validation"
+    elif "icos" in source_id_folded or "icos" in provider_folded:
+        acquisition_status = "blocked_license_or_operator_subset_required"
+    elif sample_mode == "operator_subset":
+        package_claim = dict(public_raw_sample_validation.get("claim_boundary", {}) or {})
+        evidence.update(
+            {
+                "operator_subset_validation_artifact": (
+                    str(public_raw_sample_validation_path) if public_raw_sample_validation else ""
+                ),
+                "operator_subset_validation_status": str(public_raw_sample_validation.get("status", "")),
+                "operator_subset_source_id": str(public_raw_sample_validation.get("source_id", "")),
+                "can_claim_public_raw_engineering_validation": bool(
+                    package_claim.get("can_claim_public_raw_engineering_validation", False)
+                ),
+            }
+        )
+        if _operator_subset_validation_matches(source_id, public_raw_sample_validation):
+            acquisition_status = "operator_subset_engineering_validated"
+        else:
+            acquisition_status = "blocked_operator_subset_required"
+    elif sample_mode == "byte_range":
+        acquisition_status = "ready_for_public_download_or_validation"
+    return {
+        "source_id": source_id,
+        "provider": str(plan_item.get("provider", "")),
+        "source_url": str(plan_item.get("source_url", "")),
+        "acquisition_status": acquisition_status,
+        "sample_mode": sample_mode,
+        "registration_readiness_status": str(plan_item.get("registration_readiness_status", "")),
+        "missing_for_eddypro_parity": missing,
+        "can_register_as_eddypro_parity_fixture": bool(plan_item.get("can_register_as_eddypro_parity_fixture", False)),
+        "can_change_full_parity_gate": False,
+        "evidence": evidence,
+        "next_action": _acquisition_source_next_action(acquisition_status),
+    }
+
+
+def _operator_subset_validation_matches(source_id: str, package: dict[str, Any]) -> bool:
+    if str(package.get("status", "")) != "pass":
+        return False
+    package_source = str(package.get("source_id", "")).lower()
+    if not package_source:
+        return False
+    folded = source_id.lower()
+    return package_source in folded or folded in package_source
+
+
+def _engineering_validation_summaries(
+    *,
+    neon_validation: dict[str, Any],
+    public_raw_sample_validation: dict[str, Any],
+    neon_validation_path: Path,
+    public_raw_sample_validation_path: Path,
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    neon_claim = dict(neon_validation.get("claim_boundary", {}) or {})
+    if str(neon_validation.get("status", "")) == "pass":
+        items.append(
+            {
+                "validation_type": "neon_hdf5_engineering_validation",
+                "status": "pass",
+                "source_id": str(neon_validation.get("source_id", "")),
+                "source_file": str(neon_validation.get("source_file", "")),
+                "artifact": str(neon_validation_path),
+                "row_count": int(neon_validation.get("row_count", 0) or 0),
+                "rp_window_count": int(neon_validation.get("rp_window_count", 0) or 0),
+                "can_claim_engineering_validation": bool(neon_claim.get("can_claim_neon_engineering_validation", False)),
+                "can_claim_eddypro_raw_to_final_parity": bool(
+                    neon_claim.get("can_claim_eddypro_raw_to_final_parity", False)
+                ),
+            }
+        )
+    public_claim = dict(public_raw_sample_validation.get("claim_boundary", {}) or {})
+    if str(public_raw_sample_validation.get("status", "")) == "pass":
+        items.append(
+            {
+                "validation_type": "public_raw_sample_engineering_validation",
+                "status": "pass",
+                "source_id": str(public_raw_sample_validation.get("source_id", "")),
+                "source_file": str(public_raw_sample_validation.get("source_file", "")),
+                "artifact": str(public_raw_sample_validation_path),
+                "row_count": int(public_raw_sample_validation.get("row_count", 0) or 0),
+                "rp_window_count": int(public_raw_sample_validation.get("rp_window_count", 0) or 0),
+                "can_claim_engineering_validation": bool(
+                    public_claim.get("can_claim_public_raw_engineering_validation", False)
+                ),
+                "can_claim_eddypro_raw_to_final_parity": bool(
+                    public_claim.get("can_claim_eddypro_raw_to_final_parity", False)
+                ),
+            }
+        )
+    return items
+
+
+def _acquisition_closure_blockers(
+    records: list[dict[str, Any]],
+    *,
+    engineering_validations: list[dict[str, Any]],
+) -> list[str]:
+    blockers = [
+        "No public candidate has the complete raw/settings/official Full_Output/reference/provenance/acceptance set required for EddyPro raw-to-final parity."
+    ]
+    if not engineering_validations:
+        blockers.append("No public engineering validation package has passed yet.")
+    if any(str(item.get("acquisition_status", "")) == "blocked_operator_subset_required" for item in records):
+        blockers.append("At least one real raw candidate still requires an operator-provided subset.")
+    if any(str(item.get("acquisition_status", "")) == "blocked_license_or_operator_subset_required" for item in records):
+        blockers.append("At least one public source still requires licence/authenticated download handling.")
+    return _dedupe_strings(blockers)
+
+
+def _acquisition_closure_next_actions(records: list[dict[str, Any]], *, blockers: list[str]) -> list[dict[str, Any]]:
+    actions = [
+        {
+            "priority": "P0",
+            "action": "Keep full EddyPro parity blocked until an official raw-to-final evidence pair is registered and accepted.",
+            "source_ids": [str(item.get("source_id", "")) for item in records],
+        }
+    ]
+    for status, priority, action in (
+        ("ready_for_public_download_or_validation", "P0", "Download or validate direct public candidates such as NEON."),
+        ("blocked_operator_subset_required", "P1", "Obtain a small auditable raw subset for landing-page-only or very large candidates."),
+        ("blocked_license_or_operator_subset_required", "P1", "Complete licence/authenticated download flow or attach an operator-provided accepted subset."),
+    ):
+        ids = [str(item.get("source_id", "")) for item in records if str(item.get("acquisition_status", "")) == status]
+        if ids:
+            actions.append({"priority": priority, "action": action, "source_ids": ids})
+    if blockers:
+        actions.append({"priority": "P0", "action": "Carry blockers into delivery/report manifests instead of stalling execution.", "blockers": blockers})
+    return actions
+
+
+def _acquisition_source_next_action(status: str) -> str:
+    if status == "public_download_engineering_validated":
+        return "Attach official EddyPro settings and Full_Output for the same source before attempting parity registration."
+    if status == "operator_subset_engineering_validated":
+        return "Replace the subset with a complete official raw/settings/Full_Output evidence pair when available."
+    if status == "blocked_operator_subset_required":
+        return "Provide a bounded raw subset and run public raw sample validation package."
+    if status == "blocked_license_or_operator_subset_required":
+        return "Complete licence/authenticated download or provide accepted subset evidence."
+    if status == "ready_for_public_download_or_validation":
+        return "Run direct download, metadata/row smoke, and RP validation package."
+    return "Keep source in acquisition ledger and rerun discovery later."
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        output.append(text)
+        seen.add(text)
+    return output
 
 
 def _empty_field_coverage() -> dict[str, Any]:
