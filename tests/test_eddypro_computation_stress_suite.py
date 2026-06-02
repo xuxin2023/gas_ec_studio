@@ -15,10 +15,25 @@ def test_computation_stress_suite_passes_core_method_families(tmp_path: Path) ->
     assert payload["status"] == "pass"
     assert payload["pass_rate"] == 1.0
     assert payload["failed_cases"] == []
+    assert payload["case_count"] == 6
+    assert payload["computation_surface"]["status"] == "ready"
+    assert payload["computation_surface"]["blocked_family_count"] == 0
+    assert payload["claim_boundary"]["core_computation_surface_ready"] is True
+    assert payload["family_counts"]["pipeline_core"] == 1
+    assert payload["family_counts"]["flux_density_energy"] == 1
     assert payload["family_counts"]["footprint"] == 1
     assert payload["family_counts"]["uncertainty"] == 1
     assert payload["family_counts"]["spectral_correction"] == 1
     assert payload["family_counts"]["ch4_li7700"] == 1
+
+    pipeline_case = next(case for case in payload["cases"] if case["family"] == "pipeline_core")
+    assert pipeline_case["metrics"]["synthetic_oracle_status"] == "pass"
+    assert pipeline_case["metrics"]["required_oracle_case_count"] >= 5
+
+    flux_case = next(case for case in payload["cases"] if case["family"] == "flux_density_energy")
+    assert flux_case["metrics"]["density_modes_checked"] == ["mixing_ratio", "none", "wpl"]
+    assert flux_case["metrics"]["momentum_flux_tau_pa"] > 0.0
+    assert flux_case["metrics"]["biomet_override_status"] == "applied"
 
     spectral_case = next(case for case in payload["cases"] if case["family"] == "spectral_correction")
     assert spectral_case["metrics"]["fratini_measured_cospectrum_used"] is True

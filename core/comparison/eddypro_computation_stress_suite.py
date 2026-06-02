@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from core.ec_rp.analysis import (
+    compute_flux_metrics,
     compute_footprint,
     compute_footprint_2d_grid,
     compute_li7700_correction_sequence,
@@ -17,6 +18,7 @@ from core.ec_rp.analysis import (
     compute_uncertainty_finkelstein_sims,
     compute_uncertainty_mann_lenschow,
 )
+from core.comparison.synthetic_parity import run_synthetic_eddypro_parity_suite
 from models.hf_models import FrameQuality, NormalizedHFFrame
 
 
@@ -29,6 +31,8 @@ def build_eddypro_computation_stress_suite(
 
     root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
     cases = [
+        _pipeline_core_oracle_case(),
+        _flux_density_energy_closed_path_case(),
         _footprint_stress_case(),
         _uncertainty_stress_case(),
         _spectral_correction_stress_case(),
@@ -42,6 +46,7 @@ def build_eddypro_computation_stress_suite(
     for case in cases:
         family = str(case.get("family", "unknown"))
         family_counts[family] = family_counts.get(family, 0) + 1
+    computation_surface = _computation_surface(cases)
     return {
         "artifact_type": "eddypro_computation_stress_suite_v1",
         "suite_id": "eddypro_computation_stress_suite_v1",
@@ -53,6 +58,7 @@ def build_eddypro_computation_stress_suite(
         "failed_case_count": len(failed),
         "pass_rate": round(len(passed) / max(1, len(cases)), 4),
         "family_counts": dict(sorted(family_counts.items())),
+        "computation_surface": computation_surface,
         "failed_cases": [
             {"case_id": case["case_id"], "family": case["family"], "failure_reasons": case.get("failure_reasons", [])}
             for case in failed
@@ -63,6 +69,7 @@ def build_eddypro_computation_stress_suite(
             "can_claim_official_field_numeric_parity": False,
             "can_replace_real_eddypro_raw_to_final_fixture": False,
             "can_ignore_real_data_blocker_for_algorithm_stress": True,
+            "core_computation_surface_ready": computation_surface["status"] == "ready",
         },
         "truthfulness_boundary": (
             "This suite stress-tests EC computation families with deterministic synthetic/source-derived inputs. "
@@ -71,10 +78,178 @@ def build_eddypro_computation_stress_suite(
         ),
         "known_limitations": [
             "Synthetic stress cases exercise invariants, edge conditions, and method provenance rather than site-specific field truth.",
+            "Pipeline-core oracle checks are deterministic CI evidence and do not replace official EddyPro executable output.",
             "Official EddyPro raw-to-final parity remains blocked until paired raw/settings/Full_Output evidence exists.",
             "Stress cases should expand whenever new computation families or method variants are added.",
         ],
     }
+
+
+def _pipeline_core_oracle_case() -> dict[str, Any]:
+    suite = run_synthetic_eddypro_parity_suite()
+    required_case_ids = {
+        "known_covariance_density_none",
+        "known_lag_covariance_max",
+        "density_correction_mode_semantics",
+        "double_rotation_tilt_guardrail",
+        "constant_signal_qc_guardrail",
+    }
+    case_by_id = {str(case.get("case_id", "")): dict(case or {}) for case in list(suite.get("cases", []) or [])}
+    missing = sorted(required_case_ids - set(case_by_id))
+    failed_required = [
+        case_id
+        for case_id in sorted(required_case_ids & set(case_by_id))
+        if case_by_id[case_id].get("status") != "pass"
+    ]
+    failures: list[str] = []
+    if suite.get("status") != "pass":
+        failures.append(f"synthetic_oracle_suite_status={suite.get('status')}")
+    failures.extend(f"missing_required_oracle={case_id}" for case_id in missing)
+    failures.extend(f"failed_required_oracle={case_id}" for case_id in failed_required)
+    return _case_payload(
+        case_id="pipeline_core_oracle_gate",
+        family="pipeline_core",
+        status="pass" if not failures else "fail",
+        failure_reasons=failures,
+        metrics={
+            "synthetic_oracle_status": suite.get("status"),
+            "oracle_case_count": suite.get("case_count", 0),
+            "required_oracle_case_count": len(required_case_ids),
+            "failed_required_oracle_count": len(failed_required),
+            "missing_required_oracle_count": len(missing),
+        },
+        details={
+            "required_case_ids": sorted(required_case_ids),
+            "case_summaries": [
+                {
+                    "case_id": str(case.get("case_id", "")),
+                    "status": str(case.get("status", "")),
+                    "check_count": int(case.get("check_count", 0) or 0),
+                    "failed_check_count": int(case.get("failed_check_count", 0) or 0),
+                }
+                for case in list(suite.get("cases", []) or [])
+            ],
+            "truthfulness_note": suite.get("truthfulness_note", ""),
+        },
+    )
+
+
+def _flux_density_energy_closed_path_case() -> dict[str, Any]:
+    sample_rate_hz = 10.0
+    samples = 720
+    axis = np.arange(samples, dtype=float) / sample_rate_hz
+    w = 0.42 * np.sin(2.0 * np.pi * 0.20 * axis) + 0.05 * np.cos(2.0 * np.pi * 0.55 * axis)
+    co2 = 410.0 + 7.0 * (np.roll(w, 3) + 0.02 * np.sin(2.0 * np.pi * 0.9 * axis))
+    h2o = 12.0 + 0.9 * np.roll(w, 1)
+    pressure = 101.3 + 0.03 * np.sin(2.0 * np.pi * 0.04 * axis)
+    temp = 25.0 + 0.6 * np.sin(2.0 * np.pi * 0.17 * axis)
+    cell_pressure = 101.2 + 0.04 * w
+    cell_temp = 26.0 + 0.9 * w
+    by_mode = {
+        mode: compute_flux_metrics(
+            w_series=w,
+            co2_ppm=co2,
+            h2o_mmol=h2o,
+            pressure_kpa=pressure,
+            temp_c=temp,
+            cell_pressure_kpa=cell_pressure,
+            cell_temp_c=cell_temp,
+            detrend_mode="block_mean",
+            density_correction_mode=mode,
+        )
+        for mode in ("none", "mixing_ratio", "wpl")
+    }
+    biomet_override = compute_flux_metrics(
+        w_series=w,
+        co2_ppm=co2,
+        h2o_mmol=h2o,
+        pressure_kpa=pressure,
+        temp_c=temp,
+        detrend_mode="block_mean",
+        density_correction_mode="wpl",
+        ambient_overrides={
+            "source": "synthetic_biomet_stress",
+            "mean_pressure_kpa": 99.8,
+            "mean_temp_c": 22.4,
+            "mean_h2o_mmol": 14.5,
+        },
+    )
+    wpl = by_mode["wpl"]
+    ustar = 0.37
+    momentum_flux_tau_pa = float(wpl.get("air_density_kg_m3", 0.0) or 0.0) * ustar**2
+    failures: list[str] = []
+    if not _close(by_mode["none"].get("primary_flux"), by_mode["none"].get("raw_flux"), abs_tol=1e-12):
+        failures.append("density_none_primary_flux_not_raw")
+    if not _close(by_mode["mixing_ratio"].get("primary_flux"), by_mode["mixing_ratio"].get("mixing_ratio_flux"), abs_tol=1e-12):
+        failures.append("mixing_ratio_primary_flux_not_mixing_ratio")
+    if not _close(wpl.get("primary_flux"), wpl.get("density_corrected_flux"), abs_tol=1e-12):
+        failures.append("wpl_primary_flux_not_density_corrected")
+    density_expected = (
+        float(wpl.get("raw_flux", 0.0) or 0.0)
+        + float(wpl.get("wpl_water_vapor_term", 0.0) or 0.0)
+        + float(wpl.get("wpl_sensible_heat_term", 0.0) or 0.0)
+        + float(wpl.get("closed_path_cell_pressure_term", 0.0) or 0.0)
+    )
+    if not _close(wpl.get("density_corrected_flux"), density_expected, rel_tol=1e-9, abs_tol=1e-12):
+        failures.append("wpl_density_terms_do_not_sum")
+    if wpl.get("cell_thermodynamics_status") != "available":
+        failures.append("closed_path_cell_thermodynamics_not_available")
+    if wpl.get("wpl_sensible_heat_source") != "cell_temperature":
+        failures.append("closed_path_cell_temperature_not_selected")
+    if not bool(wpl.get("closed_path_density_correction_applied")):
+        failures.append("closed_path_density_correction_not_applied")
+    for key in (
+        "sensible_heat_flux_w_m2",
+        "latent_heat_flux_w_m2",
+        "evapotranspiration_rate_mm_h",
+        "air_density_kg_m3",
+    ):
+        if not _finite_number(wpl.get(key)) or abs(float(wpl.get(key, 0.0) or 0.0)) <= 1e-15:
+            failures.append(f"{key}_not_finite_or_zero")
+    if not _positive_number(momentum_flux_tau_pa):
+        failures.append("momentum_tau_not_positive")
+    if biomet_override.get("ambient_override_status") != "applied":
+        failures.append("biomet_ambient_override_not_applied")
+    if biomet_override.get("ambient_override_source") != "synthetic_biomet_stress":
+        failures.append("biomet_ambient_override_source_missing")
+    return _case_payload(
+        case_id="flux_density_energy_closed_path_sweep",
+        family="flux_density_energy",
+        status="pass" if not failures else "fail",
+        failure_reasons=failures,
+        metrics={
+            "density_modes_checked": sorted(by_mode),
+            "wpl_water_vapor_term": wpl.get("wpl_water_vapor_term"),
+            "wpl_sensible_heat_term": wpl.get("wpl_sensible_heat_term"),
+            "closed_path_density_term": wpl.get("closed_path_density_term"),
+            "sensible_heat_flux_w_m2": wpl.get("sensible_heat_flux_w_m2"),
+            "latent_heat_flux_w_m2": wpl.get("latent_heat_flux_w_m2"),
+            "evapotranspiration_rate_mm_h": wpl.get("evapotranspiration_rate_mm_h"),
+            "momentum_flux_tau_pa": momentum_flux_tau_pa,
+            "biomet_override_status": biomet_override.get("ambient_override_status"),
+        },
+        details={
+            "primary_flux_by_mode": {
+                mode: {
+                    "primary_flux": payload.get("primary_flux"),
+                    "raw_flux": payload.get("raw_flux"),
+                    "mixing_ratio_flux": payload.get("mixing_ratio_flux"),
+                    "density_corrected_flux": payload.get("density_corrected_flux"),
+                    "density_correction_mode": payload.get("density_correction_mode"),
+                    "density_correction_reason": payload.get("density_correction_reason"),
+                }
+                for mode, payload in by_mode.items()
+            },
+            "closed_path_cell_detail": wpl.get("closed_path_cell_detail", {}),
+            "biomet_override_summary": {
+                "ambient_override_status": biomet_override.get("ambient_override_status"),
+                "ambient_override_source": biomet_override.get("ambient_override_source"),
+                "mean_pressure_kpa": biomet_override.get("mean_pressure_kpa"),
+                "mean_temp_c": biomet_override.get("mean_temp_c"),
+                "mean_h2o_mmol": biomet_override.get("mean_h2o_mmol"),
+            },
+        },
+    )
 
 
 def _footprint_stress_case() -> dict[str, Any]:
@@ -389,6 +564,42 @@ def _case_payload(
     }
 
 
+def _computation_surface(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    required_families = [
+        "pipeline_core",
+        "flux_density_energy",
+        "footprint",
+        "uncertainty",
+        "spectral_correction",
+        "ch4_li7700",
+    ]
+    case_by_family = {str(case.get("family", "")): case for case in cases}
+    family_status = {
+        family: str(dict(case_by_family.get(family, {}) or {}).get("status", "missing"))
+        for family in required_families
+    }
+    blocked = [
+        {
+            "family": family,
+            "status": status,
+            "case_id": str(dict(case_by_family.get(family, {}) or {}).get("case_id", "")),
+            "failure_reasons": list(dict(case_by_family.get(family, {}) or {}).get("failure_reasons", []) or []),
+        }
+        for family, status in family_status.items()
+        if status != "pass"
+    ]
+    return {
+        "status": "ready" if not blocked else "blocked",
+        "required_families": required_families,
+        "ready_family_count": len(required_families) - len(blocked),
+        "blocked_family_count": len(blocked),
+        "family_status": family_status,
+        "blocked_families": blocked,
+        "can_keep_program_closed_without_real_data": not blocked,
+        "does_not_replace_official_eddypro_numeric_parity": True,
+    }
+
+
 def _ordered_contribution_distances(values: dict[str, Any]) -> bool:
     ordered = [float(values.get(key, 0.0) or 0.0) for key in ("x10", "x30", "x50", "x70", "x90")]
     return all(value > 0.0 for value in ordered) and ordered == sorted(ordered)
@@ -396,3 +607,13 @@ def _ordered_contribution_distances(values: dict[str, Any]) -> bool:
 
 def _positive_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and math.isfinite(float(value)) and float(value) > 0.0
+
+
+def _finite_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and math.isfinite(float(value))
+
+
+def _close(value: Any, expected: Any, *, rel_tol: float = 1e-9, abs_tol: float = 1e-12) -> bool:
+    if not _finite_number(value) or not _finite_number(expected):
+        return False
+    return math.isclose(float(value), float(expected), rel_tol=rel_tol, abs_tol=abs_tol)

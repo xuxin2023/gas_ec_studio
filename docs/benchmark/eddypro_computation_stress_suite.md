@@ -9,6 +9,13 @@ promoting synthetic checks to official EddyPro field numeric parity.
 
 - Footprint: Kljun, Kormann-Meixner, and Hsieh stability sweeps plus a 2D grid
   mass-conservation check.
+- Pipeline core oracle: known covariance, covariance-max lag recovery,
+  density-correction mode semantics, double-rotation tilt removal, and
+  constant-signal QC rejection through the RP pipeline.
+- Flux, density, and energy: raw/mixing-ratio/WPL primary-flux selection,
+  closed-path cell thermodynamic density terms, configured biomet ambient
+  overrides, sensible heat, latent heat, evapotranspiration, and momentum
+  flux unit sanity checks.
 - Random uncertainty: Mann & Lenschow and Finkelstein & Sims positive-error and
   uncertainty-band checks.
 - Spectral correction: Massman, Horst, Ibrom, and Fratini correction-factor
@@ -50,3 +57,5 @@ python -m core.headless_batch_runner `
 Result exports write `eddypro_computation_stress_suite.json` next to
 `eddypro_coverage_audit.json` and `eddypro_computation_scope_audit.json`, then
 propagate all three through the formal report and delivery package manifests.
+The artifact also includes `computation_surface`, a compact ready/blocked
+rollup for the six required computation families.
