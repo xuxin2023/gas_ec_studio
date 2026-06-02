@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from core.comparison.eddypro_computation_scope_audit import build_eddypro_computation_scope_audit
+from core.comparison.eddypro_computation_stress_suite import build_eddypro_computation_stress_suite
+from core.headless_batch_runner import run_cli
+
+
+def test_computation_stress_suite_passes_core_method_families(tmp_path: Path) -> None:
+    payload = build_eddypro_computation_stress_suite(workspace_root=tmp_path)
+
+    assert payload["artifact_type"] == "eddypro_computation_stress_suite_v1"
+    assert payload["status"] == "pass"
+    assert payload["pass_rate"] == 1.0
+    assert payload["failed_cases"] == []
+    assert payload["family_counts"]["footprint"] == 1
+    assert payload["family_counts"]["uncertainty"] == 1
+    assert payload["family_counts"]["spectral_correction"] == 1
+    assert payload["family_counts"]["ch4_li7700"] == 1
+
+    spectral_case = next(case for case in payload["cases"] if case["family"] == "spectral_correction")
+    assert spectral_case["metrics"]["fratini_measured_cospectrum_used"] is True
+    assert spectral_case["metrics"]["max_correction_factor"] >= 1.0
+
+    ch4_case = next(case for case in payload["cases"] if case["family"] == "ch4_li7700")
+    assert ch4_case["metrics"]["status_diagnostics_status"] == "pass"
+    assert ch4_case["metrics"]["final_flux_nmol_m2_s"] > 0.0
+    assert payload["claim_boundary"]["can_claim_official_field_numeric_parity"] is False
+
+
+def test_headless_cli_writes_computation_stress_suite(tmp_path: Path) -> None:
+    output = tmp_path / "eddypro_computation_stress_suite.json"
+
+    code = run_cli(
+        [
+            "--build-eddypro-computation-stress-suite",
+            "--workspace-root",
+            ".",
+            "--output",
+            str(output),
+        ]
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["artifact_type"] == "eddypro_computation_stress_suite_v1"
+    assert payload["status"] == "pass"
+    assert payload["claim_boundary"]["can_replace_real_eddypro_raw_to_final_fixture"] is False
+
+
+def test_computation_scope_audit_blocks_failed_stress_suite(tmp_path: Path) -> None:
+    matrix = tmp_path / "capability_matrix.json"
+    matrix.write_text(
+        json.dumps(
+            {
+                "artifact_type": "eddypro_capability_matrix",
+                "capabilities": [
+                    {
+                        "id": "spectral_corrections",
+                        "family": "spectral",
+                        "gas_ec_status": "covered",
+                        "coverage_checklist": [{"id": "massman_horst", "status": "done"}],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    failed_suite = {
+        "artifact_type": "eddypro_computation_stress_suite_v1",
+        "suite_id": "eddypro_computation_stress_suite_v1",
+        "status": "fail",
+        "case_count": 1,
+        "passed_case_count": 0,
+        "failed_case_count": 1,
+        "pass_rate": 0.0,
+        "failed_cases": [
+            {
+                "case_id": "spectral_correction_family_measured_cospectrum_sweep",
+                "family": "spectral_correction",
+                "failure_reasons": ["fratini:measured_cospectrum_not_used"],
+            }
+        ],
+    }
+
+    payload = build_eddypro_computation_scope_audit(
+        capability_matrix_path=matrix,
+        coverage_audit={"can_claim_source_derived_functional_parity": True},
+        computation_stress_suite=failed_suite,
+        workspace_root=tmp_path,
+    )
+
+    assert payload["status"] == "computation_scope_blocked"
+    assert payload["claim_boundary"]["can_claim_source_derived_computational_superiority"] is False
+    assert payload["computation_stress_suite_gate"]["status"] == "fail"
+    assert payload["scope_summary"]["stress_suite_failed_case_count"] == 1
+    assert "spectral_correction_family_measured_cospectrum_sweep" in payload["next_actions"][0]

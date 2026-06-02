@@ -112,6 +112,7 @@ def export_delivery_package(
         "official_eddypro_run": audit.get("official_eddypro_run", {}),
         "eddypro_source_inventory": audit.get("eddypro_source_inventory", {}),
         "eddypro_coverage_audit": audit.get("eddypro_coverage_audit", {}),
+        "eddypro_computation_stress_suite": audit.get("eddypro_computation_stress_suite", {}),
         "eddypro_computation_scope_audit": audit.get("eddypro_computation_scope_audit", {}),
         "eddypro_computation_summary": audit.get("eddypro_computation_summary", {}),
         "eddypro_surrogate_evidence_closure": audit.get("eddypro_surrogate_evidence_closure", {}),
@@ -270,6 +271,7 @@ def _build_readme(
                 "official_eddypro_run：stored inside official_raw_evidence_pack.official_eddypro_run",
                 f"eddypro_source_inventory：{result_files.get('eddypro_source_inventory_artifact', '--')}",
                 f"eddypro_coverage_audit：{result_files.get('eddypro_coverage_audit_artifact', '--')}",
+                f"eddypro_computation_stress_suite：{result_files.get('eddypro_computation_stress_suite_artifact', '--')}",
                 f"raw_to_final_parity：{result_files.get('raw_to_final_parity_artifact', '--')}",
                 f"network_validation_summary：{result_files.get('network_validation_summary', '--')}",
             ]
@@ -348,6 +350,10 @@ def _build_delivery_audit(
     )
     eddypro_source_inventory = dict(result_manifest.get("eddypro_source_inventory", {}) or {})
     eddypro_coverage_audit = dict(result_manifest.get("eddypro_coverage_audit", {}) or {})
+    eddypro_computation_stress_suite = dict(
+        result_manifest.get("eddypro_computation_stress_suite", {})
+        or _read_json_file(result_files.get("eddypro_computation_stress_suite_artifact", ""))
+    )
     eddypro_computation_scope_audit = dict(
         result_manifest.get("eddypro_computation_scope_audit", {})
         or _read_json_file(result_files.get("eddypro_computation_scope_audit_artifact", ""))
@@ -444,6 +450,7 @@ def _build_delivery_audit(
         "official_raw_evidence_pack_artifact",
         "eddypro_source_inventory_artifact",
         "eddypro_coverage_audit_artifact",
+        "eddypro_computation_stress_suite_artifact",
         "eddypro_computation_scope_audit_artifact",
         "eddypro_surrogate_evidence_closure_artifact",
         "eddypro_release_gate_artifact",
@@ -604,6 +611,9 @@ def _build_delivery_audit(
             "eddypro_source_inventory_feature_count": eddypro_source_inventory.get("feature_count", 0),
             "eddypro_coverage_audit_status": eddypro_coverage_audit.get("status", ""),
             "eddypro_coverage_completion_score": dict(eddypro_coverage_audit.get("capability_summary", {}) or {}).get("completion_score", 0.0),
+            "eddypro_computation_stress_suite_status": eddypro_computation_stress_suite.get("status", ""),
+            "eddypro_computation_stress_pass_rate": eddypro_computation_stress_suite.get("pass_rate", 0.0),
+            "eddypro_computation_stress_failed_case_count": eddypro_computation_stress_suite.get("failed_case_count", 0),
             "eddypro_computation_scope_audit_status": eddypro_computation_scope_audit.get("status", ""),
             "can_claim_source_derived_computational_superiority": dict(
                 eddypro_computation_scope_audit.get("claim_boundary", {}) or {}
@@ -797,9 +807,13 @@ def _build_delivery_audit(
         "official_eddypro_run": official_eddypro_run,
         "eddypro_source_inventory": eddypro_source_inventory,
         "eddypro_coverage_audit": eddypro_coverage_audit,
+        "eddypro_computation_stress_suite": eddypro_computation_stress_suite,
         "eddypro_computation_scope_audit": eddypro_computation_scope_audit,
         "eddypro_computation_summary": {
             "status": eddypro_computation_scope_audit.get("status", ""),
+            "stress_suite_status": eddypro_computation_stress_suite.get("status", ""),
+            "stress_suite_pass_rate": eddypro_computation_stress_suite.get("pass_rate", 0.0),
+            "stress_suite_failed_case_count": eddypro_computation_stress_suite.get("failed_case_count", 0),
             "can_claim_source_derived_computational_superiority": dict(
                 eddypro_computation_scope_audit.get("claim_boundary", {}) or {}
             ).get("can_claim_source_derived_computational_superiority", False),

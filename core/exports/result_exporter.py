@@ -21,6 +21,7 @@ from core.acquisition.runtime_install import (
 )
 from core.comparison.eddypro_coverage_audit import build_eddypro_coverage_audit
 from core.comparison.eddypro_computation_scope_audit import build_eddypro_computation_scope_audit
+from core.comparison.eddypro_computation_stress_suite import build_eddypro_computation_stress_suite
 from core.comparison.eddypro_release_gate import build_eddypro_release_gate
 from core.comparison.eddypro_source_inventory import build_eddypro_source_inventory
 from core.comparison.fixture_pack import (
@@ -652,9 +653,15 @@ class ResultExporter:
         eddypro_surrogate_evidence_closure = dict(eddypro_coverage_audit.get("surrogate_evidence_closure", {}) or {})
         eddypro_coverage_audit_path = export_root / "eddypro_coverage_audit.json"
         self._write_json(eddypro_coverage_audit_path, eddypro_coverage_audit)
+        eddypro_computation_stress_suite = build_eddypro_computation_stress_suite(
+            workspace_root=fixture_pack_workspace_root or None,
+        )
+        eddypro_computation_stress_suite_path = export_root / "eddypro_computation_stress_suite.json"
+        self._write_json(eddypro_computation_stress_suite_path, eddypro_computation_stress_suite)
         eddypro_computation_scope_audit = build_eddypro_computation_scope_audit(
             workspace_root=fixture_pack_workspace_root or None,
             coverage_audit=eddypro_coverage_audit,
+            computation_stress_suite=eddypro_computation_stress_suite,
         )
         eddypro_computation_scope_audit_path = export_root / "eddypro_computation_scope_audit.json"
         self._write_json(eddypro_computation_scope_audit_path, eddypro_computation_scope_audit)
@@ -865,6 +872,7 @@ class ResultExporter:
         exported_files.append(official_raw_evidence_pack_path.name)
         exported_files.append(eddypro_source_inventory_path.name)
         exported_files.append(eddypro_coverage_audit_path.name)
+        exported_files.append(eddypro_computation_stress_suite_path.name)
         exported_files.append(eddypro_computation_scope_audit_path.name)
         exported_files.append(eddypro_surrogate_evidence_closure_path.name)
         exported_files.append(eddypro_release_gate_path.name)
@@ -989,6 +997,13 @@ class ResultExporter:
                 "eddypro_source_inventory_artifact": str(eddypro_source_inventory_path),
                 "eddypro_coverage_audit": eddypro_coverage_audit,
                 "eddypro_coverage_audit_artifact": str(eddypro_coverage_audit_path),
+                "eddypro_computation_stress_suite": eddypro_computation_stress_suite,
+                "eddypro_computation_stress_suite_artifact": str(eddypro_computation_stress_suite_path),
+                "eddypro_computation_stress_suite_status": str(eddypro_computation_stress_suite.get("status", "")),
+                "eddypro_computation_stress_pass_rate": float(eddypro_computation_stress_suite.get("pass_rate", 0.0) or 0.0),
+                "eddypro_computation_stress_failed_case_count": int(
+                    eddypro_computation_stress_suite.get("failed_case_count", 0) or 0
+                ),
                 "eddypro_computation_scope_audit": eddypro_computation_scope_audit,
                 "eddypro_computation_scope_audit_artifact": str(eddypro_computation_scope_audit_path),
                 "eddypro_computation_scope_audit_status": str(eddypro_computation_scope_audit.get("status", "")),
@@ -1159,6 +1174,13 @@ class ResultExporter:
             "eddypro_source_inventory_artifact": str(eddypro_source_inventory_path),
             "eddypro_coverage_audit": eddypro_coverage_audit,
             "eddypro_coverage_audit_artifact": str(eddypro_coverage_audit_path),
+            "eddypro_computation_stress_suite": eddypro_computation_stress_suite,
+            "eddypro_computation_stress_suite_artifact": str(eddypro_computation_stress_suite_path),
+            "eddypro_computation_stress_suite_status": str(eddypro_computation_stress_suite.get("status", "")),
+            "eddypro_computation_stress_pass_rate": float(eddypro_computation_stress_suite.get("pass_rate", 0.0) or 0.0),
+            "eddypro_computation_stress_failed_case_count": int(
+                eddypro_computation_stress_suite.get("failed_case_count", 0) or 0
+            ),
             "eddypro_computation_scope_audit": eddypro_computation_scope_audit,
             "eddypro_computation_scope_audit_artifact": str(eddypro_computation_scope_audit_path),
             "eddypro_computation_scope_audit_status": str(eddypro_computation_scope_audit.get("status", "")),
@@ -1633,6 +1655,7 @@ class ResultExporter:
         files["official_raw_evidence_pack_artifact"] = str(official_raw_evidence_pack_path)
         files["eddypro_source_inventory_artifact"] = str(eddypro_source_inventory_path)
         files["eddypro_coverage_audit_artifact"] = str(eddypro_coverage_audit_path)
+        files["eddypro_computation_stress_suite_artifact"] = str(eddypro_computation_stress_suite_path)
         files["eddypro_computation_scope_audit_artifact"] = str(eddypro_computation_scope_audit_path)
         files["eddypro_surrogate_evidence_closure_artifact"] = str(eddypro_surrogate_evidence_closure_path)
         files["eddypro_release_gate_artifact"] = str(eddypro_release_gate_path)

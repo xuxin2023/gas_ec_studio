@@ -36,6 +36,7 @@ def build_eddypro_computation_scope_audit(
     *,
     capability_matrix_path: str | Path | None = None,
     coverage_audit: dict[str, Any] | None = None,
+    computation_stress_suite: dict[str, Any] | None = None,
     workspace_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Separate EC computation blockers from full EddyPro software-surface blockers.
@@ -72,7 +73,12 @@ def build_eddypro_computation_scope_audit(
     status_counts = Counter(row["scope_category"] for row in rows)
     computation_ready = not core_algorithm_blockers and not supporting_algorithm_blockers
     source_functional_ok = bool((coverage_audit or {}).get("can_claim_source_derived_functional_parity", True))
-    can_claim_source_derived = computation_ready and source_functional_ok and not matrix_errors
+    stress_suite_gate = _stress_suite_gate(computation_stress_suite)
+    stress_suite_ok = (
+        not stress_suite_gate["supplied"]
+        or stress_suite_gate["status"] == "pass"
+    )
+    can_claim_source_derived = computation_ready and source_functional_ok and not matrix_errors and stress_suite_ok
     return {
         "artifact_type": "eddypro_computation_scope_audit_v1",
         "audit_id": "eddypro_computation_scope_audit_v1",
@@ -93,13 +99,17 @@ def build_eddypro_computation_scope_audit(
             "core_algorithm_blocker_count": len(core_algorithm_blockers),
             "supporting_algorithm_blocker_count": len(supporting_algorithm_blockers),
             "evidence_pending_count": len(evidence_pending_rows),
+            "stress_suite_status": stress_suite_gate["status"],
+            "stress_suite_failed_case_count": stress_suite_gate["failed_case_count"],
             "scope_category_counts": dict(sorted(status_counts.items())),
         },
+        "computation_stress_suite_gate": stress_suite_gate,
         "claim_boundary": {
             "can_claim_source_derived_computational_superiority": can_claim_source_derived,
             "can_claim_full_eddypro_software_parity": False,
             "can_claim_official_field_numeric_parity": False,
             "can_ignore_non_computational_blockers_for_computation_claim": True,
+            "requires_computation_stress_suite_pass_for_exported_claim": True,
             "requires_official_raw_to_final_evidence_for_numeric_claim": True,
         },
         "discard_policy": {
@@ -132,6 +142,7 @@ def build_eddypro_computation_scope_audit(
             core_algorithm_blockers=core_algorithm_blockers,
             supporting_algorithm_blockers=supporting_algorithm_blockers,
             evidence_pending_rows=evidence_pending_rows,
+            stress_suite_gate=stress_suite_gate,
         ),
         "truthfulness_boundary": (
             "This audit evaluates EC computation readiness, not full EddyPro software parity. "
@@ -253,9 +264,15 @@ def _next_actions(
     core_algorithm_blockers: list[dict[str, Any]],
     supporting_algorithm_blockers: list[dict[str, Any]],
     evidence_pending_rows: list[dict[str, Any]],
+    stress_suite_gate: dict[str, Any],
 ) -> list[str]:
     if not can_claim_source_derived:
         blockers = core_algorithm_blockers + supporting_algorithm_blockers
+        if stress_suite_gate.get("supplied") and stress_suite_gate.get("status") != "pass":
+            return [
+                f"Close computation stress failure: {item.get('case_id')} ({item.get('family')})."
+                for item in list(stress_suite_gate.get("failed_cases", []) or [])[:8]
+            ] or ["Resolve computation stress suite failures before claiming computation readiness."]
         return [
             f"Close computation blocker: {row.get('id')} ({row.get('calculation_relevance')})."
             for row in blockers[:8]
@@ -270,8 +287,48 @@ def _next_actions(
             + ", ".join(str(row.get("id", "")) for row in evidence_pending_rows[:6])
             + "."
         )
-    actions.append("Add harder synthetic/source-derived stress tests for CH4, spectral correction, footprint, and uncertainty families.")
+    if stress_suite_gate.get("supplied"):
+        actions.append("Keep expanding synthetic/source-derived stress tests as new computation families land.")
+    else:
+        actions.append("Run the computation stress suite before publishing an exported computation-superiority claim.")
     return actions
+
+
+def _stress_suite_gate(computation_stress_suite: dict[str, Any] | None) -> dict[str, Any]:
+    suite = dict(computation_stress_suite or {})
+    if not suite:
+        return {
+            "supplied": False,
+            "status": "not_supplied",
+            "case_count": 0,
+            "passed_case_count": 0,
+            "failed_case_count": 0,
+            "pass_rate": 0.0,
+            "failed_cases": [],
+            "can_support_source_derived_computation_stress": False,
+        }
+    failed_cases = [
+        {
+            "case_id": str(item.get("case_id", "")),
+            "family": str(item.get("family", "")),
+            "failure_reasons": list(item.get("failure_reasons", []) or []),
+        }
+        for item in list(suite.get("failed_cases", []) or [])
+        if isinstance(item, dict)
+    ]
+    status = str(suite.get("status", "") or "unknown")
+    return {
+        "supplied": True,
+        "artifact_type": str(suite.get("artifact_type", "")),
+        "suite_id": str(suite.get("suite_id", "")),
+        "status": status,
+        "case_count": int(suite.get("case_count", 0) or 0),
+        "passed_case_count": int(suite.get("passed_case_count", 0) or 0),
+        "failed_case_count": int(suite.get("failed_case_count", len(failed_cases)) or 0),
+        "pass_rate": float(suite.get("pass_rate", 0.0) or 0.0),
+        "failed_cases": failed_cases,
+        "can_support_source_derived_computation_stress": status == "pass",
+    }
 
 
 def _coverage_row(coverage_audit: dict[str, Any], capability_id: str) -> dict[str, Any]:

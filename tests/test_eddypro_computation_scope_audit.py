@@ -115,4 +115,6 @@ def test_headless_cli_writes_computation_scope_audit(tmp_path: Path) -> None:
     assert code == 0
     assert payload["artifact_type"] == "eddypro_computation_scope_audit_v1"
     assert payload["scope_summary"]["calculation_core_count"] >= 1
+    assert payload["computation_stress_suite_gate"]["status"] == "pass"
+    assert payload["scope_summary"]["stress_suite_failed_case_count"] == 0
     assert payload["claim_boundary"]["can_claim_official_field_numeric_parity"] is False

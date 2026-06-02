@@ -84,6 +84,7 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
             "official_raw_evidence_pack.json",
             "flux_correction_ledger.json",
             "eddypro_coverage_audit.json",
+            "eddypro_computation_stress_suite.json",
             "eddypro_computation_scope_audit.json",
             "eddypro_surrogate_evidence_closure.json",
             "eddypro_release_gate.json",
@@ -149,6 +150,10 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["eddypro_source_inventory"]["inventory_id"] == "eddypro_official_source_inventory_v1"
         assert summary_payload["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
         assert summary_payload["eddypro_coverage_audit"]["can_claim_full_eddypro_parity"] is False
+        assert summary_payload["eddypro_computation_stress_suite"]["artifact_type"] == "eddypro_computation_stress_suite_v1"
+        assert summary_payload["eddypro_computation_stress_suite_artifact"].endswith("eddypro_computation_stress_suite.json")
+        assert summary_payload["eddypro_computation_stress_suite_status"] == "pass"
+        assert summary_payload["eddypro_computation_stress_failed_case_count"] == 0
         assert summary_payload["eddypro_computation_scope_audit"]["artifact_type"] == "eddypro_computation_scope_audit_v1"
         assert summary_payload["eddypro_computation_scope_audit_artifact"].endswith("eddypro_computation_scope_audit.json")
         assert summary_payload["can_claim_source_derived_computational_superiority"] is True
@@ -235,6 +240,9 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["eddypro_source_inventory"]["feature_count"] >= 10
         assert manifest_payload["eddypro_coverage_audit_artifact"].endswith("eddypro_coverage_audit.json")
         assert manifest_payload["eddypro_coverage_audit"]["claim_gate"]["status"] == "blocked"
+        assert manifest_payload["eddypro_computation_stress_suite_artifact"].endswith("eddypro_computation_stress_suite.json")
+        assert manifest_payload["eddypro_computation_stress_suite"]["status"] == "pass"
+        assert manifest_payload["eddypro_computation_stress_pass_rate"] == 1.0
         assert manifest_payload["eddypro_computation_scope_audit_artifact"].endswith("eddypro_computation_scope_audit.json")
         assert manifest_payload["eddypro_computation_scope_audit"]["claim_boundary"]["can_claim_source_derived_computational_superiority"] is True
         assert manifest_payload["eddypro_computation_scope_audit"]["claim_boundary"]["can_claim_official_field_numeric_parity"] is False

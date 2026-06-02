@@ -141,6 +141,7 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["artifact_index"]["official_raw_evidence_pack_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_source_inventory_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_coverage_audit_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["eddypro_computation_stress_suite_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_computation_scope_audit_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_surrogate_evidence_closure_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_release_gate_artifact"]["packaged"] is True
@@ -162,7 +163,11 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["official_eddypro_run"]["status"] == "not_available"
         assert manifest["eddypro_source_inventory"]["inventory_id"] == "eddypro_official_source_inventory_v1"
         assert manifest["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
+        assert manifest["eddypro_computation_stress_suite"]["artifact_type"] == "eddypro_computation_stress_suite_v1"
+        assert manifest["eddypro_computation_stress_suite"]["status"] == "pass"
         assert manifest["eddypro_computation_scope_audit"]["artifact_type"] == "eddypro_computation_scope_audit_v1"
+        assert manifest["eddypro_computation_summary"]["stress_suite_status"] == "pass"
+        assert manifest["eddypro_computation_summary"]["stress_suite_failed_case_count"] == 0
         assert manifest["eddypro_computation_summary"]["can_claim_source_derived_computational_superiority"] is True
         assert manifest["eddypro_surrogate_evidence_closure"]["artifact_type"] == "eddypro_surrogate_evidence_closure_v1"
         assert manifest["result_manifest_summary"]["eddypro_surrogate_evidence_closure_status"] == "pass"
@@ -200,6 +205,8 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
         assert manifest["official_raw_fixture_detail"]["trace_gas_parity_status"] == "pass"
         assert manifest["result_manifest_summary"]["eddypro_source_inventory_feature_count"] >= 10
+        assert manifest["result_manifest_summary"]["eddypro_computation_stress_suite_status"] == "pass"
+        assert manifest["result_manifest_summary"]["eddypro_computation_stress_failed_case_count"] == 0
         assert manifest["result_manifest_summary"]["flux_correction_ledger_status"] == "ok"
         assert manifest["result_manifest_summary"]["spectral_assessment_status"] == "ok"
         assert manifest["result_manifest_summary"]["spectral_assessment_library_status"] == "ok"
@@ -236,6 +243,7 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert any(name.endswith("official_raw_evidence_pack.json") for name in names)
         assert any(name.endswith("eddypro_source_inventory.json") for name in names)
         assert any(name.endswith("eddypro_coverage_audit.json") for name in names)
+        assert any(name.endswith("eddypro_computation_stress_suite.json") for name in names)
         assert any(name.endswith("eddypro_computation_scope_audit.json") for name in names)
         assert any(name.endswith("eddypro_surrogate_evidence_closure.json") for name in names)
         assert any(name.endswith("eddypro_release_gate.json") for name in names)
