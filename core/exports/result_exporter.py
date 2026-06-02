@@ -28,6 +28,7 @@ from core.comparison.fixture_pack import (
     build_official_raw_fixture_manifest,
     build_public_eddypro_fixture_catalog,
 )
+from core.comparison.neon_hdf5_importer import build_neon_hdf5_fixture_profile
 from core.comparison.partial_capability_closure import build_eddypro_partial_capability_closure
 from core.comparison.public_ec_data_discovery import build_public_ec_acquisition_closure
 from core.comparison.public_ec_data_discovery import build_public_ec_acquisition_runbook
@@ -732,6 +733,25 @@ class ResultExporter:
         public_ec_acquisition_runbook_path = export_root / "public_ec_acquisition_runbook.json"
         self._write_json(public_ec_acquisition_runbook_path, public_ec_acquisition_runbook)
         external_artifact_files["public_ec_acquisition_runbook_artifact"] = str(public_ec_acquisition_runbook_path)
+        neon_hdf5_fixture_profile = dict(
+            external_artifact_payloads.get("neon_hdf5_fixture_profile_artifact", {}) or {}
+        )
+        neon_hdf5_fixture_profile_path: Path | None = None
+        if neon_hdf5_fixture_profile or neon_hdf5_validation_package:
+            if not neon_hdf5_fixture_profile:
+                neon_hdf5_fixture_profile = build_neon_hdf5_fixture_profile(
+                    validation_package=neon_hdf5_validation_package,
+                    validation_package_path=external_artifact_files.get("neon_hdf5_validation_package_artifact") or None,
+                    download_path=external_artifact_files.get("neon_hdf5_download_artifact") or None,
+                    acquisition_closure=public_ec_acquisition_closure,
+                    acquisition_closure_path=public_ec_acquisition_closure_path,
+                    acquisition_runbook=public_ec_acquisition_runbook,
+                    acquisition_runbook_path=public_ec_acquisition_runbook_path,
+                    workspace_root=fixture_pack_workspace_root or None,
+                )
+            neon_hdf5_fixture_profile_path = export_root / "neon_hdf5_fixture_profile.json"
+            self._write_json(neon_hdf5_fixture_profile_path, neon_hdf5_fixture_profile)
+            external_artifact_files["neon_hdf5_fixture_profile_artifact"] = str(neon_hdf5_fixture_profile_path)
         public_ec_acquisition_summary = dict(public_ec_acquisition_closure.get("summary", {}) or {})
         public_ec_acquisition_claim_boundary = dict(public_ec_acquisition_closure.get("claim_boundary", {}) or {})
         eddypro_partial_capability_closure = build_eddypro_partial_capability_closure(
@@ -843,6 +863,8 @@ class ResultExporter:
         exported_files.append(eddypro_partial_capability_closure_path.name)
         exported_files.append(public_ec_acquisition_closure_path.name)
         exported_files.append(public_ec_acquisition_runbook_path.name)
+        if neon_hdf5_fixture_profile_path is not None:
+            exported_files.append(neon_hdf5_fixture_profile_path.name)
         if synthetic_parity_path is not None:
             exported_files.append(synthetic_parity_path.name)
         if raw_to_final_parity_path is not None:
@@ -1005,6 +1027,9 @@ class ResultExporter:
                 "external_artifacts": external_artifact_files,
                 "neon_hdf5_validation_package": neon_hdf5_validation_package,
                 "neon_hdf5_validation_package_artifact": external_artifact_files.get("neon_hdf5_validation_package_artifact", ""),
+                "neon_hdf5_fixture_profile": neon_hdf5_fixture_profile,
+                "neon_hdf5_fixture_profile_artifact": str(neon_hdf5_fixture_profile_path) if neon_hdf5_fixture_profile_path is not None else "",
+                "neon_hdf5_fixture_profile_status": str(neon_hdf5_fixture_profile.get("status", "")),
                 "public_raw_sample_validation_package": public_raw_sample_validation_package,
                 "public_raw_sample_validation_package_artifact": external_artifact_files.get(
                     "public_raw_sample_validation_package_artifact",
@@ -1166,6 +1191,9 @@ class ResultExporter:
             "neon_hdf5_validation_status": str(neon_hdf5_validation_package.get("status", "")),
             "neon_hdf5_row_status": str(neon_hdf5_validation_package.get("row_status", "")),
             "neon_hdf5_rp_status": str(neon_hdf5_validation_package.get("rp_status", "")),
+            "neon_hdf5_fixture_profile": neon_hdf5_fixture_profile,
+            "neon_hdf5_fixture_profile_artifact": str(neon_hdf5_fixture_profile_path) if neon_hdf5_fixture_profile_path is not None else "",
+            "neon_hdf5_fixture_profile_status": str(neon_hdf5_fixture_profile.get("status", "")),
             "public_raw_sample_validation_package": public_raw_sample_validation_package,
             "public_raw_sample_validation_package_artifact": external_artifact_files.get(
                 "public_raw_sample_validation_package_artifact",

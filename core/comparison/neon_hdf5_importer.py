@@ -410,6 +410,122 @@ def build_neon_hdf5_validation_package(
     }
 
 
+def build_neon_hdf5_fixture_profile(
+    *,
+    validation_package: dict[str, Any] | None = None,
+    validation_package_path: str | Path | None = None,
+    download: dict[str, Any] | None = None,
+    download_path: str | Path | None = None,
+    acquisition_closure: dict[str, Any] | None = None,
+    acquisition_closure_path: str | Path | None = None,
+    acquisition_runbook: dict[str, Any] | None = None,
+    acquisition_runbook_path: str | Path | None = None,
+    workspace_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Promote NEON validation evidence into a claim-gated fixture profile.
+
+    The profile is a registration ledger for real public NEON engineering
+    evidence. It deliberately stays below official EddyPro raw-to-final parity
+    because NEON HDF5 validation does not include an EddyPro project/settings
+    bundle or official Full_Output reference.
+    """
+
+    root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
+    validation_path = _resolve(root, validation_package_path) if validation_package_path not in (None, "") else None
+    download_artifact_path = _resolve(root, download_path) if download_path not in (None, "") else None
+    closure_path = _resolve(root, acquisition_closure_path) if acquisition_closure_path not in (None, "") else None
+    runbook_path = _resolve(root, acquisition_runbook_path) if acquisition_runbook_path not in (None, "") else None
+    validation_payload = dict(validation_package or {})
+    download_payload = dict(download or {})
+    closure_payload = dict(acquisition_closure or {})
+    runbook_payload = dict(acquisition_runbook or {})
+    if not validation_payload and validation_path is not None and validation_path.exists():
+        validation_payload = _read_json(validation_path)
+    if not download_payload and download_artifact_path is not None and download_artifact_path.exists():
+        download_payload = _read_json(download_artifact_path)
+    if not closure_payload and closure_path is not None and closure_path.exists():
+        closure_payload = _read_json(closure_path)
+    if not runbook_payload and runbook_path is not None and runbook_path.exists():
+        runbook_payload = _read_json(runbook_path)
+
+    claim_boundary = dict(validation_payload.get("claim_boundary", {}) or {})
+    validation_ok = bool(claim_boundary.get("can_claim_neon_engineering_validation", False))
+    validation_status = str(validation_payload.get("status", "not_available") or "not_available")
+    download_status = str(download_payload.get("status", "") or "")
+    source_id = str(
+        validation_payload.get("source_id")
+        or download_payload.get("source_id")
+        or _neon_source_id_from_actions(closure_payload)
+        or _neon_source_id_from_actions(runbook_payload)
+        or ""
+    )
+    readiness_missing = _neon_fixture_profile_missing(validation_payload)
+    source_action = _neon_fixture_source_action(runbook_payload, source_id=source_id)
+    status = _neon_fixture_profile_status(
+        validation_ok=validation_ok,
+        validation_status=validation_status,
+        download_status=download_status,
+        source_action=source_action,
+    )
+    return {
+        "artifact_type": "neon_hdf5_fixture_profile_v1",
+        "generated_at": datetime.now().isoformat(),
+        "status": status,
+        "workspace_root": str(root),
+        "source_id": source_id,
+        "source_file": str(validation_payload.get("source_file", "")),
+        "candidate_name": str(download_payload.get("candidate_name", "")),
+        "candidate_url": str(download_payload.get("candidate_url", "")),
+        "validation_package_artifact": str(validation_path or ""),
+        "download_artifact": str(download_artifact_path or ""),
+        "public_ec_acquisition_closure_artifact": str(closure_path or ""),
+        "public_ec_acquisition_runbook_artifact": str(runbook_path or ""),
+        "validation_status": validation_status,
+        "download_status": download_status,
+        "closure_status": str(closure_payload.get("status", "")),
+        "runbook_status": str(runbook_payload.get("status", "")),
+        "field_mappings": dict(validation_payload.get("field_mappings", {}) or {}),
+        "field_units": dict(validation_payload.get("field_units", {}) or {}),
+        "qc_mapping": dict(validation_payload.get("qc_mapping", {}) or {}),
+        "qc_flag_summary": dict(validation_payload.get("qc_flag_summary", {}) or {}),
+        "units_conversion_audit": dict(validation_payload.get("units_conversion_audit", {}) or {}),
+        "alignment_summary": dict(validation_payload.get("alignment_summary", {}) or {}),
+        "time_range": dict(validation_payload.get("time_range", {}) or {}),
+        "row_count": int(validation_payload.get("row_count", 0) or 0),
+        "rp_window_count": int(validation_payload.get("rp_window_count", 0) or 0),
+        "estimated_sample_rate_hz": float(validation_payload.get("row_estimated_sample_rate_hz", 0.0) or 0.0),
+        "registration_profile": {
+            "fixture_family": "public_neon_hdf5_engineering",
+            "source_format": "NEON_HDF5_DP4",
+            "can_register_as_public_engineering_fixture": validation_ok,
+            "can_register_as_official_eddypro_raw_to_final_fixture": False,
+            "missing_for_official_eddypro_parity": readiness_missing,
+            "source_action_state": str(source_action.get("automation_state", "")),
+            "source_action_status": str(source_action.get("acquisition_status", "")),
+        },
+        "claim_boundary": {
+            "can_claim_public_raw_engineering_validation": validation_ok,
+            "can_claim_neon_engineering_validation": validation_ok,
+            "can_claim_eddypro_raw_to_final_parity": False,
+            "can_release_full_eddypro_parity": False,
+            "can_change_full_parity_gate": False,
+        },
+        "known_limitations": _dedupe_strings(
+            [
+                *list(validation_payload.get("known_limitations", []) or []),
+                "NEON DP4 HDF5 does not include an EddyPro project/settings bundle.",
+                "NEON DP4 HDF5 does not include an official EddyPro Full_Output reference.",
+                "This profile can register public engineering evidence, not official EddyPro numeric parity.",
+            ]
+        ),
+        "next_action": _neon_fixture_profile_next_action(status, readiness_missing),
+        "truthfulness_boundary": (
+            "This profile closes the public NEON engineering-validation path so report/export/delivery chains "
+            "can cite real data evidence. It must not be used to claim official EddyPro raw-to-final parity."
+        ),
+    }
+
+
 def row_records_to_normalized_frames(records: list[dict[str, Any]]) -> list[NormalizedHFFrame]:
     frames: list[NormalizedHFFrame] = []
     for record in records:
@@ -1107,6 +1223,88 @@ def _neon_validation_next_action(status: str) -> str:
     if status == "row_validated_rp_incomplete":
         return "Inspect the RP smoke errors/window count before using this NEON package as engineering evidence."
     return "Resolve metadata mapping or row extraction before claiming any NEON importer validation."
+
+
+def _neon_fixture_profile_missing(validation_package: dict[str, Any]) -> list[str]:
+    missing = [
+        "eddypro_project_or_settings",
+        "official_eddypro_full_output",
+        "normalized_reference",
+        "normalization_provenance",
+        "official_eddypro_executable_run_evidence",
+        "acceptance_evidence",
+    ]
+    if str(validation_package.get("status", "")) not in {"pass", "row_validated_no_rp"}:
+        missing.insert(0, "neon_hdf5_validation_package_pass")
+    if int(validation_package.get("row_count", 0) or 0) <= 0:
+        missing.insert(0, "neon_hdf5_normalized_rows")
+    return _dedupe_strings(missing)
+
+
+def _neon_fixture_profile_status(
+    *,
+    validation_ok: bool,
+    validation_status: str,
+    download_status: str,
+    source_action: dict[str, Any],
+) -> str:
+    if not validation_ok:
+        return "blocked_missing_neon_validation"
+    if validation_status == "pass":
+        return "engineering_fixture_ready_official_parity_blocked"
+    action_state = str(source_action.get("automation_state", ""))
+    if action_state == "engineering_validated_registration_pending":
+        return "engineering_validated_registration_pending"
+    if download_status in {"pass", "skipped_existing"}:
+        return "downloaded_row_validated_official_parity_blocked"
+    return "row_validated_official_parity_blocked"
+
+
+def _neon_fixture_profile_next_action(status: str, missing: list[str]) -> str:
+    if status == "engineering_fixture_ready_official_parity_blocked":
+        return (
+            "Register this profile as public NEON engineering evidence, then keep official EddyPro parity blocked "
+            f"until missing evidence is supplied: {', '.join(missing)}."
+        )
+    if status == "engineering_validated_registration_pending":
+        return "Attach this profile to the public EC acquisition closure/runbook and continue seeking official EddyPro paired output."
+    if status == "blocked_missing_neon_validation":
+        return "Build metadata, row, and RP smoke artifacts, then rebuild the NEON validation package before profiling."
+    return "Use this as NEON importer/RP smoke evidence only; do not promote it to official EddyPro raw-to-final parity."
+
+
+def _neon_fixture_source_action(payload: dict[str, Any], *, source_id: str) -> dict[str, Any]:
+    actions = list(payload.get("actions", []) or payload.get("sources", []) or [])
+    for item in actions:
+        action = dict(item or {})
+        folded = " ".join(
+            [
+                str(action.get("source_id", "")),
+                str(action.get("provider", "")),
+                str(action.get("source_url", "")),
+            ]
+        ).lower()
+        if source_id and str(action.get("source_id", "")) == source_id:
+            return action
+        if not source_id and "neon" in folded:
+            return action
+    return {}
+
+
+def _neon_source_id_from_actions(payload: dict[str, Any]) -> str:
+    action = _neon_fixture_source_action(payload, source_id="")
+    return str(action.get("source_id", ""))
+
+
+def _dedupe_strings(values: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
 
 
 def _midpoint_datetime(start: datetime, end: datetime) -> datetime:

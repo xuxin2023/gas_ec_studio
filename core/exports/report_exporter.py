@@ -260,6 +260,8 @@ def _build_formal_report_snapshot(
     )
     eddypro_release_gate = dict(result_manifest.get("eddypro_release_gate", {}) or {})
     eddypro_partial_capability_closure = dict(result_manifest.get("eddypro_partial_capability_closure", {}) or {})
+    neon_hdf5_validation_package = dict(result_manifest.get("neon_hdf5_validation_package", {}) or {})
+    neon_hdf5_fixture_profile = dict(result_manifest.get("neon_hdf5_fixture_profile", {}) or {})
     public_ec_acquisition_closure = dict(result_manifest.get("public_ec_acquisition_closure", {}) or {})
     public_ec_acquisition_runbook = dict(result_manifest.get("public_ec_acquisition_runbook", {}) or {})
     public_ec_acquisition_summary = dict(public_ec_acquisition_closure.get("summary", {}) or {})
@@ -326,6 +328,8 @@ def _build_formal_report_snapshot(
                 "eddypro_surrogate_evidence_closure_artifact",
                 "eddypro_release_gate_artifact",
                 "eddypro_partial_capability_closure_artifact",
+                "neon_hdf5_validation_package_artifact",
+                "neon_hdf5_fixture_profile_artifact",
                 "public_ec_acquisition_closure_artifact",
                 "public_ec_acquisition_runbook_artifact",
                 "raw_to_final_parity_artifact",
@@ -424,6 +428,14 @@ def _build_formal_report_snapshot(
             "eddypro_ready_public_raw_candidate_count": dict(
                 eddypro_partial_capability_closure.get("public_search_closure", {}) or {}
             ).get("ready_to_register_public_raw_candidate_count", 0),
+            "neon_hdf5_validation_status": neon_hdf5_validation_package.get("status", ""),
+            "neon_hdf5_fixture_profile_status": neon_hdf5_fixture_profile.get("status", ""),
+            "neon_hdf5_can_register_public_engineering_fixture": dict(
+                neon_hdf5_fixture_profile.get("registration_profile", {}) or {}
+            ).get("can_register_as_public_engineering_fixture", False),
+            "neon_hdf5_can_claim_eddypro_raw_to_final_parity": dict(
+                neon_hdf5_fixture_profile.get("claim_boundary", {}) or {}
+            ).get("can_claim_eddypro_raw_to_final_parity", False),
             "public_ec_acquisition_closure_status": public_ec_acquisition_closure.get("status", ""),
             "public_ec_acquisition_runbook_status": public_ec_acquisition_runbook.get("status", ""),
             "public_ec_acquisition_automatic_download_candidate_count": public_ec_acquisition_runbook_summary.get(
@@ -460,6 +472,20 @@ def _build_formal_report_snapshot(
         "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
         "eddypro_release_gate": eddypro_release_gate,
         "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
+        "neon_hdf5_validation_package": neon_hdf5_validation_package,
+        "neon_hdf5_fixture_profile": neon_hdf5_fixture_profile,
+        "neon_hdf5_summary": {
+            "validation_status": neon_hdf5_validation_package.get("status", ""),
+            "fixture_profile_status": neon_hdf5_fixture_profile.get("status", ""),
+            "row_count": neon_hdf5_validation_package.get("row_count", 0),
+            "rp_window_count": neon_hdf5_validation_package.get("rp_window_count", 0),
+            "can_register_public_engineering_fixture": dict(
+                neon_hdf5_fixture_profile.get("registration_profile", {}) or {}
+            ).get("can_register_as_public_engineering_fixture", False),
+            "can_claim_eddypro_raw_to_final_parity": dict(
+                neon_hdf5_fixture_profile.get("claim_boundary", {}) or {}
+            ).get("can_claim_eddypro_raw_to_final_parity", False),
+        },
         "public_ec_acquisition_closure": public_ec_acquisition_closure,
         "public_ec_acquisition_runbook": public_ec_acquisition_runbook,
         "public_ec_acquisition_summary": {

@@ -9,6 +9,7 @@ import numpy as np
 
 from core.comparison import neon_hdf5_importer
 from core.comparison.neon_hdf5_importer import (
+    build_neon_hdf5_fixture_profile,
     build_neon_hdf5_metadata_smoke,
     build_neon_hdf5_row_extraction_smoke,
     build_neon_hdf5_validation_package,
@@ -270,6 +271,105 @@ def test_neon_hdf5_validation_package_closes_metadata_row_and_rp_smoke(tmp_path:
     assert payload["units_conversion_audit"]["h2o"]["conversion_rule"] == "identity_mmol_mol"
     assert payload["variable_context"]["u"]["product_family"] == "soni"
     assert direct_payload["status"] == "pass"
+
+
+def test_neon_hdf5_fixture_profile_keeps_official_parity_blocked(tmp_path: Path) -> None:
+    validation_path = tmp_path / "validation.json"
+    download_path = tmp_path / "download.json"
+    runbook_path = tmp_path / "runbook.json"
+    validation_payload = {
+        "artifact_type": "neon_hdf5_validation_package_v1",
+        "status": "pass",
+        "source_id": "neon_dp4_test",
+        "source_file": "NEON.TEST.h5",
+        "row_count": 120,
+        "rp_window_count": 1,
+        "row_estimated_sample_rate_hz": 0.01666667,
+        "field_mappings": {"u": {"path": "/soni/u"}, "co2": {"path": "/co2/rtioMoleDryCo2"}},
+        "field_units": {"u": "m s-1", "co2": "umolCo2 mol-1"},
+        "qc_mapping": {"u": {"status": "mapped"}},
+        "claim_boundary": {
+            "can_claim_neon_engineering_validation": True,
+            "can_claim_eddypro_raw_to_final_parity": False,
+        },
+        "known_limitations": ["NEON DP4 HDF5 variables are aggregated products."],
+    }
+    download_payload = {
+        "artifact_type": "neon_hdf5_candidate_download_v1",
+        "status": "pass",
+        "source_id": "neon_dp4_test",
+        "candidate_name": "NEON.TEST.DP4.00200.001.h5",
+        "candidate_url": "https://example.test/neon.h5",
+    }
+    runbook_payload = {
+        "artifact_type": "public_ec_acquisition_runbook_v1",
+        "status": "engineering_validated_registration_pending",
+        "actions": [
+            {
+                "source_id": "neon_dp4_test",
+                "provider": "NEON",
+                "acquisition_status": "public_download_engineering_validated",
+                "automation_state": "engineering_validated_registration_pending",
+            }
+        ],
+    }
+    validation_path.write_text(json.dumps(validation_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    download_path.write_text(json.dumps(download_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    runbook_path.write_text(json.dumps(runbook_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    payload = build_neon_hdf5_fixture_profile(
+        validation_package_path=validation_path,
+        download_path=download_path,
+        acquisition_runbook_path=runbook_path,
+        workspace_root=tmp_path,
+    )
+
+    assert payload["artifact_type"] == "neon_hdf5_fixture_profile_v1"
+    assert payload["status"] == "engineering_fixture_ready_official_parity_blocked"
+    assert payload["registration_profile"]["can_register_as_public_engineering_fixture"] is True
+    assert payload["registration_profile"]["can_register_as_official_eddypro_raw_to_final_fixture"] is False
+    assert "official_eddypro_full_output" in payload["registration_profile"]["missing_for_official_eddypro_parity"]
+    assert payload["claim_boundary"]["can_claim_public_raw_engineering_validation"] is True
+    assert payload["claim_boundary"]["can_claim_eddypro_raw_to_final_parity"] is False
+    assert payload["candidate_name"] == "NEON.TEST.DP4.00200.001.h5"
+
+
+def test_headless_cli_builds_neon_hdf5_fixture_profile(tmp_path: Path) -> None:
+    validation_path = tmp_path / "validation.json"
+    output = tmp_path / "fixture_profile.json"
+    validation_path.write_text(
+        json.dumps(
+            {
+                "artifact_type": "neon_hdf5_validation_package_v1",
+                "status": "pass",
+                "source_id": "neon_cli_profile",
+                "source_file": "NEON.CLI.h5",
+                "row_count": 80,
+                "claim_boundary": {"can_claim_neon_engineering_validation": True},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    code = run_cli(
+        [
+            "--build-neon-hdf5-fixture-profile",
+            "--workspace-root",
+            str(tmp_path),
+            "--neon-hdf5-validation-package",
+            str(validation_path),
+            "--output",
+            str(output),
+        ]
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["artifact_type"] == "neon_hdf5_fixture_profile_v1"
+    assert payload["source_id"] == "neon_cli_profile"
+    assert payload["claim_boundary"]["can_change_full_parity_gate"] is False
 
 
 class _FakeResponse:

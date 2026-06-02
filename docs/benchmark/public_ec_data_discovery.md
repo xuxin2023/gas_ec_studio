@@ -285,6 +285,28 @@ raise SystemExit(run_cli([
 
 The runbook classifies each source as `automatic_download_available`, `engineering_validated_registration_pending`, `operator_subset_required`, `license_or_auth_required`, `accepted_anchor`, or `missing_eddypro_pair`. It records safe commands for NEON/direct-download candidates, operator-subset validation commands for CROCUS/BAS/ICOS-style candidates, and the explicit automation policy: direct public downloads and byte samples may be automated, but licence acceptance, account creation, and parity promotion are never automatic.
 
+## NEON Fixture Profile
+
+After the NEON validation package and public acquisition runbook exist, convert the validated NEON evidence into a delivery-chain fixture profile:
+
+```powershell
+@'
+from core.headless_batch_runner import run_cli
+
+raise SystemExit(run_cli([
+    "--build-neon-hdf5-fixture-profile",
+    "--workspace-root", ".",
+    "--neon-hdf5-download", "artifacts/public_ec_data/neon_hdf5_download.json",
+    "--neon-hdf5-validation-package", "artifacts/public_ec_data/neon_hdf5_validation_package.json",
+    "--public-ec-acquisition-closure", "artifacts/public_ec_data/public_ec_acquisition_closure.json",
+    "--public-ec-acquisition-runbook", "artifacts/public_ec_data/public_ec_acquisition_runbook.json",
+    "--output", "artifacts/public_ec_data/neon_hdf5_fixture_profile.json",
+]))
+'@ | python -
+```
+
+The profile can register NEON as public engineering evidence when validation passes, but it still keeps official EddyPro raw-to-final parity blocked because NEON DP4 HDF5 does not provide an EddyPro project/settings bundle or official Full_Output reference.
+
 ## Truthfulness Boundary
 
 Public discovery is not parity. A candidate becomes full-parity evidence only after it has:

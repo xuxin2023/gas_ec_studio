@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from app.studio import StudioController
+from core.exports.result_exporter import ResultExporter
 from models.hf_models import FrameQuality, NormalizedHFFrame
 
 
@@ -257,3 +258,54 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert "site" in project_site_payload
     finally:
         controller.shutdown()
+
+
+def test_result_export_builds_neon_fixture_profile_from_validation_artifact(tmp_path: Path) -> None:
+    validation_path = tmp_path / "neon_hdf5_validation_package.json"
+    validation_path.write_text(
+        json.dumps(
+            {
+                "artifact_type": "neon_hdf5_validation_package_v1",
+                "status": "pass",
+                "source_id": "neon_export_profile",
+                "source_file": "NEON.EXPORT.h5",
+                "metadata_status": "mapping_ready_for_importer_smoke",
+                "row_status": "pass",
+                "rp_status": "pass",
+                "row_count": 120,
+                "rp_window_count": 1,
+                "claim_boundary": {
+                    "can_claim_neon_engineering_validation": True,
+                    "can_claim_eddypro_raw_to_final_parity": False,
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    exporter = ResultExporter(runtime_root=tmp_path / "runtime_data")
+
+    result = exporter.export_minimal_bundle(
+        rp_result=None,
+        spectral_result=None,
+        rp_config_snapshot={},
+        spectral_config_snapshot={},
+        project={"code": "TEST"},
+        site={"station_code": "TST"},
+        report_payload={"status": "ok"},
+        report_key="neon-profile-test",
+        external_artifacts={"neon_hdf5_validation_package": str(validation_path)},
+    )
+    manifest_path = Path(result["files"]["export_manifest"])
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    profile_path = Path(manifest["neon_hdf5_fixture_profile_artifact"])
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+
+    assert profile_path.exists()
+    assert profile["artifact_type"] == "neon_hdf5_fixture_profile_v1"
+    assert profile["source_id"] == "neon_export_profile"
+    assert profile["registration_profile"]["can_register_as_public_engineering_fixture"] is True
+    assert profile["registration_profile"]["can_register_as_official_eddypro_raw_to_final_fixture"] is False
+    assert manifest["neon_hdf5_fixture_profile_status"] == "engineering_fixture_ready_official_parity_blocked"
+    assert manifest["neon_hdf5_fixture_profile"]["claim_boundary"]["can_claim_eddypro_raw_to_final_parity"] is False

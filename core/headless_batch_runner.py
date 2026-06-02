@@ -26,6 +26,7 @@ from core.comparison.fixture_pack import (
     materialize_public_official_raw_bundle_draft,
 )
 from core.comparison.neon_hdf5_importer import (
+    build_neon_hdf5_fixture_profile,
     build_neon_hdf5_metadata_smoke,
     build_neon_hdf5_row_extraction_smoke,
     build_neon_hdf5_validation_package,
@@ -526,11 +527,13 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--build-public-ec-acquisition-runbook", action="store_true", help="Build a non-blocking public real-data acquisition action runbook.")
     parser.add_argument("--public-raw-importer-smoke-plan", default="", help="Public raw importer smoke plan used by --build-public-ec-acquisition-closure.")
     parser.add_argument("--public-ec-acquisition-closure", default="", help="Public EC acquisition closure artifact used by --build-public-ec-acquisition-runbook.")
+    parser.add_argument("--public-ec-acquisition-runbook", default="", help="Public EC acquisition runbook artifact used by --build-neon-hdf5-fixture-profile.")
     parser.add_argument("--download-neon-hdf5-candidate", default="", help="Discovery/probe JSON containing a verified NEON HDF5 candidate to download.")
     parser.add_argument("--build-neon-hdf5-metadata-smoke", default="", help="Inspect a local NEON HDF5 file and infer EC field mapping candidates.")
     parser.add_argument("--build-neon-hdf5-row-smoke", default="", help="Extract a small NEON HDF5 window into normalized EC row records.")
     parser.add_argument("--run-neon-hdf5-rp-smoke", default="", help="Extract NEON HDF5 rows and run a small RP smoke without changing parity gates.")
     parser.add_argument("--build-neon-hdf5-validation-package", default="", help="Build a NEON HDF5 validation package from metadata, row, and RP smoke artifacts.")
+    parser.add_argument("--build-neon-hdf5-fixture-profile", action="store_true", help="Build a claim-gated NEON public engineering fixture profile from validation and acquisition artifacts.")
     parser.add_argument("--neon-hdf5-output-root", default="", help="Directory for downloaded NEON HDF5 candidates.")
     parser.add_argument("--neon-hdf5-source-id", default="", help="NEON source id to select from a discovery/probe artifact.")
     parser.add_argument("--neon-hdf5-candidate-name", default="", help="Exact NEON HDF5 candidate filename to select.")
@@ -546,6 +549,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--neon-hdf5-rp-block-minutes", default="", help="RP block size in minutes for --run-neon-hdf5-rp-smoke.")
     parser.add_argument("--neon-hdf5-download", default="", help="NEON HDF5 download artifact used by --build-public-ec-acquisition-closure.")
     parser.add_argument("--neon-hdf5-validation-package", default="", help="NEON HDF5 validation package used by partial capability closure.")
+    parser.add_argument("--neon-hdf5-fixture-profile", default="", help="NEON HDF5 fixture profile artifact used by exports/delivery/report chains.")
     parser.add_argument("--public-raw-sample-validation-package", default="", help="Public raw sample validation package used by partial capability closure.")
     parser.add_argument("--overwrite-neon-hdf5", action="store_true", help="Overwrite an existing downloaded NEON HDF5 candidate.")
     parser.add_argument("--capability-matrix", default="", help="Capability matrix path for EddyPro coverage/release gates.")
@@ -643,6 +647,9 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     if args.build_neon_hdf5_validation_package:
         return _run_neon_hdf5_validation_package_cli(args, parser)
+
+    if args.build_neon_hdf5_fixture_profile:
+        return _run_neon_hdf5_fixture_profile_cli(args, parser)
 
     if args.inspect_public_official_raw_archive:
         return _run_public_official_raw_archive_inspection_cli(args, parser)
@@ -1086,6 +1093,23 @@ def _run_neon_hdf5_validation_package_cli(args: argparse.Namespace, parser: argp
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if payload.get("status") in {"pass", "row_validated_no_rp"} else 2
+
+
+def _run_neon_hdf5_fixture_profile_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --build-neon-hdf5-fixture-profile.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    payload = build_neon_hdf5_fixture_profile(
+        validation_package_path=args.neon_hdf5_validation_package or None,
+        download_path=args.neon_hdf5_download or None,
+        acquisition_closure_path=args.public_ec_acquisition_closure or None,
+        acquisition_runbook_path=args.public_ec_acquisition_runbook or None,
+        workspace_root=workspace_root,
+    )
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0 if payload.get("status") != "blocked_missing_neon_validation" else 2
 
 
 def _run_public_official_raw_archive_inspection_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

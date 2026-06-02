@@ -294,6 +294,22 @@ def test_delivery_package_indexes_neon_hdf5_validation_package(tmp_path: Path) -
     }
     validation_path = result_root / "neon_hdf5_validation_package.json"
     validation_path.write_text(json.dumps(validation_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    profile_payload = {
+        "artifact_type": "neon_hdf5_fixture_profile_v1",
+        "status": "engineering_fixture_ready_official_parity_blocked",
+        "source_id": "neon-test",
+        "registration_profile": {
+            "can_register_as_public_engineering_fixture": True,
+            "can_register_as_official_eddypro_raw_to_final_fixture": False,
+            "missing_for_official_eddypro_parity": ["official_eddypro_full_output"],
+        },
+        "claim_boundary": {
+            "can_claim_public_raw_engineering_validation": True,
+            "can_claim_eddypro_raw_to_final_parity": False,
+        },
+    }
+    profile_path = result_root / "neon_hdf5_fixture_profile.json"
+    profile_path.write_text(json.dumps(profile_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     manifest_path = result_root / "export_manifest.json"
     manifest_path.write_text(
         json.dumps(
@@ -305,7 +321,9 @@ def test_delivery_package_indexes_neon_hdf5_validation_package(tmp_path: Path) -
                 "network_validation_summary": {"schema_target": "FLUXNET", "validation_status": "pass", "missing_fields": []},
                 "neon_hdf5_validation_package": validation_payload,
                 "neon_hdf5_validation_package_artifact": str(validation_path),
-                "exported_files": ["export_manifest.json", "neon_hdf5_validation_package.json"],
+                "neon_hdf5_fixture_profile": profile_payload,
+                "neon_hdf5_fixture_profile_artifact": str(profile_path),
+                "exported_files": ["export_manifest.json", "neon_hdf5_validation_package.json", "neon_hdf5_fixture_profile.json"],
             },
             ensure_ascii=False,
             indent=2,
@@ -321,6 +339,7 @@ def test_delivery_package_indexes_neon_hdf5_validation_package(tmp_path: Path) -
             "files": {
                 "export_manifest": str(manifest_path),
                 "neon_hdf5_validation_package_artifact": str(validation_path),
+                "neon_hdf5_fixture_profile_artifact": str(profile_path),
             },
         },
         evidence_bundle=None,
@@ -331,10 +350,16 @@ def test_delivery_package_indexes_neon_hdf5_validation_package(tmp_path: Path) -
     manifest = json.loads(Path(delivery["files"]["package_manifest"]).read_text(encoding="utf-8"))
 
     assert manifest["artifact_index"]["neon_hdf5_validation_package_artifact"]["packaged"] is True
+    assert manifest["artifact_index"]["neon_hdf5_fixture_profile_artifact"]["packaged"] is True
     assert manifest["neon_hdf5_validation_package"]["status"] == "pass"
+    assert manifest["neon_hdf5_fixture_profile"]["status"] == "engineering_fixture_ready_official_parity_blocked"
     assert manifest["neon_hdf5_summary"]["can_claim_neon_engineering_validation"] is True
+    assert manifest["neon_hdf5_summary"]["fixture_profile_status"] == "engineering_fixture_ready_official_parity_blocked"
+    assert manifest["neon_hdf5_summary"]["can_register_public_engineering_fixture"] is True
     assert manifest["neon_hdf5_summary"]["can_claim_eddypro_raw_to_final_parity"] is False
     assert manifest["result_manifest_summary"]["neon_hdf5_validation_status"] == "pass"
+    assert manifest["result_manifest_summary"]["neon_hdf5_fixture_profile_status"] == "engineering_fixture_ready_official_parity_blocked"
+    assert manifest["result_manifest_summary"]["neon_hdf5_fixture_profile_can_register_engineering"] is True
 
 
 def test_delivery_package_indexes_public_raw_sample_validation_package(tmp_path: Path) -> None:

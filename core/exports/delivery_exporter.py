@@ -121,6 +121,7 @@ def export_delivery_package(
         "raw_to_final_parity_diagnostics": audit.get("raw_to_final_parity_diagnostics", {}),
         "raw_to_final_trace_gas_parity": audit.get("raw_to_final_trace_gas_parity", {}),
         "neon_hdf5_validation_package": audit.get("neon_hdf5_validation_package", {}),
+        "neon_hdf5_fixture_profile": audit.get("neon_hdf5_fixture_profile", {}),
         "neon_hdf5_summary": audit.get("neon_hdf5_summary", {}),
         "public_raw_sample_validation_package": audit.get("public_raw_sample_validation_package", {}),
         "public_raw_sample_summary": audit.get("public_raw_sample_summary", {}),
@@ -294,6 +295,10 @@ def _build_delivery_audit(
         result_manifest.get("neon_hdf5_validation_package", {})
         or _read_json_file(result_files.get("neon_hdf5_validation_package_artifact", ""))
     )
+    neon_fixture_profile = dict(
+        result_manifest.get("neon_hdf5_fixture_profile", {})
+        or _read_json_file(result_files.get("neon_hdf5_fixture_profile_artifact", ""))
+    )
     public_raw_sample_validation = dict(
         result_manifest.get("public_raw_sample_validation_package", {})
         or _read_json_file(result_files.get("public_raw_sample_validation_package_artifact", ""))
@@ -438,6 +443,7 @@ def _build_delivery_audit(
         "eddypro_partial_capability_closure_artifact",
         "raw_to_final_parity_artifact",
         "neon_hdf5_validation_package_artifact",
+        "neon_hdf5_fixture_profile_artifact",
         "neon_hdf5_metadata_smoke_artifact",
         "neon_hdf5_row_smoke_artifact",
         "neon_hdf5_rp_smoke_artifact",
@@ -638,6 +644,10 @@ def _build_delivery_audit(
             "neon_hdf5_row_count": neon_validation.get("row_count", 0),
             "neon_hdf5_rp_window_count": neon_validation.get("rp_window_count", 0),
             "neon_hdf5_source_file": neon_validation.get("source_file", ""),
+            "neon_hdf5_fixture_profile_status": neon_fixture_profile.get("status", ""),
+            "neon_hdf5_fixture_profile_can_register_engineering": dict(
+                neon_fixture_profile.get("registration_profile", {}) or {}
+            ).get("can_register_as_public_engineering_fixture", False),
             "neon_hdf5_can_claim_engineering_validation": dict(neon_validation.get("claim_boundary", {}) or {}).get(
                 "can_claim_neon_engineering_validation",
                 False,
@@ -685,11 +695,16 @@ def _build_delivery_audit(
         },
         "network_validation_summary": network_validation,
         "neon_hdf5_validation_package": neon_validation,
+        "neon_hdf5_fixture_profile": neon_fixture_profile,
         "neon_hdf5_summary": {
             "status": neon_validation.get("status", ""),
+            "fixture_profile_status": neon_fixture_profile.get("status", ""),
             "source_file": neon_validation.get("source_file", ""),
             "row_count": neon_validation.get("row_count", 0),
             "rp_window_count": neon_validation.get("rp_window_count", 0),
+            "can_register_public_engineering_fixture": dict(
+                neon_fixture_profile.get("registration_profile", {}) or {}
+            ).get("can_register_as_public_engineering_fixture", False),
             "can_claim_neon_engineering_validation": dict(neon_validation.get("claim_boundary", {}) or {}).get(
                 "can_claim_neon_engineering_validation",
                 False,
