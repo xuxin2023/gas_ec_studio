@@ -258,6 +258,11 @@ def _build_formal_report_snapshot(
         result_manifest.get("eddypro_computation_stress_suite", {})
         or _read_json_file(bundle_files.get("eddypro_computation_stress_suite_artifact", ""))
     )
+    eddypro_computation_surface = dict(
+        result_manifest.get("eddypro_computation_surface", {})
+        or eddypro_computation_stress_suite.get("computation_surface", {})
+        or {}
+    )
     eddypro_computation_scope_audit = dict(result_manifest.get("eddypro_computation_scope_audit", {}) or {})
     eddypro_surrogate_evidence_closure = dict(
         result_manifest.get("eddypro_surrogate_evidence_closure", {})
@@ -417,6 +422,15 @@ def _build_formal_report_snapshot(
             "eddypro_computation_stress_suite_status": eddypro_computation_stress_suite.get("status", ""),
             "eddypro_computation_stress_pass_rate": eddypro_computation_stress_suite.get("pass_rate", 0.0),
             "eddypro_computation_stress_failed_case_count": eddypro_computation_stress_suite.get("failed_case_count", 0),
+            "eddypro_computation_surface_status": eddypro_computation_surface.get("status", ""),
+            "eddypro_computation_surface_ready_family_count": eddypro_computation_surface.get("ready_family_count", 0),
+            "eddypro_computation_surface_blocked_family_count": eddypro_computation_surface.get("blocked_family_count", 0),
+            "eddypro_computation_surface_required_families": list(
+                eddypro_computation_surface.get("required_families", []) or []
+            ),
+            "eddypro_computation_surface_family_status": dict(
+                eddypro_computation_surface.get("family_status", {}) or {}
+            ),
             "eddypro_computation_scope_audit_status": eddypro_computation_scope_audit.get("status", ""),
             "can_claim_source_derived_computational_superiority": dict(
                 eddypro_computation_scope_audit.get("claim_boundary", {}) or {}
@@ -491,12 +505,22 @@ def _build_formal_report_snapshot(
         "eddypro_source_inventory": eddypro_source_inventory,
         "eddypro_coverage_audit": eddypro_coverage_audit,
         "eddypro_computation_stress_suite": eddypro_computation_stress_suite,
+        "eddypro_computation_surface": eddypro_computation_surface,
         "eddypro_computation_scope_audit": eddypro_computation_scope_audit,
         "eddypro_computation_summary": {
             "status": eddypro_computation_scope_audit.get("status", ""),
             "stress_suite_status": eddypro_computation_stress_suite.get("status", ""),
             "stress_suite_pass_rate": eddypro_computation_stress_suite.get("pass_rate", 0.0),
             "stress_suite_failed_case_count": eddypro_computation_stress_suite.get("failed_case_count", 0),
+            "computation_surface_status": eddypro_computation_surface.get("status", ""),
+            "computation_surface_ready_family_count": eddypro_computation_surface.get("ready_family_count", 0),
+            "computation_surface_blocked_family_count": eddypro_computation_surface.get("blocked_family_count", 0),
+            "computation_surface_required_families": list(
+                eddypro_computation_surface.get("required_families", []) or []
+            ),
+            "computation_surface_family_status": dict(
+                eddypro_computation_surface.get("family_status", {}) or {}
+            ),
             "can_claim_source_derived_computational_superiority": dict(
                 eddypro_computation_scope_audit.get("claim_boundary", {}) or {}
             ).get("can_claim_source_derived_computational_superiority", False),
@@ -873,6 +897,14 @@ def _build_formal_report_snapshot(
                         ["eddypro_computation_stress_suite_status", str(eddypro_computation_stress_suite.get("status", "--"))],
                         ["eddypro_computation_stress_pass_rate", _fmt(eddypro_computation_stress_suite.get("pass_rate"), 3)],
                         ["eddypro_computation_stress_failed_cases", str(eddypro_computation_stress_suite.get("failed_case_count", "--"))],
+                        ["eddypro_computation_surface_status", str(eddypro_computation_surface.get("status", "--"))],
+                        [
+                            "eddypro_computation_surface_families",
+                            (
+                                f"ready={eddypro_computation_surface.get('ready_family_count', '--')}; "
+                                f"blocked={eddypro_computation_surface.get('blocked_family_count', '--')}"
+                            ),
+                        ],
                         ["eddypro_computation_scope_audit_status", str(eddypro_computation_scope_audit.get("status", "--"))],
                         [
                             "can_claim_source_derived_computational_superiority",

@@ -168,6 +168,10 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["eddypro_computation_scope_audit"]["artifact_type"] == "eddypro_computation_scope_audit_v1"
         assert manifest["eddypro_computation_summary"]["stress_suite_status"] == "pass"
         assert manifest["eddypro_computation_summary"]["stress_suite_failed_case_count"] == 0
+        assert manifest["eddypro_computation_surface"]["status"] == "ready"
+        assert manifest["eddypro_computation_summary"]["computation_surface_status"] == "ready"
+        assert manifest["eddypro_computation_summary"]["computation_surface_ready_family_count"] == 7
+        assert manifest["eddypro_computation_summary"]["computation_surface_blocked_family_count"] == 0
         assert manifest["eddypro_computation_summary"]["can_claim_source_derived_computational_superiority"] is True
         assert manifest["eddypro_surrogate_evidence_closure"]["artifact_type"] == "eddypro_surrogate_evidence_closure_v1"
         assert manifest["result_manifest_summary"]["eddypro_surrogate_evidence_closure_status"] == "pass"
@@ -207,6 +211,9 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["result_manifest_summary"]["eddypro_source_inventory_feature_count"] >= 10
         assert manifest["result_manifest_summary"]["eddypro_computation_stress_suite_status"] == "pass"
         assert manifest["result_manifest_summary"]["eddypro_computation_stress_failed_case_count"] == 0
+        assert manifest["result_manifest_summary"]["eddypro_computation_surface_status"] == "ready"
+        assert manifest["result_manifest_summary"]["eddypro_computation_surface_ready_family_count"] == 7
+        assert manifest["result_manifest_summary"]["eddypro_computation_surface_blocked_family_count"] == 0
         assert manifest["result_manifest_summary"]["flux_correction_ledger_status"] == "ok"
         assert manifest["result_manifest_summary"]["spectral_assessment_status"] == "ok"
         assert manifest["result_manifest_summary"]["spectral_assessment_library_status"] == "ok"

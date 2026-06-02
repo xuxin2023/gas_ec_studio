@@ -150,6 +150,9 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_official_run_qc_mapping_strategy"] == "EddyPro 0/1/2 -> gas_ec_studio A/B/C"
         assert snapshot["delivery_audit"]["eddypro_source_inventory"]["inventory_id"] == "eddypro_official_source_inventory_v1"
         assert snapshot["delivery_audit"]["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
+        assert snapshot["delivery_audit"]["eddypro_computation_surface"]["status"] == "ready"
+        assert snapshot["delivery_audit"]["eddypro_computation_summary"]["computation_surface_status"] == "ready"
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_computation_surface_ready_family_count"] == 7
         assert snapshot["delivery_audit"]["eddypro_surrogate_evidence_closure"]["artifact_type"] == "eddypro_surrogate_evidence_closure_v1"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_surrogate_evidence_closure_status"] == "pass"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["can_claim_source_derived_functional_parity"] is True
@@ -189,6 +192,9 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert delivery_audit["result_manifest_summary"]["official_raw_evidence_pack_acceptance_status"] == "not_run"
         assert delivery_audit["eddypro_source_inventory"]["feature_count"] >= 10
         assert delivery_audit["eddypro_coverage_audit"]["claim_gate"]["status"] == "blocked"
+        assert delivery_audit["eddypro_computation_surface"]["status"] == "ready"
+        assert delivery_audit["result_manifest_summary"]["eddypro_computation_surface_status"] == "ready"
+        assert delivery_audit["eddypro_computation_summary"]["computation_surface_blocked_family_count"] == 0
         assert delivery_audit["eddypro_surrogate_evidence_closure"]["status"] == "pass"
         assert delivery_audit["eddypro_release_gate"]["status"] == "blocked"
         assert delivery_audit["eddypro_closure_plan"]["next_action_count"] >= 1

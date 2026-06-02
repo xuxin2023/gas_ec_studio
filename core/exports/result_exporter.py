@@ -656,6 +656,7 @@ class ResultExporter:
         eddypro_computation_stress_suite = build_eddypro_computation_stress_suite(
             workspace_root=fixture_pack_workspace_root or None,
         )
+        eddypro_computation_surface = dict(eddypro_computation_stress_suite.get("computation_surface", {}) or {})
         eddypro_computation_stress_suite_path = export_root / "eddypro_computation_stress_suite.json"
         self._write_json(eddypro_computation_stress_suite_path, eddypro_computation_stress_suite)
         eddypro_computation_scope_audit = build_eddypro_computation_scope_audit(
@@ -1004,6 +1005,20 @@ class ResultExporter:
                 "eddypro_computation_stress_failed_case_count": int(
                     eddypro_computation_stress_suite.get("failed_case_count", 0) or 0
                 ),
+                "eddypro_computation_surface": eddypro_computation_surface,
+                "eddypro_computation_surface_status": str(eddypro_computation_surface.get("status", "")),
+                "eddypro_computation_surface_ready_family_count": int(
+                    eddypro_computation_surface.get("ready_family_count", 0) or 0
+                ),
+                "eddypro_computation_surface_blocked_family_count": int(
+                    eddypro_computation_surface.get("blocked_family_count", 0) or 0
+                ),
+                "eddypro_computation_surface_required_families": list(
+                    eddypro_computation_surface.get("required_families", []) or []
+                ),
+                "eddypro_computation_surface_family_status": dict(
+                    eddypro_computation_surface.get("family_status", {}) or {}
+                ),
                 "eddypro_computation_scope_audit": eddypro_computation_scope_audit,
                 "eddypro_computation_scope_audit_artifact": str(eddypro_computation_scope_audit_path),
                 "eddypro_computation_scope_audit_status": str(eddypro_computation_scope_audit.get("status", "")),
@@ -1180,6 +1195,20 @@ class ResultExporter:
             "eddypro_computation_stress_pass_rate": float(eddypro_computation_stress_suite.get("pass_rate", 0.0) or 0.0),
             "eddypro_computation_stress_failed_case_count": int(
                 eddypro_computation_stress_suite.get("failed_case_count", 0) or 0
+            ),
+            "eddypro_computation_surface": eddypro_computation_surface,
+            "eddypro_computation_surface_status": str(eddypro_computation_surface.get("status", "")),
+            "eddypro_computation_surface_ready_family_count": int(
+                eddypro_computation_surface.get("ready_family_count", 0) or 0
+            ),
+            "eddypro_computation_surface_blocked_family_count": int(
+                eddypro_computation_surface.get("blocked_family_count", 0) or 0
+            ),
+            "eddypro_computation_surface_required_families": list(
+                eddypro_computation_surface.get("required_families", []) or []
+            ),
+            "eddypro_computation_surface_family_status": dict(
+                eddypro_computation_surface.get("family_status", {}) or {}
             ),
             "eddypro_computation_scope_audit": eddypro_computation_scope_audit,
             "eddypro_computation_scope_audit_artifact": str(eddypro_computation_scope_audit_path),

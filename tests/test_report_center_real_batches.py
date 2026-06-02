@@ -414,6 +414,41 @@ def test_report_center_method_compare_surfaces_artifacts(monkeypatch, tmp_path) 
         controller.shutdown()
 
 
+def test_report_center_computation_surface_uses_stress_suite_artifact(monkeypatch, tmp_path) -> None:
+    _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    try:
+        _run_real_batch(controller, _make_rows(samples=900))
+        controller.run_ec_processing()
+        controller.set_report_nav_section("computation_surface")
+        controller.export_current_report()
+        controller.refresh_report_center()
+
+        page = ReportCenterPage(controller)
+        page.refresh()
+
+        report = controller.report_center_workspace["reports"]["computation_surface"]
+        metrics = dict(report["metrics"])
+        rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
+        latest_files = controller.current_spectral_run().artifacts["result_exports"]["latest"]["files"]
+        stress_suite = json.loads(Path(latest_files["eddypro_computation_stress_suite_artifact"]).read_text(encoding="utf-8"))
+
+        assert report["report_key"] == "computation_surface"
+        assert metrics["surface_status"] == "ready"
+        assert metrics["ready_families"] == "7 / 7"
+        assert metrics["failed_cases"] == "0"
+        assert stress_suite["computation_surface"]["status"] == "ready"
+        assert "rotation_lag" in rows_text
+        assert "ch4_li7700" in rows_text
+        assert "Computation Stress Suite" in report["file_info"]
+        assert Path(latest_files["eddypro_computation_scope_audit_artifact"]).exists()
+        assert "computation_surface" in page.report_items
+        assert page.preview_table.rowCount() >= 7
+    finally:
+        controller.shutdown()
+
+
 def test_report_center_fixture_pack_surfaces_validated_eddypro_assets(monkeypatch, tmp_path) -> None:
     _app()
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)

@@ -3982,6 +3982,7 @@ class StudioController(QObject):
                 ("benchmark_cockpit", "Benchmark 驾驶舱"),
                 ("method_provenance", "方法溯源"),
                 ("method_compare", "Method Compare"),
+                ("computation_surface", "Computation Surface"),
             )
         }
 
@@ -4511,6 +4512,14 @@ class StudioController(QObject):
             ],
         }
 
+        reports["computation_surface"] = self._computation_surface_report_payload(
+            run_result=run_result,
+            updated_at=updated_at,
+            batch_label=batch_label,
+            result_export_files=result_export_files,
+            file_info_for=file_info_for,
+        )
+
         included_files = evidence.get("included_files", [])
         evidence_plot = []
         if included_files:
@@ -4560,6 +4569,92 @@ class StudioController(QObject):
         reports["benchmark_cockpit"] = self._benchmark_cockpit_payload(run_result)
 
         return reports
+
+    def _computation_surface_report_payload(
+        self,
+        *,
+        run_result: SpectralRunResult,
+        updated_at: str,
+        batch_label: str,
+        result_export_files: dict,
+        file_info_for,
+    ) -> dict:
+        stress_suite_path = str(result_export_files.get("eddypro_computation_stress_suite_artifact", "") or "")
+        scope_audit_path = str(result_export_files.get("eddypro_computation_scope_audit_artifact", "") or "")
+        stress_suite: dict[str, object] = {}
+        if stress_suite_path:
+            try:
+                stress_suite = json.loads(Path(stress_suite_path).read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                stress_suite = {}
+        surface = dict(stress_suite.get("computation_surface", {}) or {})
+        required_families = list(surface.get("required_families", []) or [])
+        family_status = dict(surface.get("family_status", {}) or {})
+        blocked_families = list(surface.get("blocked_families", []) or [])
+        ready_count = int(surface.get("ready_family_count", 0) or 0)
+        blocked_count = int(surface.get("blocked_family_count", 0) or 0)
+        case_count = int(stress_suite.get("case_count", 0) or 0)
+        failed_case_count = int(stress_suite.get("failed_case_count", 0) or 0)
+        pass_rate = float(stress_suite.get("pass_rate", 0.0) or 0.0)
+        rows = [
+            (
+                family,
+                str(family_status.get(family, "missing")),
+                "required EC computation family",
+            )
+            for family in required_families
+        ]
+        if not rows:
+            rows = [
+                (
+                    "computation_surface",
+                    str(surface.get("status", "not_exported")),
+                    "Run result export first; computation surface is read from eddypro_computation_stress_suite.json.",
+                )
+            ]
+        for item in blocked_families[:5]:
+            payload = dict(item or {})
+            rows.append(
+                (
+                    f"blocked:{payload.get('family', '')}",
+                    str(payload.get("status", "")),
+                    "; ".join(str(reason) for reason in list(payload.get("failure_reasons", []) or [])) or "blocked",
+                )
+            )
+        return {
+            "report_key": "computation_surface",
+            "title": "Computation Surface",
+            "source": f"EddyPro source-derived computation stress suite / {batch_label}",
+            "updated_at": updated_at,
+            "metrics": [
+                ("surface_status", str(surface.get("status", "not_exported"))),
+                ("ready_families", f"{ready_count} / {len(required_families)}"),
+                ("stress_pass_rate", f"{pass_rate:.0%}"),
+                ("failed_cases", str(failed_case_count)),
+            ],
+            "plot_series": [float(ready_count), float(blocked_count), float(case_count), float(failed_case_count)],
+            "table_headers": ["family", "status", "detail"],
+            "table_rows": rows,
+            "conclusions": [
+                "Computation surface is backed by eddypro_computation_stress_suite.json and delivery manifests, not by a view-only refresh.",
+                "A ready computation surface supports source-derived computational-superiority evidence; official field numeric parity still requires paired raw/settings/Full_Output evidence.",
+            ],
+            "export_options": ["Export current report", "Export evidence package"],
+            "file_info": {
+                **file_info_for("computation_surface"),
+                **({"Computation Stress Suite": stress_suite_path} if stress_suite_path else {}),
+                **({"Computation Scope Audit": scope_audit_path} if scope_audit_path else {}),
+            },
+            "versions": [
+                f"Run ID: {run_result.run_id}",
+                f"stress_suite_status={stress_suite.get('status', 'not_exported')}",
+                "Truthfulness: official numeric parity remains blocked until real paired EddyPro evidence exists.",
+            ],
+            "usage": [
+                "Use this card to verify which EC computation families are ready before making EddyPro-overlap claims.",
+                "Use the stress suite artifact for audit-level detail and the scope audit for claim-boundary wording.",
+            ],
+        }
 
     def _fixture_pack_report_payload(
         self,
@@ -6156,6 +6251,7 @@ class StudioController(QObject):
             "eddypro_compare": "EddyPro 对标报告",
             "method_provenance": "方法溯源",
             "method_compare": "Method Compare",
+            "computation_surface": "Computation Surface",
         }
         return {
             key: {
