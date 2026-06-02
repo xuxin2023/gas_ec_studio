@@ -141,6 +141,7 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["artifact_index"]["official_raw_evidence_pack_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_source_inventory_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_coverage_audit_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["eddypro_computation_scope_audit_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_surrogate_evidence_closure_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_release_gate_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_partial_capability_closure_artifact"]["packaged"] is True
@@ -161,9 +162,13 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["official_eddypro_run"]["status"] == "not_available"
         assert manifest["eddypro_source_inventory"]["inventory_id"] == "eddypro_official_source_inventory_v1"
         assert manifest["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
+        assert manifest["eddypro_computation_scope_audit"]["artifact_type"] == "eddypro_computation_scope_audit_v1"
+        assert manifest["eddypro_computation_summary"]["can_claim_source_derived_computational_superiority"] is True
         assert manifest["eddypro_surrogate_evidence_closure"]["artifact_type"] == "eddypro_surrogate_evidence_closure_v1"
         assert manifest["result_manifest_summary"]["eddypro_surrogate_evidence_closure_status"] == "pass"
         assert manifest["result_manifest_summary"]["can_claim_source_derived_functional_parity"] is True
+        assert manifest["result_manifest_summary"]["can_claim_source_derived_computational_superiority"] is True
+        assert manifest["result_manifest_summary"]["computation_core_algorithm_blocker_count"] == 0
         assert manifest["eddypro_release_gate"]["artifact_type"] == "eddypro_release_gate_v1"
         assert manifest["eddypro_partial_capability_closure"]["artifact_type"] == "eddypro_partial_capability_closure_v1"
         assert manifest["result_manifest_summary"]["eddypro_partial_capability_count"] == 5
@@ -231,6 +236,7 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert any(name.endswith("official_raw_evidence_pack.json") for name in names)
         assert any(name.endswith("eddypro_source_inventory.json") for name in names)
         assert any(name.endswith("eddypro_coverage_audit.json") for name in names)
+        assert any(name.endswith("eddypro_computation_scope_audit.json") for name in names)
         assert any(name.endswith("eddypro_surrogate_evidence_closure.json") for name in names)
         assert any(name.endswith("eddypro_release_gate.json") for name in names)
         assert any(name.endswith("eddypro_partial_capability_closure.json") for name in names)

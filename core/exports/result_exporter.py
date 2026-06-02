@@ -20,6 +20,7 @@ from core.acquisition.runtime_install import (
     has_runtime_install_config,
 )
 from core.comparison.eddypro_coverage_audit import build_eddypro_coverage_audit
+from core.comparison.eddypro_computation_scope_audit import build_eddypro_computation_scope_audit
 from core.comparison.eddypro_release_gate import build_eddypro_release_gate
 from core.comparison.eddypro_source_inventory import build_eddypro_source_inventory
 from core.comparison.fixture_pack import (
@@ -651,6 +652,12 @@ class ResultExporter:
         eddypro_surrogate_evidence_closure = dict(eddypro_coverage_audit.get("surrogate_evidence_closure", {}) or {})
         eddypro_coverage_audit_path = export_root / "eddypro_coverage_audit.json"
         self._write_json(eddypro_coverage_audit_path, eddypro_coverage_audit)
+        eddypro_computation_scope_audit = build_eddypro_computation_scope_audit(
+            workspace_root=fixture_pack_workspace_root or None,
+            coverage_audit=eddypro_coverage_audit,
+        )
+        eddypro_computation_scope_audit_path = export_root / "eddypro_computation_scope_audit.json"
+        self._write_json(eddypro_computation_scope_audit_path, eddypro_computation_scope_audit)
         eddypro_surrogate_evidence_closure_path = export_root / "eddypro_surrogate_evidence_closure.json"
         self._write_json(eddypro_surrogate_evidence_closure_path, eddypro_surrogate_evidence_closure)
         eddypro_release_gate = build_eddypro_release_gate(
@@ -858,6 +865,7 @@ class ResultExporter:
         exported_files.append(official_raw_evidence_pack_path.name)
         exported_files.append(eddypro_source_inventory_path.name)
         exported_files.append(eddypro_coverage_audit_path.name)
+        exported_files.append(eddypro_computation_scope_audit_path.name)
         exported_files.append(eddypro_surrogate_evidence_closure_path.name)
         exported_files.append(eddypro_release_gate_path.name)
         exported_files.append(eddypro_partial_capability_closure_path.name)
@@ -981,6 +989,15 @@ class ResultExporter:
                 "eddypro_source_inventory_artifact": str(eddypro_source_inventory_path),
                 "eddypro_coverage_audit": eddypro_coverage_audit,
                 "eddypro_coverage_audit_artifact": str(eddypro_coverage_audit_path),
+                "eddypro_computation_scope_audit": eddypro_computation_scope_audit,
+                "eddypro_computation_scope_audit_artifact": str(eddypro_computation_scope_audit_path),
+                "eddypro_computation_scope_audit_status": str(eddypro_computation_scope_audit.get("status", "")),
+                "can_claim_source_derived_computational_superiority": bool(
+                    dict(eddypro_computation_scope_audit.get("claim_boundary", {}) or {}).get(
+                        "can_claim_source_derived_computational_superiority",
+                        False,
+                    )
+                ),
                 "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
                 "eddypro_surrogate_evidence_closure_artifact": str(eddypro_surrogate_evidence_closure_path),
                 "eddypro_surrogate_evidence_closure_status": str(eddypro_surrogate_evidence_closure.get("status", "")),
@@ -1142,6 +1159,15 @@ class ResultExporter:
             "eddypro_source_inventory_artifact": str(eddypro_source_inventory_path),
             "eddypro_coverage_audit": eddypro_coverage_audit,
             "eddypro_coverage_audit_artifact": str(eddypro_coverage_audit_path),
+            "eddypro_computation_scope_audit": eddypro_computation_scope_audit,
+            "eddypro_computation_scope_audit_artifact": str(eddypro_computation_scope_audit_path),
+            "eddypro_computation_scope_audit_status": str(eddypro_computation_scope_audit.get("status", "")),
+            "can_claim_source_derived_computational_superiority": bool(
+                dict(eddypro_computation_scope_audit.get("claim_boundary", {}) or {}).get(
+                    "can_claim_source_derived_computational_superiority",
+                    False,
+                )
+            ),
             "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
             "eddypro_surrogate_evidence_closure_artifact": str(eddypro_surrogate_evidence_closure_path),
             "eddypro_surrogate_evidence_closure_status": str(eddypro_surrogate_evidence_closure.get("status", "")),
@@ -1607,6 +1633,7 @@ class ResultExporter:
         files["official_raw_evidence_pack_artifact"] = str(official_raw_evidence_pack_path)
         files["eddypro_source_inventory_artifact"] = str(eddypro_source_inventory_path)
         files["eddypro_coverage_audit_artifact"] = str(eddypro_coverage_audit_path)
+        files["eddypro_computation_scope_audit_artifact"] = str(eddypro_computation_scope_audit_path)
         files["eddypro_surrogate_evidence_closure_artifact"] = str(eddypro_surrogate_evidence_closure_path)
         files["eddypro_release_gate_artifact"] = str(eddypro_release_gate_path)
         files["eddypro_partial_capability_closure_artifact"] = str(eddypro_partial_capability_closure_path)

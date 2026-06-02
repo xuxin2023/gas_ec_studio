@@ -13,6 +13,7 @@ from typing import Any
 
 from core.acquisition.runtime_watchdog import attach_runtime_watchdog, build_runtime_watchdog_manifest
 from core.comparison.eddypro_coverage_audit import build_eddypro_coverage_audit
+from core.comparison.eddypro_computation_scope_audit import build_eddypro_computation_scope_audit
 from core.comparison.eddypro_release_gate import build_eddypro_release_gate
 from core.comparison.eddypro_source_inventory import build_eddypro_source_inventory
 from core.comparison.partial_capability_closure import build_eddypro_partial_capability_closure
@@ -490,6 +491,8 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--watchdog-require-clock-quality", default="", help="Require clock_sync quality gate pass in watchdog checks (true/false).")
     parser.add_argument("--watchdog-require-network-pass", default="", help="Require network validation pass in watchdog checks (true/false).")
     parser.add_argument("--build-eddypro-coverage-audit", action="store_true", help="Build a claim-gated EddyPro coverage audit JSON.")
+    parser.add_argument("--build-eddypro-computation-scope-audit", action="store_true", help="Build a computation-focused EddyPro scope audit that can defer non-EC-computation blockers.")
+    parser.add_argument("--eddypro-coverage-audit", default="", help="Existing EddyPro coverage audit JSON used by --build-eddypro-computation-scope-audit.")
     parser.add_argument("--build-eddypro-release-gate", action="store_true", help="Build a CI/release gate JSON for full EddyPro parity claims.")
     parser.add_argument("--build-eddypro-partial-capability-closure", action="store_true", help="Build a non-blocking closure ledger for remaining partial EddyPro capabilities.")
     parser.add_argument("--build-public-eddypro-fixture-catalog", action="store_true", help="Build a public EddyPro fixture catalog/acquisition plan JSON.")
@@ -605,6 +608,9 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     if args.build_eddypro_coverage_audit:
         return _run_eddypro_coverage_audit_cli(args, parser)
+
+    if args.build_eddypro_computation_scope_audit:
+        return _run_eddypro_computation_scope_audit_cli(args, parser)
 
     if args.build_public_eddypro_fixture_catalog:
         return _run_public_eddypro_fixture_catalog_cli(args, parser)
@@ -769,6 +775,33 @@ def _run_eddypro_coverage_audit_cli(args: argparse.Namespace, parser: argparse.A
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0
+
+
+def _run_eddypro_computation_scope_audit_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.output:
+        parser.error("--output is required with --build-eddypro-computation-scope-audit.")
+    workspace_root = Path(args.workspace_root) if args.workspace_root else None
+    coverage = (
+        load_config_file(args.eddypro_coverage_audit)
+        if getattr(args, "eddypro_coverage_audit", "")
+        else build_eddypro_coverage_audit(
+            capability_matrix_path=args.capability_matrix or None,
+            fixture_pack_path=args.fixture_pack or None,
+            workspace_root=workspace_root,
+            official_raw_evidence_pack=load_config_file(args.official_raw_evidence_pack)
+            if args.official_raw_evidence_pack
+            else None,
+        )
+    )
+    payload = build_eddypro_computation_scope_audit(
+        capability_matrix_path=args.capability_matrix or None,
+        coverage_audit=coverage,
+        workspace_root=workspace_root,
+    )
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 0 if payload.get("status") != "computation_scope_blocked" else 2
 
 
 def _run_eddypro_partial_capability_closure_cli(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

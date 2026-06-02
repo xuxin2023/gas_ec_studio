@@ -112,6 +112,8 @@ def export_delivery_package(
         "official_eddypro_run": audit.get("official_eddypro_run", {}),
         "eddypro_source_inventory": audit.get("eddypro_source_inventory", {}),
         "eddypro_coverage_audit": audit.get("eddypro_coverage_audit", {}),
+        "eddypro_computation_scope_audit": audit.get("eddypro_computation_scope_audit", {}),
+        "eddypro_computation_summary": audit.get("eddypro_computation_summary", {}),
         "eddypro_surrogate_evidence_closure": audit.get("eddypro_surrogate_evidence_closure", {}),
         "eddypro_release_gate": audit.get("eddypro_release_gate", {}),
         "eddypro_partial_capability_closure": audit.get("eddypro_partial_capability_closure", {}),
@@ -346,6 +348,10 @@ def _build_delivery_audit(
     )
     eddypro_source_inventory = dict(result_manifest.get("eddypro_source_inventory", {}) or {})
     eddypro_coverage_audit = dict(result_manifest.get("eddypro_coverage_audit", {}) or {})
+    eddypro_computation_scope_audit = dict(
+        result_manifest.get("eddypro_computation_scope_audit", {})
+        or _read_json_file(result_files.get("eddypro_computation_scope_audit_artifact", ""))
+    )
     eddypro_surrogate_evidence_closure = dict(
         result_manifest.get("eddypro_surrogate_evidence_closure", {})
         or eddypro_coverage_audit.get("surrogate_evidence_closure", {})
@@ -438,6 +444,7 @@ def _build_delivery_audit(
         "official_raw_evidence_pack_artifact",
         "eddypro_source_inventory_artifact",
         "eddypro_coverage_audit_artifact",
+        "eddypro_computation_scope_audit_artifact",
         "eddypro_surrogate_evidence_closure_artifact",
         "eddypro_release_gate_artifact",
         "eddypro_partial_capability_closure_artifact",
@@ -597,6 +604,16 @@ def _build_delivery_audit(
             "eddypro_source_inventory_feature_count": eddypro_source_inventory.get("feature_count", 0),
             "eddypro_coverage_audit_status": eddypro_coverage_audit.get("status", ""),
             "eddypro_coverage_completion_score": dict(eddypro_coverage_audit.get("capability_summary", {}) or {}).get("completion_score", 0.0),
+            "eddypro_computation_scope_audit_status": eddypro_computation_scope_audit.get("status", ""),
+            "can_claim_source_derived_computational_superiority": dict(
+                eddypro_computation_scope_audit.get("claim_boundary", {}) or {}
+            ).get("can_claim_source_derived_computational_superiority", False),
+            "computation_core_algorithm_blocker_count": dict(
+                eddypro_computation_scope_audit.get("scope_summary", {}) or {}
+            ).get("core_algorithm_blocker_count", 0),
+            "computation_deferred_non_computational_count": dict(
+                eddypro_computation_scope_audit.get("scope_summary", {}) or {}
+            ).get("non_computational_deferrable_count", 0),
             "can_claim_full_eddypro_parity": eddypro_coverage_audit.get("can_claim_full_eddypro_parity", False),
             "can_claim_source_derived_functional_parity": result_manifest.get(
                 "can_claim_source_derived_functional_parity",
@@ -780,6 +797,22 @@ def _build_delivery_audit(
         "official_eddypro_run": official_eddypro_run,
         "eddypro_source_inventory": eddypro_source_inventory,
         "eddypro_coverage_audit": eddypro_coverage_audit,
+        "eddypro_computation_scope_audit": eddypro_computation_scope_audit,
+        "eddypro_computation_summary": {
+            "status": eddypro_computation_scope_audit.get("status", ""),
+            "can_claim_source_derived_computational_superiority": dict(
+                eddypro_computation_scope_audit.get("claim_boundary", {}) or {}
+            ).get("can_claim_source_derived_computational_superiority", False),
+            "core_algorithm_blocker_count": dict(
+                eddypro_computation_scope_audit.get("scope_summary", {}) or {}
+            ).get("core_algorithm_blocker_count", 0),
+            "supporting_algorithm_blocker_count": dict(
+                eddypro_computation_scope_audit.get("scope_summary", {}) or {}
+            ).get("supporting_algorithm_blocker_count", 0),
+            "non_computational_deferrable_count": dict(
+                eddypro_computation_scope_audit.get("scope_summary", {}) or {}
+            ).get("non_computational_deferrable_count", 0),
+        },
         "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
         "eddypro_release_gate": eddypro_release_gate,
         "eddypro_partial_capability_closure": eddypro_partial_capability_closure,

@@ -161,6 +161,7 @@ def export_formal_report(
             "official_raw_fixture_manifest": snapshot.get("delivery_audit", {}).get("official_raw_fixture_manifest", {}),
             "official_raw_fixture_detail": snapshot.get("delivery_audit", {}).get("official_raw_fixture_detail", {}),
             "eddypro_coverage_audit": snapshot.get("delivery_audit", {}).get("eddypro_coverage_audit", {}),
+            "eddypro_computation_scope_audit": snapshot.get("delivery_audit", {}).get("eddypro_computation_scope_audit", {}),
             "eddypro_partial_capability_closure": snapshot.get("delivery_audit", {}).get("eddypro_partial_capability_closure", {}),
             "public_ec_acquisition_closure": snapshot.get("delivery_audit", {}).get("public_ec_acquisition_closure", {}),
             "public_ec_acquisition_summary": snapshot.get("delivery_audit", {}).get("public_ec_acquisition_summary", {}),
@@ -253,6 +254,7 @@ def _build_formal_report_snapshot(
     )
     eddypro_source_inventory = dict(result_manifest.get("eddypro_source_inventory", {}) or {})
     eddypro_coverage_audit = dict(result_manifest.get("eddypro_coverage_audit", {}) or {})
+    eddypro_computation_scope_audit = dict(result_manifest.get("eddypro_computation_scope_audit", {}) or {})
     eddypro_surrogate_evidence_closure = dict(
         result_manifest.get("eddypro_surrogate_evidence_closure", {})
         or eddypro_coverage_audit.get("surrogate_evidence_closure", {})
@@ -325,6 +327,7 @@ def _build_formal_report_snapshot(
                 "official_raw_evidence_pack_artifact",
                 "eddypro_source_inventory_artifact",
                 "eddypro_coverage_audit_artifact",
+                "eddypro_computation_scope_audit_artifact",
                 "eddypro_surrogate_evidence_closure_artifact",
                 "eddypro_release_gate_artifact",
                 "eddypro_partial_capability_closure_artifact",
@@ -406,6 +409,16 @@ def _build_formal_report_snapshot(
                 official_raw_official_run_normalization.get("qc_mapping_strategy", ""),
             ),
             "can_claim_full_eddypro_parity": eddypro_coverage_audit.get("can_claim_full_eddypro_parity", False),
+            "eddypro_computation_scope_audit_status": eddypro_computation_scope_audit.get("status", ""),
+            "can_claim_source_derived_computational_superiority": dict(
+                eddypro_computation_scope_audit.get("claim_boundary", {}) or {}
+            ).get("can_claim_source_derived_computational_superiority", False),
+            "computation_core_algorithm_blocker_count": dict(
+                eddypro_computation_scope_audit.get("scope_summary", {}) or {}
+            ).get("core_algorithm_blocker_count", 0),
+            "computation_deferred_non_computational_count": dict(
+                eddypro_computation_scope_audit.get("scope_summary", {}) or {}
+            ).get("non_computational_deferrable_count", 0),
             "can_claim_source_derived_functional_parity": result_manifest.get(
                 "can_claim_source_derived_functional_parity",
                 eddypro_coverage_audit.get("can_claim_source_derived_functional_parity", False),
@@ -469,6 +482,19 @@ def _build_formal_report_snapshot(
         },
         "eddypro_source_inventory": eddypro_source_inventory,
         "eddypro_coverage_audit": eddypro_coverage_audit,
+        "eddypro_computation_scope_audit": eddypro_computation_scope_audit,
+        "eddypro_computation_summary": {
+            "status": eddypro_computation_scope_audit.get("status", ""),
+            "can_claim_source_derived_computational_superiority": dict(
+                eddypro_computation_scope_audit.get("claim_boundary", {}) or {}
+            ).get("can_claim_source_derived_computational_superiority", False),
+            "core_algorithm_blocker_count": dict(
+                eddypro_computation_scope_audit.get("scope_summary", {}) or {}
+            ).get("core_algorithm_blocker_count", 0),
+            "non_computational_deferrable_count": dict(
+                eddypro_computation_scope_audit.get("scope_summary", {}) or {}
+            ).get("non_computational_deferrable_count", 0),
+        },
         "eddypro_surrogate_evidence_closure": eddypro_surrogate_evidence_closure,
         "eddypro_release_gate": eddypro_release_gate,
         "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
@@ -832,6 +858,24 @@ def _build_formal_report_snapshot(
                         ["eddypro_coverage_audit_status", str(eddypro_coverage_audit.get("status", "--"))],
                         ["eddypro_coverage_completion_score", _fmt(dict(eddypro_coverage_audit.get("capability_summary", {}) or {}).get("completion_score"), 3)],
                         ["can_claim_full_eddypro_parity", str(eddypro_coverage_audit.get("can_claim_full_eddypro_parity", False))],
+                        ["eddypro_computation_scope_audit_status", str(eddypro_computation_scope_audit.get("status", "--"))],
+                        [
+                            "can_claim_source_derived_computational_superiority",
+                            str(
+                                dict(eddypro_computation_scope_audit.get("claim_boundary", {}) or {}).get(
+                                    "can_claim_source_derived_computational_superiority",
+                                    False,
+                                )
+                            ),
+                        ],
+                        [
+                            "computation_scope_counts",
+                            (
+                                f"core_blockers={dict(eddypro_computation_scope_audit.get('scope_summary', {}) or {}).get('core_algorithm_blocker_count', 0)}; "
+                                f"support_blockers={dict(eddypro_computation_scope_audit.get('scope_summary', {}) or {}).get('supporting_algorithm_blocker_count', 0)}; "
+                                f"deferred={dict(eddypro_computation_scope_audit.get('scope_summary', {}) or {}).get('non_computational_deferrable_count', 0)}"
+                            ),
+                        ],
                         [
                             "can_claim_source_derived_functional_parity",
                             str(
