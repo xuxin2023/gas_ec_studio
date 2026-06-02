@@ -159,6 +159,8 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert snapshot["delivery_audit"]["eddypro_release_gate"]["artifact_type"] == "eddypro_release_gate_v1"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["can_release_full_eddypro_parity"] is False
         assert snapshot["delivery_audit"]["result_manifest_summary"]["can_release_source_derived_functional_parity"] is True
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["can_release_source_derived_computational_superiority"] is True
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["source_derived_computation_gate_status"] == "pass"
         assert snapshot["delivery_audit"]["eddypro_closure_gate"]["artifact_type"] == "eddypro_closure_gate_v1"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_closure_gate_status"] == "blocked"
         assert snapshot["delivery_audit"]["spectral_assessment"]["artifact_type"] == "spectral_assessment_export_v1"
@@ -197,6 +199,8 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert delivery_audit["eddypro_computation_summary"]["computation_surface_blocked_family_count"] == 0
         assert delivery_audit["eddypro_surrogate_evidence_closure"]["status"] == "pass"
         assert delivery_audit["eddypro_release_gate"]["status"] == "blocked"
+        assert delivery_audit["result_manifest_summary"]["can_release_source_derived_computational_superiority"] is True
+        assert delivery_audit["result_manifest_summary"]["source_derived_computation_gate_status"] == "pass"
         assert delivery_audit["eddypro_closure_plan"]["next_action_count"] >= 1
         assert delivery_audit["spectral_assessment"]["status"] == "ok"
         assert delivery_audit["spectral_assessment_library"]["status"] == "ok"

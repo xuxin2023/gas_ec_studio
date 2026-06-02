@@ -10,6 +10,8 @@ from core.comparison.eddypro_coverage_audit import (
     DEFAULT_CAPABILITY_MATRIX_PATH,
     build_eddypro_coverage_audit,
 )
+from core.comparison.eddypro_computation_scope_audit import build_eddypro_computation_scope_audit
+from core.comparison.eddypro_computation_stress_suite import build_eddypro_computation_stress_suite
 from core.comparison.eddypro_source_inventory import build_eddypro_source_inventory
 from core.comparison.fixture_pack import (
     DEFAULT_FIXTURE_PACK_PATH,
@@ -36,6 +38,11 @@ def build_eddypro_release_gate(
     official_raw_manifest: dict[str, Any] | None = None,
     source_inventory: dict[str, Any] | None = None,
     coverage_audit: dict[str, Any] | None = None,
+    computation_scope_audit_path: str | Path | None = None,
+    computation_scope_audit: dict[str, Any] | None = None,
+    computation_stress_suite_path: str | Path | None = None,
+    computation_stress_suite: dict[str, Any] | None = None,
+    build_computation_gate: bool = False,
     output_dir: str | Path | None = None,
     run_acceptance: bool = True,
     acceptance_timeout_s: float = 300.0,
@@ -126,6 +133,28 @@ def build_eddypro_release_gate(
         coverage_path = out_dir / "eddypro_coverage_audit.json"
         _write_json(coverage_path, coverage_audit)
         artifacts["eddypro_coverage_audit"] = str(coverage_path)
+    computation_suite = _load_computation_stress_suite(
+        computation_stress_suite=computation_stress_suite,
+        computation_stress_suite_path=computation_stress_suite_path,
+        build_when_missing=bool(build_computation_gate),
+        workspace_root=root,
+    )
+    computation_audit = _load_or_build_computation_scope_audit(
+        computation_scope_audit=computation_scope_audit,
+        computation_scope_audit_path=computation_scope_audit_path,
+        computation_stress_suite=computation_suite,
+        coverage_audit=coverage_audit,
+        build_when_missing=bool(build_computation_gate),
+        workspace_root=root,
+    )
+    if out_dir is not None and computation_suite:
+        computation_suite_path = out_dir / "eddypro_computation_stress_suite.json"
+        _write_json(computation_suite_path, computation_suite)
+        artifacts["eddypro_computation_stress_suite"] = str(computation_suite_path)
+    if out_dir is not None and computation_audit:
+        computation_audit_path = out_dir / "eddypro_computation_scope_audit.json"
+        _write_json(computation_audit_path, computation_audit)
+        artifacts["eddypro_computation_scope_audit"] = str(computation_audit_path)
 
     claim_gate = dict(coverage_audit.get("claim_gate", {}) or {})
     acceptance = dict(coverage_audit.get("official_raw_acceptance_summary", {}) or {})
@@ -138,8 +167,30 @@ def build_eddypro_release_gate(
             *closure_blockers,
         ]
     )
-    release_pass = bool(coverage_audit.get("can_claim_full_eddypro_parity", False)) and not closure_blockers
     surrogate_release_pass = str(surrogate_closure.get("gate_status", surrogate_closure.get("status", ""))) == "pass"
+    computation_release_gate = _computation_release_gate(
+        computation_scope_audit=computation_audit,
+        computation_stress_suite=computation_suite,
+    )
+    computation_release_pass = bool(
+        computation_release_gate.get("can_release_source_derived_computational_superiority", False)
+    )
+    computation_gate_supplied = bool(computation_audit or computation_suite)
+    if computation_gate_supplied and not computation_release_pass:
+        blocking_reasons = _dedupe(
+            [
+                *blocking_reasons,
+                *[
+                    f"source-derived computation gate: {reason}"
+                    for reason in list(computation_release_gate.get("blocking_reasons", []) or [])
+                ],
+            ]
+        )
+    release_pass = (
+        bool(coverage_audit.get("can_claim_full_eddypro_parity", False))
+        and not closure_blockers
+        and (not computation_gate_supplied or computation_release_pass)
+    )
     return {
         "artifact_type": "eddypro_release_gate_v1",
         "gate_id": "eddypro_release_gate_v1",
@@ -150,6 +201,8 @@ def build_eddypro_release_gate(
         "surrogate_evidence_closure_status": str(surrogate_closure.get("status", "not_configured")),
         "surrogate_ci_exit_code": 0 if surrogate_release_pass else 2,
         "can_release_source_derived_functional_parity": surrogate_release_pass,
+        "source_derived_computation_ci_exit_code": 0 if computation_release_pass else 2,
+        "can_release_source_derived_computational_superiority": computation_release_pass,
         "workspace_root": str(root),
         "inputs": {
             "capability_matrix_path": str(_resolve(root, capability_matrix_path or DEFAULT_CAPABILITY_MATRIX_PATH)),
@@ -157,6 +210,9 @@ def build_eddypro_release_gate(
             "official_raw_bundle_dir": str(official_raw_bundle_dir or ""),
             "official_raw_evidence_pack_path": str(official_raw_evidence_pack_path or ""),
             "official_raw_closure_run_path": str(official_raw_closure_run_path or ""),
+            "computation_scope_audit_path": str(computation_scope_audit_path or ""),
+            "computation_stress_suite_path": str(computation_stress_suite_path or ""),
+            "build_computation_gate": bool(build_computation_gate),
             "run_acceptance": bool(run_acceptance),
             "acceptance_timeout_s": float(acceptance_timeout_s),
         },
@@ -173,6 +229,20 @@ def build_eddypro_release_gate(
                 coverage_audit.get("can_claim_source_derived_functional_parity", False)
             ),
             "can_release_source_derived_functional_parity": surrogate_release_pass,
+            "can_release_source_derived_computational_superiority": computation_release_pass,
+            "source_derived_computation_gate_status": str(computation_release_gate.get("status", "not_supplied")),
+            "source_derived_computation_blocking_reasons": list(
+                computation_release_gate.get("blocking_reasons", []) or []
+            ),
+            "computation_scope_audit_status": str(computation_release_gate.get("computation_scope_audit_status", "")),
+            "computation_stress_suite_status": str(computation_release_gate.get("computation_stress_suite_status", "")),
+            "computation_surface_status": str(computation_release_gate.get("computation_surface_status", "")),
+            "computation_surface_ready_family_count": int(
+                computation_release_gate.get("computation_surface_ready_family_count", 0) or 0
+            ),
+            "computation_surface_blocked_family_count": int(
+                computation_release_gate.get("computation_surface_blocked_family_count", 0) or 0
+            ),
             "surrogate_accepted_item_count": int(surrogate_closure.get("accepted_item_count", 0) or 0),
             "surrogate_missing_item_count": int(surrogate_closure.get("missing_item_count", 0) or 0),
             "surrogate_failed_external_check_count": int(surrogate_closure.get("failed_external_check_count", 0) or 0),
@@ -200,6 +270,9 @@ def build_eddypro_release_gate(
         },
         "artifacts": artifacts,
         "coverage_audit": coverage_audit,
+        "computation_release_gate": computation_release_gate,
+        "computation_scope_audit": computation_audit,
+        "computation_stress_suite": computation_suite,
         "surrogate_evidence_closure": surrogate_closure,
         "official_raw_closure_run": closure_run,
         "official_raw_closure_run_summary": closure_summary,
@@ -234,6 +307,90 @@ def _load_or_build_evidence_pack(
             workspace_root=workspace_root,
         )
     return {}
+
+
+def _load_computation_stress_suite(
+    *,
+    computation_stress_suite: dict[str, Any] | None,
+    computation_stress_suite_path: str | Path | None,
+    build_when_missing: bool,
+    workspace_root: Path,
+) -> dict[str, Any]:
+    if computation_stress_suite is not None:
+        return deepcopy(dict(computation_stress_suite))
+    if computation_stress_suite_path not in (None, ""):
+        return _read_json(Path(computation_stress_suite_path))
+    if build_when_missing:
+        return build_eddypro_computation_stress_suite(workspace_root=workspace_root)
+    return {}
+
+
+def _load_or_build_computation_scope_audit(
+    *,
+    computation_scope_audit: dict[str, Any] | None,
+    computation_scope_audit_path: str | Path | None,
+    computation_stress_suite: dict[str, Any],
+    coverage_audit: dict[str, Any],
+    build_when_missing: bool,
+    workspace_root: Path,
+) -> dict[str, Any]:
+    if computation_scope_audit is not None:
+        return deepcopy(dict(computation_scope_audit))
+    if computation_scope_audit_path not in (None, ""):
+        return _read_json(Path(computation_scope_audit_path))
+    if build_when_missing or computation_stress_suite:
+        return build_eddypro_computation_scope_audit(
+            workspace_root=workspace_root,
+            coverage_audit=coverage_audit,
+            computation_stress_suite=computation_stress_suite or None,
+        )
+    return {}
+
+
+def _computation_release_gate(
+    *,
+    computation_scope_audit: dict[str, Any],
+    computation_stress_suite: dict[str, Any],
+) -> dict[str, Any]:
+    scope = dict(computation_scope_audit or {})
+    suite = dict(computation_stress_suite or {})
+    stress_gate = dict(scope.get("computation_stress_suite_gate", {}) or {})
+    surface = dict(suite.get("computation_surface", {}) or {})
+    claim_boundary = dict(scope.get("claim_boundary", {}) or {})
+    scope_ready = bool(claim_boundary.get("can_claim_source_derived_computational_superiority", False))
+    suite_supplied = bool(suite)
+    suite_status = str(suite.get("status", stress_gate.get("status", "not_supplied")) or "not_supplied")
+    surface_status = str(surface.get("status", "not_supplied" if not suite_supplied else "unknown"))
+    blocking_reasons: list[str] = []
+    if not scope:
+        blocking_reasons.append("computation scope audit not supplied")
+    elif not scope_ready:
+        blocking_reasons.append(f"computation scope audit is not claim-ready: {scope.get('status', 'unknown')}")
+    if not suite_supplied:
+        blocking_reasons.append("computation stress suite not supplied")
+    elif suite_status != "pass":
+        blocking_reasons.append(f"computation stress suite status is {suite_status}")
+    if suite_supplied and surface_status != "ready":
+        blocking_reasons.append(f"computation surface status is {surface_status}")
+    can_release = not blocking_reasons
+    return {
+        "artifact_type": "source_derived_computation_release_gate_v1",
+        "status": "pass" if can_release else ("not_supplied" if not scope and not suite_supplied else "blocked"),
+        "can_release_source_derived_computational_superiority": can_release,
+        "ci_exit_code": 0 if can_release else 2,
+        "blocking_reasons": blocking_reasons,
+        "computation_scope_audit_status": str(scope.get("status", "not_supplied")),
+        "computation_stress_suite_status": suite_status,
+        "computation_surface_status": surface_status,
+        "computation_surface_ready_family_count": int(surface.get("ready_family_count", 0) or 0),
+        "computation_surface_blocked_family_count": int(surface.get("blocked_family_count", 0) or 0),
+        "computation_surface_required_families": list(surface.get("required_families", []) or []),
+        "computation_surface_family_status": dict(surface.get("family_status", {}) or {}),
+        "truthfulness_boundary": (
+            "This gate only releases a source-derived EC computation-superiority claim. It does not release "
+            "official field numeric parity, vendor certification, or full EddyPro software parity."
+        ),
+    }
 
 
 def _load_closure_run(

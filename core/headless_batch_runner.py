@@ -495,6 +495,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--build-eddypro-computation-scope-audit", action="store_true", help="Build a computation-focused EddyPro scope audit that can defer non-EC-computation blockers.")
     parser.add_argument("--build-eddypro-computation-stress-suite", action="store_true", help="Build deterministic source-derived stress checks for core EC computation families.")
     parser.add_argument("--eddypro-coverage-audit", default="", help="Existing EddyPro coverage audit JSON used by --build-eddypro-computation-scope-audit.")
+    parser.add_argument("--eddypro-computation-scope-audit", default="", help="Existing computation scope audit JSON used by --build-eddypro-release-gate.")
     parser.add_argument("--eddypro-computation-stress-suite", default="", help="Existing computation stress suite JSON used by --build-eddypro-computation-scope-audit.")
     parser.add_argument("--include-slow-computation-stress-cases", action="store_true", help="Include slower deterministic stress cases in the computation stress suite.")
     parser.add_argument("--build-eddypro-release-gate", action="store_true", help="Build a CI/release gate JSON for full EddyPro parity claims.")
@@ -1218,6 +1219,9 @@ def _run_eddypro_release_gate_cli(args: argparse.Namespace, parser: argparse.Arg
         official_raw_bundle_dir=args.release_gate_official_raw_bundle or None,
         official_raw_evidence_pack_path=args.official_raw_evidence_pack or None,
         official_raw_closure_run_path=args.official_raw_closure_run or None,
+        computation_scope_audit_path=args.eddypro_computation_scope_audit or None,
+        computation_stress_suite_path=args.eddypro_computation_stress_suite or None,
+        build_computation_gate=True,
         output_dir=output_path.parent,
         run_acceptance=not bool(args.skip_release_gate_acceptance),
         acceptance_timeout_s=float(args.acceptance_timeout_s or 300.0),

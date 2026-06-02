@@ -129,6 +129,59 @@ def _closure_run(status: str = "pass") -> dict:
     }
 
 
+def _computation_stress_suite(status: str = "pass", *, surface_status: str = "ready") -> dict:
+    blocked = [] if surface_status == "ready" else [{"family": "spectral_correction", "status": "fail"}]
+    return {
+        "artifact_type": "eddypro_computation_stress_suite_v1",
+        "status": status,
+        "case_count": 7,
+        "passed_case_count": 7 if status == "pass" else 6,
+        "failed_case_count": 0 if status == "pass" else 1,
+        "pass_rate": 1.0 if status == "pass" else 6 / 7,
+        "failed_cases": [] if status == "pass" else [{"case_id": "spectral_case", "family": "spectral_correction"}],
+        "computation_surface": {
+            "status": surface_status,
+            "required_families": [
+                "pipeline_core",
+                "rotation_lag",
+                "flux_density_energy",
+                "footprint",
+                "uncertainty",
+                "spectral_correction",
+                "ch4_li7700",
+            ],
+            "ready_family_count": 7 if surface_status == "ready" else 6,
+            "blocked_family_count": 0 if surface_status == "ready" else 1,
+            "family_status": {
+                "pipeline_core": "pass",
+                "rotation_lag": "pass",
+                "flux_density_energy": "pass",
+                "footprint": "pass",
+                "uncertainty": "pass",
+                "spectral_correction": "pass" if surface_status == "ready" else "fail",
+                "ch4_li7700": "pass",
+            },
+            "blocked_families": blocked,
+        },
+    }
+
+
+def _computation_scope_audit(can_claim: bool = True) -> dict:
+    return {
+        "artifact_type": "eddypro_computation_scope_audit_v1",
+        "status": "source_derived_computation_ready_real_evidence_pending" if can_claim else "computation_scope_blocked",
+        "claim_boundary": {
+            "can_claim_source_derived_computational_superiority": can_claim,
+            "can_claim_official_field_numeric_parity": False,
+        },
+        "computation_stress_suite_gate": {
+            "supplied": True,
+            "status": "pass" if can_claim else "fail",
+            "failed_case_count": 0 if can_claim else 1,
+        },
+    }
+
+
 def test_eddypro_release_gate_passes_when_all_claim_gates_pass(tmp_path: Path) -> None:
     matrix = tmp_path / "matrix.json"
     output_dir = tmp_path / "release_gate"
@@ -153,6 +206,58 @@ def test_eddypro_release_gate_passes_when_all_claim_gates_pass(tmp_path: Path) -
     assert gate["summary"]["official_eddypro_run_gate_status"] == "pass"
     assert Path(gate["artifacts"]["eddypro_coverage_audit"]).exists()
     assert Path(gate["artifacts"]["official_raw_evidence_pack"]).exists()
+
+
+def test_eddypro_release_gate_releases_source_derived_computation_when_surface_ready(tmp_path: Path) -> None:
+    matrix = tmp_path / "matrix.json"
+    output_dir = tmp_path / "release_gate"
+    _write_matrix(matrix, covered=True)
+
+    gate = build_eddypro_release_gate(
+        capability_matrix_path=matrix,
+        workspace_root=tmp_path,
+        official_raw_evidence_pack=_accepted_pack(),
+        fixture_summary=_fixture_summary(),
+        official_raw_manifest=_official_manifest(),
+        source_inventory=_source_inventory(),
+        computation_scope_audit=_computation_scope_audit(),
+        computation_stress_suite=_computation_stress_suite(),
+        output_dir=output_dir,
+        run_acceptance=False,
+    )
+
+    assert gate["status"] == "pass"
+    assert gate["can_release_source_derived_computational_superiority"] is True
+    assert gate["source_derived_computation_ci_exit_code"] == 0
+    assert gate["summary"]["source_derived_computation_gate_status"] == "pass"
+    assert gate["summary"]["computation_surface_status"] == "ready"
+    assert gate["summary"]["computation_surface_ready_family_count"] == 7
+    assert Path(gate["artifacts"]["eddypro_computation_stress_suite"]).exists()
+    assert Path(gate["artifacts"]["eddypro_computation_scope_audit"]).exists()
+
+
+def test_eddypro_release_gate_blocks_supplied_computation_surface_failure(tmp_path: Path) -> None:
+    matrix = tmp_path / "matrix.json"
+    _write_matrix(matrix, covered=True)
+
+    gate = build_eddypro_release_gate(
+        capability_matrix_path=matrix,
+        workspace_root=tmp_path,
+        official_raw_evidence_pack=_accepted_pack(),
+        fixture_summary=_fixture_summary(),
+        official_raw_manifest=_official_manifest(),
+        source_inventory=_source_inventory(),
+        computation_scope_audit=_computation_scope_audit(can_claim=False),
+        computation_stress_suite=_computation_stress_suite(status="fail", surface_status="blocked"),
+        run_acceptance=False,
+    )
+
+    assert gate["status"] == "blocked"
+    assert gate["can_release_full_eddypro_parity"] is False
+    assert gate["can_release_source_derived_computational_superiority"] is False
+    assert gate["summary"]["source_derived_computation_gate_status"] == "blocked"
+    assert gate["summary"]["computation_surface_status"] == "blocked"
+    assert any("source-derived computation gate" in reason for reason in gate["summary"]["blocking_reasons"])
 
 
 def test_eddypro_release_gate_uses_closure_run_as_first_class_input(tmp_path: Path) -> None:
@@ -304,6 +409,8 @@ def test_headless_cli_builds_eddypro_release_gate_for_current_repo(tmp_path: Pat
     assert payload["surrogate_evidence_closure"]["status"] == "pass"
     assert payload["summary"]["surrogate_evidence_closure_gate_status"] == "pass"
     assert payload["can_release_source_derived_functional_parity"] is True
+    assert payload["can_release_source_derived_computational_superiority"] is True
+    assert payload["summary"]["source_derived_computation_gate_status"] == "pass"
     assert payload["summary"]["can_claim_source_derived_functional_parity"] is True
 
 
@@ -334,6 +441,8 @@ def test_headless_cli_builds_eddypro_release_gate_from_closure_run(tmp_path: Pat
     assert payload["coverage_audit"]["claim_gate"]["status"] == "blocked"
     assert payload["surrogate_evidence_closure"]["status"] == "pass"
     assert payload["can_release_source_derived_functional_parity"] is True
+    assert payload["can_release_source_derived_computational_superiority"] is True
+    assert payload["summary"]["source_derived_computation_gate_status"] == "pass"
 
 
 def test_release_gate_runner_script_writes_artifact_and_returns_gate_code(tmp_path: Path) -> None:
@@ -369,8 +478,12 @@ def test_release_gate_runner_script_writes_artifact_and_returns_gate_code(tmp_pa
     assert payload["summary"]["official_raw_acceptance_gate_status"] == "pass"
     assert "EddyPro release gate: blocked" in completed.stdout
     assert "can_release_source_derived_functional_parity: True" in completed.stdout
+    assert "can_release_source_derived_computational_superiority: True" in completed.stdout
+    assert "source_derived_computation_gate_status: pass" in completed.stdout
     assert "surrogate_evidence_closure_status: pass" in completed.stdout
     assert "## EddyPro Release Gate" in summary.read_text(encoding="utf-8")
     summary_text = summary.read_text(encoding="utf-8")
     assert "Can release source-derived functional parity: `True`" in summary_text
+    assert "Can release source-derived computational superiority: `True`" in summary_text
+    assert "Source-derived computation gate: `pass`" in summary_text
     assert "Surrogate evidence closure: `pass`" in summary_text

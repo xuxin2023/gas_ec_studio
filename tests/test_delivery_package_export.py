@@ -185,6 +185,9 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["result_manifest_summary"]["can_claim_full_eddypro_parity"] is False
         assert manifest["result_manifest_summary"]["can_release_full_eddypro_parity"] is False
         assert manifest["result_manifest_summary"]["can_release_source_derived_functional_parity"] is True
+        assert manifest["result_manifest_summary"]["can_release_source_derived_computational_superiority"] is True
+        assert manifest["result_manifest_summary"]["source_derived_computation_gate_status"] == "pass"
+        assert manifest["result_manifest_summary"]["source_derived_computation_ci_exit_code"] == 0
         assert manifest["result_manifest_summary"]["eddypro_release_gate_status"] == "blocked"
         assert manifest["eddypro_closure_gate"]["artifact_type"] == "eddypro_closure_gate_v1"
         assert manifest["result_manifest_summary"]["eddypro_closure_gate_status"] == "blocked"

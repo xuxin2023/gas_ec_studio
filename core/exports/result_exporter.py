@@ -676,6 +676,8 @@ class ResultExporter:
             official_raw_manifest=official_raw_fixture_manifest,
             source_inventory=eddypro_source_inventory,
             coverage_audit=eddypro_coverage_audit,
+            computation_scope_audit=eddypro_computation_scope_audit,
+            computation_stress_suite=eddypro_computation_stress_suite,
             run_acceptance=False,
         )
         eddypro_release_gate.setdefault("artifacts", {}).update(
@@ -1041,6 +1043,15 @@ class ResultExporter:
                 "can_release_source_derived_functional_parity": bool(
                     eddypro_release_gate.get("can_release_source_derived_functional_parity", False)
                 ),
+                "can_release_source_derived_computational_superiority": bool(
+                    eddypro_release_gate.get("can_release_source_derived_computational_superiority", False)
+                ),
+                "source_derived_computation_gate_status": str(
+                    dict(eddypro_release_gate.get("computation_release_gate", {}) or {}).get("status", "")
+                ),
+                "source_derived_computation_ci_exit_code": int(
+                    eddypro_release_gate.get("source_derived_computation_ci_exit_code", 2)
+                ),
                 "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
                 "eddypro_partial_capability_closure_artifact": str(eddypro_partial_capability_closure_path),
                 "eddypro_partial_capability_closure_status": str(eddypro_partial_capability_closure.get("status", "")),
@@ -1231,6 +1242,15 @@ class ResultExporter:
             "can_release_full_eddypro_parity": bool(eddypro_release_gate.get("can_release_full_eddypro_parity", False)),
             "can_release_source_derived_functional_parity": bool(
                 eddypro_release_gate.get("can_release_source_derived_functional_parity", False)
+            ),
+            "can_release_source_derived_computational_superiority": bool(
+                eddypro_release_gate.get("can_release_source_derived_computational_superiority", False)
+            ),
+            "source_derived_computation_gate_status": str(
+                dict(eddypro_release_gate.get("computation_release_gate", {}) or {}).get("status", "")
+            ),
+            "source_derived_computation_ci_exit_code": int(
+                eddypro_release_gate.get("source_derived_computation_ci_exit_code", 2)
             ),
             "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
             "eddypro_partial_capability_closure_artifact": str(eddypro_partial_capability_closure_path),

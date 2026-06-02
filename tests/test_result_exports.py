@@ -169,6 +169,9 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["eddypro_release_gate_status"] == "blocked"
         assert summary_payload["can_release_full_eddypro_parity"] is False
         assert summary_payload["can_release_source_derived_functional_parity"] is True
+        assert summary_payload["can_release_source_derived_computational_superiority"] is True
+        assert summary_payload["source_derived_computation_gate_status"] == "pass"
+        assert summary_payload["source_derived_computation_ci_exit_code"] == 0
         assert summary_payload["eddypro_partial_capability_closure"]["artifact_type"] == "eddypro_partial_capability_closure_v1"
         assert summary_payload["eddypro_partial_capability_closure_status"] == "source_derived_closed_real_evidence_pending"
         assert summary_payload["eddypro_partial_capability_count"] == 5
@@ -263,6 +266,9 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["eddypro_release_gate"]["status"] == "blocked"
         assert manifest_payload["can_release_full_eddypro_parity"] is False
         assert manifest_payload["can_release_source_derived_functional_parity"] is True
+        assert manifest_payload["can_release_source_derived_computational_superiority"] is True
+        assert manifest_payload["source_derived_computation_gate_status"] == "pass"
+        assert manifest_payload["source_derived_computation_ci_exit_code"] == 0
         assert manifest_payload["eddypro_partial_capability_closure_artifact"].endswith("eddypro_partial_capability_closure.json")
         assert manifest_payload["eddypro_partial_capability_closure"]["partial_capability_count"] == 5
         assert manifest_payload["eddypro_partial_capability_closure"]["closure_decision"]["current_round_closed"] is True

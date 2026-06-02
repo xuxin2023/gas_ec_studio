@@ -656,6 +656,18 @@ def _build_delivery_audit(
                 "can_release_source_derived_functional_parity",
                 eddypro_release_gate.get("can_release_source_derived_functional_parity", False),
             ),
+            "can_release_source_derived_computational_superiority": result_manifest.get(
+                "can_release_source_derived_computational_superiority",
+                eddypro_release_gate.get("can_release_source_derived_computational_superiority", False),
+            ),
+            "source_derived_computation_gate_status": result_manifest.get(
+                "source_derived_computation_gate_status",
+                dict(eddypro_release_gate.get("computation_release_gate", {}) or {}).get("status", ""),
+            ),
+            "source_derived_computation_ci_exit_code": result_manifest.get(
+                "source_derived_computation_ci_exit_code",
+                eddypro_release_gate.get("source_derived_computation_ci_exit_code", 2),
+            ),
             "eddypro_release_gate_ci_exit_code": eddypro_release_gate.get("ci_exit_code", 2),
             "eddypro_partial_capability_closure_status": eddypro_partial_capability_closure.get("status", ""),
             "eddypro_partial_capability_count": eddypro_partial_capability_closure.get("partial_capability_count", 0),

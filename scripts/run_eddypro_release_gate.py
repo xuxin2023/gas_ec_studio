@@ -19,6 +19,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--official-raw-evidence-pack", default="", help="Accepted evidence-pack JSON path.")
     parser.add_argument("--official-raw-closure-run", default="", help="Official raw closure-run JSON path.")
     parser.add_argument("--official-raw-bundle", default="", help="Official raw bundle directory used to build evidence.")
+    parser.add_argument("--eddypro-computation-scope-audit", default="", help="Existing computation scope audit JSON path.")
+    parser.add_argument("--eddypro-computation-stress-suite", default="", help="Existing computation stress suite JSON path.")
+    parser.add_argument("--skip-computation-gate", action="store_true", help="Do not build the source-derived computation gate.")
     parser.add_argument("--skip-acceptance", action="store_true", help="Do not rerun evidence-pack acceptance commands.")
     parser.add_argument("--acceptance-timeout-s", type=float, default=300.0, help="Timeout per acceptance command.")
     parser.add_argument(
@@ -43,6 +46,9 @@ def main(argv: list[str] | None = None) -> int:
         official_raw_bundle_dir=args.official_raw_bundle or None,
         official_raw_evidence_pack_path=args.official_raw_evidence_pack or None,
         official_raw_closure_run_path=args.official_raw_closure_run or None,
+        computation_scope_audit_path=args.eddypro_computation_scope_audit or None,
+        computation_stress_suite_path=args.eddypro_computation_stress_suite or None,
+        build_computation_gate=not bool(args.skip_computation_gate),
         output_dir=output_path.parent,
         run_acceptance=not bool(args.skip_acceptance),
         acceptance_timeout_s=float(args.acceptance_timeout_s),
@@ -65,8 +71,15 @@ def _print_summary(gate: dict[str, Any], output_path: Path) -> None:
         "can_release_source_derived_functional_parity: "
         f"{gate.get('can_release_source_derived_functional_parity', False)}"
     )
+    print(
+        "can_release_source_derived_computational_superiority: "
+        f"{gate.get('can_release_source_derived_computational_superiority', False)}"
+    )
     print(f"surrogate_evidence_closure_status: {gate.get('surrogate_evidence_closure_status', 'not_configured')}")
     print(f"surrogate_ci_exit_code: {gate.get('surrogate_ci_exit_code', 2)}")
+    print(f"source_derived_computation_ci_exit_code: {gate.get('source_derived_computation_ci_exit_code', 2)}")
+    print(f"source_derived_computation_gate_status: {summary.get('source_derived_computation_gate_status', 'not_supplied')}")
+    print(f"computation_surface_status: {summary.get('computation_surface_status', 'not_supplied')}")
     print(f"official_raw_acceptance_gate_status: {summary.get('official_raw_acceptance_gate_status', 'not_run')}")
     print(f"official_raw_closure_run_gate_status: {summary.get('official_raw_closure_run_gate_status', 'not_available')}")
     print(f"capability_completion_score: {summary.get('capability_completion_score', 0.0)}")
@@ -87,6 +100,10 @@ def _write_summary(path: Path, gate: dict[str, Any], output_path: Path) -> None:
         f"- CI exit code: `{gate.get('ci_exit_code', 2)}`",
         f"- Can release source-derived functional parity: `{gate.get('can_release_source_derived_functional_parity', False)}`",
         f"- Source-derived CI exit code: `{gate.get('surrogate_ci_exit_code', 2)}`",
+        f"- Can release source-derived computational superiority: `{gate.get('can_release_source_derived_computational_superiority', False)}`",
+        f"- Source-derived computation CI exit code: `{gate.get('source_derived_computation_ci_exit_code', 2)}`",
+        f"- Source-derived computation gate: `{summary.get('source_derived_computation_gate_status', 'not_supplied')}`",
+        f"- Computation surface: `{summary.get('computation_surface_status', 'not_supplied')}`",
         f"- Surrogate evidence closure: `{gate.get('surrogate_evidence_closure_status', 'not_configured')}`",
         f"- Surrogate accepted items: `{summary.get('surrogate_accepted_item_count', 0)}`",
         f"- Surrogate missing items: `{summary.get('surrogate_missing_item_count', 0)}`",
@@ -95,8 +112,12 @@ def _write_summary(path: Path, gate: dict[str, Any], output_path: Path) -> None:
         f"- Capability completion score: `{summary.get('capability_completion_score', 0.0)}`",
         f"- Artifact: `{output_path}`",
         "",
-        "> Source-derived functional parity is a software/evidence-chain closure. It must not be described as official field numeric parity, real hardware validation, or vendor-certified EddyPro equivalence.",
+        "> Source-derived functional parity and source-derived computational superiority are narrow software/evidence-chain closures. They must not be described as official field numeric parity, real hardware validation, or vendor-certified EddyPro equivalence.",
     ]
+    computation_blockers = list(summary.get("source_derived_computation_blocking_reasons", []) or [])
+    if computation_blockers:
+        lines.extend(["", "### Computation Gate Blocking Reasons"])
+        lines.extend(f"- {reason}" for reason in computation_blockers)
     if blocking_reasons:
         lines.extend(["", "### Blocking Reasons"])
         lines.extend(f"- {reason}" for reason in blocking_reasons)
