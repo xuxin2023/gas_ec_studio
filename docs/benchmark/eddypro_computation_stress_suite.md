@@ -12,6 +12,9 @@ promoting synthetic checks to official EddyPro field numeric parity.
 - Pipeline core oracle: known covariance, covariance-max lag recovery,
   density-correction mode semantics, double-rotation tilt removal, and
   constant-signal QC rejection through the RP pipeline.
+- Rotation and lag: triple rotation, sector-wise planar fit, sector-wise planar
+  fit with no-velocity-bias correction, and separate CO2/H2O covariance-max lag
+  recovery.
 - Flux, density, and energy: raw/mixing-ratio/WPL primary-flux selection,
   closed-path cell thermodynamic density terms, configured biomet ambient
   overrides, sensible heat, latent heat, evapotranspiration, and momentum
@@ -58,4 +61,4 @@ Result exports write `eddypro_computation_stress_suite.json` next to
 `eddypro_coverage_audit.json` and `eddypro_computation_scope_audit.json`, then
 propagate all three through the formal report and delivery package manifests.
 The artifact also includes `computation_surface`, a compact ready/blocked
-rollup for the six required computation families.
+rollup for the seven required computation families.

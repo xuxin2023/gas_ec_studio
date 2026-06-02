@@ -9,6 +9,10 @@ from typing import Any
 import numpy as np
 
 from core.ec_rp.analysis import (
+    PlanarFitCoefficients,
+    analyze_lag,
+    apply_planar_fit_no_velocity_bias,
+    apply_planar_fit_rotation,
     compute_flux_metrics,
     compute_footprint,
     compute_footprint_2d_grid,
@@ -17,6 +21,7 @@ from core.ec_rp.analysis import (
     compute_spectral_correction,
     compute_uncertainty_finkelstein_sims,
     compute_uncertainty_mann_lenschow,
+    rotate_wind,
 )
 from core.comparison.synthetic_parity import run_synthetic_eddypro_parity_suite
 from models.hf_models import FrameQuality, NormalizedHFFrame
@@ -32,6 +37,7 @@ def build_eddypro_computation_stress_suite(
     root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
     cases = [
         _pipeline_core_oracle_case(),
+        _rotation_lag_stress_case(),
         _flux_density_energy_closed_path_case(),
         _footprint_stress_case(),
         _uncertainty_stress_case(),
@@ -130,6 +136,96 @@ def _pipeline_core_oracle_case() -> dict[str, Any]:
                 for case in list(suite.get("cases", []) or [])
             ],
             "truthfulness_note": suite.get("truthfulness_note", ""),
+        },
+    )
+
+
+def _rotation_lag_stress_case() -> dict[str, Any]:
+    rng = np.random.default_rng(20260604)
+    samples = 1200
+    sample_rate_hz = 10.0
+    axis = np.arange(samples, dtype=float) / sample_rate_hz
+    u = 2.4 + 0.18 * np.sin(2.0 * np.pi * 0.03 * axis) + rng.normal(0.0, 0.04, samples)
+    v = 0.45 + 0.12 * np.cos(2.0 * np.pi * 0.05 * axis) + rng.normal(0.0, 0.03, samples)
+    w = 0.28 + 0.34 * np.sin(2.0 * np.pi * 0.17 * axis) + rng.normal(0.0, 0.04, samples)
+    triple = rotate_wind(u, v, w, "triple")
+    coeffs = PlanarFitCoefficients(b0=0.02, b1=0.015, b2=-0.008, sector="S02", window_count=12, r_squared=0.91)
+    planar = apply_planar_fit_rotation(u, v, w, coeffs)
+    planar_nvb = apply_planar_fit_no_velocity_bias(u, v, w, coeffs)
+
+    co2_lag_samples = 8
+    h2o_lag_samples = 4
+    scalar_driver = 0.55 * np.sin(2.0 * np.pi * 0.21 * axis) + 0.22 * np.cos(2.0 * np.pi * 0.37 * axis)
+    w_lag = scalar_driver + rng.normal(0.0, 0.015, samples)
+    co2 = np.roll(w_lag, co2_lag_samples) + rng.normal(0.0, 0.015, samples)
+    h2o = np.roll(w_lag, h2o_lag_samples) + rng.normal(0.0, 0.015, samples)
+    lag = analyze_lag(
+        vertical_velocity=w_lag,
+        co2_series=co2,
+        h2o_series=h2o,
+        sample_rate_hz=sample_rate_hz,
+        search_window_s=1.5,
+        lag_strategy="covariance_max",
+    )
+    expected_co2_lag_s = -co2_lag_samples / sample_rate_hz
+    expected_h2o_lag_s = -h2o_lag_samples / sample_rate_hz
+    failures: list[str] = []
+    if triple.mode != "triple" or not triple.applied:
+        failures.append("triple_rotation_not_applied")
+    if abs(float(np.mean(triple.w))) > 0.08:
+        failures.append("triple_rotation_mean_w_not_near_zero")
+    if planar.mode != "sector_wise_planar_fit" or not planar.applied:
+        failures.append("sector_wise_planar_fit_not_applied")
+    if "S02" not in planar.reason:
+        failures.append("sector_wise_planar_fit_sector_missing")
+    if planar_nvb.mode != "sector_wise_planar_fit_no_velocity_bias" or not planar_nvb.applied:
+        failures.append("sector_wise_planar_fit_nvb_not_applied")
+    if not _close(lag.co2_lag_seconds, expected_co2_lag_s, abs_tol=0.11):
+        failures.append(f"co2_lag_expected_{expected_co2_lag_s:.2f}_got_{lag.co2_lag_seconds:.2f}")
+    if not _close(lag.h2o_lag_seconds, expected_h2o_lag_s, abs_tol=0.11):
+        failures.append(f"h2o_lag_expected_{expected_h2o_lag_s:.2f}_got_{lag.h2o_lag_seconds:.2f}")
+    if float(lag.confidence or 0.0) < 0.4:
+        failures.append("lag_confidence_below_floor")
+    return _case_payload(
+        case_id="rotation_lag_multi_component_sweep",
+        family="rotation_lag",
+        status="pass" if not failures else "fail",
+        failure_reasons=failures,
+        metrics={
+            "triple_mean_w_after_rotation": float(np.mean(triple.w)),
+            "triple_alpha_deg": triple.alpha_deg,
+            "triple_beta_deg": triple.beta_deg,
+            "planar_fit_sector": coeffs.sector,
+            "planar_fit_r_squared": coeffs.r_squared,
+            "co2_lag_seconds": lag.co2_lag_seconds,
+            "h2o_lag_seconds": lag.h2o_lag_seconds,
+            "lag_confidence": lag.confidence,
+        },
+        details={
+            "triple_rotation": {
+                "mode": triple.mode,
+                "applied": triple.applied,
+                "reason": triple.reason,
+                "mean_w_after_rotation": float(np.mean(triple.w)),
+            },
+            "sector_wise_planar_fit": {
+                "mode": planar.mode,
+                "applied": planar.applied,
+                "reason": planar.reason,
+            },
+            "sector_wise_planar_fit_no_velocity_bias": {
+                "mode": planar_nvb.mode,
+                "applied": planar_nvb.applied,
+                "reason": planar_nvb.reason,
+            },
+            "lag_components": {
+                "expected_co2_lag_seconds": expected_co2_lag_s,
+                "expected_h2o_lag_seconds": expected_h2o_lag_s,
+                "co2_lag_seconds": lag.co2_lag_seconds,
+                "h2o_lag_seconds": lag.h2o_lag_seconds,
+                "blend_lag_seconds": lag.lag_seconds,
+                "confidence": lag.confidence,
+            },
         },
     )
 
@@ -567,6 +663,7 @@ def _case_payload(
 def _computation_surface(cases: list[dict[str, Any]]) -> dict[str, Any]:
     required_families = [
         "pipeline_core",
+        "rotation_lag",
         "flux_density_energy",
         "footprint",
         "uncertainty",

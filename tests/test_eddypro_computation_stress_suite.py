@@ -15,11 +15,12 @@ def test_computation_stress_suite_passes_core_method_families(tmp_path: Path) ->
     assert payload["status"] == "pass"
     assert payload["pass_rate"] == 1.0
     assert payload["failed_cases"] == []
-    assert payload["case_count"] == 6
+    assert payload["case_count"] == 7
     assert payload["computation_surface"]["status"] == "ready"
     assert payload["computation_surface"]["blocked_family_count"] == 0
     assert payload["claim_boundary"]["core_computation_surface_ready"] is True
     assert payload["family_counts"]["pipeline_core"] == 1
+    assert payload["family_counts"]["rotation_lag"] == 1
     assert payload["family_counts"]["flux_density_energy"] == 1
     assert payload["family_counts"]["footprint"] == 1
     assert payload["family_counts"]["uncertainty"] == 1
@@ -29,6 +30,11 @@ def test_computation_stress_suite_passes_core_method_families(tmp_path: Path) ->
     pipeline_case = next(case for case in payload["cases"] if case["family"] == "pipeline_core")
     assert pipeline_case["metrics"]["synthetic_oracle_status"] == "pass"
     assert pipeline_case["metrics"]["required_oracle_case_count"] >= 5
+
+    rotation_lag_case = next(case for case in payload["cases"] if case["family"] == "rotation_lag")
+    assert rotation_lag_case["metrics"]["co2_lag_seconds"] == -0.8
+    assert rotation_lag_case["metrics"]["h2o_lag_seconds"] == -0.4
+    assert rotation_lag_case["metrics"]["lag_confidence"] >= 0.4
 
     flux_case = next(case for case in payload["cases"] if case["family"] == "flux_density_energy")
     assert flux_case["metrics"]["density_modes_checked"] == ["mixing_ratio", "none", "wpl"]
