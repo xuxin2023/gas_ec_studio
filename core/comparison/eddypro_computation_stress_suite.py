@@ -25,6 +25,15 @@ from core.ec_rp.analysis import (
 )
 from core.comparison.synthetic_parity import run_synthetic_eddypro_parity_suite
 from models.hf_models import FrameQuality, NormalizedHFFrame
+from models.station_models import (
+    BiometSourceMetadata,
+    MetadataBundle,
+    ProjectProfile,
+    RawColumnMapping,
+    RawFileDescriptionMetadata,
+    RawFileSettingsMetadata,
+    SiteProfile,
+)
 
 
 def build_eddypro_computation_stress_suite(
@@ -37,6 +46,7 @@ def build_eddypro_computation_stress_suite(
     root = Path(workspace_root).resolve() if workspace_root not in (None, "") else Path.cwd()
     cases = [
         _pipeline_core_oracle_case(),
+        _raw_biomet_ingestion_stress_case(root),
         _rotation_lag_stress_case(),
         _flux_density_energy_closed_path_case(),
         _footprint_stress_case(),
@@ -136,6 +146,189 @@ def _pipeline_core_oracle_case() -> dict[str, Any]:
                 for case in list(suite.get("cases", []) or [])
             ],
             "truthfulness_note": suite.get("truthfulness_note", ""),
+        },
+    )
+
+
+def _raw_biomet_ingestion_stress_case(root: Path) -> dict[str, Any]:
+    from core.headless_batch_runner import load_input_rows, run_headless_batch
+
+    case_root = root / "artifacts" / "eddypro_computation_stress_inputs" / "raw_biomet_ingestion"
+    case_root.mkdir(parents=True, exist_ok=True)
+    raw_path = case_root / "raw_biomet_ingestion.csv"
+    biomet_path = case_root / "biomet_ambient.csv"
+
+    samples = 600
+    sample_rate_hz = 10.0
+    start = datetime(2026, 6, 4, 9, 0, 0)
+    axis = np.arange(samples, dtype=float) / sample_rate_hz
+    w = 0.42 * np.sin(2.0 * np.pi * 0.18 * axis) + 0.06 * np.cos(2.0 * np.pi * 0.61 * axis)
+    u = 2.35 + 0.12 * np.sin(2.0 * np.pi * 0.03 * axis)
+    v = 0.24 * np.cos(2.0 * np.pi * 0.05 * axis)
+    co2_ppm = 410.0 + 7.0 * np.roll(w, 4)
+    h2o_molmol = 0.012 + 0.001 * np.roll(w, 2)
+    pressure_pa = 101_300.0 + 45.0 * np.sin(2.0 * np.pi * 0.04 * axis)
+    temp_k = 298.15 + 0.45 * np.sin(2.0 * np.pi * 0.08 * axis)
+    ch4_ppm = 1.9 + 0.004 * np.roll(w, 3)
+
+    raw_lines = ["DateTime,CO2_molmol,H2O_molmol,PressurePa,TempK,Ux,Vy,Wz,CH4_ppm"]
+    for index in range(samples):
+        timestamp = start + timedelta(seconds=float(index) / sample_rate_hz)
+        raw_lines.append(
+            ",".join(
+                [
+                    timestamp.isoformat(),
+                    f"{co2_ppm[index] / 1_000_000.0:.9f}",
+                    f"{h2o_molmol[index]:.9f}",
+                    f"{pressure_pa[index]:.3f}",
+                    f"{temp_k[index]:.5f}",
+                    f"{u[index]:.6f}",
+                    f"{v[index]:.6f}",
+                    f"{w[index]:.6f}",
+                    f"{ch4_ppm[index]:.9f}",
+                ]
+            )
+        )
+    raw_path.write_text("\n".join(raw_lines) + "\n", encoding="utf-8")
+
+    biomet_path.write_text(
+        "\n".join(
+            [
+                "timestamp,ta,pressure_kpa,rh",
+                "2026-06-04T09:00:00,22.0,99.4,58",
+                "2026-06-04T09:00:20,24.0,99.8,62",
+                "2026-06-04T09:00:40,26.0,100.2,66",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    metadata = MetadataBundle(
+        project=ProjectProfile(code="STRESS-RBI", name="Raw Biomet Stress"),
+        site=SiteProfile(station_code="RBI", station_name="Raw Biomet Tower"),
+        raw_file_description=RawFileDescriptionMetadata(
+            source_name="raw-biomet-stress",
+            source_type="csv",
+            column_mappings=[
+                RawColumnMapping(column_name="DateTime", variable="timestamp", numeric=False),
+                RawColumnMapping(column_name="CO2_molmol", variable="co2_ppm", input_unit="mol/mol"),
+                RawColumnMapping(column_name="H2O_molmol", variable="h2o_mmol", input_unit="mol/mol"),
+                RawColumnMapping(column_name="PressurePa", variable="pressure_kpa", input_unit="Pa"),
+                RawColumnMapping(column_name="TempK", variable="chamber_temp_c", input_unit="K"),
+                RawColumnMapping(column_name="Ux", variable="u"),
+                RawColumnMapping(column_name="Vy", variable="v"),
+                RawColumnMapping(column_name="Wz", variable="w"),
+                RawColumnMapping(column_name="CH4_ppm", variable="ch4_ppb", input_unit="ppm"),
+            ],
+        ),
+        raw_file_settings=RawFileSettingsMetadata(
+            sample_hz=sample_rate_hz,
+            delimiter=",",
+            header_rows=1,
+            missing_tokens=["", "NA"],
+        ),
+        biomet=BiometSourceMetadata(
+            source_mode="external_file",
+            source_path=str(biomet_path),
+            fields=["ta", "pressure_kpa", "rh"],
+            aggregation_method="mean",
+        ),
+    )
+    rows = load_input_rows(raw_path, metadata=metadata)
+    result = run_headless_batch(
+        config={
+            "sample_hz": sample_rate_hz,
+            "block_minutes": 0.5,
+            "rotation_mode": "double",
+            "detrend_mode": "linear",
+            "density_correction_mode": "wpl",
+        },
+        metadata=metadata,
+        rows=rows,
+        data_source="raw-biomet-ingestion-stress",
+    )
+    rp_result = result["rp_result"]
+    first_window = rp_result.windows[0] if rp_result.windows else None
+    diagnostics = dict(first_window.diagnostics if first_window is not None else {})
+    ambient_values = dict(diagnostics.get("biomet_ambient_values", {}) or {})
+    applied_fields = set(diagnostics.get("biomet_ambient_applied_fields", []) or [])
+    ledger = dict(diagnostics.get("flux_correction_ledger", {}) or {})
+    ledger_stages = list(ledger.get("stages", []) or [])
+    ambient_stage = next(
+        (dict(stage or {}) for stage in ledger_stages if dict(stage or {}).get("stage") == "ambient_thermodynamics"),
+        {},
+    )
+    first_raw_payload = json.loads(rows[0].raw_text) if rows else {}
+    manifest = dict(result.get("manifest", {}) or {})
+    raw_import_summary = dict(result.get("raw_import_summary", {}) or manifest.get("raw_import_summary", {}) or {})
+
+    failures: list[str] = []
+    if len(rows) != samples:
+        failures.append(f"raw_row_count_expected_{samples}_got_{len(rows)}")
+    if first_window is None:
+        failures.append("rp_window_missing_after_raw_biomet_batch")
+    if rows and not _close(rows[0].co2_ppm, float(co2_ppm[0]), abs_tol=0.002):
+        failures.append("co2_molmol_to_ppm_conversion_failed")
+    if rows and not _close(rows[0].h2o_mmol, float(h2o_molmol[0] * 1000.0), abs_tol=0.002):
+        failures.append("h2o_molmol_to_mmol_conversion_failed")
+    if rows and not _close(rows[0].pressure_kpa, float(pressure_pa[0] / 1000.0), abs_tol=0.002):
+        failures.append("pressure_pa_to_kpa_conversion_failed")
+    if rows and not _close(rows[0].chamber_temp_c, float(temp_k[0] - 273.15), abs_tol=0.002):
+        failures.append("temperature_k_to_c_conversion_failed")
+    if rows and not _close(rows[0].ch4_ppb, float(ch4_ppm[0] * 1000.0), abs_tol=0.002):
+        failures.append("ch4_ppm_to_ppb_conversion_failed")
+    if not _finite_number(first_raw_payload.get("u")) or not _finite_number(first_raw_payload.get("w")):
+        failures.append("raw_wind_components_not_preserved")
+    if diagnostics.get("biomet_ambient_status") != "applied":
+        failures.append(f"biomet_ambient_status={diagnostics.get('biomet_ambient_status', '')}")
+    for field in ("pressure_kpa", "temp_c", "mean_h2o_mmol"):
+        if field not in applied_fields:
+            failures.append(f"biomet_field_not_applied={field}")
+    if diagnostics.get("biomet_ambient_h2o_source") != "derived:relative_humidity":
+        failures.append(f"biomet_h2o_source={diagnostics.get('biomet_ambient_h2o_source', '')}")
+    if diagnostics.get("ambient_override_status") != "applied":
+        failures.append(f"ambient_override_status={diagnostics.get('ambient_override_status', '')}")
+    if not _close(ambient_values.get("mean_pressure_kpa"), 99.6, abs_tol=0.02):
+        failures.append(f"biomet_pressure_mean={ambient_values.get('mean_pressure_kpa')}")
+    if not _close(ambient_values.get("mean_temp_c"), 23.0, abs_tol=0.02):
+        failures.append(f"biomet_temp_mean={ambient_values.get('mean_temp_c')}")
+    if not _positive_number(ambient_values.get("mean_h2o_mmol")):
+        failures.append("biomet_h2o_not_derived_from_rh")
+    if ambient_stage.get("biomet_status") != "applied":
+        failures.append("flux_correction_ledger_missing_biomet_ambient_stage")
+    if manifest.get("raw_import_summary", {}).get("row_count", raw_import_summary.get("row_count")) not in (None, samples):
+        failures.append("manifest_raw_import_row_count_mismatch")
+
+    return _case_payload(
+        case_id="raw_biomet_ingestion_pipeline_stress",
+        family="raw_biomet_ingestion",
+        status="pass" if not failures else "fail",
+        failure_reasons=failures,
+        metrics={
+            "raw_row_count": len(rows),
+            "rp_window_count": len(rp_result.windows),
+            "co2_ppm_first": rows[0].co2_ppm if rows else None,
+            "h2o_mmol_first": rows[0].h2o_mmol if rows else None,
+            "pressure_kpa_first": rows[0].pressure_kpa if rows else None,
+            "temp_c_first": rows[0].chamber_temp_c if rows else None,
+            "ch4_ppb_first": rows[0].ch4_ppb if rows else None,
+            "biomet_status": diagnostics.get("biomet_ambient_status", ""),
+            "biomet_pressure_kpa": ambient_values.get("mean_pressure_kpa"),
+            "biomet_temp_c": ambient_values.get("mean_temp_c"),
+            "biomet_h2o_mmol": ambient_values.get("mean_h2o_mmol"),
+            "ambient_override_status": diagnostics.get("ambient_override_status", ""),
+            "ledger_biomet_status": ambient_stage.get("biomet_status", ""),
+        },
+        details={
+            "raw_source_file": str(raw_path),
+            "biomet_source_file": str(biomet_path),
+            "raw_import_summary": raw_import_summary,
+            "biomet_ambient": diagnostics.get("biomet_ambient", {}),
+            "biomet_ambient_applied_fields": sorted(applied_fields),
+            "biomet_ambient_provenance": diagnostics.get("biomet_ambient_provenance", ""),
+            "flux_correction_ambient_stage": ambient_stage,
+            "manifest_biomet_ambient_summary": manifest.get("biomet_ambient_summary", {}),
         },
     )
 
@@ -663,6 +856,7 @@ def _case_payload(
 def _computation_surface(cases: list[dict[str, Any]]) -> dict[str, Any]:
     required_families = [
         "pipeline_core",
+        "raw_biomet_ingestion",
         "rotation_lag",
         "flux_density_energy",
         "footprint",

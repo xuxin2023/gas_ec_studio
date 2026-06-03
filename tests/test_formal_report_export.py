@@ -152,7 +152,7 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert snapshot["delivery_audit"]["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
         assert snapshot["delivery_audit"]["eddypro_computation_surface"]["status"] == "ready"
         assert snapshot["delivery_audit"]["eddypro_computation_summary"]["computation_surface_status"] == "ready"
-        assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_computation_surface_ready_family_count"] == 7
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_computation_surface_ready_family_count"] == 8
         assert snapshot["delivery_audit"]["eddypro_surrogate_evidence_closure"]["artifact_type"] == "eddypro_surrogate_evidence_closure_v1"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_surrogate_evidence_closure_status"] == "pass"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["can_claim_source_derived_functional_parity"] is True

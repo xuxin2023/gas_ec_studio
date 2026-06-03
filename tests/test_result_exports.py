@@ -156,8 +156,9 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["eddypro_computation_stress_failed_case_count"] == 0
         assert summary_payload["eddypro_computation_surface"]["status"] == "ready"
         assert summary_payload["eddypro_computation_surface_status"] == "ready"
-        assert summary_payload["eddypro_computation_surface_ready_family_count"] == 7
+        assert summary_payload["eddypro_computation_surface_ready_family_count"] == 8
         assert summary_payload["eddypro_computation_surface_blocked_family_count"] == 0
+        assert summary_payload["eddypro_computation_surface_family_status"]["raw_biomet_ingestion"] == "pass"
         assert summary_payload["eddypro_computation_surface_family_status"]["rotation_lag"] == "pass"
         assert summary_payload["eddypro_computation_scope_audit"]["artifact_type"] == "eddypro_computation_scope_audit_v1"
         assert summary_payload["eddypro_computation_scope_audit_artifact"].endswith("eddypro_computation_scope_audit.json")
@@ -253,8 +254,9 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["eddypro_computation_stress_pass_rate"] == 1.0
         assert manifest_payload["eddypro_computation_surface"]["status"] == "ready"
         assert manifest_payload["eddypro_computation_surface_status"] == "ready"
-        assert manifest_payload["eddypro_computation_surface_ready_family_count"] == 7
+        assert manifest_payload["eddypro_computation_surface_ready_family_count"] == 8
         assert manifest_payload["eddypro_computation_surface_blocked_family_count"] == 0
+        assert manifest_payload["eddypro_computation_surface_family_status"]["raw_biomet_ingestion"] == "pass"
         assert manifest_payload["eddypro_computation_surface_family_status"]["spectral_correction"] == "pass"
         assert manifest_payload["eddypro_computation_scope_audit_artifact"].endswith("eddypro_computation_scope_audit.json")
         assert manifest_payload["eddypro_computation_scope_audit"]["claim_boundary"]["can_claim_source_derived_computational_superiority"] is True

@@ -436,7 +436,7 @@ def test_report_center_computation_surface_uses_stress_suite_artifact(monkeypatc
 
         assert report["report_key"] == "computation_surface"
         assert metrics["surface_status"] == "ready"
-        assert metrics["ready_families"] == "7 / 7"
+        assert metrics["ready_families"] == "8 / 8"
         assert metrics["failed_cases"] == "0"
         assert stress_suite["computation_surface"]["status"] == "ready"
         assert "rotation_lag" in rows_text
