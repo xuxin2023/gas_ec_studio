@@ -3589,6 +3589,14 @@ class StudioController(QObject):
             "spectral_correction_cospectrum_match_summary": {},
             "method_compare_summary": {},
             "method_compare_recommendations": {},
+            "primary_analyzer_status": "not_available",
+            "primary_analyzer_profile_id": "",
+            "primary_analyzer_telemetry_window_count": 0,
+            "primary_analyzer_provenance": "",
+            "primary_analyzer_summary": {},
+            "ygas_calibration_profile_id": "",
+            "ygas_calibration_source_file": "",
+            "ygas_calibration_normalization_command": "",
             "clock_sync_status": "disabled",
             "clock_sync_method": "",
             "clock_sync_source": "",
@@ -3659,6 +3667,12 @@ class StudioController(QObject):
         spectral_summary = dict(summary.get("spectral_correction_summary", {}) or artifacts.get("spectral_correction_summary", {}) or {})
         method_compare_summary = dict(summary.get("method_compare_summary", {}) or artifacts.get("method_compare_summary", {}) or {})
         method_compare_recommendations = dict(summary.get("method_compare_recommendations", {}) or artifacts.get("method_compare_recommendations", {}) or method_compare_summary.get("recommendations", {}) or {})
+        primary_analyzer_artifact = dict(rp_result.artifacts.get("primary_analyzer", {}) or {})
+        primary_analyzer_summary = dict(
+            summary.get("primary_analyzer_summary", {})
+            or primary_analyzer_artifact.get("summary", {})
+            or {}
+        )
         clock_sync_summary = dict(summary.get("clock_sync_summary", {}) or rp_result.artifacts.get("clock_sync", {}) or {})
         runtime_watchdog_summary = dict(summary.get("runtime_watchdog_summary", {}) or rp_result.artifacts.get("runtime_watchdog", {}) or {})
         runtime_service_summary = dict(summary.get("runtime_service_summary", {}) or rp_result.artifacts.get("runtime_service", {}) or {})
@@ -3721,6 +3735,18 @@ class StudioController(QObject):
                 method_compare_summary = dict(diag.get("method_compare_summary", {}) or {})
             if not method_compare_recommendations:
                 method_compare_recommendations = dict(diag.get("method_compare_recommendations", {}) or {})
+            if not primary_analyzer_summary:
+                primary_detail = dict(diag.get("primary_analyzer_detail", {}) or {})
+                primary_analyzer_summary = {
+                    "status": diag.get("primary_analyzer_status", primary_detail.get("status", "not_available")),
+                    "profile_counts": {str(diag.get("primary_analyzer_profile_id", primary_detail.get("profile_id", ""))): 1},
+                    "telemetry_window_count": 1 if primary_detail.get("telemetry_detected") else 0,
+                    "failed_fields": list(primary_detail.get("active_faults", []) or []),
+                    "provenance": primary_detail.get("provenance", ""),
+                    "calibration_profile_id": primary_detail.get("calibration_profile_id", ""),
+                    "calibration_source_file": primary_detail.get("calibration_source_file", ""),
+                    "calibration_normalization_command": primary_detail.get("calibration_normalization_command", ""),
+                }
         footprint_peak = summary.get("footprint_peak_distance_m", footprint_summary.get("peak_distance_m"))
         footprint_offset = summary.get("footprint_offset_distance_m", footprint_summary.get("offset_distance_m"))
         footprint_contrib = dict(summary.get("footprint_contribution_distances") or footprint_summary.get("contribution_distances") or {})
@@ -3762,6 +3788,19 @@ class StudioController(QObject):
             spectral_provenance = f"{spectral_provenance}; factor={float(spectral_factor):.3f}".strip("; ")
         if spectral_measured_cospectrum_source:
             spectral_provenance = f"{spectral_provenance}; cospectrum={spectral_measured_cospectrum_source}".strip("; ")
+        primary_profile_counts = dict(primary_analyzer_summary.get("profile_counts", {}) or {})
+        primary_profile_id = next(iter(primary_profile_counts), "")
+        primary_status = str(primary_analyzer_summary.get("status") or default["primary_analyzer_status"])
+        primary_telemetry_count = int(primary_analyzer_summary.get("telemetry_window_count", 0) or 0)
+        primary_provenance = str(primary_analyzer_summary.get("provenance", ""))
+        primary_failed_fields = list(primary_analyzer_summary.get("failed_fields", []) or [])
+        if primary_profile_id:
+            primary_provenance = f"{primary_provenance}; profile={primary_profile_id}".strip("; ")
+        if primary_failed_fields:
+            primary_provenance = f"{primary_provenance}; faults={'|'.join(str(item) for item in primary_failed_fields)}".strip("; ")
+        ygas_calibration_profile_id = str(primary_analyzer_summary.get("calibration_profile_id", ""))
+        ygas_calibration_source_file = str(primary_analyzer_summary.get("calibration_source_file", ""))
+        ygas_calibration_normalization_command = str(primary_analyzer_summary.get("calibration_normalization_command", ""))
         clock_status = str(summary.get("clock_sync_status") or clock_sync_summary.get("status") or default["clock_sync_status"])
         clock_method = str(summary.get("clock_sync_method") or clock_sync_summary.get("method") or "")
         clock_source = str(summary.get("clock_sync_source") or clock_sync_summary.get("clock_source") or "")
@@ -3892,6 +3931,14 @@ class StudioController(QObject):
             "spectral_correction_cospectrum_match_summary": cospectrum_match_summary,
             "method_compare_summary": method_compare_summary,
             "method_compare_recommendations": method_compare_recommendations,
+            "primary_analyzer_status": primary_status,
+            "primary_analyzer_profile_id": primary_profile_id,
+            "primary_analyzer_telemetry_window_count": primary_telemetry_count,
+            "primary_analyzer_provenance": primary_provenance,
+            "primary_analyzer_summary": primary_analyzer_summary,
+            "ygas_calibration_profile_id": ygas_calibration_profile_id,
+            "ygas_calibration_source_file": ygas_calibration_source_file,
+            "ygas_calibration_normalization_command": ygas_calibration_normalization_command,
             "clock_sync_status": clock_status,
             "clock_sync_method": clock_method,
             "clock_sync_source": clock_source,
@@ -4152,6 +4199,7 @@ class StudioController(QObject):
                 ("不确定度方法", rp_method_summary["uncertainty_method"], rp_method_summary["uncertainty_provenance"]),
                 ("谱修正方法", rp_method_summary["spectral_correction_method"], rp_method_summary["spectral_correction_provenance"]),
                 ("Flux correction ledger", str(dict(rp_result.artifacts.get("flux_correction_ledger", {}) if rp_result else {}).get("summary", {}).get("status", "--")), "raw/mixing-ratio/density/primary flux correction chain"),
+                ("Primary analyzer", rp_method_summary["primary_analyzer_status"], f"profile={rp_method_summary['primary_analyzer_profile_id']}; telemetry_windows={rp_method_summary['primary_analyzer_telemetry_window_count']}"),
             ],
             "conclusions": ["此页使用当前谱修正批次汇总出的真实通量前后对比，不再展示占位型 EC 产物。"],
             "export_options": ["导出当前报告", "导出证据包"],
@@ -4237,6 +4285,8 @@ class StudioController(QObject):
                 ("Footprint 方法", rp_method_summary["footprint_method"], rp_method_summary["footprint_provenance"]),
                 ("不确定度方法", rp_method_summary["uncertainty_method"], rp_method_summary["uncertainty_provenance"]),
                 ("谱修正方法", rp_method_summary["spectral_correction_method"], rp_method_summary["spectral_correction_provenance"]),
+                ("Primary analyzer", rp_method_summary["primary_analyzer_status"], rp_method_summary["primary_analyzer_provenance"]),
+                ("YGAS calibration", rp_method_summary["ygas_calibration_profile_id"], rp_method_summary["ygas_calibration_source_file"]),
             ],
             "conclusions": ["站点方法说明页直接引用当前批次实际使用的项目、站点和谱修正配置快照。"],
             "export_options": ["导出当前报告"],
@@ -4257,6 +4307,7 @@ class StudioController(QObject):
                 ("Clock quality", rp_method_summary["clock_sync_quality_status"]),
                 ("Runtime", rp_method_summary["runtime_watchdog_status"]),
                 ("Service", rp_method_summary["runtime_service_status"]),
+                ("Primary analyzer", rp_method_summary["primary_analyzer_status"]),
                 ("Daemon", rp_method_summary["daemon_telemetry_status"]),
                 ("Discipline", rp_method_summary["clock_discipline_status"]),
                 ("Supervisor", rp_method_summary["supervisor_integration_status"]),
@@ -4273,6 +4324,8 @@ class StudioController(QObject):
                 ("Footprint 2D", str(rp_method_summary["footprint_2d_summary"]), "2D footprint grid artifact summary"),
                 ("FCC match", str(rp_method_summary["spectral_correction_cospectrum_match_summary"]), "FCC/RP cospectrum match provenance"),
                 ("Method compare", str(rp_method_summary["method_compare_recommendations"]), "method-family compare recommendations"),
+                ("Primary analyzer", rp_method_summary["primary_analyzer_status"], rp_method_summary["primary_analyzer_provenance"]),
+                ("YGAS calibration", rp_method_summary["ygas_calibration_profile_id"], rp_method_summary["ygas_calibration_normalization_command"]),
                 ("不确定度", rp_method_summary["uncertainty_method"], rp_method_summary["uncertainty_provenance"]),
                 ("谱修正", rp_method_summary["spectral_correction_method"], rp_method_summary["spectral_correction_provenance"]),
                 ("不确定度带宽", str(rp_method_summary["uncertainty_band"]), "primary flux uncertainty band"),
@@ -4308,6 +4361,7 @@ class StudioController(QObject):
                 **({"Runtime Deployment Feedback Artifact": str(result_export_files.get("runtime_deployment_feedback_artifact"))} if result_export_files.get("runtime_deployment_feedback_artifact") else {}),
                 **({"Clock Sync Artifact": str(result_export_files.get("clock_sync_artifact"))} if result_export_files.get("clock_sync_artifact") else {}),
                 **({"Flux Correction Ledger": str(result_export_files.get("flux_correction_ledger_artifact"))} if result_export_files.get("flux_correction_ledger_artifact") else {}),
+                **({"Primary Analyzer": str(result_export_files.get("primary_analyzer_artifact"))} if result_export_files.get("primary_analyzer_artifact") else {}),
             },
             "versions": [
                 f"运行 ID：{run_result.run_id}",
@@ -4470,6 +4524,7 @@ class StudioController(QObject):
             **({"Runtime Deployment": str(result_export_files.get("runtime_deployment_artifact"))} if result_export_files.get("runtime_deployment_artifact") else {}),
             **({"Runtime Deployment Feedback": str(result_export_files.get("runtime_deployment_feedback_artifact"))} if result_export_files.get("runtime_deployment_feedback_artifact") else {}),
             **({"Flux Correction Ledger": str(result_export_files.get("flux_correction_ledger_artifact"))} if result_export_files.get("flux_correction_ledger_artifact") else {}),
+            **({"Primary Analyzer": str(result_export_files.get("primary_analyzer_artifact"))} if result_export_files.get("primary_analyzer_artifact") else {}),
         }
         reports["method_compare"] = {
             "title": "Method Compare",
@@ -6696,6 +6751,14 @@ class StudioController(QObject):
             table_rows.append(("trace_gas.n2o_avg_flux", str(trace_gas_summary.get("average_n2o_flux_nmol_m2_s", "--")), "Average N2O corrected flux"))
             table_rows.append(("trace_gas.n2o_profile", trace_gas_summary.get("n2o_coefficient_profile_id", "--") or "--", "N2O correction profile"))
             table_rows.append(("trace_gas.n2o_profile_source", trace_gas_summary.get("n2o_coefficient_profile_source_file", "--") or "--", "N2O correction profile source"))
+        primary_analyzer_summary = dict(summary.get("primary_analyzer_summary", {}) or {})
+        if primary_analyzer_summary:
+            table_rows.append(("primary_analyzer.status", primary_analyzer_summary.get("status", "--") or "--", "Primary CO2/H2O analyzer status"))
+            table_rows.append(("primary_analyzer.telemetry_windows", str(primary_analyzer_summary.get("telemetry_window_count", 0)), "Windows with YGAS telemetry"))
+            table_rows.append(("primary_analyzer.profile", str(primary_analyzer_summary.get("profile_counts", {})), "Analyzer profile counts"))
+            table_rows.append(("primary_analyzer.calibration_profile", primary_analyzer_summary.get("calibration_profile_id", "--") or "--", "YGAS calibration profile"))
+            table_rows.append(("primary_analyzer.source_file", primary_analyzer_summary.get("calibration_source_file", "--") or "--", "YGAS calibration/source file"))
+            table_rows.append(("primary_analyzer.normalization", primary_analyzer_summary.get("calibration_normalization_command", "--") or "--", "YGAS normalization command"))
         for detail in per_window_detail:
             ms = detail.get("match_strategy", "")
             table_rows.append((

@@ -26,6 +26,7 @@ from core.ec_rp.analysis import (
     compute_li7700_status_diagnostics,
     compute_li7700_correction_sequence,
     compute_n2o_flux_metrics,
+    compute_ygas_primary_analyzer_diagnostics,
     compute_trace_gas_empirical_correction_sequence,
     compute_footprint,
     compute_footprint_2d_grid,
@@ -165,6 +166,7 @@ class ECRPPipeline:
         uncertainty_method_config = _extract_uncertainty_method_config(config)
         spectral_correction_config = _extract_spectral_correction_config(config)
         trace_gas_config = _extract_trace_gas_config(config)
+        primary_analyzer_config = _extract_primary_analyzer_config(config)
         sonic_correction_config = _extract_sonic_correction_config(config)
         crosswind_correction_config = _extract_crosswind_correction_config(config)
         method_compare_config = _extract_method_compare_config(config)
@@ -267,6 +269,7 @@ class ECRPPipeline:
                             uncertainty_method_config=uncertainty_method_config,
                             spectral_correction_config=spectral_correction_config,
                             trace_gas_config=trace_gas_config,
+                            primary_analyzer_config=primary_analyzer_config,
                             sonic_correction_config=sonic_correction_config,
                             crosswind_correction_config=crosswind_correction_config,
                             method_compare_config=method_compare_config,
@@ -338,6 +341,7 @@ class ECRPPipeline:
                         uncertainty_method_config=uncertainty_method_config,
                         spectral_correction_config=spectral_correction_config,
                         trace_gas_config=trace_gas_config,
+                        primary_analyzer_config=primary_analyzer_config,
                         sonic_correction_config=sonic_correction_config,
                         crosswind_correction_config=crosswind_correction_config,
                         method_compare_config=method_compare_config,
@@ -437,6 +441,7 @@ class ECRPPipeline:
         uncertainty_method_config: dict[str, Any] | None = None,
         spectral_correction_config: dict[str, Any] | None = None,
         trace_gas_config: dict[str, Any] | None = None,
+        primary_analyzer_config: dict[str, Any] | None = None,
         sonic_correction_config: dict[str, Any] | None = None,
         crosswind_correction_config: dict[str, Any] | None = None,
         method_compare_config: dict[str, Any] | None = None,
@@ -524,6 +529,10 @@ class ECRPPipeline:
             air_molar_density=float(flux_metrics["air_molar_density"]),
             detrend_mode=detrend_mode,
             valid_ratio=float(prepared.diagnostics.get("n2o_valid_ratio", 0.0)),
+        )
+        primary_analyzer_detail = compute_ygas_primary_analyzer_diagnostics(
+            rows=rows,
+            config=primary_analyzer_config,
         )
         density_correction_factor = _density_correction_factor(raw_flux=flux_metrics["raw_flux"], density_corrected_flux=flux_metrics["density_corrected_flux"])
         stationarity = compute_stationarity_metrics(w_series=rotation.w, scalar_series=lagged_co2, detrend_mode=detrend_mode)
@@ -727,6 +736,30 @@ class ECRPPipeline:
             "crosswind_correction_limitations": crosswind_correction_detail.get("limitations", []),
             "crosswind_correction_mean_delta_c": crosswind_correction_detail.get("mean_delta_c"),
             "crosswind_correction_max_abs_delta_c": crosswind_correction_detail.get("max_abs_delta_c"),
+            "primary_analyzer_profile_id": primary_analyzer_detail.get("profile_id", ""),
+            "primary_analyzer_status": primary_analyzer_detail.get("status", "not_available"),
+            "primary_analyzer_detail": primary_analyzer_detail,
+            "primary_analyzer_provenance": primary_analyzer_detail.get("provenance", ""),
+            "primary_analyzer_limitations": primary_analyzer_detail.get("limitations", []),
+            "ygas_profile_id": primary_analyzer_detail.get("profile_id", ""),
+            "ygas_status": primary_analyzer_detail.get("status", "not_available"),
+            "ygas_signal_status": primary_analyzer_detail.get("signal_status", ""),
+            "ygas_status_register_status": primary_analyzer_detail.get("status_register_status", ""),
+            "ygas_co2_signal_mean": primary_analyzer_detail.get("co2_signal_mean"),
+            "ygas_co2_signal_min": primary_analyzer_detail.get("co2_signal_min"),
+            "ygas_h2o_signal_mean": primary_analyzer_detail.get("h2o_signal_mean"),
+            "ygas_h2o_signal_min": primary_analyzer_detail.get("h2o_signal_min"),
+            "ygas_reference_signal_mean": primary_analyzer_detail.get("reference_signal_mean"),
+            "ygas_reference_signal_min": primary_analyzer_detail.get("reference_signal_min"),
+            "ygas_co2_ratio_mean": primary_analyzer_detail.get("co2_ratio_mean"),
+            "ygas_h2o_ratio_mean": primary_analyzer_detail.get("h2o_ratio_mean"),
+            "ygas_fault_count": primary_analyzer_detail.get("fault_count", 0),
+            "ygas_active_faults": primary_analyzer_detail.get("active_faults", []),
+            "ygas_calibration_profile_id": primary_analyzer_detail.get("calibration_profile_id", ""),
+            "ygas_calibration_source_file": primary_analyzer_detail.get("calibration_source_file", ""),
+            "ygas_calibration_normalization_command": primary_analyzer_detail.get("calibration_normalization_command", ""),
+            "ygas_provenance": primary_analyzer_detail.get("provenance", ""),
+            "ygas_limitations": primary_analyzer_detail.get("limitations", []),
             "trace_gas_family": {
                 "ch4": {
                     "status": ch4_metrics.get("status", "not_available"),
@@ -775,6 +808,8 @@ class ECRPPipeline:
                 "ch4_status": ch4_metrics.get("status", "not_available"),
                 "mean_n2o_ppb": n2o_metrics.get("mean_n2o_ppb"),
                 "n2o_status": n2o_metrics.get("status", "not_available"),
+                "primary_analyzer_profile_id": primary_analyzer_detail.get("profile_id", ""),
+                "primary_analyzer_status": primary_analyzer_detail.get("status", "not_available"),
                 "mean_pressure_kpa": float(flux_metrics.get("mean_pressure_kpa", float(np.mean(prepared.pressure_kpa)))),
                 "mean_temp_c": float(flux_metrics.get("mean_temp_c", float(np.mean(prepared.temp_c)))),
                 "cell_thermodynamics_status": flux_metrics.get(
@@ -1739,6 +1774,33 @@ def _build_flux_correction_ledger(
             "provenance": str(flux_metrics.get("density_correction_reason", diagnostics.get("density_correction_reason", ""))),
         },
     ]
+    primary_analyzer_detail = dict(diagnostics.get("primary_analyzer_detail", {}) or {})
+    if primary_analyzer_detail and bool(primary_analyzer_detail.get("telemetry_detected", False)):
+        stages.insert(
+            2,
+            {
+                "level": "level0c",
+                "stage": "ygas_primary_analyzer_qc_profile",
+                "method": "ygas_primary_analyzer_diagnostics_v1",
+                "status": str(primary_analyzer_detail.get("status", "")),
+                "units": "mixed",
+                "values": {
+                    "co2_signal_mean": primary_analyzer_detail.get("co2_signal_mean"),
+                    "co2_signal_min": primary_analyzer_detail.get("co2_signal_min"),
+                    "h2o_signal_mean": primary_analyzer_detail.get("h2o_signal_mean"),
+                    "h2o_signal_min": primary_analyzer_detail.get("h2o_signal_min"),
+                    "reference_signal_mean": primary_analyzer_detail.get("reference_signal_mean"),
+                    "fault_count": primary_analyzer_detail.get("fault_count"),
+                },
+                "profile_id": primary_analyzer_detail.get("profile_id", diagnostics.get("ygas_profile_id", "")),
+                "calibration_profile_id": primary_analyzer_detail.get("calibration_profile_id", ""),
+                "calibration_source_file": primary_analyzer_detail.get("calibration_source_file", ""),
+                "normalization_command": primary_analyzer_detail.get("calibration_normalization_command", ""),
+                "active_faults": list(primary_analyzer_detail.get("active_faults", []) or []),
+                "provenance": str(primary_analyzer_detail.get("provenance", "")),
+                "limitations": list(primary_analyzer_detail.get("limitations", []) or []),
+            },
+        )
     if str(flux_metrics.get("cell_thermodynamics_status", "not_available")) == "available":
         stages.insert(
             3,
@@ -1898,6 +1960,7 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
     ch4_sequence_count = 0
     n2o_sequence_count = 0
     closed_path_cell_window_count = 0
+    ygas_primary_analyzer_window_count = 0
     for ledger in ledgers:
         source = str(ledger.get("primary_flux_source", "") or "unknown")
         density_modes[source] = density_modes.get(source, 0) + 1
@@ -1905,6 +1968,8 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
             stage_payload = dict(stage or {})
             if stage_payload.get("stage") == "closed_path_cell_thermodynamics":
                 closed_path_cell_window_count += 1
+            if stage_payload.get("stage") == "ygas_primary_analyzer_qc_profile":
+                ygas_primary_analyzer_window_count += 1
             if stage_payload.get("stage") == "spectral_correction_family":
                 method = str(stage_payload.get("method", "") or "unknown")
                 spectral_methods[method] = spectral_methods.get(method, 0) + 1
@@ -1919,6 +1984,7 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
         "ledger_window_count": len(ledgers),
         "primary_flux_source_counts": dict(sorted(density_modes.items())),
         "closed_path_cell_thermodynamics_window_count": closed_path_cell_window_count,
+        "ygas_primary_analyzer_window_count": ygas_primary_analyzer_window_count,
         "spectral_correction_method_counts": dict(sorted(spectral_methods.items())),
         "ch4_sequence_window_count": ch4_sequence_count,
         "n2o_covariance_window_count": n2o_sequence_count,
@@ -1927,6 +1993,90 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
         "average_mixing_ratio_flux": float(np.mean([window.mixing_ratio_flux for window in windows])) if windows else None,
         "average_density_corrected_flux": float(np.mean([window.density_corrected_flux for window in windows])) if windows else None,
         "average_primary_flux": float(np.mean([window.primary_flux for window in windows])) if windows else None,
+    }
+
+
+def _summarize_primary_analyzer_windows(windows: list[WindowRPResult]) -> dict[str, Any]:
+    details = [
+        dict(window.diagnostics.get("primary_analyzer_detail", {}) or {})
+        for window in windows
+        if isinstance(window.diagnostics, dict) and window.diagnostics.get("primary_analyzer_detail")
+    ]
+    status_counts: dict[str, int] = {}
+    profile_counts: dict[str, int] = {}
+    signal_status_counts: dict[str, int] = {}
+    telemetry_window_count = 0
+    fault_fields: set[str] = set()
+    co2_signal_means: list[float] = []
+    h2o_signal_means: list[float] = []
+    calibration_profile_id = ""
+    calibration_source_file = ""
+    calibration_normalization_command = ""
+    for detail in details:
+        status = str(detail.get("status", "") or "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+        profile_id = str(detail.get("profile_id", "") or "unknown")
+        profile_counts[profile_id] = profile_counts.get(profile_id, 0) + 1
+        signal_status = str(detail.get("signal_status", "") or "unknown")
+        signal_status_counts[signal_status] = signal_status_counts.get(signal_status, 0) + 1
+        if bool(detail.get("telemetry_detected", False)):
+            telemetry_window_count += 1
+        if not calibration_profile_id and detail.get("calibration_profile_id"):
+            calibration_profile_id = str(detail.get("calibration_profile_id", ""))
+        if not calibration_source_file and detail.get("calibration_source_file"):
+            calibration_source_file = str(detail.get("calibration_source_file", ""))
+        if not calibration_normalization_command and detail.get("calibration_normalization_command"):
+            calibration_normalization_command = str(detail.get("calibration_normalization_command", ""))
+        for item in detail.get("active_faults", []) or []:
+            if str(item):
+                fault_fields.add(str(item))
+        for key, target in (("co2_signal_mean", co2_signal_means), ("h2o_signal_mean", h2o_signal_means)):
+            value = detail.get(key)
+            if isinstance(value, (int, float)) and math.isfinite(float(value)):
+                target.append(float(value))
+    if not windows:
+        status = "not_available"
+    elif status_counts.get("fail", 0) > 0:
+        status = "fail"
+    elif status_counts.get("warning", 0) > 0:
+        status = "warning"
+    elif telemetry_window_count > 0 and status_counts.get("pass", 0) == telemetry_window_count:
+        status = "pass"
+    else:
+        status = "not_available"
+    return {
+        "artifact_type": "primary_analyzer_summary_v1",
+        "status": status,
+        "window_count": len(windows),
+        "diagnostic_window_count": len(details),
+        "telemetry_window_count": telemetry_window_count,
+        "status_counts": dict(sorted(status_counts.items())),
+        "profile_counts": dict(sorted(profile_counts.items())),
+        "signal_status_counts": dict(sorted(signal_status_counts.items())),
+        "average_co2_signal_mean": float(np.mean(co2_signal_means)) if co2_signal_means else None,
+        "average_h2o_signal_mean": float(np.mean(h2o_signal_means)) if h2o_signal_means else None,
+        "failed_fields": sorted(fault_fields),
+        "calibration_profile_id": calibration_profile_id,
+        "calibration_source_file": calibration_source_file,
+        "calibration_normalization_command": calibration_normalization_command,
+        "provenance": "Run-level YGAS primary analyzer summary aggregated from window diagnostics.",
+    }
+
+
+def _build_primary_analyzer_artifact(windows: list[WindowRPResult]) -> dict[str, Any]:
+    return {
+        "artifact_type": "primary_analyzer_run_v1",
+        "summary": _summarize_primary_analyzer_windows(windows),
+        "windows": [
+            {
+                "window_id": window.window_id,
+                "start_time": window.start_time.isoformat(),
+                "end_time": window.end_time.isoformat(),
+                "diagnostics": dict(window.diagnostics.get("primary_analyzer_detail", {}) or {}),
+            }
+            for window in windows
+            if isinstance(window.diagnostics, dict) and window.diagnostics.get("primary_analyzer_detail")
+        ],
     }
 
 
@@ -2534,6 +2684,7 @@ def _empty_summary(
             "li7700_diagnostics_status": "not_available",
             "li7700_status_diagnostics": {},
         },
+        "primary_analyzer_summary": _summarize_primary_analyzer_windows([]),
         "flux_correction_ledger_summary": _summarize_flux_correction_ledgers([]),
         "project_code": project.code,
         "site_code": site.station_code,
@@ -2602,6 +2753,7 @@ def _build_summary(
         "average_evapotranspiration_rate_mm_h": _mean_window_diagnostic(windows, "evapotranspiration_rate_mm_h"),
         "average_momentum_flux_kg_m_s2": _mean_window_diagnostic(windows, "momentum_flux_kg_m_s2"),
         "trace_gas_summary": _summarize_trace_gas_windows(windows),
+        "primary_analyzer_summary": _summarize_primary_analyzer_windows(windows),
         "flux_correction_ledger_summary": _summarize_flux_correction_ledgers(windows),
         "project_code": project.code,
         "site_code": site.station_code,
@@ -2646,6 +2798,7 @@ def _artifacts(
         "network_output": network_output_config or {},
         "method_rollup": method_summary or {},
         "method_provenance": method_summary or {},
+        "primary_analyzer": _build_primary_analyzer_artifact(windows or []),
         "planar_fit_library": planar_fit_library_summary or {},
         "clock_sync": clock_sync_summary or {},
         "performance_profile": performance_profile or {},
@@ -3030,6 +3183,59 @@ def _extract_crosswind_correction_config(config: dict[str, Any]) -> dict[str, An
     crosswind.setdefault("method", "liu_2001_crosswind_v1")
     crosswind.setdefault("temperature_divisor", 1209.0)
     return crosswind
+
+
+def _extract_primary_analyzer_config(config: dict[str, Any]) -> dict[str, Any]:
+    analyzer: dict[str, Any] = {}
+    for path in (
+        "primary_analyzer",
+        "ygas_primary_analyzer",
+        "gas_analyzer",
+        "steps.primary_analyzer",
+        "steps.ygas_primary_analyzer",
+        "steps.gas_analyzer",
+    ):
+        candidate = _config_value(config, path, default={})
+        if isinstance(candidate, dict):
+            analyzer = _merge_nested_dict(analyzer, candidate)
+    metadata = config.get("metadata_bundle", {})
+    instruments = metadata.get("instruments", {}) if isinstance(metadata, dict) else {}
+    extra = instruments.get("extra", {}) if isinstance(instruments, dict) else {}
+    for payload in (extra, instruments, config):
+        if not isinstance(payload, dict):
+            continue
+        for source_key, target_key in (
+            ("gas_analyzer_profile", "profile_id"),
+            ("gas_analyzer_profile_id", "profile_id"),
+            ("analyzer_profile", "profile_id"),
+            ("primary_analyzer_profile_id", "profile_id"),
+            ("ygas_calibration_profile_id", "calibration_profile_id"),
+            ("calibration_profile_id", "calibration_profile_id"),
+            ("ygas_calibration_source_file", "source_file"),
+            ("calibration_source_file", "source_file"),
+            ("ygas_normalization_command", "normalization_command"),
+            ("calibration_normalization_command", "normalization_command"),
+        ):
+            value = payload.get(source_key)
+            if value in (None, "") or target_key in analyzer:
+                continue
+            if isinstance(value, dict):
+                analyzer = _merge_nested_dict(analyzer, value)
+                if "profile_id" in value and target_key == "profile_id":
+                    analyzer[target_key] = value["profile_id"]
+            else:
+                analyzer[target_key] = value
+    profile_value = analyzer.get("profile_id", analyzer.get("gas_analyzer_profile", "ygas_irga"))
+    if isinstance(profile_value, dict):
+        analyzer = _merge_nested_dict(analyzer, profile_value)
+        profile_value = profile_value.get("profile_id", profile_value.get("id", "ygas_irga"))
+    analyzer["profile_id"] = str(profile_value or "ygas_irga")
+    analyzer.setdefault("enabled", True)
+    analyzer.setdefault("min_signal_warning", 0.10)
+    analyzer.setdefault("min_signal_fail", 0.0)
+    analyzer.setdefault("min_reference_signal_warning", 0.0)
+    analyzer.setdefault("require_status_ok", True)
+    return analyzer
 
 
 def _extract_trace_gas_config(config: dict[str, Any]) -> dict[str, Any]:

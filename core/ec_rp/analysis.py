@@ -16,6 +16,8 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     scipy_signal = None
 
+from core.protocol.gas_analyzer_profiles import get_gas_analyzer_profile
+from core.protocol.mode1_parser import parse_status_register
 from models.hf_models import NormalizedHFFrame
 
 
@@ -684,6 +686,25 @@ def _li7700_status_check(
         "measured": measured,
         "threshold": threshold,
         "message": "LI-7700 status diagnostic check passed." if passed else failure_message,
+    }
+
+
+def _ygas_status_check(
+    check_id: str,
+    passed: bool,
+    *,
+    measured: Any,
+    threshold: Any,
+    severity: str,
+    failure_message: str,
+) -> dict[str, Any]:
+    return {
+        "check_id": check_id,
+        "status": "pass" if passed else ("fail" if severity == "fail" else "warn"),
+        "severity": severity,
+        "measured": measured,
+        "threshold": threshold,
+        "message": "YGAS primary analyzer diagnostic check passed." if passed else failure_message,
     }
 
 
@@ -2388,6 +2409,312 @@ def compute_li7700_status_diagnostics(
             "Real LI-7700 status-record fixtures with EddyPro outputs are still required for numeric parity closure.",
         ],
     }
+
+
+def compute_ygas_primary_analyzer_diagnostics(
+    *,
+    rows: list[NormalizedHFFrame],
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    cfg = dict(config or {})
+    requested_profile_id = str(
+        cfg.get("profile_id", cfg.get("gas_analyzer_profile_id", cfg.get("gas_analyzer_profile", "ygas_irga")))
+        or "ygas_irga"
+    )
+    profile = get_gas_analyzer_profile(requested_profile_id)
+    profile_summary = profile.to_summary()
+    profile_id = str(profile_summary.get("profile_id", requested_profile_id) or requested_profile_id)
+    payloads = [_merged_frame_payload(row) for row in rows]
+    payloads = [payload for payload in payloads if payload]
+    ygas_payloads = [payload for payload in payloads if _payload_looks_like_ygas(payload)]
+
+    calibration_profile = dict(cfg.get("calibration_profile", {}) or {})
+    calibration_profile_id = str(
+        cfg.get(
+            "calibration_profile_id",
+            cfg.get("coefficient_profile_id", calibration_profile.get("profile_id", "")),
+        )
+        or ""
+    )
+    source_reference = dict(profile_summary.get("source_reference", {}) or {})
+    source_file = str(
+        cfg.get(
+            "source_file",
+            cfg.get(
+                "calibration_source_file",
+                calibration_profile.get("source_file", source_reference.get("manual", "")),
+            ),
+        )
+        or ""
+    )
+    normalization_command = str(
+        cfg.get(
+            "normalization_command",
+            calibration_profile.get(
+                "normalization_command",
+                f"gas_ec_studio normalize-ygas --input raw_text/status_text --profile {profile_id}",
+            ),
+        )
+        or ""
+    )
+    provenance = (
+        "YGAS primary analyzer diagnostics v1 parsed signal, ratio, density, status-register, "
+        "and calibration provenance fields from NormalizedHFFrame raw_text/status_text payloads."
+    )
+
+    if not ygas_payloads:
+        return {
+            "artifact_type": "ygas_primary_analyzer_diagnostics_v1",
+            "status": "not_available",
+            "profile_id": profile_id,
+            "profile_label": str(profile_summary.get("label", "")),
+            "instrument_family": str(profile_summary.get("model_family", "YGAS CO2/H2O")),
+            "sample_count": len(rows),
+            "status_sample_count": 0,
+            "telemetry_detected": False,
+            "calibration_profile_id": calibration_profile_id,
+            "calibration_source_file": source_file,
+            "calibration_normalization_command": normalization_command,
+            "source_reference": source_reference,
+            "checks": [],
+            "active_faults": [],
+            "provenance": provenance,
+            "limitations": [
+                "No YGAS protocol payload fields were found in raw_text/status_text for this window.",
+                "Provide parsed YGAS MODE1/MODE2 telemetry to enable signal and status-register screening.",
+            ],
+        }
+
+    co2_signal = _payload_metric_series(
+        ygas_payloads,
+        ("co2_signal_strength", "co2_signal", "co2_signal_raw", "co2_signal_mv", "ygas_co2_signal"),
+    )
+    h2o_signal = _payload_metric_series(
+        ygas_payloads,
+        ("h2o_signal_strength", "h2o_signal", "h2o_signal_raw", "h2o_signal_mv", "ygas_h2o_signal"),
+    )
+    reference_signal = _payload_metric_series(
+        ygas_payloads,
+        ("reference_signal", "ref_signal", "reference_signal_mv", "ygas_reference_signal"),
+    )
+    co2_ratio = _payload_metric_series(
+        ygas_payloads,
+        ("co2_ratio_filtered", "co2_ratio_f", "co2_ratio", "co2_ratio_raw"),
+    )
+    h2o_ratio = _payload_metric_series(
+        ygas_payloads,
+        ("h2o_ratio_filtered", "h2o_ratio_f", "h2o_ratio", "h2o_ratio_raw"),
+    )
+    co2_density = _payload_metric_series(ygas_payloads, ("co2_density", "co2_density_mg_m3"))
+    h2o_density = _payload_metric_series(ygas_payloads, ("h2o_density", "h2o_density_g_m3"))
+
+    status_registers: list[str] = []
+    active_faults: list[str] = []
+    status_ok_values: list[bool] = []
+    for payload in ygas_payloads:
+        register_value = _payload_lookup(payload, ("status_register", "ygas_status_register", "ygas_status_word"))
+        if register_value is not None:
+            parsed_status = parse_status_register(register_value)
+            status_registers.append(str(parsed_status.get("status_register", "")))
+            active_faults.extend(str(item) for item in parsed_status.get("active_faults", []) if str(item))
+            if parsed_status.get("status_ok") is not None:
+                status_ok_values.append(bool(parsed_status.get("status_ok")))
+        direct_status_ok = _payload_lookup(payload, ("status_ok", "ygas_status_ok", "instrument_status_ok"))
+        if direct_status_ok is not None:
+            status_ok = _coerce_payload_bool(
+                direct_status_ok,
+                true_tokens={"1", "true", "yes", "y", "ok", "pass", "normal"},
+                false_tokens={"0", "false", "no", "n", "fault", "fail", "bad", "error"},
+            )
+            status_ok_values.append(status_ok)
+            if not status_ok:
+                active_faults.append("status_ok_false")
+        active_faults.extend(_ygas_direct_faults(payload))
+
+    min_signal_fail = float(cfg.get("min_signal_fail", cfg.get("min_signal_fail_pct", 0.0)) or 0.0)
+    min_signal_warning = float(cfg.get("min_signal_warning", cfg.get("min_signal_warning_pct", 0.10)) or 0.10)
+    min_reference_signal_warning = float(cfg.get("min_reference_signal_warning", 0.0) or 0.0)
+    require_status_ok = bool(cfg.get("require_status_ok", True))
+    co2_signal_min = _series_min(co2_signal)
+    h2o_signal_min = _series_min(h2o_signal)
+    reference_signal_min = _series_min(reference_signal)
+    unique_faults = sorted(set(active_faults))
+
+    signal_checks = [
+        _ygas_status_check(
+            "ygas_co2_signal_fail_threshold",
+            co2_signal_min is None or co2_signal_min > min_signal_fail,
+            measured=co2_signal_min,
+            threshold=f">{min_signal_fail}",
+            severity="fail",
+            failure_message="YGAS CO2 signal fell below the configured fail threshold.",
+        ),
+        _ygas_status_check(
+            "ygas_h2o_signal_fail_threshold",
+            h2o_signal_min is None or h2o_signal_min > min_signal_fail,
+            measured=h2o_signal_min,
+            threshold=f">{min_signal_fail}",
+            severity="fail",
+            failure_message="YGAS H2O signal fell below the configured fail threshold.",
+        ),
+        _ygas_status_check(
+            "ygas_co2_signal_warning_threshold",
+            co2_signal_min is None or co2_signal_min >= min_signal_warning,
+            measured=co2_signal_min,
+            threshold=f">={min_signal_warning}",
+            severity="warn",
+            failure_message="YGAS CO2 signal fell below the configured warning threshold.",
+        ),
+        _ygas_status_check(
+            "ygas_h2o_signal_warning_threshold",
+            h2o_signal_min is None or h2o_signal_min >= min_signal_warning,
+            measured=h2o_signal_min,
+            threshold=f">={min_signal_warning}",
+            severity="warn",
+            failure_message="YGAS H2O signal fell below the configured warning threshold.",
+        ),
+        _ygas_status_check(
+            "ygas_reference_signal_warning_threshold",
+            reference_signal_min is None or reference_signal_min >= min_reference_signal_warning,
+            measured=reference_signal_min,
+            threshold=f">={min_reference_signal_warning}",
+            severity="warn",
+            failure_message="YGAS reference signal fell below the configured warning threshold.",
+        ),
+    ]
+    status_checks = [
+        _ygas_status_check(
+            "ygas_status_register_faults",
+            not unique_faults,
+            measured=unique_faults,
+            threshold="no active status-register faults",
+            severity="fail",
+            failure_message="YGAS status register or status_ok payload reported active faults.",
+        ),
+        _ygas_status_check(
+            "ygas_status_ok_policy",
+            all(status_ok_values) if require_status_ok and status_ok_values else True,
+            measured=status_ok_values,
+            threshold="all status_ok samples true" if require_status_ok else "not required",
+            severity="fail" if require_status_ok else "warn",
+            failure_message="YGAS status_ok policy failed.",
+        ),
+    ]
+    checks = [*signal_checks, *status_checks]
+    signal_fail_count = sum(1 for item in signal_checks if item["status"] == "fail")
+    signal_warn_count = sum(1 for item in signal_checks if item["status"] == "warn")
+    status_fail_count = sum(1 for item in status_checks if item["status"] == "fail")
+    status_warn_count = sum(1 for item in status_checks if item["status"] == "warn")
+    signal_status = "fail" if signal_fail_count else ("warning" if signal_warn_count else "pass")
+    register_status = "not_available" if not status_registers and not status_ok_values else (
+        "fail" if status_fail_count else ("warning" if status_warn_count else "pass")
+    )
+    fail_count = signal_fail_count + status_fail_count
+    warn_count = signal_warn_count + status_warn_count
+    status = "fail" if fail_count else ("warning" if warn_count else "pass")
+    limitations = [
+        "YGAS signal thresholds are configurable policy checks and should be tuned with site calibration records.",
+        "Calibration provenance is reported from the selected profile; coefficient fitting parity requires a matching lab calibration fixture.",
+        "Status-register interpretation follows the project YGAS protocol parser and does not model hidden firmware state.",
+    ]
+
+    return {
+        "artifact_type": "ygas_primary_analyzer_diagnostics_v1",
+        "status": status,
+        "profile_id": profile_id,
+        "profile_label": str(profile_summary.get("label", "")),
+        "instrument_family": str(profile_summary.get("model_family", "YGAS CO2/H2O")),
+        "sample_count": len(rows),
+        "status_sample_count": len(ygas_payloads),
+        "telemetry_detected": True,
+        "signal_status": signal_status,
+        "status_register_status": register_status,
+        "co2_signal_mean": _series_mean(co2_signal),
+        "co2_signal_min": co2_signal_min,
+        "h2o_signal_mean": _series_mean(h2o_signal),
+        "h2o_signal_min": h2o_signal_min,
+        "reference_signal_mean": _series_mean(reference_signal),
+        "reference_signal_min": reference_signal_min,
+        "co2_ratio_mean": _series_mean(co2_ratio),
+        "h2o_ratio_mean": _series_mean(h2o_ratio),
+        "co2_density_mean": _series_mean(co2_density),
+        "h2o_density_mean": _series_mean(h2o_density),
+        "status_register_count": len(status_registers),
+        "status_register_unique_values": sorted(set(status_registers)),
+        "status_ok_count": sum(1 for value in status_ok_values if value),
+        "status_not_ok_count": sum(1 for value in status_ok_values if not value),
+        "fault_count": len(unique_faults),
+        "active_faults": unique_faults,
+        "checks": checks,
+        "fail_count": fail_count,
+        "warn_count": warn_count,
+        "calibration_profile_id": calibration_profile_id,
+        "calibration_source_file": source_file,
+        "calibration_normalization_command": normalization_command,
+        "calibration_profile": calibration_profile,
+        "source_reference": source_reference,
+        "raw_output_fields": list(profile_summary.get("raw_output_fields", []) or []),
+        "provenance": provenance,
+        "limitations": limitations,
+    }
+
+
+def _payload_looks_like_ygas(payload: dict[str, Any]) -> bool:
+    flattened = _flatten_payload(payload)
+    normalized_keys = {_normalize_payload_key(key) for key, _value in flattened}
+    marker_keys = {
+        "ygas_protocol_import",
+        "ygas_primary_analyzer",
+        "ygas_status_register",
+        "status_register",
+        "co2_signal",
+        "co2_signal_strength",
+        "co2_signal_raw",
+        "h2o_signal",
+        "h2o_signal_strength",
+        "h2o_signal_raw",
+        "ref_signal",
+        "reference_signal",
+        "co2_ratio_f",
+        "co2_ratio_filtered",
+        "h2o_ratio_f",
+        "h2o_ratio_filtered",
+        "co2_density",
+        "h2o_density",
+    }
+    if normalized_keys & marker_keys:
+        return True
+    for key, value in flattened:
+        normalized = _normalize_payload_key(key)
+        if normalized in {"profile_id", "gas_analyzer_profile", "gas_analyzer_profile_id", "instrument_family"}:
+            if "ygas" in str(value).strip().lower():
+                return True
+    return False
+
+
+def _ygas_direct_faults(payload: dict[str, Any]) -> list[str]:
+    faults: list[str] = []
+    direct = payload.get("active_faults")
+    if isinstance(direct, list):
+        faults.extend(str(item) for item in direct if str(item))
+    elif isinstance(direct, str) and direct.strip() and direct.strip().lower() not in {"[]", "none", "ok", "normal"}:
+        faults.extend(part.strip() for part in re.split(r"[|,;]", direct) if part.strip())
+    for key, value in _flatten_payload(payload):
+        normalized = _normalize_payload_key(key)
+        if "active_faults" not in normalized and not normalized.endswith("_fault"):
+            continue
+        if isinstance(value, str) and value.strip().lower() in {"", "[]", "none", "ok", "normal"}:
+            continue
+        if isinstance(value, bool):
+            if value:
+                faults.append(normalized)
+            continue
+        if isinstance(value, (int, float)) and float(value) == 0.0:
+            continue
+        text = str(value).strip()
+        if text:
+            faults.append(text if normalized.startswith("active_faults") else f"{normalized}:{text}")
+    return faults
 
 
 def compute_li7700_correction_sequence(

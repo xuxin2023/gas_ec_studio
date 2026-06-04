@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from app.studio import StudioController
 from core.adapters.mock_adapter import MockGasAnalyzerAdapter
+from core.ec_rp.analysis import compute_ygas_primary_analyzer_diagnostics
+from core.ec_rp.pipeline import ECRPPipeline
+from core.exports.result_exporter import ResultExporter
 from core.protocol.command_builder import CommandBuilder
 from core.protocol.frame_splitter import classify_frame_text
 from core.protocol.gas_analyzer_profiles import get_gas_analyzer_profile, list_gas_analyzer_profiles
@@ -15,8 +20,58 @@ from core.protocol.mode2_parser import parse_mode2_frame
 from core.protocol.parameter_parser import parse_parameter_response
 from core.protocol.software_profile import SoftwareProfile
 from core.storage.raw_importer import load_raw_text_frames
-from models.hf_models import FrameQuality
-from models.station_models import MetadataBundle, RawFileDescriptionMetadata, RawFileSettingsMetadata
+from models.hf_models import FrameQuality, NormalizedHFFrame
+from models.station_models import MetadataBundle, ProjectProfile, RawFileDescriptionMetadata, RawFileSettingsMetadata, SiteProfile
+
+
+def _make_ygas_rp_rows(*, samples: int = 600, sample_hz: float = 10.0, status_register: str = "0001") -> list[NormalizedHFFrame]:
+    start = datetime(2026, 5, 25, 8, 0, 0)
+    time_axis = np.arange(samples, dtype=float) / sample_hz
+    u = 2.2 + 0.18 * np.sin(2.0 * np.pi * 0.03 * time_axis)
+    v = 0.25 * np.cos(2.0 * np.pi * 0.05 * time_axis)
+    w = 0.48 * np.sin(2.0 * np.pi * 0.18 * time_axis) + 0.10 * np.cos(2.0 * np.pi * 0.63 * time_axis)
+    co2_scalar = np.roll(w, 4) + 0.03 * np.sin(2.0 * np.pi * 1.0 * time_axis)
+    h2o_scalar = 0.7 * np.roll(w, 2) + 0.02 * np.cos(2.0 * np.pi * 0.7 * time_axis)
+    rows: list[NormalizedHFFrame] = []
+    for index in range(samples):
+        raw_payload = {
+            "u": float(u[index]),
+            "v": float(v[index]),
+            "w": float(w[index]),
+            "ygas_protocol_import": {
+                "status": "decoded",
+                "format": "ygas_protocol",
+                "source_file": "D:/manuals/ygas_mode_samples.log",
+            },
+            "profile_id": "ygas_irga",
+            "co2_signal": 0.96 + 0.01 * float(np.sin(time_axis[index])),
+            "h2o_signal": 0.94 + 0.01 * float(np.cos(time_axis[index])),
+            "ref_signal": 2630.0 + float(index % 5),
+            "co2_ratio_f": 1.303,
+            "h2o_ratio_f": 0.789,
+            "co2_density": 958.0,
+            "h2o_density": 4.25,
+            "status_register": status_register,
+            "status_ok": status_register == "0001",
+            "active_faults": [] if status_register == "0001" else ["data_abnormal"],
+        }
+        rows.append(
+            NormalizedHFFrame(
+                timestamp=start + timedelta(seconds=float(time_axis[index])),
+                device_uid="dev-ygas-rp",
+                device_id="001",
+                mode=2,
+                frame_quality=FrameQuality.FULL,
+                co2_ppm=float(410.0 + 8.0 * co2_scalar[index]),
+                h2o_mmol=float(12.0 + 1.1 * h2o_scalar[index]),
+                pressure_kpa=101.3,
+                chamber_temp_c=24.5,
+                case_temp_c=24.3,
+                status_text=json.dumps({"status_register": status_register, "status_ok": status_register == "0001"}),
+                raw_text=json.dumps(raw_payload),
+            )
+        )
+    return rows
 
 
 def test_ygas_profile_is_first_class_next_to_eddypro_peer_analyzers() -> None:
@@ -178,3 +233,74 @@ def test_studio_controller_exposes_ygas_profile_and_manual_commands(monkeypatch,
         assert snapshot["gas_analyzer_profile"]["profile_id"] == "ygas_irga"
     finally:
         controller.shutdown()
+
+
+def test_ygas_primary_analyzer_diagnostics_decode_status_register_faults() -> None:
+    detail = compute_ygas_primary_analyzer_diagnostics(
+        rows=_make_ygas_rp_rows(samples=30, status_register="0003"),
+        config={"profile_id": "ygas_irga", "calibration_profile_id": "ygas_lab_fault_check"},
+    )
+
+    assert detail["artifact_type"] == "ygas_primary_analyzer_diagnostics_v1"
+    assert detail["status"] == "fail"
+    assert detail["profile_id"] == "ygas_irga"
+    assert "data_abnormal" in detail["active_faults"]
+    assert detail["status_register_status"] == "fail"
+    assert detail["calibration_profile_id"] == "ygas_lab_fault_check"
+
+
+def test_ygas_primary_analyzer_reaches_rp_ledger_and_result_exporter(tmp_path: Path) -> None:
+    result = ECRPPipeline().run(
+        rows=_make_ygas_rp_rows(),
+        project=ProjectProfile(code="YGAS"),
+        site=SiteProfile(station_code="YGS"),
+        config={
+            "sample_hz": 10.0,
+            "block_minutes": 0.5,
+            "primary_analyzer": {
+                "profile_id": "ygas_irga",
+                "calibration_profile_id": "ygas_lab_2026",
+                "source_file": "D:/manuals/ygas_calibration_2026.json",
+                "normalization_command": "gas_ec_studio normalize-ygas --profile ygas_lab_2026",
+                "min_signal_warning": 0.10,
+                "require_status_ok": True,
+            },
+        },
+    )
+
+    assert result.windows
+    first = result.windows[0]
+    diagnostics = first.diagnostics
+    assert diagnostics["primary_analyzer_status"] == "pass"
+    assert diagnostics["ygas_status"] == "pass"
+    assert diagnostics["ygas_profile_id"] == "ygas_irga"
+    assert diagnostics["ygas_calibration_profile_id"] == "ygas_lab_2026"
+    assert diagnostics["primary_analyzer_detail"]["telemetry_detected"] is True
+    ledger_stages = {stage["stage"] for stage in diagnostics["flux_correction_ledger"]["stages"]}
+    assert "ygas_primary_analyzer_qc_profile" in ledger_stages
+    assert result.summary["primary_analyzer_summary"]["status"] == "pass"
+    assert result.summary["flux_correction_ledger_summary"]["ygas_primary_analyzer_window_count"] == len(result.windows)
+    assert result.artifacts["primary_analyzer"]["summary"]["telemetry_window_count"] == len(result.windows)
+
+    exporter = ResultExporter(runtime_root=tmp_path / "runtime_data")
+    export = exporter.export_minimal_bundle(
+        rp_result=result,
+        spectral_result=None,
+        rp_config_snapshot={"primary_analyzer": {"profile_id": "ygas_irga"}},
+        spectral_config_snapshot={},
+        project={"code": "YGAS"},
+        site={"station_code": "YGS"},
+        report_payload={"status": "ok"},
+        report_key="ygas-primary-analyzer",
+    )
+    manifest = json.loads(Path(export["files"]["export_manifest"]).read_text(encoding="utf-8"))
+    full_output = Path(export["files"]["full_output"]).read_text(encoding="utf-8")
+    primary_artifact = json.loads(Path(export["files"]["primary_analyzer_artifact"]).read_text(encoding="utf-8"))
+
+    assert "ygas_status" in full_output
+    assert "ygas_lab_2026" in full_output
+    assert manifest["primary_analyzer_summary"]["status"] == "pass"
+    assert "ygas_status" in manifest["primary_analyzer_fields"]
+    assert manifest["primary_analyzer_artifact"].endswith("primary_analyzer_diagnostics.json")
+    assert primary_artifact["summary"]["status"] == "pass"
+    assert primary_artifact["windows"][0]["diagnostics"]["calibration_normalization_command"].endswith("ygas_lab_2026")

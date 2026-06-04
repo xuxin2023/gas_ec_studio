@@ -139,6 +139,30 @@ FULL_OUTPUT_SCHEMA = [
     ("clock_sync_offset_span_s", "acquisition", "real"),
     ("clock_sync_provenance", "acquisition", "real"),
     ("clock_sync_detail", "acquisition", "real"),
+    ("primary_analyzer_profile_id", "acquisition", "real"),
+    ("primary_analyzer_status", "acquisition", "real"),
+    ("primary_analyzer_detail", "acquisition", "real"),
+    ("primary_analyzer_provenance", "acquisition", "real"),
+    ("primary_analyzer_limitations", "acquisition", "real"),
+    ("ygas_profile_id", "acquisition", "real"),
+    ("ygas_status", "acquisition", "real"),
+    ("ygas_signal_status", "acquisition", "real"),
+    ("ygas_status_register_status", "acquisition", "real"),
+    ("ygas_co2_signal_mean", "acquisition", "real"),
+    ("ygas_co2_signal_min", "acquisition", "real"),
+    ("ygas_h2o_signal_mean", "acquisition", "real"),
+    ("ygas_h2o_signal_min", "acquisition", "real"),
+    ("ygas_reference_signal_mean", "acquisition", "real"),
+    ("ygas_reference_signal_min", "acquisition", "real"),
+    ("ygas_co2_ratio_mean", "acquisition", "real"),
+    ("ygas_h2o_ratio_mean", "acquisition", "real"),
+    ("ygas_fault_count", "acquisition", "real"),
+    ("ygas_active_faults", "acquisition", "real"),
+    ("ygas_calibration_profile_id", "acquisition", "real"),
+    ("ygas_calibration_source_file", "acquisition", "real"),
+    ("ygas_calibration_normalization_command", "acquisition", "real"),
+    ("ygas_provenance", "acquisition", "real"),
+    ("ygas_limitations", "acquisition", "real"),
     ("runtime_watchdog_status", "acquisition", "real"),
     ("runtime_watchdog_profile", "acquisition", "real"),
     ("runtime_watchdog_fail_count", "acquisition", "real"),
@@ -468,6 +492,10 @@ class ResultExporter:
             export_root=export_root,
         )
         flux_correction_ledger_path = self.export_flux_correction_ledger_artifact(
+            rp_result=rp_result,
+            export_root=export_root,
+        )
+        primary_analyzer_path = self.export_primary_analyzer_artifact(
             rp_result=rp_result,
             export_root=export_root,
         )
@@ -864,6 +892,8 @@ class ResultExporter:
             exported_files.append(clock_sync_path.name)
         if flux_correction_ledger_path is not None:
             exported_files.append(flux_correction_ledger_path.name)
+        if primary_analyzer_path is not None:
+            exported_files.append(primary_analyzer_path.name)
         if method_parity_matrix_path is not None:
             exported_files.append(method_parity_matrix_path.name)
             try:
@@ -966,6 +996,8 @@ class ResultExporter:
                 "clock_sync_summary": self._clock_sync_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot),
                 "flux_correction_ledger_artifact": str(flux_correction_ledger_path) if flux_correction_ledger_path is not None else "",
                 "flux_correction_ledger_summary": self._flux_correction_ledger_summary(rp_result=rp_result),
+                "primary_analyzer_artifact": str(primary_analyzer_path) if primary_analyzer_path is not None else "",
+                "primary_analyzer_summary": self._primary_analyzer_summary(rp_result=rp_result),
                 "reference_provenance": reference_provenance,
                 "fixture_pack_path": fixture_pack_path,
                 "fixture_pack_summary": fixture_pack_summary,
@@ -1482,6 +1514,8 @@ class ResultExporter:
             "clock_sync_artifact": str(clock_sync_path) if clock_sync_path is not None else "",
             "flux_correction_ledger_summary": self._flux_correction_ledger_summary(rp_result=rp_result),
             "flux_correction_ledger_artifact": str(flux_correction_ledger_path) if flux_correction_ledger_path is not None else "",
+            "primary_analyzer_summary": self._primary_analyzer_summary(rp_result=rp_result),
+            "primary_analyzer_artifact": str(primary_analyzer_path) if primary_analyzer_path is not None else "",
             "schema_target": network_validation.get("schema_target", ""),
             "network_supported_schema_targets": list(NETWORK_SCHEMA_REGISTRY.keys()),
             "network_validation_status": network_validation.get("validation_status", ""),
@@ -1543,6 +1577,24 @@ class ResultExporter:
                 "FN2O",
                 "FN2O_QC",
             ],
+            "primary_analyzer_fields": [
+                "primary_analyzer_profile_id",
+                "primary_analyzer_status",
+                "primary_analyzer_detail",
+                "primary_analyzer_provenance",
+                "ygas_profile_id",
+                "ygas_status",
+                "ygas_signal_status",
+                "ygas_status_register_status",
+                "ygas_co2_signal_mean",
+                "ygas_h2o_signal_mean",
+                "ygas_reference_signal_mean",
+                "ygas_fault_count",
+                "ygas_active_faults",
+                "ygas_calibration_profile_id",
+                "ygas_calibration_source_file",
+                "ygas_calibration_normalization_command",
+            ],
             "network_energy_fields": [
                 "H",
                 "LE",
@@ -1594,6 +1646,14 @@ class ResultExporter:
                 "clock_sync_quality_threshold_s",
                 "clock_sync_max_event_step_s",
                 "clock_sync_provenance",
+                "primary_analyzer_profile_id",
+                "primary_analyzer_status",
+                "primary_analyzer_provenance",
+                "ygas_profile_id",
+                "ygas_status",
+                "ygas_calibration_profile_id",
+                "ygas_calibration_source_file",
+                "ygas_calibration_normalization_command",
                 "runtime_watchdog_status",
                 "runtime_watchdog_profile",
                 "runtime_watchdog_fail_count",
@@ -1706,6 +1766,8 @@ class ResultExporter:
             files["clock_sync_artifact"] = str(clock_sync_path)
         if flux_correction_ledger_path is not None:
             files["flux_correction_ledger_artifact"] = str(flux_correction_ledger_path)
+        if primary_analyzer_path is not None:
+            files["primary_analyzer_artifact"] = str(primary_analyzer_path)
         if method_parity_matrix_path is not None:
             files["method_parity_matrix_artifact"] = str(method_parity_matrix_path)
             try:
@@ -1877,6 +1939,32 @@ class ResultExporter:
             "clock_sync_max_event_step_s": diagnostics.get("clock_sync_max_event_step_s", ""),
             "clock_sync_offset_span_s": diagnostics.get("clock_sync_offset_span_s", ""),
             "clock_sync_provenance": diagnostics.get("clock_sync_provenance", ""),
+            "primary_analyzer_profile_id": diagnostics.get("primary_analyzer_profile_id", ""),
+            "primary_analyzer_status": diagnostics.get("primary_analyzer_status", ""),
+            "primary_analyzer_detail": json.dumps(diagnostics.get("primary_analyzer_detail", {}), ensure_ascii=False) if diagnostics.get("primary_analyzer_detail") else "",
+            "primary_analyzer_provenance": diagnostics.get("primary_analyzer_provenance", ""),
+            "primary_analyzer_limitations": json.dumps(diagnostics.get("primary_analyzer_limitations", []), ensure_ascii=False) if diagnostics.get("primary_analyzer_limitations") else "",
+            "ygas_profile_id": diagnostics.get("ygas_profile_id", ""),
+            "ygas_status": diagnostics.get("ygas_status", ""),
+            "ygas_signal_status": diagnostics.get("ygas_signal_status", ""),
+            "ygas_status_register_status": diagnostics.get("ygas_status_register_status", ""),
+            "ygas_co2_signal_mean": diagnostics.get("ygas_co2_signal_mean", ""),
+            "ygas_co2_signal_min": diagnostics.get("ygas_co2_signal_min", ""),
+            "ygas_h2o_signal_mean": diagnostics.get("ygas_h2o_signal_mean", ""),
+            "ygas_h2o_signal_min": diagnostics.get("ygas_h2o_signal_min", ""),
+            "ygas_reference_signal_mean": diagnostics.get("ygas_reference_signal_mean", ""),
+            "ygas_reference_signal_min": diagnostics.get("ygas_reference_signal_min", ""),
+            "ygas_co2_ratio_mean": diagnostics.get("ygas_co2_ratio_mean", ""),
+            "ygas_h2o_ratio_mean": diagnostics.get("ygas_h2o_ratio_mean", ""),
+            "ygas_fault_count": diagnostics.get("ygas_fault_count", ""),
+            "ygas_active_faults": "|".join(diagnostics.get("ygas_active_faults", []) or [])
+            if isinstance(diagnostics.get("ygas_active_faults"), list)
+            else diagnostics.get("ygas_active_faults", ""),
+            "ygas_calibration_profile_id": diagnostics.get("ygas_calibration_profile_id", ""),
+            "ygas_calibration_source_file": diagnostics.get("ygas_calibration_source_file", ""),
+            "ygas_calibration_normalization_command": diagnostics.get("ygas_calibration_normalization_command", ""),
+            "ygas_provenance": diagnostics.get("ygas_provenance", ""),
+            "ygas_limitations": json.dumps(diagnostics.get("ygas_limitations", []), ensure_ascii=False) if diagnostics.get("ygas_limitations") else "",
             "runtime_watchdog_status": diagnostics.get("runtime_watchdog_status", ""),
             "runtime_watchdog_profile": diagnostics.get("runtime_watchdog_profile", ""),
             "runtime_watchdog_fail_count": diagnostics.get("runtime_watchdog_fail_count", ""),
@@ -2121,6 +2209,32 @@ class ResultExporter:
                 "clock_sync_offset_span_s": diagnostics.get("clock_sync_offset_span_s", "") if diagnostics else "",
                 "clock_sync_provenance": diagnostics.get("clock_sync_provenance", "") if diagnostics else "",
                 "clock_sync_detail": json.dumps(diagnostics.get("clock_sync_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("clock_sync_detail") else "",
+                "primary_analyzer_profile_id": diagnostics.get("primary_analyzer_profile_id", "") if diagnostics else "",
+                "primary_analyzer_status": diagnostics.get("primary_analyzer_status", "") if diagnostics else "",
+                "primary_analyzer_detail": json.dumps(diagnostics.get("primary_analyzer_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("primary_analyzer_detail") else "",
+                "primary_analyzer_provenance": diagnostics.get("primary_analyzer_provenance", "") if diagnostics else "",
+                "primary_analyzer_limitations": json.dumps(diagnostics.get("primary_analyzer_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("primary_analyzer_limitations") else "",
+                "ygas_profile_id": diagnostics.get("ygas_profile_id", "") if diagnostics else "",
+                "ygas_status": diagnostics.get("ygas_status", "") if diagnostics else "",
+                "ygas_signal_status": diagnostics.get("ygas_signal_status", "") if diagnostics else "",
+                "ygas_status_register_status": diagnostics.get("ygas_status_register_status", "") if diagnostics else "",
+                "ygas_co2_signal_mean": diagnostics.get("ygas_co2_signal_mean", "") if diagnostics else "",
+                "ygas_co2_signal_min": diagnostics.get("ygas_co2_signal_min", "") if diagnostics else "",
+                "ygas_h2o_signal_mean": diagnostics.get("ygas_h2o_signal_mean", "") if diagnostics else "",
+                "ygas_h2o_signal_min": diagnostics.get("ygas_h2o_signal_min", "") if diagnostics else "",
+                "ygas_reference_signal_mean": diagnostics.get("ygas_reference_signal_mean", "") if diagnostics else "",
+                "ygas_reference_signal_min": diagnostics.get("ygas_reference_signal_min", "") if diagnostics else "",
+                "ygas_co2_ratio_mean": diagnostics.get("ygas_co2_ratio_mean", "") if diagnostics else "",
+                "ygas_h2o_ratio_mean": diagnostics.get("ygas_h2o_ratio_mean", "") if diagnostics else "",
+                "ygas_fault_count": diagnostics.get("ygas_fault_count", "") if diagnostics else "",
+                "ygas_active_faults": "|".join(diagnostics.get("ygas_active_faults", []) or [])
+                if diagnostics and isinstance(diagnostics.get("ygas_active_faults"), list)
+                else (diagnostics.get("ygas_active_faults", "") if diagnostics else ""),
+                "ygas_calibration_profile_id": diagnostics.get("ygas_calibration_profile_id", "") if diagnostics else "",
+                "ygas_calibration_source_file": diagnostics.get("ygas_calibration_source_file", "") if diagnostics else "",
+                "ygas_calibration_normalization_command": diagnostics.get("ygas_calibration_normalization_command", "") if diagnostics else "",
+                "ygas_provenance": diagnostics.get("ygas_provenance", "") if diagnostics else "",
+                "ygas_limitations": json.dumps(diagnostics.get("ygas_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("ygas_limitations") else "",
                 "runtime_watchdog_status": diagnostics.get("runtime_watchdog_status", "") if diagnostics else "",
                 "runtime_watchdog_profile": diagnostics.get("runtime_watchdog_profile", "") if diagnostics else "",
                 "runtime_watchdog_fail_count": diagnostics.get("runtime_watchdog_fail_count", "") if diagnostics else "",
@@ -3481,6 +3595,41 @@ class ResultExporter:
         payload = self._flux_correction_ledger_payload(rp_result=rp_result)
         return dict(payload.get("summary", {}) or {})
 
+    def _primary_analyzer_payload(self, *, rp_result: RPRunResult | None) -> dict[str, Any]:
+        if rp_result is None:
+            return {"artifact_type": "primary_analyzer_run_v1", "status": "missing", "summary": {}, "windows": []}
+        artifacts = dict(rp_result.artifacts or {})
+        artifact_payload = dict(artifacts.get("primary_analyzer", {}) or {})
+        if artifact_payload:
+            return {
+                **artifact_payload,
+                "run_id": rp_result.run_id,
+                "created_at": rp_result.created_at.isoformat(),
+            }
+        windows = [
+            {
+                "window_id": window.window_id,
+                "start_time": window.start_time.isoformat(),
+                "end_time": window.end_time.isoformat(),
+                "diagnostics": dict(window.diagnostics.get("primary_analyzer_detail", {}) or {}),
+            }
+            for window in rp_result.windows
+            if isinstance(window.diagnostics, dict) and window.diagnostics.get("primary_analyzer_detail")
+        ]
+        summary = dict(rp_result.summary.get("primary_analyzer_summary", {}) if isinstance(rp_result.summary, dict) else {})
+        return {
+            "artifact_type": "primary_analyzer_run_v1",
+            "status": str(summary.get("status", "ok" if windows else "no_diagnostics")),
+            "run_id": rp_result.run_id,
+            "created_at": rp_result.created_at.isoformat(),
+            "summary": summary,
+            "windows": windows,
+        }
+
+    def _primary_analyzer_summary(self, *, rp_result: RPRunResult | None) -> dict[str, Any]:
+        payload = self._primary_analyzer_payload(rp_result=rp_result)
+        return dict(payload.get("summary", {}) or {})
+
     def _biomet_ambient_summary(self, *, rp_result: RPRunResult | None) -> dict[str, Any]:
         if rp_result is None:
             return {"status": "missing", "window_count": 0, "applied_window_count": 0, "applied_fields": []}
@@ -3516,6 +3665,19 @@ class ResultExporter:
         if payload.get("status") in {"missing", "no_ledgers"}:
             return None
         path = export_root / "flux_correction_ledger.json"
+        self._write_json(path, payload)
+        return path
+
+    def export_primary_analyzer_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+    ) -> Path | None:
+        payload = self._primary_analyzer_payload(rp_result=rp_result)
+        if payload.get("status") in {"missing", "no_diagnostics"}:
+            return None
+        path = export_root / "primary_analyzer_diagnostics.json"
         self._write_json(path, payload)
         return path
 
