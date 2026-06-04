@@ -17,6 +17,7 @@ GAS_COLUMN_ALIASES = {
     "co2_ppm": ("co2_ppm", "co2", "co2_molar_density", "co2_molfrac", "co2_mixing_ratio", "co2 (umol/mol)"),
     "h2o_mmol": ("h2o_mmol", "h2o", "h2o_molar_density", "h2o_molfrac", "h2o_mixing_ratio", "h2o (mmol/mol)"),
     "ch4_ppb": ("ch4_ppb", "ch4_ppm", "ch4", "methane", "ch4_molfrac", "ch4_mixing_ratio", "ch4 (umol/mol)"),
+    "n2o_ppb": ("n2o_ppb", "n2o_ppm", "n2o", "nitrous_oxide", "n2o_molfrac", "n2o_mixing_ratio", "n2o (umol/mol)"),
     "pressure_kpa": ("pressure_kpa", "pressure", "press", "p", "ambient_pressure", "pressure (kpa)", "ch4 pressure"),
     "chamber_temp_c": (
         "chamber_temp_c",
@@ -263,6 +264,7 @@ def _normalized_frame_from_ghg_row(
     if timestamp is None:
         return None
     ch4_ppb = _optional_ch4_ppb(lookup)
+    n2o_ppb = _optional_ppb(lookup, "n2o_ppb")
     wind_payload = {
         key: _optional_float(_first_lookup_value(lookup, aliases))
         for key, aliases in WIND_COLUMN_ALIASES.items()
@@ -275,6 +277,7 @@ def _normalized_frame_from_ghg_row(
             **wind_payload,
             **diagnostic_payload,
             "ch4_ppb": ch4_ppb,
+            "n2o_ppb": n2o_ppb,
             "ghg_bundle": str(bundle_path),
             "ghg_member": member_name,
         }.items()
@@ -289,6 +292,7 @@ def _normalized_frame_from_ghg_row(
         co2_ppm=_optional_float(_first_lookup_value(lookup, GAS_COLUMN_ALIASES["co2_ppm"])),
         h2o_mmol=_optional_float(_first_lookup_value(lookup, GAS_COLUMN_ALIASES["h2o_mmol"])),
         ch4_ppb=ch4_ppb,
+        n2o_ppb=n2o_ppb,
         pressure_kpa=_optional_float(_first_lookup_value(lookup, GAS_COLUMN_ALIASES["pressure_kpa"])),
         chamber_temp_c=_optional_float(_first_lookup_value(lookup, GAS_COLUMN_ALIASES["chamber_temp_c"])),
         case_temp_c=_optional_float(_first_lookup_value(lookup, GAS_COLUMN_ALIASES["case_temp_c"])),
@@ -517,20 +521,32 @@ def _first_lookup_item(lookup: dict[str, str], aliases: tuple[str, ...]) -> tupl
 
 
 def _optional_ch4_ppb(lookup: dict[str, str]) -> float | None:
+    return _optional_ppb(lookup, "ch4_ppb")
+
+
+def _optional_ppb(lookup: dict[str, str], field: str) -> float | None:
     item = _first_lookup_item(lookup, GAS_COLUMN_ALIASES["ch4_ppb"])
+    if field != "ch4_ppb":
+        item = _first_lookup_item(lookup, GAS_COLUMN_ALIASES[field])
     if item is None:
         return None
     alias, raw_value = item
     value = _optional_float(raw_value)
     if value is None:
         return None
-    if alias == "ch4_ppb":
+    gas = field.removesuffix("_ppb")
+    if alias == field:
         return value
-    if alias in {"ch4_ppm", "ch4 (umol/mol)"}:
+    if alias in {f"{gas}_ppm", f"{gas} (umol/mol)"}:
         return value * 1000.0
-    if alias in {"ch4_molfrac", "ch4_mixing_ratio"} and abs(value) < 0.01:
+    if alias in {f"{gas}_molfrac", f"{gas}_mixing_ratio"} and abs(value) < 0.01:
         return value * 1_000_000_000.0
-    if alias in {"ch4", "methane", "ch4_mixing_ratio"} and 0.0 < abs(value) < 10.0:
+    bare_aliases = {gas, f"{gas}_mixing_ratio"}
+    if gas == "ch4":
+        bare_aliases.add("methane")
+    if gas == "n2o":
+        bare_aliases.add("nitrous_oxide")
+    if alias in bare_aliases and 0.0 < abs(value) < 10.0:
         return value * 1000.0
     return value
 

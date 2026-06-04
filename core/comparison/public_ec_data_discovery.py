@@ -1642,7 +1642,7 @@ def _empty_field_coverage() -> dict[str, Any]:
     return {
         "row_count": 0,
         "required_fields": ["timestamp", "u", "v", "w", "co2_ppm", "h2o_mmol", "pressure_kpa"],
-        "optional_fields": ["ch4_ppb", "chamber_temp_c", "case_temp_c"],
+        "optional_fields": ["ch4_ppb", "n2o_ppb", "chamber_temp_c", "case_temp_c"],
         "present_fields": [],
         "missing_required_fields": ["timestamp", "u", "v", "w", "co2_ppm", "h2o_mmol", "pressure_kpa"],
         "field_counts": {},
@@ -1657,7 +1657,7 @@ def _field_coverage(rows: list[NormalizedHFFrame]) -> dict[str, Any]:
     counts["timestamp"] = len(rows)
     for row in rows:
         raw_payload = _frame_raw_payload(row)
-        for field in ("co2_ppm", "h2o_mmol", "pressure_kpa", "ch4_ppb", "chamber_temp_c", "case_temp_c"):
+        for field in ("co2_ppm", "h2o_mmol", "pressure_kpa", "ch4_ppb", "n2o_ppb", "chamber_temp_c", "case_temp_c"):
             if getattr(row, field) is not None:
                 counts[field] += 1
         for field in ("u", "v", "w"):

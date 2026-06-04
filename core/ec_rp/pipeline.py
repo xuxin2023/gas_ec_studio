@@ -25,6 +25,7 @@ from core.ec_rp.analysis import (
     compute_flux_metrics,
     compute_li7700_status_diagnostics,
     compute_li7700_correction_sequence,
+    compute_n2o_flux_metrics,
     compute_footprint,
     compute_footprint_2d_grid,
     compute_planar_fit_coefficients,
@@ -492,6 +493,13 @@ class ECRPPipeline:
             detrend_mode=detrend_mode,
             valid_ratio=float(prepared.diagnostics.get("ch4_valid_ratio", 0.0)),
         )
+        n2o_metrics = compute_n2o_flux_metrics(
+            w_series=rotation.w,
+            n2o_ppb=prepared.n2o_ppb,
+            air_molar_density=float(flux_metrics["air_molar_density"]),
+            detrend_mode=detrend_mode,
+            valid_ratio=float(prepared.diagnostics.get("n2o_valid_ratio", 0.0)),
+        )
         density_correction_factor = _density_correction_factor(raw_flux=flux_metrics["raw_flux"], density_corrected_flux=flux_metrics["density_corrected_flux"])
         stationarity = compute_stationarity_metrics(w_series=rotation.w, scalar_series=lagged_co2, detrend_mode=detrend_mode)
         turbulence = compute_turbulence_metrics(
@@ -702,6 +710,15 @@ class ECRPPipeline:
                     "flux_units": "nmol m-2 s-1",
                     "provenance": ch4_metrics.get("provenance", ""),
                     "limitations": ch4_metrics.get("limitations", []),
+                },
+                "n2o": {
+                    "status": n2o_metrics.get("status", "not_available"),
+                    "method": n2o_metrics.get("selected_method", "not_available"),
+                    "valid_ratio": n2o_metrics.get("valid_ratio", 0.0),
+                    "flux_units": "nmol m-2 s-1",
+                    "flux_nmol_m2_s": n2o_metrics.get("n2o_flux_nmol_m2_s"),
+                    "provenance": n2o_metrics.get("provenance", ""),
+                    "limitations": n2o_metrics.get("limitations", []),
                 }
             },
             "ch4_detail": ch4_metrics,
@@ -713,6 +730,15 @@ class ECRPPipeline:
             "ch4_method": ch4_metrics.get("selected_method", "not_available"),
             "ch4_provenance": ch4_metrics.get("provenance", ""),
             "ch4_limitations": ch4_metrics.get("limitations", []),
+            "n2o_detail": n2o_metrics,
+            "n2o_status": n2o_metrics.get("status", "not_available"),
+            "n2o_flux_nmol_m2_s": n2o_metrics.get("n2o_flux_nmol_m2_s"),
+            "cov_w_n2o_ppb": n2o_metrics.get("cov_w_n2o_ppb"),
+            "mean_n2o_ppb": n2o_metrics.get("mean_n2o_ppb"),
+            "n2o_valid_ratio": n2o_metrics.get("valid_ratio", prepared.diagnostics.get("n2o_valid_ratio", 0.0)),
+            "n2o_method": n2o_metrics.get("selected_method", "not_available"),
+            "n2o_provenance": n2o_metrics.get("provenance", ""),
+            "n2o_limitations": n2o_metrics.get("limitations", []),
             "metadata_summary": {
                 "sample_rate_hz": float(sample_rate_hz),
                 "sample_count": prepared.sample_count,
@@ -722,6 +748,8 @@ class ECRPPipeline:
                 "mean_h2o_mmol": float(flux_metrics.get("mean_h2o_mmol", float(np.mean(lagged_h2o)))),
                 "mean_ch4_ppb": ch4_metrics.get("mean_ch4_ppb"),
                 "ch4_status": ch4_metrics.get("status", "not_available"),
+                "mean_n2o_ppb": n2o_metrics.get("mean_n2o_ppb"),
+                "n2o_status": n2o_metrics.get("status", "not_available"),
                 "mean_pressure_kpa": float(flux_metrics.get("mean_pressure_kpa", float(np.mean(prepared.pressure_kpa)))),
                 "mean_temp_c": float(flux_metrics.get("mean_temp_c", float(np.mean(prepared.temp_c)))),
                 "cell_thermodynamics_status": flux_metrics.get(
@@ -1739,6 +1767,23 @@ def _build_flux_correction_ledger(
                 "provenance": str(ch4_sequence.get("provenance", "")),
             }
         )
+    if diagnostics.get("n2o_status") == "computed":
+        stages.append(
+            {
+                "level": "trace_gas",
+                "stage": "n2o_covariance_flux",
+                "method": str(diagnostics.get("n2o_method", "n2o_level0_covariance")),
+                "status": str(diagnostics.get("n2o_status", "")),
+                "units": "nmol m-2 s-1",
+                "values": {
+                    "cov_w_n2o_ppb": diagnostics.get("cov_w_n2o_ppb"),
+                    "mean_n2o_ppb": diagnostics.get("mean_n2o_ppb"),
+                    "final": diagnostics.get("n2o_flux_nmol_m2_s"),
+                },
+                "provenance": str(diagnostics.get("n2o_provenance", "")),
+                "limitations": list(diagnostics.get("n2o_limitations", []) or []),
+            }
+        )
     return {
         "artifact_type": "flux_correction_ledger_window_v1",
         "window_id": window_id,
@@ -1764,6 +1809,7 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
     density_modes: dict[str, int] = {}
     spectral_methods: dict[str, int] = {}
     ch4_sequence_count = 0
+    n2o_sequence_count = 0
     closed_path_cell_window_count = 0
     for ledger in ledgers:
         source = str(ledger.get("primary_flux_source", "") or "unknown")
@@ -1777,6 +1823,8 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
                 spectral_methods[method] = spectral_methods.get(method, 0) + 1
             if stage_payload.get("stage") == "ch4_li7700_sequence":
                 ch4_sequence_count += 1
+            if stage_payload.get("stage") == "n2o_covariance_flux":
+                n2o_sequence_count += 1
     return {
         "artifact_type": "flux_correction_ledger_summary_v1",
         "status": "ok" if ledgers or not windows else "missing_ledgers",
@@ -1786,6 +1834,7 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
         "closed_path_cell_thermodynamics_window_count": closed_path_cell_window_count,
         "spectral_correction_method_counts": dict(sorted(spectral_methods.items())),
         "ch4_sequence_window_count": ch4_sequence_count,
+        "n2o_covariance_window_count": n2o_sequence_count,
         "average_raw_flux": float(np.mean([window.raw_flux for window in windows])) if windows else None,
         "average_mixing_ratio_flux": float(np.mean([window.mixing_ratio_flux for window in windows])) if windows else None,
         "average_density_corrected_flux": float(np.mean([window.density_corrected_flux for window in windows])) if windows else None,
@@ -2250,6 +2299,10 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
             "ch4_computed_window_count": 0,
             "average_ch4_flux_nmol_m2_s": None,
             "average_ch4_level0_flux_nmol_m2_s": None,
+            "n2o_window_count": 0,
+            "n2o_computed_window_count": 0,
+            "average_n2o_flux_nmol_m2_s": None,
+            "n2o_method": "not_available",
             "method": "not_available",
             "coefficient_profile_id": "",
             "coefficient_registry_status": "",
@@ -2271,9 +2324,15 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
         for diag in diagnostics
         if isinstance(diag.get("ch4_flux_level0_nmol_m2_s"), (int, float))
     ]
+    n2o_computed = [
+        diag
+        for diag in diagnostics
+        if diag.get("n2o_status") == "computed" and isinstance(diag.get("n2o_flux_nmol_m2_s"), (int, float))
+    ]
+    n2o_first = next((diag for diag in diagnostics if diag.get("n2o_method")), {})
     first = next((diag for diag in diagnostics if diag.get("ch4_method")), diagnostics[0])
     return {
-        "status": "computed" if computed else "not_available",
+        "status": "computed" if computed or n2o_computed else "not_available",
         "ch4_window_count": len(windows),
         "ch4_computed_window_count": len(computed),
         "average_ch4_flux_nmol_m2_s": (
@@ -2286,6 +2345,16 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
             if level0
             else None
         ),
+        "n2o_window_count": len(windows),
+        "n2o_computed_window_count": len(n2o_computed),
+        "average_n2o_flux_nmol_m2_s": (
+            sum(float(diag["n2o_flux_nmol_m2_s"]) for diag in n2o_computed) / len(n2o_computed)
+            if n2o_computed
+            else None
+        ),
+        "n2o_method": n2o_first.get("n2o_method", "not_available"),
+        "n2o_provenance": n2o_first.get("n2o_provenance", ""),
+        "n2o_limitations": list(n2o_first.get("n2o_limitations", []) or []),
         "method": first.get("ch4_method", "not_available"),
         "correction_sequence": first.get("ch4_correction_sequence", {}),
         "coefficient_profile_id": first.get("ch4_coefficient_profile_id", ""),
@@ -2335,6 +2404,10 @@ def _empty_summary(
             "ch4_computed_window_count": 0,
             "average_ch4_flux_nmol_m2_s": None,
             "average_ch4_level0_flux_nmol_m2_s": None,
+            "n2o_window_count": 0,
+            "n2o_computed_window_count": 0,
+            "average_n2o_flux_nmol_m2_s": None,
+            "n2o_method": "not_available",
             "method": "not_available",
             "coefficient_profile_id": "",
             "coefficient_registry_status": "",

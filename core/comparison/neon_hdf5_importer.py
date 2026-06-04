@@ -542,6 +542,7 @@ def row_records_to_normalized_frames(records: list[dict[str, Any]]) -> list[Norm
                 chamber_temp_c=_optional_number(record.get("chamber_temp_c")),
                 case_temp_c=_optional_number(record.get("case_temp_c")),
                 ch4_ppb=_optional_number(record.get("ch4_ppb")),
+                n2o_ppb=_optional_number(record.get("n2o_ppb")),
                 status_text=str(record.get("status_text", "")) or None,
                 raw_text=str(record.get("raw_text", "")),
             )
@@ -833,6 +834,9 @@ def _build_neon_row_record(
     ch4_ppb = _item_value(matched.get("ch4"))
     if ch4_ppb is not None:
         raw_payload["ch4_ppb"] = ch4_ppb
+    n2o_ppb = _item_value(matched.get("n2o"))
+    if n2o_ppb is not None:
+        raw_payload["n2o_ppb"] = n2o_ppb
     return NormalizedHFFrame(
         timestamp=timestamp,
         device_uid="neon_hdf5",
@@ -845,6 +849,7 @@ def _build_neon_row_record(
         chamber_temp_c=_item_value(matched.get("sonic_temperature")),
         case_temp_c=_item_value(matched.get("air_temperature")),
         ch4_ppb=ch4_ppb,
+        n2o_ppb=n2o_ppb,
         status_text="neon_hdf5_row_smoke",
         raw_text=json.dumps(raw_payload, ensure_ascii=False, sort_keys=True),
     ).to_record()

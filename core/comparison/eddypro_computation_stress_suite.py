@@ -842,9 +842,9 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
                 },
             },
             "n2o": {
-                "enabled": False,
-                "status": "not_implemented",
-                "truthfulness_boundary": "N2O high-frequency flux is intentionally not claimed until a real N2O channel/model is added.",
+                "enabled": True,
+                "method": "n2o_level0_covariance",
+                "truthfulness_boundary": "N2O high-frequency covariance flux is computed; N2O-specific spectral/analyzer corrections are not yet claimed.",
             },
         },
     }
@@ -865,6 +865,7 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
     first_payload = json.loads(rows[0].raw_text) if rows else {}
     trace_family = dict(diagnostics.get("trace_gas_family", {}) or {})
     ch4_family = dict(trace_family.get("ch4", {}) or {})
+    n2o_family = dict(trace_family.get("n2o", {}) or {})
     ch4_sequence = dict(diagnostics.get("ch4_correction_sequence", {}) or {})
 
     failures: list[str] = []
@@ -898,8 +899,14 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
         failures.append("trace_gas_family_ch4_sequence_not_computed")
     if "n2o_ppb" not in first_payload:
         failures.append("n2o_payload_not_preserved")
-    if "n2o" in trace_family:
-        failures.append("n2o_trace_family_claimed_without_model")
+    if diagnostics.get("n2o_status") != "computed":
+        failures.append(f"n2o_status={diagnostics.get('n2o_status', '')}")
+    if not _positive_number(abs(float(diagnostics.get("n2o_flux_nmol_m2_s", 0.0) or 0.0))):
+        failures.append("n2o_flux_not_nonzero")
+    if n2o_family.get("method") != "n2o_level0_covariance":
+        failures.append(f"trace_gas_family_n2o_method={n2o_family.get('method', '')}")
+    if int(trace_summary.get("n2o_computed_window_count", 0) or 0) != len(windows):
+        failures.append("trace_summary_n2o_window_count_mismatch")
 
     return _case_payload(
         case_id="multi_gas_final_flux_window_stress",
@@ -916,7 +923,10 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
             "ch4_correction_sequence_status": ch4_sequence.get("status", ""),
             "trace_gas_summary_status": trace_summary.get("status", ""),
             "ch4_computed_window_count": trace_summary.get("ch4_computed_window_count", 0),
-            "n2o_boundary_status": "not_implemented",
+            "n2o_flux_nmol_m2_s": diagnostics.get("n2o_flux_nmol_m2_s"),
+            "n2o_method": diagnostics.get("n2o_method", ""),
+            "n2o_computed_window_count": trace_summary.get("n2o_computed_window_count", 0),
+            "n2o_boundary_status": "computed_level0",
         },
         details={
             "trace_gas_summary": trace_summary,
@@ -925,18 +935,19 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
             "ch4_correction_sequence": ch4_sequence,
             "flux_correction_ch4_stage": ch4_ledger_stage,
             "n2o_boundary": {
-                "status": "not_implemented",
+                "status": "computed_level0",
                 "raw_payload_field_preserved": "n2o_ppb" in first_payload,
                 "claimed_in_trace_gas_family": "n2o" in trace_family,
-                "reason": "NormalizedHFFrame and RP diagnostics currently implement CH4 trace-gas flux, not N2O final flux.",
+                "method": diagnostics.get("n2o_method", ""),
+                "reason": "N2O Level 0 covariance flux is computed from high-frequency N2O ppb and rotated vertical wind.",
                 "next_required_work": [
-                    "Add an N2O high-frequency channel to normalized frames or trace-gas payload extraction.",
-                    "Implement N2O covariance, density/spectral corrections, diagnostics, exporter fields, and parity mapping.",
+                    "Add N2O-specific spectral and analyzer correction families.",
+                    "Add official EddyPro-compatible N2O reference parity mapping when paired evidence is available.",
                 ],
             },
             "truthfulness_boundary": (
-                "CO2/H2O/CH4 final flux paths are stress-verified here; N2O is deliberately recorded "
-                "as not implemented rather than counted as a computed trace gas."
+                "CO2/H2O/CH4 final flux paths and N2O level0 covariance flux are stress-verified here; "
+                "N2O-specific spectral/analyzer correction parity is not claimed."
             ),
         },
     )
@@ -1257,6 +1268,7 @@ def _make_multi_gas_rows(samples: int = 1200, sample_rate_hz: float = 10.0) -> l
                 pressure_kpa=float(pressure[index]),
                 chamber_temp_c=float(temp[index]),
                 ch4_ppb=float(ch4[index]),
+                n2o_ppb=float(n2o[index]),
                 raw_text=json.dumps(
                     {
                         "u": float(u[index]),

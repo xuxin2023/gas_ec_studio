@@ -274,6 +274,7 @@ def _load_raw_rows(path: Path, metadata: MetadataBundle) -> list[NormalizedHFFra
             co2_ppm=_optional_float(item.get("co2_ppm")),
             h2o_mmol=_optional_float(item.get("h2o_mmol")),
             ch4_ppb=_optional_float(item.get("ch4_ppb")),
+            n2o_ppb=_optional_float(item.get("n2o_ppb")),
             pressure_kpa=_optional_float(item.get("pressure_kpa")),
             chamber_temp_c=_optional_float(item.get("chamber_temp_c")),
             case_temp_c=_optional_float(item.get("case_temp_c")),

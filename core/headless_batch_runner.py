@@ -443,6 +443,7 @@ def load_input_rows(path: str | Path, metadata: MetadataBundle | dict[str, Any] 
                 co2_ppm=_optional_float(row.get("co2_ppm")),
                 h2o_mmol=_optional_float(row.get("h2o_mmol")),
                 ch4_ppb=_optional_float(row.get("ch4_ppb")),
+                n2o_ppb=_optional_float(row.get("n2o_ppb")),
                 pressure_kpa=_optional_float(row.get("pressure_kpa")),
                 chamber_temp_c=_optional_float(row.get("chamber_temp_c")),
                 case_temp_c=_optional_float(row.get("case_temp_c")),

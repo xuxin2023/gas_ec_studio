@@ -441,6 +441,7 @@ def _copy_frame_with_clock_sync(
         status_text=status_text,
         raw_text=json.dumps(raw_payload, ensure_ascii=False, separators=(",", ":")),
         ch4_ppb=row.ch4_ppb,
+        n2o_ppb=row.n2o_ppb,
     )
 
 

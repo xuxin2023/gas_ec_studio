@@ -215,6 +215,15 @@ FULL_OUTPUT_SCHEMA = [
     ("ch4_provenance", "trace_gas", "real"),
     ("ch4_limitations", "trace_gas", "real"),
     ("ch4_detail", "trace_gas", "real"),
+    ("n2o_status", "trace_gas", "real"),
+    ("n2o_flux_nmol_m2_s", "trace_gas", "real"),
+    ("cov_w_n2o_ppb", "trace_gas", "real"),
+    ("mean_n2o_ppb", "trace_gas", "real"),
+    ("n2o_valid_ratio", "trace_gas", "real"),
+    ("n2o_method", "trace_gas", "real"),
+    ("n2o_provenance", "trace_gas", "real"),
+    ("n2o_limitations", "trace_gas", "real"),
+    ("n2o_detail", "trace_gas", "real"),
     ("trace_gas_family", "trace_gas", "real"),
     ("requested_rotation_mode", "rotation", "real"),
     ("applied_rotation_impl", "rotation", "real"),
@@ -1403,6 +1412,14 @@ class ResultExporter:
                 "li7700_wms_fit_diagnostics",
                 "ch4_provenance",
                 "ch4_limitations",
+                "n2o_status",
+                "n2o_flux_nmol_m2_s",
+                "cov_w_n2o_ppb",
+                "mean_n2o_ppb",
+                "n2o_valid_ratio",
+                "n2o_method",
+                "n2o_provenance",
+                "n2o_limitations",
             ],
             "method_rollup_artifact": str(method_rollup_path) if method_rollup_path is not None else "",
             "footprint_2d_summary": method_summary.get("footprint_2d_summary", {}),
@@ -1499,6 +1516,8 @@ class ResultExporter:
             "network_trace_gas_fields": [
                 "FCH4",
                 "FCH4_QC",
+                "FN2O",
+                "FN2O_QC",
             ],
             "network_energy_fields": [
                 "H",
@@ -1910,6 +1929,19 @@ class ResultExporter:
             "li7700_wms_fit_diagnostics": json.dumps(diagnostics.get("li7700_wms_fit_diagnostics", {}), ensure_ascii=False)
             if diagnostics.get("li7700_wms_fit_diagnostics")
             else "",
+            "n2o_status": diagnostics.get("n2o_status", ""),
+            "n2o_flux_nmol_m2_s": diagnostics.get("n2o_flux_nmol_m2_s", ""),
+            "cov_w_n2o_ppb": diagnostics.get("cov_w_n2o_ppb", ""),
+            "mean_n2o_ppb": diagnostics.get("mean_n2o_ppb", ""),
+            "n2o_valid_ratio": diagnostics.get("n2o_valid_ratio", ""),
+            "n2o_method": diagnostics.get("n2o_method", ""),
+            "n2o_provenance": diagnostics.get("n2o_provenance", ""),
+            "n2o_limitations": json.dumps(diagnostics.get("n2o_limitations", []), ensure_ascii=False)
+            if diagnostics.get("n2o_limitations")
+            else "",
+            "n2o_detail": json.dumps(diagnostics.get("n2o_detail", {}), ensure_ascii=False)
+            if diagnostics.get("n2o_detail")
+            else "",
             "qc_grade": window.qc_grade,
             "anomaly_type": window.anomaly_type,
             "reason": window.reason,
@@ -2135,6 +2167,15 @@ class ResultExporter:
                 "ch4_provenance": diagnostics.get("ch4_provenance", "") if diagnostics else "",
                 "ch4_limitations": json.dumps(diagnostics.get("ch4_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("ch4_limitations") else "",
                 "ch4_detail": json.dumps(diagnostics.get("ch4_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("ch4_detail") else "",
+                "n2o_status": diagnostics.get("n2o_status", "") if diagnostics else "",
+                "n2o_flux_nmol_m2_s": diagnostics.get("n2o_flux_nmol_m2_s", "") if diagnostics else "",
+                "cov_w_n2o_ppb": diagnostics.get("cov_w_n2o_ppb", "") if diagnostics else "",
+                "mean_n2o_ppb": diagnostics.get("mean_n2o_ppb", "") if diagnostics else "",
+                "n2o_valid_ratio": diagnostics.get("n2o_valid_ratio", "") if diagnostics else "",
+                "n2o_method": diagnostics.get("n2o_method", "") if diagnostics else "",
+                "n2o_provenance": diagnostics.get("n2o_provenance", "") if diagnostics else "",
+                "n2o_limitations": json.dumps(diagnostics.get("n2o_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("n2o_limitations") else "",
+                "n2o_detail": json.dumps(diagnostics.get("n2o_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("n2o_detail") else "",
                 "trace_gas_family": json.dumps(diagnostics.get("trace_gas_family", {}), ensure_ascii=False) if diagnostics and diagnostics.get("trace_gas_family") else "",
                 "requested_rotation_mode": diagnostics.get("requested_rotation_mode", "") if diagnostics else "",
                 "applied_rotation_impl": diagnostics.get("applied_rotation_impl", "") if diagnostics else "",
@@ -2596,6 +2637,10 @@ class ResultExporter:
                 "ch4_computed_window_count": 0,
                 "average_ch4_flux_nmol_m2_s": None,
                 "average_ch4_level0_flux_nmol_m2_s": None,
+                "n2o_window_count": 0,
+                "n2o_computed_window_count": 0,
+                "average_n2o_flux_nmol_m2_s": None,
+                "n2o_method": "not_available",
                 "method": "not_available",
                 "coefficient_profile_id": "",
                 "coefficient_registry_status": "",
@@ -2620,9 +2665,15 @@ class ResultExporter:
             for diag in diagnostics
             if isinstance(diag.get("ch4_flux_level0_nmol_m2_s"), (int, float))
         ]
+        n2o_computed = [
+            diag
+            for diag in diagnostics
+            if diag.get("n2o_status") == "computed" and isinstance(diag.get("n2o_flux_nmol_m2_s"), (int, float))
+        ]
         first = next((diag for diag in diagnostics if diag.get("ch4_method")), diagnostics[0] if diagnostics else {})
+        n2o_first = next((diag for diag in diagnostics if diag.get("n2o_method")), {})
         return {
-            "status": "computed" if computed else "not_available",
+            "status": "computed" if computed or n2o_computed else "not_available",
             "ch4_window_count": len(diagnostics),
             "ch4_computed_window_count": len(computed),
             "average_ch4_flux_nmol_m2_s": (
@@ -2635,6 +2686,16 @@ class ResultExporter:
                 if level0
                 else None
             ),
+            "n2o_window_count": len(diagnostics),
+            "n2o_computed_window_count": len(n2o_computed),
+            "average_n2o_flux_nmol_m2_s": (
+                sum(float(diag["n2o_flux_nmol_m2_s"]) for diag in n2o_computed) / len(n2o_computed)
+                if n2o_computed
+                else None
+            ),
+            "n2o_method": n2o_first.get("n2o_method", "not_available"),
+            "n2o_provenance": n2o_first.get("n2o_provenance", ""),
+            "n2o_limitations": list(n2o_first.get("n2o_limitations", []) or []),
             "method": first.get("ch4_method", "not_available"),
             "correction_sequence": first.get("ch4_correction_sequence", {}),
             "coefficient_profile_id": first.get("ch4_coefficient_profile_id", ""),
@@ -4316,6 +4377,12 @@ class ResultExporter:
                     "ch4_coefficient_profile_provenance": "",
                     "ch4_spectral_correction_factor": "",
                     "ch4_water_vapor_dilution_factor": "",
+                    "n2o_status": "",
+                    "n2o_flux_nmol_m2_s": "",
+                    "cov_w_n2o_ppb": "",
+                    "mean_n2o_ppb": "",
+                    "n2o_valid_ratio": "",
+                    "n2o_method": "",
                     "qc_grade": "",
                     "anomaly_type": "gap",
                     "reason": "no data for this averaging period",
@@ -4603,6 +4670,8 @@ class ResultExporter:
         tau = _diag_number("momentum_flux_kg_m_s2")
         ch4_flux = diagnostics.get("ch4_flux_nmol_m2_s", gap_fill_value)
         ch4_qc = qc_num if diagnostics.get("ch4_status") == "computed" else gap_fill_value
+        n2o_flux = diagnostics.get("n2o_flux_nmol_m2_s", gap_fill_value)
+        n2o_qc = qc_num if diagnostics.get("n2o_status") == "computed" else gap_fill_value
         return {
             "TIMESTAMP_START": ts_start,
             "TIMESTAMP_END": ts_end,
@@ -4622,6 +4691,8 @@ class ResultExporter:
             "H2O": window.mean_h2o_mmol if window.mean_h2o_mmol != 0.0 else gap_fill_value,
             "FCH4": ch4_flux,
             "FCH4_QC": ch4_qc,
+            "FN2O": n2o_flux,
+            "FN2O_QC": n2o_qc,
             "FC_RANDOM_ERROR": diagnostics.get("primary_flux_random_error", gap_fill_value),
             "FC_REL_UNCERTAINTY": diagnostics.get("primary_flux_relative_uncertainty", gap_fill_value),
             "FC_CI_LOWER": diagnostics.get("primary_flux_ci_lower", gap_fill_value),
@@ -4720,6 +4791,8 @@ class ResultExporter:
             "H2O": gap_fill_value,
             "FCH4": gap_fill_value,
             "FCH4_QC": 2,
+            "FN2O": gap_fill_value,
+            "FN2O_QC": 2,
             "FC_RANDOM_ERROR": gap_fill_value,
             "FC_REL_UNCERTAINTY": gap_fill_value,
             "FC_CI_LOWER": gap_fill_value,
@@ -7878,6 +7951,8 @@ FLUXNET_HALF_HOURLY_SCHEMA = [
     ("H2O", "mmol m-3", "H2O concentration"),
     ("FCH4", "nmol m-2 s-1", "Methane flux"),
     ("FCH4_QC", "0/1/2", "Methane flux QC flag"),
+    ("FN2O", "nmol m-2 s-1", "Nitrous oxide flux"),
+    ("FN2O_QC", "0/1/2", "Nitrous oxide flux QC flag"),
     ("FC_RANDOM_ERROR", "umol m-2 s-1", "Random uncertainty propagated to flux space"),
     ("FC_REL_UNCERTAINTY", "fraction", "Relative uncertainty propagated to primary flux"),
     ("FC_CI_LOWER", "umol m-2 s-1", "Lower confidence bound for FC"),
@@ -7934,6 +8009,8 @@ AMERIFLUX_FIELD_MAP = {
     "H2O": "H2O",
     "FCH4": "FCH4",
     "FCH4_QC": "FCH4_QC",
+    "FN2O": "FN2O",
+    "FN2O_QC": "FN2O_QC",
     "FC_RANDOM_ERROR": "FC_RANDOM_ERROR",
     "FC_REL_UNCERTAINTY": "FC_REL_UNCERTAINTY",
     "FC_CI_LOWER": "FC_CI_LOWER",
@@ -7990,6 +8067,8 @@ ICOS_FIELD_MAP = {
     "H2O": "H2O",
     "FCH4": "FCH4",
     "FCH4_QC": "FCH4_QC",
+    "FN2O": "FN2O",
+    "FN2O_QC": "FN2O_QC",
     "FC_RANDOM_ERROR": "FcRandomError",
     "FC_REL_UNCERTAINTY": "FcRelUncertainty",
     "FC_CI_LOWER": "FcCiLower",
@@ -8049,6 +8128,8 @@ GHG_EUROPE_FIELD_MAP = {
     "H2O": "H2O",
     "FCH4": "FCH4",
     "FCH4_QC": "FCH4_SSITC_TEST",
+    "FN2O": "FN2O",
+    "FN2O_QC": "FN2O_SSITC_TEST",
     "FETCH_70": "FETCH_70",
     "FETCH_90": "FETCH_90",
     "FETCH_MAX": "FETCH_MAX",

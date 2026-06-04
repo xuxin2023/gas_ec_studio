@@ -65,7 +65,9 @@ def test_computation_stress_suite_passes_core_method_families(tmp_path: Path) ->
     assert multi_gas_case["metrics"]["trace_gas_summary_status"] == "computed"
     assert multi_gas_case["metrics"]["ch4_correction_sequence_status"] == "computed"
     assert multi_gas_case["metrics"]["ch4_computed_window_count"] == multi_gas_case["metrics"]["window_count"]
-    assert multi_gas_case["metrics"]["n2o_boundary_status"] == "not_implemented"
+    assert multi_gas_case["metrics"]["n2o_method"] == "n2o_level0_covariance"
+    assert multi_gas_case["metrics"]["n2o_computed_window_count"] == multi_gas_case["metrics"]["window_count"]
+    assert multi_gas_case["metrics"]["n2o_boundary_status"] == "computed_level0"
 
     spectral_case = next(case for case in payload["cases"] if case["family"] == "spectral_correction")
     assert spectral_case["metrics"]["fratini_measured_cospectrum_used"] is True

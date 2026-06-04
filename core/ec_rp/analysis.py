@@ -42,6 +42,7 @@ class WindowPreparedResult:
     co2_ppm: np.ndarray
     h2o_mmol: np.ndarray
     ch4_ppb: np.ndarray
+    n2o_ppb: np.ndarray
     pressure_kpa: np.ndarray
     temp_c: np.ndarray
     cell_pressure_kpa: np.ndarray
@@ -297,6 +298,7 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
             u=np.array([], dtype=float), v=np.array([], dtype=float), w=np.array([], dtype=float),
             co2_ppm=np.array([], dtype=float), h2o_mmol=np.array([], dtype=float),
             ch4_ppb=np.array([], dtype=float),
+            n2o_ppb=np.array([], dtype=float),
             pressure_kpa=np.array([], dtype=float), temp_c=np.array([], dtype=float),
             cell_pressure_kpa=np.array([], dtype=float), cell_temp_c=np.array([], dtype=float),
             sample_count=0, valid_sample_count=0, continuity_ratio=0.0, missing_ratio=1.0,
@@ -305,6 +307,7 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
                 "u_valid_ratio": 0.0,
                 "v_valid_ratio": 0.0,
                 "w_raw_valid_ratio": 0.0,
+                "n2o_valid_ratio": 0.0,
                 "cell_pressure_valid_ratio": 0.0,
                 "cell_temp_valid_ratio": 0.0,
                 "cell_thermodynamics_status": "not_available",
@@ -314,6 +317,7 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
     co2_raw = np.array([np.nan if r.co2_ppm is None else float(r.co2_ppm) for r in rows], dtype=float)
     h2o_raw = np.array([np.nan if r.h2o_mmol is None else float(r.h2o_mmol) for r in rows], dtype=float)
     ch4_raw = np.array([np.nan if r.ch4_ppb is None else float(r.ch4_ppb) for r in rows], dtype=float)
+    n2o_raw = np.array([np.nan if r.n2o_ppb is None else float(r.n2o_ppb) for r in rows], dtype=float)
     pres_raw = np.array([np.nan if r.pressure_kpa is None else float(r.pressure_kpa) for r in rows], dtype=float)
     temp_raw = np.array([np.nan if r.chamber_temp_c is None else float(r.chamber_temp_c) for r in rows], dtype=float)
 
@@ -323,6 +327,7 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
     co2 = _fill_missing(co2_raw)
     h2o = _fill_missing(h2o_raw)
     ch4 = _fill_missing(ch4_raw)
+    n2o = _fill_missing(n2o_raw)
     pressure = _fill_missing(pres_raw)
     temp = _fill_missing(temp_raw)
     cell_pressure = _fill_missing(cell_pressure_raw) if np.any(~np.isnan(cell_pressure_raw)) else np.array([], dtype=float)
@@ -350,6 +355,7 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
     v_valid_ratio = float(np.sum(~np.isnan(v_raw)) / max(1, n))
     w_valid_ratio = float(np.sum(~np.isnan(w_raw)) / max(1, n))
     ch4_valid_ratio = float(np.sum(~np.isnan(ch4_raw)) / max(1, n))
+    n2o_valid_ratio = float(np.sum(~np.isnan(n2o_raw)) / max(1, n))
     cell_pressure_valid_ratio = float(np.sum(~np.isnan(cell_pressure_raw)) / max(1, n))
     cell_temp_valid_ratio = float(np.sum(~np.isnan(cell_temp_raw)) / max(1, n))
     cell_thermodynamics_status = (
@@ -361,6 +367,7 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
         "v_valid_ratio": v_valid_ratio,
         "w_raw_valid_ratio": w_valid_ratio,
         "ch4_valid_ratio": ch4_valid_ratio,
+        "n2o_valid_ratio": n2o_valid_ratio,
         "cell_pressure_valid_ratio": cell_pressure_valid_ratio,
         "cell_temp_valid_ratio": cell_temp_valid_ratio,
         "cell_thermodynamics_status": cell_thermodynamics_status,
@@ -369,6 +376,7 @@ def build_window_series(rows: list[NormalizedHFFrame], sample_rate_hz: float) ->
     return WindowPreparedResult(
         u=u, v=v, w=w, co2_ppm=co2, h2o_mmol=h2o,
         ch4_ppb=ch4,
+        n2o_ppb=n2o,
         pressure_kpa=pressure, temp_c=temp,
         cell_pressure_kpa=cell_pressure, cell_temp_c=cell_temp,
         sample_count=n, valid_sample_count=valid_count,
@@ -2038,6 +2046,46 @@ def compute_ch4_flux_metrics(
             "LI-7700 spectroscopic corrections are not yet applied.",
             "CH4 density and self-heating correction sequence is not yet complete.",
             "Flux is reported as nmol m-2 s-1 using air molar density times cov(w, CH4 ppb).",
+        ],
+    }
+
+
+def compute_n2o_flux_metrics(
+    *,
+    w_series: np.ndarray,
+    n2o_ppb: np.ndarray,
+    air_molar_density: float,
+    detrend_mode: str = "block_mean",
+    valid_ratio: float = 0.0,
+) -> dict[str, Any]:
+    if n2o_ppb.size == 0 or w_series.size == 0 or valid_ratio <= 0.0:
+        return {
+            "status": "not_available",
+            "cov_w_n2o_ppb": None,
+            "n2o_flux_nmol_m2_s": None,
+            "mean_n2o_ppb": None,
+            "valid_ratio": float(valid_ratio),
+            "selected_method": "not_available",
+            "provenance": "n2o channel missing from high-frequency input",
+            "limitations": ["No N2O flux is computed when the high-frequency N2O channel is absent."],
+        }
+    mode = normalize_detrend_mode(detrend_mode)
+    n = min(w_series.size, n2o_ppb.size)
+    w_det = _detrend(w_series[:n], mode)
+    n2o_det = _detrend(n2o_ppb[:n], mode)
+    cov_w_n2o_ppb = float(np.mean(w_det * n2o_det))
+    n2o_flux_nmol = float(air_molar_density * cov_w_n2o_ppb)
+    return {
+        "status": "computed",
+        "cov_w_n2o_ppb": cov_w_n2o_ppb,
+        "n2o_flux_nmol_m2_s": n2o_flux_nmol,
+        "mean_n2o_ppb": float(np.mean(n2o_ppb[:n])),
+        "valid_ratio": float(valid_ratio),
+        "selected_method": "n2o_level0_covariance",
+        "provenance": "N2O Level 0 covariance flux from high-frequency N2O mixing ratio and rotated vertical wind.",
+        "limitations": [
+            "N2O spectral and analyzer-specific correction families are not yet applied.",
+            "Flux is reported as nmol m-2 s-1 using air molar density times cov(w, N2O ppb).",
         ],
     }
 

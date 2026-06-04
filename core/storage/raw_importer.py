@@ -37,6 +37,7 @@ DEFAULT_COLUMN_ALIASES = {
     "co2_ppm": ("co2_ppm", "co2", "co2_molfrac", "co2_mixing_ratio"),
     "h2o_mmol": ("h2o_mmol", "h2o", "h2o_molfrac", "h2o_mixing_ratio", "h2o_mmol_mol"),
     "ch4_ppb": ("ch4_ppb", "ch4_ppm", "ch4", "methane", "ch4_molfrac", "ch4_mixing_ratio"),
+    "n2o_ppb": ("n2o_ppb", "n2o_ppm", "n2o", "nitrous_oxide", "n2o_molfrac", "n2o_mixing_ratio"),
     "pressure_kpa": ("pressure_kpa", "pressure", "press", "pa", "p"),
     "chamber_temp_c": ("chamber_temp_c", "temperature", "temp", "ta", "sonic_temperature"),
     "case_temp_c": ("case_temp_c", "cell_temperature", "analyzer_temperature"),
@@ -1744,11 +1745,13 @@ def _frame_from_raw_row(
         for key in ("u", "v", "w")
     }
     ch4_ppb = _mapped_float(lookup, mappings, "ch4_ppb", aliases=DEFAULT_COLUMN_ALIASES["ch4_ppb"])
+    n2o_ppb = _mapped_float(lookup, mappings, "n2o_ppb", aliases=DEFAULT_COLUMN_ALIASES["n2o_ppb"])
     raw_payload = {
         key: value
         for key, value in {
             **wind_payload,
             "ch4_ppb": ch4_ppb,
+            "n2o_ppb": n2o_ppb,
             "raw_source": str(source_path),
         }.items()
         if value is not None
@@ -1765,6 +1768,7 @@ def _frame_from_raw_row(
         co2_ppm=_mapped_float(lookup, mappings, "co2_ppm", aliases=DEFAULT_COLUMN_ALIASES["co2_ppm"]),
         h2o_mmol=_mapped_float(lookup, mappings, "h2o_mmol", aliases=DEFAULT_COLUMN_ALIASES["h2o_mmol"]),
         ch4_ppb=ch4_ppb,
+        n2o_ppb=n2o_ppb,
         pressure_kpa=_mapped_float(lookup, mappings, "pressure_kpa", aliases=DEFAULT_COLUMN_ALIASES["pressure_kpa"]),
         chamber_temp_c=_mapped_float(lookup, mappings, "chamber_temp_c", aliases=DEFAULT_COLUMN_ALIASES["chamber_temp_c"]),
         case_temp_c=_mapped_float(lookup, mappings, "case_temp_c", aliases=DEFAULT_COLUMN_ALIASES["case_temp_c"]),
@@ -1805,6 +1809,9 @@ def _mapping_by_variable(mappings: list[RawColumnMapping]) -> dict[str, RawColum
         "ch4": "ch4_ppb",
         "methane": "ch4_ppb",
         "ch4_ppm": "ch4_ppb",
+        "n2o": "n2o_ppb",
+        "nitrous_oxide": "n2o_ppb",
+        "n2o_ppm": "n2o_ppb",
         "pressure": "pressure_kpa",
         "temperature": "chamber_temp_c",
         "temp": "chamber_temp_c",
@@ -1879,8 +1886,8 @@ def _mapped_float(
         return None
     if mapping is not None and mapping.scaling is not None:
         number *= float(mapping.scaling)
-    if mapping is None and variable == "ch4_ppb":
-        return _convert_ch4_alias_value(number, alias)
+    if mapping is None and variable in {"ch4_ppb", "n2o_ppb"}:
+        return _convert_ppb_alias_value(number, alias, variable=variable)
     return _convert_units(number, mapping.input_unit if mapping else "", variable=variable)
 
 
@@ -1907,12 +1914,18 @@ def _first_lookup_item(lookup: dict[str, str], aliases: tuple[str, ...]) -> tupl
     return None
 
 
-def _convert_ch4_alias_value(value: float, alias: str) -> float:
-    if alias == "ch4_ppm":
+def _convert_ppb_alias_value(value: float, alias: str, *, variable: str) -> float:
+    gas = variable.removesuffix("_ppb")
+    if alias == f"{gas}_ppm":
         return value * 1000.0
-    if alias in {"ch4_molfrac", "ch4_mixing_ratio"} and abs(value) < 0.01:
+    if alias in {f"{gas}_molfrac", f"{gas}_mixing_ratio"} and abs(value) < 0.01:
         return value * 1_000_000_000.0
-    if alias in {"ch4", "methane", "ch4_mixing_ratio"} and 0.0 < abs(value) < 10.0:
+    bare_aliases = {gas, f"{gas}_mixing_ratio"}
+    if gas == "ch4":
+        bare_aliases.add("methane")
+    if gas == "n2o":
+        bare_aliases.add("nitrous_oxide")
+    if alias in bare_aliases and 0.0 < abs(value) < 10.0:
         return value * 1000.0
     return value
 
@@ -1930,7 +1943,7 @@ def _convert_units(value: float, unit: str, *, variable: str) -> float:
         return value * 1_000_000.0
     if variable == "h2o_mmol" and normalized in {"mol/mol", "molmol-1"}:
         return value * 1000.0
-    if variable == "ch4_ppb":
+    if variable in {"ch4_ppb", "n2o_ppb"}:
         if normalized in {"mol/mol", "molmol-1"}:
             return value * 1_000_000_000.0
         if normalized in {"ppm", "umol/mol", "micromol/mol"}:

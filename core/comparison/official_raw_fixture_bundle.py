@@ -3179,6 +3179,7 @@ def _sample_frame_fields(row: Any) -> dict[str, Any]:
             "co2_ppm": getattr(row, "co2_ppm", None),
             "h2o_mmol": getattr(row, "h2o_mmol", None),
             "ch4_ppb": getattr(row, "ch4_ppb", None),
+            "n2o_ppb": getattr(row, "n2o_ppb", None),
             "pressure_kpa": getattr(row, "pressure_kpa", None),
             "chamber_temp_c": getattr(row, "chamber_temp_c", None),
             **li7700_fields,
@@ -4286,6 +4287,8 @@ def _variable_from_column(column: Any) -> str:
         return "h2o_mmol"
     if "ch4" in normalized or "methane" in normalized:
         return "ch4_ppb"
+    if "n2o" in normalized or "nitrous_oxide" in normalized:
+        return "n2o_ppb"
     if normalized in {"p", "pa", "press", "pressure"} or "pressure" in normalized:
         return "pressure_kpa"
     if normalized in {"ta", "ts", "tc", "temp", "temperature", "sonic_temperature"}:

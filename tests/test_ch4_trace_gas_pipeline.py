@@ -46,6 +46,7 @@ def _make_ch4_rows(*, sample_hz: float = 10.0, samples: int = 600) -> list[Norma
                 co2_ppm=float(410.0 + 8.0 * co2_signal[index]),
                 h2o_mmol=float(12.0 + 1.1 * h2o_signal[index]),
                 ch4_ppb=float(1900.0 + 35.0 * w[index]),
+                n2o_ppb=float(332.0 + 2.0 * w[index]),
                 pressure_kpa=101.3,
                 chamber_temp_c=24.8,
                 raw_text=json.dumps(
@@ -75,14 +76,16 @@ def test_headless_json_loader_preserves_ch4_ppb(tmp_path: Path) -> None:
     rows = load_input_rows(path)
 
     assert rows[0].ch4_ppb == source.ch4_ppb
+    assert rows[0].n2o_ppb == source.n2o_ppb
     assert rows[0].to_record()["ch4_ppb"] == source.ch4_ppb
+    assert rows[0].to_record()["n2o_ppb"] == source.n2o_ppb
 
 
 def test_raw_text_importer_maps_ch4_with_unit_conversion(tmp_path: Path) -> None:
     raw_path = tmp_path / "raw_ch4.csv"
     raw_path.write_text(
-        "DateTime,CO2_molmol,H2O_molmol,CH4_molmol,PressurePa,TempK,Ux,Vy,Wz,RSS_77,DiagnosticCode,MirrorDirty,PLLLocked\n"
-        "2026-05-22T10:00:00,0.000410,0.012,0.00000191,101300,298.15,2.0,0.1,0.2,0.72,0x04,clean,yes\n",
+        "DateTime,CO2_molmol,H2O_molmol,CH4_molmol,N2O_molmol,PressurePa,TempK,Ux,Vy,Wz,RSS_77,DiagnosticCode,MirrorDirty,PLLLocked\n"
+        "2026-05-22T10:00:00,0.000410,0.012,0.00000191,0.000000332,101300,298.15,2.0,0.1,0.2,0.72,0x04,clean,yes\n",
         encoding="utf-8",
     )
     metadata = MetadataBundle(
@@ -95,6 +98,7 @@ def test_raw_text_importer_maps_ch4_with_unit_conversion(tmp_path: Path) -> None
                 RawColumnMapping(column_name="CO2_molmol", variable="co2_ppm", input_unit="mol/mol"),
                 RawColumnMapping(column_name="H2O_molmol", variable="h2o_mmol", input_unit="mol/mol"),
                 RawColumnMapping(column_name="CH4_molmol", variable="ch4_ppb", input_unit="mol/mol"),
+                RawColumnMapping(column_name="N2O_molmol", variable="n2o_ppb", input_unit="mol/mol"),
                 RawColumnMapping(column_name="PressurePa", variable="pressure_kpa", input_unit="Pa"),
                 RawColumnMapping(column_name="TempK", variable="chamber_temp_c", input_unit="K"),
                 RawColumnMapping(column_name="Ux", variable="u"),
@@ -109,8 +113,10 @@ def test_raw_text_importer_maps_ch4_with_unit_conversion(tmp_path: Path) -> None
 
     assert len(rows) == 1
     assert rows[0].ch4_ppb == 1910.0
+    assert rows[0].n2o_ppb == 332.0
     raw_payload = json.loads(rows[0].raw_text)
     assert raw_payload["ch4_ppb"] == 1910.0
+    assert raw_payload["n2o_ppb"] == 332.0
     assert raw_payload["li7700_rssi"] == 72.0
     assert raw_payload["li7700_status_word"] == 4
     assert raw_payload["mirror_dirty"] == "clean"
@@ -118,12 +124,13 @@ def test_raw_text_importer_maps_ch4_with_unit_conversion(tmp_path: Path) -> None
 
     alias_path = tmp_path / "raw_ch4_alias.csv"
     alias_path.write_text(
-        "timestamp,co2,h2o,ch4_ppm,pressure,temperature,u,v,w\n"
-        "2026-05-22T10:00:00,410.0,12.0,1.92,101.3,25.0,2.0,0.1,0.2\n",
+        "timestamp,co2,h2o,ch4_ppm,n2o_ppm,pressure,temperature,u,v,w\n"
+        "2026-05-22T10:00:00,410.0,12.0,1.92,0.333,101.3,25.0,2.0,0.1,0.2\n",
         encoding="utf-8",
     )
     alias_rows = load_raw_text_frames(alias_path, metadata=MetadataBundle())
     assert alias_rows[0].ch4_ppb == 1920.0
+    assert alias_rows[0].n2o_ppb == 333.0
 
 
 def test_ghg_bundle_import_maps_ch4_aliases(tmp_path: Path) -> None:
@@ -131,8 +138,8 @@ def test_ghg_bundle_import_maps_ch4_aliases(tmp_path: Path) -> None:
     with ZipFile(ghg_path, "w", compression=ZIP_DEFLATED) as archive:
         archive.writestr(
             "20260522-1000.data",
-            "timestamp,u,v,w,co2,h2o,ch4_ppm,pressure,temperature\n"
-            "2026-05-22T10:00:00,2.0,0.1,0.2,410.0,12.0,1.91,101.3,25.0\n",
+            "timestamp,u,v,w,co2,h2o,ch4_ppm,n2o_ppm,pressure,temperature\n"
+            "2026-05-22T10:00:00,2.0,0.1,0.2,410.0,12.0,1.91,0.332,101.3,25.0\n",
         )
         archive.writestr("20260522-1000.metadata", "device_uid=tower-ch4\ndevice_id=li-7700\n")
 
@@ -140,7 +147,9 @@ def test_ghg_bundle_import_maps_ch4_aliases(tmp_path: Path) -> None:
 
     assert len(rows) == 1
     assert rows[0].ch4_ppb == 1910.0
+    assert rows[0].n2o_ppb == 332.0
     assert json.loads(rows[0].raw_text)["ch4_ppb"] == 1910.0
+    assert json.loads(rows[0].raw_text)["n2o_ppb"] == 332.0
 
 
 def test_li7700_correction_sequence_applies_configured_levels() -> None:
@@ -396,6 +405,10 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert diagnostics["ch4_status"] == "computed"
     assert diagnostics["ch4_method"] == "li_7700_correction_sequence_v1"
     assert diagnostics["ch4_flux_nmol_m2_s"] != 0.0
+    assert diagnostics["n2o_status"] == "computed"
+    assert diagnostics["n2o_method"] == "n2o_level0_covariance"
+    assert diagnostics["n2o_flux_nmol_m2_s"] != 0.0
+    assert diagnostics["trace_gas_family"]["n2o"]["status"] == "computed"
     assert diagnostics["ch4_flux_level0_nmol_m2_s"] != diagnostics["ch4_flux_nmol_m2_s"]
     assert diagnostics["ch4_correction_sequence"]["levels"]["level1"]["factor"] == 1.04
     assert diagnostics["ch4_coefficient_profile_id"] == "tower_li7700_2026"
@@ -409,10 +422,13 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert diagnostics["ch4_correction_sequence"]["components"]["li7700_status_diagnostics"]["status"] == "pass"
     assert "Spectroscopic" in " ".join(diagnostics["ch4_limitations"])
     assert result["rp_result"].summary["trace_gas_summary"]["ch4_computed_window_count"] == len(result["rp_result"].windows)
+    assert result["rp_result"].summary["trace_gas_summary"]["n2o_computed_window_count"] == len(result["rp_result"].windows)
     assert result["rp_result"].summary["trace_gas_summary"]["average_ch4_level0_flux_nmol_m2_s"] is not None
+    assert result["rp_result"].summary["trace_gas_summary"]["average_n2o_flux_nmol_m2_s"] is not None
     assert result["rp_result"].summary["trace_gas_summary"]["coefficient_profile_id"] == "tower_li7700_2026"
     assert result["rp_result"].summary["trace_gas_summary"]["li7700_diagnostics_status"] == "pass"
     assert result["manifest"]["trace_gas_summary"]["status"] == "computed"
+    assert result["manifest"]["trace_gas_summary"]["n2o_computed_window_count"] == len(result["rp_result"].windows)
 
     exporter = ResultExporter(tmp_path)
     exported = exporter.export_minimal_bundle(
@@ -449,13 +465,17 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert float(rp_rows[0]["ch4_flux_corrected_nmol_m2_s"]) == float(rp_rows[0]["ch4_flux_nmol_m2_s"])
     assert "FCH4" in fluxnet["rows"][0]
     assert fluxnet["rows"][0]["FCH4"] != -9999.0
+    assert "FN2O" in fluxnet["rows"][0]
+    assert fluxnet["rows"][0]["FN2O"] != -9999.0
     assert manifest["trace_gas_summary"]["status"] == "computed"
     assert manifest["trace_gas_summary"]["coefficient_profile_id"] == "tower_li7700_2026"
     assert manifest["trace_gas_summary"]["li7700_diagnostics_status"] == "pass"
     assert "ch4_flux_nmol_m2_s" in manifest["trace_gas_fields"]
+    assert "n2o_flux_nmol_m2_s" in manifest["trace_gas_fields"]
     assert "ch4_coefficient_profile_id" in manifest["trace_gas_fields"]
     assert "li7700_diagnostics_status" in manifest["trace_gas_fields"]
     assert "FCH4" in manifest["network_trace_gas_fields"]
+    assert "FN2O" in manifest["network_trace_gas_fields"]
     assert summary["trace_gas_summary"]["ch4_computed_window_count"] == len(result["rp_result"].windows)
 
 
