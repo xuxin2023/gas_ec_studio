@@ -26,7 +26,7 @@ from core.ec_rp.analysis import (
     compute_li7700_status_diagnostics,
     compute_li7700_correction_sequence,
     compute_n2o_flux_metrics,
-    compute_ygas_primary_analyzer_diagnostics,
+    compute_primary_analyzer_diagnostics,
     compute_trace_gas_empirical_correction_sequence,
     compute_footprint,
     compute_footprint_2d_grid,
@@ -530,7 +530,7 @@ class ECRPPipeline:
             detrend_mode=detrend_mode,
             valid_ratio=float(prepared.diagnostics.get("n2o_valid_ratio", 0.0)),
         )
-        primary_analyzer_detail = compute_ygas_primary_analyzer_diagnostics(
+        primary_analyzer_detail = compute_primary_analyzer_diagnostics(
             rows=rows,
             config=primary_analyzer_config,
         )
@@ -625,6 +625,10 @@ class ECRPPipeline:
                 "Momentum flux is reported as shear-stress magnitude from air_density * ustar^2.",
             ],
         }
+        primary_profile_id = str(primary_analyzer_detail.get("profile_id", ""))
+        primary_artifact_type = str(primary_analyzer_detail.get("artifact_type", ""))
+        is_ygas_primary = primary_profile_id == "ygas_irga" or primary_artifact_type == "ygas_primary_analyzer_diagnostics_v1"
+        is_licor_primary = primary_profile_id in {"licor_li7500_family", "licor_li7200_family"} or primary_artifact_type == "licor_co2h2o_primary_analyzer_diagnostics_v1"
         diagnostics = {
             **prepared.diagnostics,
             **clock_sync_diagnostics(clock_sync_summary),
@@ -736,30 +740,49 @@ class ECRPPipeline:
             "crosswind_correction_limitations": crosswind_correction_detail.get("limitations", []),
             "crosswind_correction_mean_delta_c": crosswind_correction_detail.get("mean_delta_c"),
             "crosswind_correction_max_abs_delta_c": crosswind_correction_detail.get("max_abs_delta_c"),
-            "primary_analyzer_profile_id": primary_analyzer_detail.get("profile_id", ""),
+            "primary_analyzer_profile_id": primary_profile_id,
             "primary_analyzer_status": primary_analyzer_detail.get("status", "not_available"),
             "primary_analyzer_detail": primary_analyzer_detail,
             "primary_analyzer_provenance": primary_analyzer_detail.get("provenance", ""),
             "primary_analyzer_limitations": primary_analyzer_detail.get("limitations", []),
-            "ygas_profile_id": primary_analyzer_detail.get("profile_id", ""),
-            "ygas_status": primary_analyzer_detail.get("status", "not_available"),
-            "ygas_signal_status": primary_analyzer_detail.get("signal_status", ""),
-            "ygas_status_register_status": primary_analyzer_detail.get("status_register_status", ""),
-            "ygas_co2_signal_mean": primary_analyzer_detail.get("co2_signal_mean"),
-            "ygas_co2_signal_min": primary_analyzer_detail.get("co2_signal_min"),
-            "ygas_h2o_signal_mean": primary_analyzer_detail.get("h2o_signal_mean"),
-            "ygas_h2o_signal_min": primary_analyzer_detail.get("h2o_signal_min"),
-            "ygas_reference_signal_mean": primary_analyzer_detail.get("reference_signal_mean"),
-            "ygas_reference_signal_min": primary_analyzer_detail.get("reference_signal_min"),
-            "ygas_co2_ratio_mean": primary_analyzer_detail.get("co2_ratio_mean"),
-            "ygas_h2o_ratio_mean": primary_analyzer_detail.get("h2o_ratio_mean"),
-            "ygas_fault_count": primary_analyzer_detail.get("fault_count", 0),
-            "ygas_active_faults": primary_analyzer_detail.get("active_faults", []),
-            "ygas_calibration_profile_id": primary_analyzer_detail.get("calibration_profile_id", ""),
-            "ygas_calibration_source_file": primary_analyzer_detail.get("calibration_source_file", ""),
-            "ygas_calibration_normalization_command": primary_analyzer_detail.get("calibration_normalization_command", ""),
-            "ygas_provenance": primary_analyzer_detail.get("provenance", ""),
-            "ygas_limitations": primary_analyzer_detail.get("limitations", []),
+            "ygas_profile_id": primary_profile_id if is_ygas_primary else "",
+            "ygas_status": primary_analyzer_detail.get("status", "not_available") if is_ygas_primary else "not_available",
+            "ygas_signal_status": primary_analyzer_detail.get("signal_status", "") if is_ygas_primary else "",
+            "ygas_status_register_status": primary_analyzer_detail.get("status_register_status", "") if is_ygas_primary else "",
+            "ygas_co2_signal_mean": primary_analyzer_detail.get("co2_signal_mean") if is_ygas_primary else None,
+            "ygas_co2_signal_min": primary_analyzer_detail.get("co2_signal_min") if is_ygas_primary else None,
+            "ygas_h2o_signal_mean": primary_analyzer_detail.get("h2o_signal_mean") if is_ygas_primary else None,
+            "ygas_h2o_signal_min": primary_analyzer_detail.get("h2o_signal_min") if is_ygas_primary else None,
+            "ygas_reference_signal_mean": primary_analyzer_detail.get("reference_signal_mean") if is_ygas_primary else None,
+            "ygas_reference_signal_min": primary_analyzer_detail.get("reference_signal_min") if is_ygas_primary else None,
+            "ygas_co2_ratio_mean": primary_analyzer_detail.get("co2_ratio_mean") if is_ygas_primary else None,
+            "ygas_h2o_ratio_mean": primary_analyzer_detail.get("h2o_ratio_mean") if is_ygas_primary else None,
+            "ygas_fault_count": primary_analyzer_detail.get("fault_count", 0) if is_ygas_primary else 0,
+            "ygas_active_faults": primary_analyzer_detail.get("active_faults", []) if is_ygas_primary else [],
+            "ygas_calibration_profile_id": primary_analyzer_detail.get("calibration_profile_id", "") if is_ygas_primary else "",
+            "ygas_calibration_source_file": primary_analyzer_detail.get("calibration_source_file", "") if is_ygas_primary else "",
+            "ygas_calibration_normalization_command": primary_analyzer_detail.get("calibration_normalization_command", "") if is_ygas_primary else "",
+            "ygas_provenance": primary_analyzer_detail.get("provenance", "") if is_ygas_primary else "",
+            "ygas_limitations": primary_analyzer_detail.get("limitations", []) if is_ygas_primary else [],
+            "licor_profile_id": primary_profile_id if is_licor_primary else "",
+            "licor_status": primary_analyzer_detail.get("status", "not_available") if is_licor_primary else "not_available",
+            "licor_signal_status": primary_analyzer_detail.get("signal_status", "") if is_licor_primary else "",
+            "licor_diagnostic_word_status": primary_analyzer_detail.get("diagnostic_word_status", "") if is_licor_primary else "",
+            "licor_co2_signal_mean": primary_analyzer_detail.get("co2_signal_mean") if is_licor_primary else None,
+            "licor_co2_signal_min": primary_analyzer_detail.get("co2_signal_min") if is_licor_primary else None,
+            "licor_h2o_signal_mean": primary_analyzer_detail.get("h2o_signal_mean") if is_licor_primary else None,
+            "licor_h2o_signal_min": primary_analyzer_detail.get("h2o_signal_min") if is_licor_primary else None,
+            "licor_reference_signal_mean": primary_analyzer_detail.get("reference_signal_mean") if is_licor_primary else None,
+            "licor_reference_signal_min": primary_analyzer_detail.get("reference_signal_min") if is_licor_primary else None,
+            "licor_cell_pressure_mean_kpa": primary_analyzer_detail.get("cell_pressure_mean_kpa") if is_licor_primary else None,
+            "licor_cell_temp_mean_c": primary_analyzer_detail.get("cell_temp_mean_c") if is_licor_primary else None,
+            "licor_fault_count": primary_analyzer_detail.get("fault_count", 0) if is_licor_primary else 0,
+            "licor_active_faults": primary_analyzer_detail.get("active_faults", []) if is_licor_primary else [],
+            "licor_calibration_profile_id": primary_analyzer_detail.get("calibration_profile_id", "") if is_licor_primary else "",
+            "licor_calibration_source_file": primary_analyzer_detail.get("calibration_source_file", "") if is_licor_primary else "",
+            "licor_calibration_normalization_command": primary_analyzer_detail.get("calibration_normalization_command", "") if is_licor_primary else "",
+            "licor_provenance": primary_analyzer_detail.get("provenance", "") if is_licor_primary else "",
+            "licor_limitations": primary_analyzer_detail.get("limitations", []) if is_licor_primary else [],
             "trace_gas_family": {
                 "ch4": {
                     "status": ch4_metrics.get("status", "not_available"),
@@ -1776,12 +1799,20 @@ def _build_flux_correction_ledger(
     ]
     primary_analyzer_detail = dict(diagnostics.get("primary_analyzer_detail", {}) or {})
     if primary_analyzer_detail and bool(primary_analyzer_detail.get("telemetry_detected", False)):
+        primary_profile_id = str(primary_analyzer_detail.get("profile_id", diagnostics.get("primary_analyzer_profile_id", "")) or "")
+        primary_artifact_type = str(primary_analyzer_detail.get("artifact_type", "primary_analyzer_diagnostics_v1") or "primary_analyzer_diagnostics_v1")
+        if primary_profile_id == "ygas_irga" or primary_artifact_type == "ygas_primary_analyzer_diagnostics_v1":
+            primary_stage = "ygas_primary_analyzer_qc_profile"
+        elif primary_profile_id in {"licor_li7500_family", "licor_li7200_family"}:
+            primary_stage = "licor_primary_analyzer_qc_profile"
+        else:
+            primary_stage = "primary_analyzer_qc_profile"
         stages.insert(
             2,
             {
                 "level": "level0c",
-                "stage": "ygas_primary_analyzer_qc_profile",
-                "method": "ygas_primary_analyzer_diagnostics_v1",
+                "stage": primary_stage,
+                "method": primary_artifact_type,
                 "status": str(primary_analyzer_detail.get("status", "")),
                 "units": "mixed",
                 "values": {
@@ -1790,9 +1821,12 @@ def _build_flux_correction_ledger(
                     "h2o_signal_mean": primary_analyzer_detail.get("h2o_signal_mean"),
                     "h2o_signal_min": primary_analyzer_detail.get("h2o_signal_min"),
                     "reference_signal_mean": primary_analyzer_detail.get("reference_signal_mean"),
+                    "reference_signal_min": primary_analyzer_detail.get("reference_signal_min"),
+                    "cell_pressure_mean_kpa": primary_analyzer_detail.get("cell_pressure_mean_kpa"),
+                    "cell_temp_mean_c": primary_analyzer_detail.get("cell_temp_mean_c"),
                     "fault_count": primary_analyzer_detail.get("fault_count"),
                 },
-                "profile_id": primary_analyzer_detail.get("profile_id", diagnostics.get("ygas_profile_id", "")),
+                "profile_id": primary_profile_id,
                 "calibration_profile_id": primary_analyzer_detail.get("calibration_profile_id", ""),
                 "calibration_source_file": primary_analyzer_detail.get("calibration_source_file", ""),
                 "normalization_command": primary_analyzer_detail.get("calibration_normalization_command", ""),
@@ -1961,6 +1995,8 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
     n2o_sequence_count = 0
     closed_path_cell_window_count = 0
     ygas_primary_analyzer_window_count = 0
+    licor_primary_analyzer_window_count = 0
+    primary_analyzer_window_count = 0
     for ledger in ledgers:
         source = str(ledger.get("primary_flux_source", "") or "unknown")
         density_modes[source] = density_modes.get(source, 0) + 1
@@ -1970,6 +2006,12 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
                 closed_path_cell_window_count += 1
             if stage_payload.get("stage") == "ygas_primary_analyzer_qc_profile":
                 ygas_primary_analyzer_window_count += 1
+                primary_analyzer_window_count += 1
+            if stage_payload.get("stage") == "licor_primary_analyzer_qc_profile":
+                licor_primary_analyzer_window_count += 1
+                primary_analyzer_window_count += 1
+            if stage_payload.get("stage") == "primary_analyzer_qc_profile":
+                primary_analyzer_window_count += 1
             if stage_payload.get("stage") == "spectral_correction_family":
                 method = str(stage_payload.get("method", "") or "unknown")
                 spectral_methods[method] = spectral_methods.get(method, 0) + 1
@@ -1984,7 +2026,9 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
         "ledger_window_count": len(ledgers),
         "primary_flux_source_counts": dict(sorted(density_modes.items())),
         "closed_path_cell_thermodynamics_window_count": closed_path_cell_window_count,
+        "primary_analyzer_window_count": primary_analyzer_window_count,
         "ygas_primary_analyzer_window_count": ygas_primary_analyzer_window_count,
+        "licor_primary_analyzer_window_count": licor_primary_analyzer_window_count,
         "spectral_correction_method_counts": dict(sorted(spectral_methods.items())),
         "ch4_sequence_window_count": ch4_sequence_count,
         "n2o_covariance_window_count": n2o_sequence_count,
@@ -2059,7 +2103,7 @@ def _summarize_primary_analyzer_windows(windows: list[WindowRPResult]) -> dict[s
         "calibration_profile_id": calibration_profile_id,
         "calibration_source_file": calibration_source_file,
         "calibration_normalization_command": calibration_normalization_command,
-        "provenance": "Run-level YGAS primary analyzer summary aggregated from window diagnostics.",
+        "provenance": "Run-level primary analyzer summary aggregated from family-aware window diagnostics.",
     }
 
 

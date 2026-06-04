@@ -3594,6 +3594,9 @@ class StudioController(QObject):
             "primary_analyzer_telemetry_window_count": 0,
             "primary_analyzer_provenance": "",
             "primary_analyzer_summary": {},
+            "primary_analyzer_calibration_profile_id": "",
+            "primary_analyzer_calibration_source_file": "",
+            "primary_analyzer_calibration_normalization_command": "",
             "ygas_calibration_profile_id": "",
             "ygas_calibration_source_file": "",
             "ygas_calibration_normalization_command": "",
@@ -3798,9 +3801,12 @@ class StudioController(QObject):
             primary_provenance = f"{primary_provenance}; profile={primary_profile_id}".strip("; ")
         if primary_failed_fields:
             primary_provenance = f"{primary_provenance}; faults={'|'.join(str(item) for item in primary_failed_fields)}".strip("; ")
-        ygas_calibration_profile_id = str(primary_analyzer_summary.get("calibration_profile_id", ""))
-        ygas_calibration_source_file = str(primary_analyzer_summary.get("calibration_source_file", ""))
-        ygas_calibration_normalization_command = str(primary_analyzer_summary.get("calibration_normalization_command", ""))
+        primary_calibration_profile_id = str(primary_analyzer_summary.get("calibration_profile_id", ""))
+        primary_calibration_source_file = str(primary_analyzer_summary.get("calibration_source_file", ""))
+        primary_calibration_normalization_command = str(primary_analyzer_summary.get("calibration_normalization_command", ""))
+        ygas_calibration_profile_id = primary_calibration_profile_id if primary_profile_id == "ygas_irga" else ""
+        ygas_calibration_source_file = primary_calibration_source_file if primary_profile_id == "ygas_irga" else ""
+        ygas_calibration_normalization_command = primary_calibration_normalization_command if primary_profile_id == "ygas_irga" else ""
         clock_status = str(summary.get("clock_sync_status") or clock_sync_summary.get("status") or default["clock_sync_status"])
         clock_method = str(summary.get("clock_sync_method") or clock_sync_summary.get("method") or "")
         clock_source = str(summary.get("clock_sync_source") or clock_sync_summary.get("clock_source") or "")
@@ -3936,6 +3942,9 @@ class StudioController(QObject):
             "primary_analyzer_telemetry_window_count": primary_telemetry_count,
             "primary_analyzer_provenance": primary_provenance,
             "primary_analyzer_summary": primary_analyzer_summary,
+            "primary_analyzer_calibration_profile_id": primary_calibration_profile_id,
+            "primary_analyzer_calibration_source_file": primary_calibration_source_file,
+            "primary_analyzer_calibration_normalization_command": primary_calibration_normalization_command,
             "ygas_calibration_profile_id": ygas_calibration_profile_id,
             "ygas_calibration_source_file": ygas_calibration_source_file,
             "ygas_calibration_normalization_command": ygas_calibration_normalization_command,
@@ -4286,7 +4295,7 @@ class StudioController(QObject):
                 ("不确定度方法", rp_method_summary["uncertainty_method"], rp_method_summary["uncertainty_provenance"]),
                 ("谱修正方法", rp_method_summary["spectral_correction_method"], rp_method_summary["spectral_correction_provenance"]),
                 ("Primary analyzer", rp_method_summary["primary_analyzer_status"], rp_method_summary["primary_analyzer_provenance"]),
-                ("YGAS calibration", rp_method_summary["ygas_calibration_profile_id"], rp_method_summary["ygas_calibration_source_file"]),
+                ("Analyzer calibration", rp_method_summary["primary_analyzer_calibration_profile_id"], rp_method_summary["primary_analyzer_calibration_source_file"]),
             ],
             "conclusions": ["站点方法说明页直接引用当前批次实际使用的项目、站点和谱修正配置快照。"],
             "export_options": ["导出当前报告"],
@@ -4325,7 +4334,7 @@ class StudioController(QObject):
                 ("FCC match", str(rp_method_summary["spectral_correction_cospectrum_match_summary"]), "FCC/RP cospectrum match provenance"),
                 ("Method compare", str(rp_method_summary["method_compare_recommendations"]), "method-family compare recommendations"),
                 ("Primary analyzer", rp_method_summary["primary_analyzer_status"], rp_method_summary["primary_analyzer_provenance"]),
-                ("YGAS calibration", rp_method_summary["ygas_calibration_profile_id"], rp_method_summary["ygas_calibration_normalization_command"]),
+                ("Analyzer calibration", rp_method_summary["primary_analyzer_calibration_profile_id"], rp_method_summary["primary_analyzer_calibration_normalization_command"]),
                 ("不确定度", rp_method_summary["uncertainty_method"], rp_method_summary["uncertainty_provenance"]),
                 ("谱修正", rp_method_summary["spectral_correction_method"], rp_method_summary["spectral_correction_provenance"]),
                 ("不确定度带宽", str(rp_method_summary["uncertainty_band"]), "primary flux uncertainty band"),
@@ -6754,11 +6763,11 @@ class StudioController(QObject):
         primary_analyzer_summary = dict(summary.get("primary_analyzer_summary", {}) or {})
         if primary_analyzer_summary:
             table_rows.append(("primary_analyzer.status", primary_analyzer_summary.get("status", "--") or "--", "Primary CO2/H2O analyzer status"))
-            table_rows.append(("primary_analyzer.telemetry_windows", str(primary_analyzer_summary.get("telemetry_window_count", 0)), "Windows with YGAS telemetry"))
+            table_rows.append(("primary_analyzer.telemetry_windows", str(primary_analyzer_summary.get("telemetry_window_count", 0)), "Windows with primary analyzer telemetry"))
             table_rows.append(("primary_analyzer.profile", str(primary_analyzer_summary.get("profile_counts", {})), "Analyzer profile counts"))
-            table_rows.append(("primary_analyzer.calibration_profile", primary_analyzer_summary.get("calibration_profile_id", "--") or "--", "YGAS calibration profile"))
-            table_rows.append(("primary_analyzer.source_file", primary_analyzer_summary.get("calibration_source_file", "--") or "--", "YGAS calibration/source file"))
-            table_rows.append(("primary_analyzer.normalization", primary_analyzer_summary.get("calibration_normalization_command", "--") or "--", "YGAS normalization command"))
+            table_rows.append(("primary_analyzer.calibration_profile", primary_analyzer_summary.get("calibration_profile_id", "--") or "--", "Primary analyzer calibration profile"))
+            table_rows.append(("primary_analyzer.source_file", primary_analyzer_summary.get("calibration_source_file", "--") or "--", "Primary analyzer calibration/source file"))
+            table_rows.append(("primary_analyzer.normalization", primary_analyzer_summary.get("calibration_normalization_command", "--") or "--", "Primary analyzer normalization command"))
         for detail in per_window_detail:
             ms = detail.get("match_strategy", "")
             table_rows.append((

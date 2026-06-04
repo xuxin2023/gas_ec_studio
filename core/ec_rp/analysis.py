@@ -708,6 +708,25 @@ def _ygas_status_check(
     }
 
 
+def _primary_analyzer_status_check(
+    check_id: str,
+    passed: bool,
+    *,
+    measured: Any,
+    threshold: Any,
+    severity: str,
+    failure_message: str,
+) -> dict[str, Any]:
+    return {
+        "check_id": check_id,
+        "status": "pass" if passed else ("fail" if severity == "fail" else "warn"),
+        "severity": severity,
+        "measured": measured,
+        "threshold": threshold,
+        "message": "Primary analyzer diagnostic check passed." if passed else failure_message,
+    }
+
+
 def _fill_missing(values: np.ndarray) -> np.ndarray:
     if values.size == 0:
         return values
@@ -2657,6 +2676,457 @@ def compute_ygas_primary_analyzer_diagnostics(
         "provenance": provenance,
         "limitations": limitations,
     }
+
+
+_LICOR_CO2H2O_PROFILE_IDS = {"licor_li7500_family", "licor_li7200_family"}
+
+
+def compute_primary_analyzer_diagnostics(
+    *,
+    rows: list[NormalizedHFFrame],
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    cfg = dict(config or {})
+    requested_profile_id = str(
+        cfg.get("profile_id", cfg.get("gas_analyzer_profile_id", cfg.get("gas_analyzer_profile", "ygas_irga")))
+        or "ygas_irga"
+    )
+    payloads = [_merged_frame_payload(row) for row in rows]
+    payloads = [payload for payload in payloads if payload]
+    payload_profile_id = _payload_profile_hint(payloads)
+    if requested_profile_id in {"", "standard", "ygas", "ygas_irga"} and payload_profile_id:
+        requested_profile_id = payload_profile_id
+
+    profile = get_gas_analyzer_profile(requested_profile_id)
+    profile_summary = profile.to_summary()
+    profile_id = str(profile_summary.get("profile_id", requested_profile_id) or requested_profile_id)
+    if profile_id == "ygas_irga":
+        return compute_ygas_primary_analyzer_diagnostics(rows=rows, config=cfg)
+    if profile_id in _LICOR_CO2H2O_PROFILE_IDS:
+        return compute_licor_co2h2o_primary_analyzer_diagnostics(rows=rows, config={**cfg, "profile_id": profile_id})
+
+    return {
+        "artifact_type": "primary_analyzer_diagnostics_v1",
+        "status": "not_available",
+        "profile_id": profile_id,
+        "profile_label": str(profile_summary.get("label", "")),
+        "instrument_family": str(profile_summary.get("instrument_family", "")),
+        "sample_count": len(rows),
+        "status_sample_count": 0,
+        "telemetry_detected": False,
+        "calibration_profile_id": str(cfg.get("calibration_profile_id", "")),
+        "calibration_source_file": str(cfg.get("source_file", cfg.get("calibration_source_file", "")) or ""),
+        "calibration_normalization_command": str(cfg.get("normalization_command", "") or ""),
+        "source_reference": dict(profile_summary.get("source_reference", {}) or {}),
+        "raw_output_fields": list(profile_summary.get("raw_output_fields", []) or []),
+        "checks": [],
+        "active_faults": [],
+        "provenance": "Primary analyzer diagnostics dispatcher found no implemented CO2/H2O analyzer family for this profile.",
+        "limitations": list(profile_summary.get("known_limitations", []) or [])
+        or ["Configured analyzer family is registered, but no primary CO2/H2O telemetry diagnostic path is implemented yet."],
+    }
+
+
+def compute_licor_co2h2o_primary_analyzer_diagnostics(
+    *,
+    rows: list[NormalizedHFFrame],
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    cfg = dict(config or {})
+    requested_profile_id = str(
+        cfg.get("profile_id", cfg.get("gas_analyzer_profile_id", cfg.get("gas_analyzer_profile", "licor_li7500_family")))
+        or "licor_li7500_family"
+    )
+    profile = get_gas_analyzer_profile(requested_profile_id)
+    profile_summary = profile.to_summary()
+    profile_id = str(profile_summary.get("profile_id", requested_profile_id) or requested_profile_id)
+    if profile_id not in _LICOR_CO2H2O_PROFILE_IDS:
+        profile_id = "licor_li7500_family"
+        profile = get_gas_analyzer_profile(profile_id)
+        profile_summary = profile.to_summary()
+
+    payloads = [_merged_frame_payload(row) for row in rows]
+    payloads = [payload for payload in payloads if payload]
+    licor_payloads = [payload for payload in payloads if _payload_looks_like_licor_co2h2o(payload, profile_id)]
+
+    calibration_profile = dict(cfg.get("calibration_profile", {}) or {})
+    calibration_profile_id = str(
+        cfg.get(
+            "calibration_profile_id",
+            cfg.get("coefficient_profile_id", calibration_profile.get("profile_id", "")),
+        )
+        or ""
+    )
+    source_reference = dict(profile_summary.get("source_reference", {}) or {})
+    source_file = str(
+        cfg.get(
+            "source_file",
+            cfg.get("calibration_source_file", calibration_profile.get("source_file", source_reference.get("eddypro_flux_docs", ""))),
+        )
+        or ""
+    )
+    normalization_command = str(
+        cfg.get(
+            "normalization_command",
+            calibration_profile.get(
+                "normalization_command",
+                f"gas_ec_studio normalize-licor --input raw_text/status_text --profile {profile_id}",
+            ),
+        )
+        or ""
+    )
+    provenance = (
+        "LI-COR CO2/H2O primary analyzer diagnostics v1 parsed signal-strength, diagnostic-word, "
+        "status flag, and LI-7200 cell thermodynamic fields from NormalizedHFFrame raw_text/status_text JSON payloads."
+    )
+
+    if not licor_payloads:
+        return {
+            "artifact_type": "licor_co2h2o_primary_analyzer_diagnostics_v1",
+            "status": "not_available",
+            "profile_id": profile_id,
+            "profile_label": str(profile_summary.get("label", "")),
+            "instrument_family": str(profile_summary.get("instrument_family", "")),
+            "sample_count": len(rows),
+            "status_sample_count": 0,
+            "telemetry_detected": False,
+            "calibration_profile_id": calibration_profile_id,
+            "calibration_source_file": source_file,
+            "calibration_normalization_command": normalization_command,
+            "source_reference": source_reference,
+            "raw_output_fields": list(profile_summary.get("raw_output_fields", []) or []),
+            "checks": [],
+            "active_faults": [],
+            "provenance": provenance,
+            "limitations": [
+                "No LI-COR LI-7500/LI-7200 diagnostic payload fields were found in raw_text/status_text for this window.",
+                "Provide parsed LI-COR diagnostic words, signal strength/AGC, and LI-7200 cell pressure/temperature fields to enable screening.",
+            ],
+        }
+
+    co2_signal = _coerce_percent_series(
+        _payload_metric_series(
+            licor_payloads,
+            (
+                "co2_signal_strength_pct",
+                "co2_signal_percent",
+                "co2_signal_strength",
+                "co2_signal",
+                "co2_agc",
+                "agc_co2",
+                "li7500_co2_signal",
+                "li7200_co2_signal",
+            ),
+        )
+    )
+    h2o_signal = _coerce_percent_series(
+        _payload_metric_series(
+            licor_payloads,
+            (
+                "h2o_signal_strength_pct",
+                "h2o_signal_percent",
+                "h2o_signal_strength",
+                "h2o_signal",
+                "h2o_agc",
+                "agc_h2o",
+                "li7500_h2o_signal",
+                "li7200_h2o_signal",
+            ),
+        )
+    )
+    reference_signal = _coerce_percent_series(
+        _payload_metric_series(
+            licor_payloads,
+            (
+                "reference_signal_pct",
+                "reference_signal_percent",
+                "reference_signal",
+                "ref_signal",
+                "source_signal",
+                "li7500_reference_signal",
+                "li7200_reference_signal",
+            ),
+        )
+    )
+    cell_pressure = [
+        _coerce_cell_pressure_kpa(value)
+        for value in _payload_metric_series(licor_payloads, _CELL_PRESSURE_ALIASES)
+        if math.isfinite(_coerce_cell_pressure_kpa(value))
+    ]
+    cell_temp = [
+        _coerce_cell_temp_c(value)
+        for value in _payload_metric_series(licor_payloads, _CELL_TEMP_ALIASES)
+        if math.isfinite(_coerce_cell_temp_c(value))
+    ]
+    diagnostic_words = _payload_int_series(
+        licor_payloads,
+        (
+            "diagnostic_word",
+            "diagnostic_value",
+            "status_word",
+            "status_code",
+            "diag_word",
+            "diag_value",
+            "li7500_diagnostic_word",
+            "li7200_diagnostic_word",
+            "li7500_status_word",
+            "li7200_status_word",
+        ),
+    )
+    status_ok_values = _payload_bool_series(
+        licor_payloads,
+        ("status_ok", "diagnostic_ok", "instrument_status_ok", "li7500_status_ok", "li7200_status_ok"),
+        true_tokens={"1", "true", "yes", "y", "ok", "pass", "normal", "clean"},
+        false_tokens={"0", "false", "no", "n", "fault", "fail", "bad", "error"},
+    )
+    flag_faults = _payload_status_flags(licor_payloads)
+    word_faults = _diagnostic_word_flags(diagnostic_words, cfg, prefix="diagnostic_word")
+    active_faults = sorted(set([*flag_faults, *word_faults]))
+
+    min_signal_fail = float(cfg.get("min_signal_fail_pct", cfg.get("min_signal_fail", 5.0)) or 5.0)
+    min_signal_warning = float(cfg.get("min_signal_warning_pct", cfg.get("min_signal_warning", 20.0)) or 20.0)
+    require_status_ok = bool(cfg.get("require_status_ok", True))
+    require_cell_thermodynamics = bool(
+        cfg.get("require_cell_thermodynamics", profile_id == "licor_li7200_family")
+    )
+    co2_signal_min = _series_min(co2_signal)
+    h2o_signal_min = _series_min(h2o_signal)
+    reference_signal_min = _series_min(reference_signal)
+
+    signal_checks = [
+        _primary_analyzer_status_check(
+            "licor_co2_signal_fail_threshold",
+            co2_signal_min is None or co2_signal_min > min_signal_fail,
+            measured=co2_signal_min,
+            threshold=f">{min_signal_fail}",
+            severity="fail",
+            failure_message="LI-COR CO2 signal/AGC fell below the configured fail threshold.",
+        ),
+        _primary_analyzer_status_check(
+            "licor_h2o_signal_fail_threshold",
+            h2o_signal_min is None or h2o_signal_min > min_signal_fail,
+            measured=h2o_signal_min,
+            threshold=f">{min_signal_fail}",
+            severity="fail",
+            failure_message="LI-COR H2O signal/AGC fell below the configured fail threshold.",
+        ),
+        _primary_analyzer_status_check(
+            "licor_co2_signal_warning_threshold",
+            co2_signal_min is None or co2_signal_min >= min_signal_warning,
+            measured=co2_signal_min,
+            threshold=f">={min_signal_warning}",
+            severity="warn",
+            failure_message="LI-COR CO2 signal/AGC fell below the configured warning threshold.",
+        ),
+        _primary_analyzer_status_check(
+            "licor_h2o_signal_warning_threshold",
+            h2o_signal_min is None or h2o_signal_min >= min_signal_warning,
+            measured=h2o_signal_min,
+            threshold=f">={min_signal_warning}",
+            severity="warn",
+            failure_message="LI-COR H2O signal/AGC fell below the configured warning threshold.",
+        ),
+    ]
+    status_checks = [
+        _primary_analyzer_status_check(
+            "licor_diagnostic_word_faults",
+            not active_faults,
+            measured=active_faults,
+            threshold="allowed diagnostic/status words only",
+            severity="fail",
+            failure_message="LI-COR diagnostic word or status payload reported active faults.",
+        ),
+        _primary_analyzer_status_check(
+            "licor_status_ok_policy",
+            all(status_ok_values) if require_status_ok and status_ok_values else True,
+            measured=status_ok_values,
+            threshold="all status_ok samples true" if require_status_ok else "not required",
+            severity="fail" if require_status_ok else "warn",
+            failure_message="LI-COR status_ok policy failed.",
+        ),
+    ]
+    cell_checks = [
+        _primary_analyzer_status_check(
+            "licor_li7200_cell_thermodynamics_present",
+            bool(cell_pressure and cell_temp) if require_cell_thermodynamics else True,
+            measured={"cell_pressure_count": len(cell_pressure), "cell_temp_count": len(cell_temp)},
+            threshold="cell pressure and cell temperature present" if require_cell_thermodynamics else "not required",
+            severity="warn",
+            failure_message="LI-7200 enclosed-path diagnostics did not include both cell pressure and cell temperature.",
+        )
+    ]
+    checks = [*signal_checks, *status_checks, *cell_checks]
+    signal_fail_count = sum(1 for item in signal_checks if item["status"] == "fail")
+    signal_warn_count = sum(1 for item in signal_checks if item["status"] == "warn")
+    status_fail_count = sum(1 for item in status_checks if item["status"] == "fail")
+    status_warn_count = sum(1 for item in status_checks if item["status"] == "warn")
+    cell_warn_count = sum(1 for item in cell_checks if item["status"] == "warn")
+    signal_status = "fail" if signal_fail_count else ("warning" if signal_warn_count else "pass")
+    diagnostic_word_status = "not_available" if not diagnostic_words and not status_ok_values and not flag_faults else (
+        "fail" if status_fail_count else ("warning" if status_warn_count else "pass")
+    )
+    fail_count = signal_fail_count + status_fail_count
+    warn_count = signal_warn_count + status_warn_count + cell_warn_count
+    status = "fail" if fail_count else ("warning" if warn_count else "pass")
+    limitations = [
+        "LI-COR signal/AGC thresholds are configurable policy checks; site-specific cleaning and calibration records should tune warning limits.",
+        "Diagnostic-word decoding reports configured bit labels when provided and otherwise records generic bit positions.",
+        "This path closes primary RP telemetry provenance; proprietary firmware internals and binary protocol control remain outside this diagnostic artifact.",
+    ]
+    limitations.extend(str(item) for item in profile_summary.get("known_limitations", []) or [])
+
+    return {
+        "artifact_type": "licor_co2h2o_primary_analyzer_diagnostics_v1",
+        "status": status,
+        "profile_id": profile_id,
+        "profile_label": str(profile_summary.get("label", "")),
+        "instrument_family": str(profile_summary.get("instrument_family", "")),
+        "sample_count": len(rows),
+        "status_sample_count": len(licor_payloads),
+        "telemetry_detected": True,
+        "signal_status": signal_status,
+        "diagnostic_word_status": diagnostic_word_status,
+        "co2_signal_mean": _series_mean(co2_signal),
+        "co2_signal_min": co2_signal_min,
+        "h2o_signal_mean": _series_mean(h2o_signal),
+        "h2o_signal_min": h2o_signal_min,
+        "reference_signal_mean": _series_mean(reference_signal),
+        "reference_signal_min": reference_signal_min,
+        "cell_pressure_mean_kpa": _series_mean(cell_pressure),
+        "cell_temp_mean_c": _series_mean(cell_temp),
+        "diagnostic_word_count": len(diagnostic_words),
+        "diagnostic_word_nonzero_count": sum(1 for value in diagnostic_words if value != 0),
+        "diagnostic_word_unique_values": sorted(set(diagnostic_words)),
+        "fault_count": len(active_faults),
+        "active_faults": active_faults,
+        "checks": checks,
+        "fail_count": fail_count,
+        "warn_count": warn_count,
+        "calibration_profile_id": calibration_profile_id,
+        "calibration_source_file": source_file,
+        "calibration_normalization_command": normalization_command,
+        "calibration_profile": calibration_profile,
+        "source_reference": source_reference,
+        "raw_output_fields": list(profile_summary.get("raw_output_fields", []) or []),
+        "provenance": provenance,
+        "limitations": limitations,
+    }
+
+
+def _payload_profile_hint(payloads: list[dict[str, Any]]) -> str:
+    aliases = ("profile_id", "gas_analyzer_profile", "gas_analyzer_profile_id", "instrument_model", "instrument_family")
+    for payload in payloads:
+        for key, value in _flatten_payload(payload):
+            normalized = _normalize_payload_key(key)
+            if normalized not in {_normalize_payload_key(alias) for alias in aliases}:
+                continue
+            text = str(value).strip().lower().replace("-", "").replace("_", "")
+            if "li7500" in text:
+                return "licor_li7500_family"
+            if "li7200" in text:
+                return "licor_li7200_family"
+            if "ygas" in text:
+                return "ygas_irga"
+    return ""
+
+
+def _payload_looks_like_licor_co2h2o(payload: dict[str, Any], profile_id: str) -> bool:
+    flattened = _flatten_payload(payload)
+    normalized_keys = {_normalize_payload_key(key) for key, _value in flattened}
+    marker_keys = {
+        "licor_primary_analyzer_import",
+        "licor_diagnostic_import",
+        "li7500_diagnostic_import",
+        "li7200_diagnostic_import",
+        "li7500_co2_signal",
+        "li7500_h2o_signal",
+        "li7200_co2_signal",
+        "li7200_h2o_signal",
+        "co2_signal_strength_pct",
+        "h2o_signal_strength_pct",
+        "co2_agc",
+        "h2o_agc",
+        "diagnostic_word",
+        "diagnostic_value",
+        "diag_word",
+        "diag_value",
+        "li7500_diagnostic_word",
+        "li7200_diagnostic_word",
+    }
+    profile_hint = _payload_profile_hint([payload])
+    if profile_hint in _LICOR_CO2H2O_PROFILE_IDS:
+        return True
+    if normalized_keys & marker_keys:
+        return True
+    if profile_id == "licor_li7200_family" and (normalized_keys & set(_CELL_PRESSURE_ALIASES) or normalized_keys & set(_CELL_TEMP_ALIASES)):
+        return True
+    if profile_id in _LICOR_CO2H2O_PROFILE_IDS and (
+        normalized_keys & {"co2_signal", "h2o_signal", "co2_signal_strength", "h2o_signal_strength", "status_word"}
+    ):
+        return True
+    return False
+
+
+def _coerce_percent_series(values: list[float]) -> list[float]:
+    if not values:
+        return []
+    finite_values = [float(value) for value in values if math.isfinite(float(value))]
+    if not finite_values:
+        return []
+    if max(abs(value) for value in finite_values) <= 1.5:
+        return [value * 100.0 for value in finite_values]
+    return finite_values
+
+
+def _diagnostic_word_flags(words: list[int], config: dict[str, Any], *, prefix: str) -> list[str]:
+    if not words:
+        return []
+    raw_allowed = config.get("allowed_status_words", config.get("allowed_diagnostic_words", [0]))
+    if isinstance(raw_allowed, (str, int, float)):
+        raw_allowed = [raw_allowed]
+    allowed: set[int] = set()
+    for value in raw_allowed or [0]:
+        try:
+            allowed.add(int(str(value).strip(), 0))
+        except (TypeError, ValueError):
+            continue
+    bit_map = _primary_analyzer_status_bit_map(config)
+    flags: list[str] = []
+    for word in words:
+        if word in allowed or word == 0:
+            continue
+        bits = [bit for bit in range(0, max(1, int(word).bit_length())) if int(word) & (1 << bit)]
+        if not bits:
+            flags.append(f"{prefix}:{word}")
+            continue
+        for bit in bits:
+            label = bit_map.get(bit, f"bit_{bit}")
+            flags.append(f"{prefix}:{word}:{label}")
+    return flags
+
+
+def _primary_analyzer_status_bit_map(config: dict[str, Any]) -> dict[int, str]:
+    raw_map = config.get("status_bit_map", config.get("diagnostic_bit_map", {}))
+    if isinstance(raw_map, str):
+        parsed: dict[int, str] = {}
+        for part in raw_map.replace(",", "|").split("|"):
+            if not part.strip() or ":" not in part:
+                continue
+            key, value = part.split(":", 1)
+            try:
+                parsed[int(key.strip().removeprefix("bit"), 0)] = value.strip()
+            except ValueError:
+                continue
+        return parsed
+    if not isinstance(raw_map, dict):
+        return {}
+    parsed = {}
+    for key, value in raw_map.items():
+        try:
+            parsed[int(str(key).strip().removeprefix("bit"), 0)] = str(value)
+        except (TypeError, ValueError):
+            continue
+    return parsed
 
 
 def _payload_looks_like_ygas(payload: dict[str, Any]) -> bool:

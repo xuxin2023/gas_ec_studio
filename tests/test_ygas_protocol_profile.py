@@ -9,7 +9,7 @@ import pytest
 
 from app.studio import StudioController
 from core.adapters.mock_adapter import MockGasAnalyzerAdapter
-from core.ec_rp.analysis import compute_ygas_primary_analyzer_diagnostics
+from core.ec_rp.analysis import compute_primary_analyzer_diagnostics, compute_ygas_primary_analyzer_diagnostics
 from core.ec_rp.pipeline import ECRPPipeline
 from core.exports.result_exporter import ResultExporter
 from core.protocol.command_builder import CommandBuilder
@@ -68,6 +68,61 @@ def _make_ygas_rp_rows(*, samples: int = 600, sample_hz: float = 10.0, status_re
                 chamber_temp_c=24.5,
                 case_temp_c=24.3,
                 status_text=json.dumps({"status_register": status_register, "status_ok": status_register == "0001"}),
+                raw_text=json.dumps(raw_payload),
+            )
+        )
+    return rows
+
+
+def _make_licor_rp_rows(
+    *,
+    profile_id: str = "licor_li7200_family",
+    samples: int = 600,
+    sample_hz: float = 10.0,
+    diagnostic_word: int = 0,
+    include_cell: bool = True,
+) -> list[NormalizedHFFrame]:
+    start = datetime(2026, 5, 25, 9, 0, 0)
+    time_axis = np.arange(samples, dtype=float) / sample_hz
+    u = 2.4 + 0.14 * np.sin(2.0 * np.pi * 0.04 * time_axis)
+    v = 0.20 * np.cos(2.0 * np.pi * 0.06 * time_axis)
+    w = 0.42 * np.sin(2.0 * np.pi * 0.16 * time_axis) + 0.08 * np.cos(2.0 * np.pi * 0.55 * time_axis)
+    co2_scalar = np.roll(w, 3) + 0.02 * np.sin(2.0 * np.pi * 0.9 * time_axis)
+    h2o_scalar = 0.65 * np.roll(w, 2) + 0.02 * np.cos(2.0 * np.pi * 0.8 * time_axis)
+    rows: list[NormalizedHFFrame] = []
+    for index in range(samples):
+        raw_payload = {
+            "u": float(u[index]),
+            "v": float(v[index]),
+            "w": float(w[index]),
+            "licor_primary_analyzer_import": {
+                "status": "decoded",
+                "format": "licor_diagnostic_json",
+                "source_file": "D:/fixtures/licor_primary_analyzer.log",
+            },
+            "profile_id": profile_id,
+            "co2_signal_strength_pct": 86.0 + 0.5 * float(np.sin(time_axis[index])),
+            "h2o_signal_strength_pct": 88.0 + 0.5 * float(np.cos(time_axis[index])),
+            "reference_signal_pct": 91.0,
+            "diagnostic_word": diagnostic_word,
+            "status_ok": diagnostic_word == 0,
+        }
+        if include_cell:
+            raw_payload["cell_pressure_kpa"] = 101.2 + 0.01 * float(np.sin(time_axis[index]))
+            raw_payload["cell_temperature_c"] = 24.8 + 0.02 * float(np.cos(time_axis[index]))
+        rows.append(
+            NormalizedHFFrame(
+                timestamp=start + timedelta(seconds=float(time_axis[index])),
+                device_uid="dev-licor-rp",
+                device_id="li7200",
+                mode=1,
+                frame_quality=FrameQuality.FULL,
+                co2_ppm=float(412.0 + 7.0 * co2_scalar[index]),
+                h2o_mmol=float(13.0 + 1.0 * h2o_scalar[index]),
+                pressure_kpa=101.3,
+                chamber_temp_c=24.5,
+                case_temp_c=24.3,
+                status_text=json.dumps({"diagnostic_word": diagnostic_word, "status_ok": diagnostic_word == 0}),
                 raw_text=json.dumps(raw_payload),
             )
         )
@@ -249,6 +304,24 @@ def test_ygas_primary_analyzer_diagnostics_decode_status_register_faults() -> No
     assert detail["calibration_profile_id"] == "ygas_lab_fault_check"
 
 
+def test_licor_primary_analyzer_diagnostics_decode_diagnostic_word_faults() -> None:
+    detail = compute_primary_analyzer_diagnostics(
+        rows=_make_licor_rp_rows(profile_id="licor_li7500_family", samples=30, diagnostic_word=4, include_cell=False),
+        config={
+            "profile_id": "licor_li7500_family",
+            "calibration_profile_id": "li7500_site_zero_span",
+            "diagnostic_bit_map": {"2": "pll_or_chopper_fault"},
+        },
+    )
+
+    assert detail["artifact_type"] == "licor_co2h2o_primary_analyzer_diagnostics_v1"
+    assert detail["status"] == "fail"
+    assert detail["profile_id"] == "licor_li7500_family"
+    assert detail["diagnostic_word_status"] == "fail"
+    assert any("pll_or_chopper_fault" in item for item in detail["active_faults"])
+    assert detail["calibration_profile_id"] == "li7500_site_zero_span"
+
+
 def test_ygas_primary_analyzer_reaches_rp_ledger_and_result_exporter(tmp_path: Path) -> None:
     result = ECRPPipeline().run(
         rows=_make_ygas_rp_rows(),
@@ -304,3 +377,65 @@ def test_ygas_primary_analyzer_reaches_rp_ledger_and_result_exporter(tmp_path: P
     assert manifest["primary_analyzer_artifact"].endswith("primary_analyzer_diagnostics.json")
     assert primary_artifact["summary"]["status"] == "pass"
     assert primary_artifact["windows"][0]["diagnostics"]["calibration_normalization_command"].endswith("ygas_lab_2026")
+
+
+def test_licor_li7200_primary_analyzer_reaches_rp_ledger_and_result_exporter(tmp_path: Path) -> None:
+    result = ECRPPipeline().run(
+        rows=_make_licor_rp_rows(profile_id="licor_li7200_family"),
+        project=ProjectProfile(code="LICOR"),
+        site=SiteProfile(station_code="L7200"),
+        config={
+            "sample_hz": 10.0,
+            "block_minutes": 0.5,
+            "primary_analyzer": {
+                "profile_id": "licor_li7200_family",
+                "calibration_profile_id": "li7200_factory_site_profile",
+                "source_file": "D:/fixtures/li7200_factory_site_profile.json",
+                "normalization_command": "gas_ec_studio normalize-licor --profile li7200_factory_site_profile",
+                "min_signal_warning_pct": 50.0,
+                "require_cell_thermodynamics": True,
+                "require_status_ok": True,
+            },
+        },
+    )
+
+    assert result.windows
+    first = result.windows[0]
+    diagnostics = first.diagnostics
+    assert diagnostics["primary_analyzer_status"] == "pass"
+    assert diagnostics["primary_analyzer_profile_id"] == "licor_li7200_family"
+    assert diagnostics["licor_status"] == "pass"
+    assert diagnostics["ygas_status"] == "not_available"
+    assert diagnostics["licor_cell_pressure_mean_kpa"] is not None
+    assert diagnostics["licor_cell_temp_mean_c"] is not None
+    assert diagnostics["primary_analyzer_detail"]["telemetry_detected"] is True
+    ledger_stages = {stage["stage"] for stage in diagnostics["flux_correction_ledger"]["stages"]}
+    assert "licor_primary_analyzer_qc_profile" in ledger_stages
+    assert result.summary["primary_analyzer_summary"]["status"] == "pass"
+    assert result.summary["primary_analyzer_summary"]["profile_counts"]["licor_li7200_family"] == len(result.windows)
+    assert result.summary["flux_correction_ledger_summary"]["licor_primary_analyzer_window_count"] == len(result.windows)
+    assert result.artifacts["primary_analyzer"]["summary"]["telemetry_window_count"] == len(result.windows)
+
+    exporter = ResultExporter(runtime_root=tmp_path / "runtime_data")
+    export = exporter.export_minimal_bundle(
+        rp_result=result,
+        spectral_result=None,
+        rp_config_snapshot={"primary_analyzer": {"profile_id": "licor_li7200_family"}},
+        spectral_config_snapshot={},
+        project={"code": "LICOR"},
+        site={"station_code": "L7200"},
+        report_payload={"status": "ok"},
+        report_key="licor-primary-analyzer",
+    )
+    manifest = json.loads(Path(export["files"]["export_manifest"]).read_text(encoding="utf-8"))
+    full_output = Path(export["files"]["full_output"]).read_text(encoding="utf-8")
+    primary_artifact = json.loads(Path(export["files"]["primary_analyzer_artifact"]).read_text(encoding="utf-8"))
+
+    assert "licor_status" in full_output
+    assert "li7200_factory_site_profile" in full_output
+    assert manifest["primary_analyzer_summary"]["status"] == "pass"
+    assert "licor_status" in manifest["primary_analyzer_fields"]
+    assert manifest["primary_analyzer_artifact"].endswith("primary_analyzer_diagnostics.json")
+    assert primary_artifact["summary"]["status"] == "pass"
+    assert primary_artifact["windows"][0]["diagnostics"]["profile_id"] == "licor_li7200_family"
+    assert primary_artifact["windows"][0]["diagnostics"]["cell_pressure_mean_kpa"] is not None
