@@ -134,16 +134,17 @@ def _computation_stress_suite(status: str = "pass", *, surface_status: str = "re
     return {
         "artifact_type": "eddypro_computation_stress_suite_v1",
         "status": status,
-        "case_count": 8,
-        "passed_case_count": 8 if status == "pass" else 7,
+        "case_count": 9,
+        "passed_case_count": 9 if status == "pass" else 8,
         "failed_case_count": 0 if status == "pass" else 1,
-        "pass_rate": 1.0 if status == "pass" else 7 / 8,
+        "pass_rate": 1.0 if status == "pass" else 8 / 9,
         "failed_cases": [] if status == "pass" else [{"case_id": "spectral_case", "family": "spectral_correction"}],
         "computation_surface": {
             "status": surface_status,
             "required_families": [
                 "pipeline_core",
                 "raw_biomet_ingestion",
+                "raw_import_edge_cases",
                 "rotation_lag",
                 "flux_density_energy",
                 "footprint",
@@ -151,11 +152,12 @@ def _computation_stress_suite(status: str = "pass", *, surface_status: str = "re
                 "spectral_correction",
                 "ch4_li7700",
             ],
-            "ready_family_count": 8 if surface_status == "ready" else 7,
+            "ready_family_count": 9 if surface_status == "ready" else 8,
             "blocked_family_count": 0 if surface_status == "ready" else 1,
             "family_status": {
                 "pipeline_core": "pass",
                 "raw_biomet_ingestion": "pass",
+                "raw_import_edge_cases": "pass",
                 "rotation_lag": "pass",
                 "flux_density_energy": "pass",
                 "footprint": "pass",
@@ -233,7 +235,7 @@ def test_eddypro_release_gate_releases_source_derived_computation_when_surface_r
     assert gate["source_derived_computation_ci_exit_code"] == 0
     assert gate["summary"]["source_derived_computation_gate_status"] == "pass"
     assert gate["summary"]["computation_surface_status"] == "ready"
-    assert gate["summary"]["computation_surface_ready_family_count"] == 8
+    assert gate["summary"]["computation_surface_ready_family_count"] == 9
     assert Path(gate["artifacts"]["eddypro_computation_stress_suite"]).exists()
     assert Path(gate["artifacts"]["eddypro_computation_scope_audit"]).exists()
 

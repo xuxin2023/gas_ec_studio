@@ -324,7 +324,8 @@ def _read_tabular_text(
     if not lines:
         return []
     if header_rows > 1:
-        lines = [lines[0], *lines[header_rows:]]
+        header_index = 1 if len(lines) > 1 and _is_toa5_preamble(lines[0], delimiter=delimiter) else 0
+        lines = [lines[header_index], *lines[header_rows:]]
     reader = csv.DictReader(StringIO("\n".join(lines)), delimiter=delimiter)
     output: list[dict[str, str]] = []
     for row in reader:
@@ -335,6 +336,14 @@ def _read_tabular_text(
         }
         output.append(cleaned)
     return output
+
+
+def _is_toa5_preamble(line: str, *, delimiter: str) -> bool:
+    try:
+        tokens = next(csv.reader(StringIO(line), delimiter=delimiter))
+    except csv.Error:
+        return False
+    return bool(tokens) and str(tokens[0]).strip().strip('"').upper() == "TOA5"
 
 
 def _native_import_config(*, source_path: Path, bundle: MetadataBundle) -> dict[str, Any]:

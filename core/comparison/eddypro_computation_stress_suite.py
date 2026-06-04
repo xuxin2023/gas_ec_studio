@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import json
 import math
+import struct
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,7 @@ def build_eddypro_computation_stress_suite(
     cases = [
         _pipeline_core_oracle_case(),
         _raw_biomet_ingestion_stress_case(root),
+        _raw_import_edge_cases_stress_case(root),
         _rotation_lag_stress_case(),
         _flux_density_energy_closed_path_case(),
         _footprint_stress_case(),
@@ -329,6 +331,252 @@ def _raw_biomet_ingestion_stress_case(root: Path) -> dict[str, Any]:
             "biomet_ambient_provenance": diagnostics.get("biomet_ambient_provenance", ""),
             "flux_correction_ambient_stage": ambient_stage,
             "manifest_biomet_ambient_summary": manifest.get("biomet_ambient_summary", {}),
+        },
+    )
+
+
+def _raw_import_edge_cases_stress_case(root: Path) -> dict[str, Any]:
+    from core.headless_batch_runner import load_input_rows
+
+    case_root = root / "artifacts" / "eddypro_computation_stress_inputs" / "raw_import_edge_cases"
+    case_root.mkdir(parents=True, exist_ok=True)
+
+    failures: list[str] = []
+    fixtures: dict[str, dict[str, Any]] = {}
+
+    toa5_path = case_root / "campbell_toa5.dat"
+    toa5_path.write_text(
+        "\n".join(
+            [
+                '"TOA5","EC_TOWER","CR6","12345","ECProgram.CR6","123","EC stress"',
+                '"TIMESTAMP","Ux","Vy","Wz","CO2","H2O","P","TA","CH4"',
+                '"TS","m/s","m/s","m/s","ppm","mmol/mol","kPa","C","ppm"',
+                '"Smp","Avg","Avg","Avg","Avg","Avg","Avg","Avg","Avg"',
+                '"2026-06-04 09:00:00",2.50,-0.10,0.20,410.25,12.50,101.30,25.10,1.905',
+                '"2026-06-04 09:00:00.1",2.55,-0.12,0.24,410.75,12.55,101.31,25.15,1.906',
+                '"2026-06-04 09:00:00.2",2.60,-0.14,0.28,411.10,12.60,101.32,25.20,1.907',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    toa5_metadata = MetadataBundle(
+        project=ProjectProfile(code="STRESS-TOA5", name="TOA5 Edge Case"),
+        raw_file_description=RawFileDescriptionMetadata(
+            source_name="campbell-toa5-stress",
+            source_type="toa5",
+            column_mappings=[
+                RawColumnMapping(column_name="TIMESTAMP", variable="timestamp", numeric=False),
+                RawColumnMapping(column_name="Ux", variable="u"),
+                RawColumnMapping(column_name="Vy", variable="v"),
+                RawColumnMapping(column_name="Wz", variable="w"),
+                RawColumnMapping(column_name="CO2", variable="co2_ppm"),
+                RawColumnMapping(column_name="H2O", variable="h2o_mmol"),
+                RawColumnMapping(column_name="P", variable="pressure_kpa"),
+                RawColumnMapping(column_name="TA", variable="chamber_temp_c"),
+                RawColumnMapping(column_name="CH4", variable="ch4_ppb", input_unit="ppm"),
+            ],
+        ),
+        raw_file_settings=RawFileSettingsMetadata(sample_hz=10.0, delimiter=",", header_rows=4),
+    )
+    toa5_rows = load_input_rows(toa5_path, metadata=toa5_metadata)
+    toa5_payload = json.loads(toa5_rows[0].raw_text) if toa5_rows else {}
+    if len(toa5_rows) != 3:
+        failures.append(f"toa5_row_count_expected_3_got_{len(toa5_rows)}")
+    if toa5_rows and not _close(toa5_rows[0].co2_ppm, 410.25, abs_tol=0.001):
+        failures.append("toa5_actual_header_column_resolution_failed")
+    if toa5_rows and not _close(toa5_rows[0].ch4_ppb, 1905.0, abs_tol=0.001):
+        failures.append("toa5_ch4_ppm_to_ppb_conversion_failed")
+    if not _close(toa5_payload.get("w"), 0.2, abs_tol=0.001):
+        failures.append("toa5_wind_payload_not_preserved")
+    fixtures["toa5_text"] = {
+        "source_file": str(toa5_path),
+        "row_count": len(toa5_rows),
+        "first_timestamp": toa5_rows[0].timestamp.isoformat() if toa5_rows else "",
+        "first_co2_ppm": toa5_rows[0].co2_ppm if toa5_rows else None,
+        "first_ch4_ppb": toa5_rows[0].ch4_ppb if toa5_rows else None,
+    }
+
+    base = datetime(2026, 6, 4, 9, 0, 0)
+    seconds = int((base - datetime(1990, 1, 1)).total_seconds())
+    ieee4_path = case_root / "record_timestamp_ieee4.tob1"
+    ieee4_header = (
+        b'"TOB1","IEEE4"\r\n'
+        b'"SECONDS","NANOSECONDS","RECORD","U","V","W","CO2","H2O","P","TA"\r\n'
+        b'"ULONG","ULONG","ULONG","IEEE4","IEEE4","IEEE4","IEEE4","IEEE4","IEEE4","IEEE4"\r\n'
+    )
+    ieee4_records = [
+        (seconds, 0, 1, 2.50, -0.10, 0.20, 410.25, 12.50, 101.30, 25.10),
+        (seconds, 100_000_000, 2, 2.55, -0.12, 0.24, 410.75, 12.55, 101.31, 25.15),
+    ]
+    ieee4_path.write_bytes(ieee4_header + b"".join(struct.pack("<3I7f", *record) for record in ieee4_records))
+    ieee4_metadata = MetadataBundle(
+        project=ProjectProfile(code="STRESS-IEEE4", name="TOB1 IEEE4 Edge Case"),
+        raw_file_description=RawFileDescriptionMetadata(source_type="tob1"),
+        raw_file_settings=RawFileSettingsMetadata(sample_hz=10.0),
+    )
+    ieee4_rows = load_input_rows(ieee4_path, metadata=ieee4_metadata)
+    ieee4_provenance = json.loads(ieee4_rows[0].raw_text).get("raw_native_import", {}) if ieee4_rows else {}
+    if len(ieee4_rows) != 2:
+        failures.append(f"tob1_ieee4_row_count_expected_2_got_{len(ieee4_rows)}")
+    if len(ieee4_rows) > 1 and ieee4_rows[1].timestamp.isoformat() != "2026-06-04T09:00:00.100000":
+        failures.append(f"tob1_ieee4_record_timestamp={ieee4_rows[1].timestamp.isoformat()}")
+    if ieee4_provenance.get("timestamp_source") != "tob1_record_seconds_nanoseconds":
+        failures.append(f"tob1_ieee4_timestamp_source={ieee4_provenance.get('timestamp_source', '')}")
+    if ieee4_provenance.get("tob1_eddypro_compatibility", {}).get("status") != "compatible":
+        failures.append("tob1_ieee4_compatibility_not_detected")
+    fixtures["tob1_ieee4_record_timestamp"] = {
+        "source_file": str(ieee4_path),
+        "row_count": len(ieee4_rows),
+        "format": ieee4_provenance.get("format", ""),
+        "timestamp_source": ieee4_provenance.get("timestamp_source", ""),
+        "leading_ulong_columns": ieee4_provenance.get("leading_ulong_columns", []),
+    }
+
+    fp2_path = case_root / "leading_ulong_fp2.tob1"
+    fp2_header = (
+        b'"TOB1","FP2"\r\n'
+        b'"TIMESTAMP","RECORD","U","V","W","CO2","H2O","P","TA"\r\n'
+        b'"ULONG","ULONG","FP2","FP2","FP2","FP2","FP2","FP2","FP2"\r\n'
+    )
+    fp2_records = [
+        (
+            123456,
+            1,
+            _fp2_word(2.5, 1),
+            _fp2_word(-0.1, 1),
+            _fp2_word(0.2, 1),
+            _fp2_word(410.0, 1),
+            _fp2_word(12.34, 2),
+            _fp2_word(101.3, 1),
+            _fp2_word(25.6, 1),
+        ),
+        (
+            123457,
+            2,
+            _fp2_word(2.6, 1),
+            _fp2_word(-0.2, 1),
+            _fp2_word(0.3, 1),
+            _fp2_word(411.0, 1),
+            _fp2_word(12.35, 2),
+            _fp2_word(101.4, 1),
+            _fp2_word(25.7, 1),
+        ),
+    ]
+    fp2_path.write_bytes(fp2_header + b"".join(struct.pack("<2I7H", *record) for record in fp2_records))
+    fp2_metadata = MetadataBundle(
+        project=ProjectProfile(code="STRESS-FP2", name="TOB1 FP2 Edge Case"),
+        raw_file_settings=RawFileSettingsMetadata(sample_hz=10.0, extra={"start_time": "2026-06-04T09:00:00"}),
+    )
+    fp2_rows = load_input_rows(fp2_path, metadata=fp2_metadata)
+    fp2_payload = json.loads(fp2_rows[0].raw_text) if fp2_rows else {}
+    fp2_provenance = dict(fp2_payload.get("raw_native_import", {}) or {})
+    if len(fp2_rows) != 2:
+        failures.append(f"tob1_fp2_row_count_expected_2_got_{len(fp2_rows)}")
+    if fp2_rows and not _close(fp2_rows[0].h2o_mmol, 12.34, abs_tol=0.001):
+        failures.append("tob1_fp2_h2o_decode_failed")
+    if fp2_provenance.get("fp2_skip_words") != 4:
+        failures.append(f"tob1_fp2_skip_words={fp2_provenance.get('fp2_skip_words')}")
+    if not fp2_provenance.get("preserved_leading_ulong_values"):
+        failures.append("tob1_fp2_leading_ulong_values_not_preserved")
+    fixtures["tob1_fp2_leading_ulong"] = {
+        "source_file": str(fp2_path),
+        "row_count": len(fp2_rows),
+        "format": fp2_provenance.get("format", ""),
+        "fp2_skip_words": fp2_provenance.get("fp2_skip_words"),
+        "leading_ulong_columns": fp2_provenance.get("leading_ulong_columns", []),
+        "source_reference": fp2_provenance.get("source_reference", {}),
+    }
+
+    binary_path = case_root / "framed_mixed_native.bin"
+    binary_payload = bytearray(b"ASCII HEADER\n")
+    binary_records = [
+        (410.25, 12.50, 1013, 251, 2.50, -0.10, 0.20),
+        (410.75, 12.55, 1014, 252, 2.55, -0.12, 0.24),
+    ]
+    for index, record in enumerate(binary_records):
+        binary_payload.extend(bytes([0xA0 + index, 0x5A]))
+        binary_payload.extend(struct.pack("<ffhhfff", *record))
+        binary_payload.extend(b"\x00\xff")
+    binary_path.write_bytes(bytes(binary_payload))
+    binary_metadata = MetadataBundle(
+        project=ProjectProfile(code="STRESS-BIN", name="Framed Mixed Binary Edge Case"),
+        raw_file_description=RawFileDescriptionMetadata(
+            source_type="binary",
+            column_mappings=[
+                RawColumnMapping(column_name="co2_raw", variable="co2_ppm"),
+                RawColumnMapping(column_name="h2o_raw", variable="h2o_mmol"),
+                RawColumnMapping(column_name="p_raw", variable="pressure_kpa", scaling=0.1),
+                RawColumnMapping(column_name="ta_raw", variable="chamber_temp_c", scaling=0.1),
+                RawColumnMapping(column_name="u_raw", variable="u"),
+                RawColumnMapping(column_name="v_raw", variable="v"),
+                RawColumnMapping(column_name="w_raw", variable="w"),
+            ],
+        ),
+        raw_file_settings=RawFileSettingsMetadata(
+            sample_hz=10.0,
+            extra={
+                "native_format": "binary",
+                "columns": ["co2_raw", "h2o_raw", "p_raw", "ta_raw", "u_raw", "v_raw", "w_raw"],
+                "column_types": {
+                    "co2_raw": "float32",
+                    "h2o_raw": "float32",
+                    "u_raw": "float32",
+                    "v_raw": "float32",
+                    "w_raw": "float32",
+                },
+                "header_rows": 1,
+                "record_header_bytes": 2,
+                "record_footer_bytes": 2,
+                "record_length_bytes": 30,
+                "start_time": "2026-06-04T09:00:00",
+            },
+        ),
+    )
+    binary_rows = load_input_rows(binary_path, metadata=binary_metadata)
+    binary_provenance = json.loads(binary_rows[0].raw_text).get("raw_native_import", {}) if binary_rows else {}
+    if len(binary_rows) != 2:
+        failures.append(f"native_binary_row_count_expected_2_got_{len(binary_rows)}")
+    if binary_rows and not _close(binary_rows[0].pressure_kpa, 101.3, abs_tol=0.001):
+        failures.append("native_binary_scaling_failed")
+    if binary_provenance.get("data_type") != "mixed":
+        failures.append(f"native_binary_data_type={binary_provenance.get('data_type', '')}")
+    if binary_provenance.get("record_length_bytes") != 30:
+        failures.append(f"native_binary_record_length={binary_provenance.get('record_length_bytes')}")
+    fixtures["native_binary_mixed_framed"] = {
+        "source_file": str(binary_path),
+        "row_count": len(binary_rows),
+        "format": binary_provenance.get("format", ""),
+        "data_type": binary_provenance.get("data_type", ""),
+        "record_length_bytes": binary_provenance.get("record_length_bytes"),
+        "column_types": binary_provenance.get("column_types", []),
+    }
+
+    passed_format_count = sum(1 for fixture in fixtures.values() if int(fixture.get("row_count", 0) or 0) > 0)
+    return _case_payload(
+        case_id="raw_import_edge_cases_format_stress",
+        family="raw_import_edge_cases",
+        status="pass" if not failures else "fail",
+        failure_reasons=failures,
+        metrics={
+            "format_count": len(fixtures),
+            "passed_format_count": passed_format_count,
+            "toa5_row_count": len(toa5_rows),
+            "tob1_ieee4_timestamp_source": ieee4_provenance.get("timestamp_source", ""),
+            "tob1_fp2_skip_words": fp2_provenance.get("fp2_skip_words"),
+            "native_binary_data_type": binary_provenance.get("data_type", ""),
+        },
+        details={
+            "fixtures": fixtures,
+            "source_reference": {
+                "eddypro_engine_repository": "https://github.com/LI-COR-Environmental/eddypro-engine",
+                "importer_focus": [
+                    "TOA5 multi-row text header handling",
+                    "TOB1 IEEE4 record timestamps",
+                    "TOB1 FP2 leading ULONG preservation",
+                    "native binary mixed-type framing",
+                ],
+            },
         },
     )
 
@@ -830,6 +1078,14 @@ def _make_li7700_rows(samples: int = 120) -> list[NormalizedHFFrame]:
     return rows
 
 
+def _fp2_word(value: float, decimals: int) -> int:
+    sign_bit = 0x80 if value < 0 else 0
+    mantissa = int(round(abs(value) * (10**decimals)))
+    low_byte = sign_bit | ((decimals & 0x03) << 5) | ((mantissa >> 8) & 0x1F)
+    high_byte = mantissa & 0xFF
+    return (high_byte << 8) | low_byte
+
+
 def _case_payload(
     *,
     case_id: str,
@@ -857,6 +1113,7 @@ def _computation_surface(cases: list[dict[str, Any]]) -> dict[str, Any]:
     required_families = [
         "pipeline_core",
         "raw_biomet_ingestion",
+        "raw_import_edge_cases",
         "rotation_lag",
         "flux_density_energy",
         "footprint",

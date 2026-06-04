@@ -87,6 +87,48 @@ def test_raw_text_importer_handles_tob1_like_text_headers(tmp_path: Path) -> Non
     assert json.loads(rows[0].raw_text)["u"] == 2.0
 
 
+def test_raw_text_importer_handles_actual_toa5_preamble_headers(tmp_path: Path) -> None:
+    toa5_path = tmp_path / "toa5.dat"
+    toa5_path.write_text(
+        '"TOA5","EC_TOWER","CR6","12345","ECProgram.CR6","123","EC fixture"\n'
+        '"TIMESTAMP","Ux","Vy","Wz","CO2","H2O","P","TA","CH4"\n'
+        '"TS","m/s","m/s","m/s","ppm","mmol/mol","kPa","C","ppm"\n'
+        '"Smp","Avg","Avg","Avg","Avg","Avg","Avg","Avg","Avg"\n'
+        '"2026-06-04 09:00:00",2.50,-0.10,0.20,410.25,12.50,101.30,25.10,1.905\n',
+        encoding="utf-8",
+    )
+    metadata = MetadataBundle(
+        project=ProjectProfile(code="TOA5-001", name="TOA5"),
+        raw_file_description=RawFileDescriptionMetadata(
+            source_type="toa5",
+            column_mappings=[
+                RawColumnMapping(column_name="TIMESTAMP", variable="timestamp", numeric=False),
+                RawColumnMapping(column_name="Ux", variable="u"),
+                RawColumnMapping(column_name="Vy", variable="v"),
+                RawColumnMapping(column_name="Wz", variable="w"),
+                RawColumnMapping(column_name="CO2", variable="co2_ppm"),
+                RawColumnMapping(column_name="H2O", variable="h2o_mmol"),
+                RawColumnMapping(column_name="P", variable="pressure_kpa"),
+                RawColumnMapping(column_name="TA", variable="chamber_temp_c"),
+                RawColumnMapping(column_name="CH4", variable="ch4_ppb", input_unit="ppm"),
+            ],
+        ),
+        raw_file_settings=RawFileSettingsMetadata(sample_hz=10.0, delimiter=",", header_rows=4),
+    )
+
+    rows = load_input_rows(toa5_path, metadata=metadata)
+    payload = json.loads(rows[0].raw_text)
+
+    assert len(rows) == 1
+    assert rows[0].timestamp.isoformat() == "2026-06-04T09:00:00"
+    assert rows[0].co2_ppm == pytest.approx(410.25)
+    assert rows[0].h2o_mmol == pytest.approx(12.5)
+    assert rows[0].pressure_kpa == pytest.approx(101.3)
+    assert rows[0].ch4_ppb == pytest.approx(1905.0)
+    assert payload["u"] == pytest.approx(2.5)
+    assert payload["w"] == pytest.approx(0.2)
+
+
 def test_native_tob1_ieee4_bridge_reads_binary_records(tmp_path: Path) -> None:
     tob1_path = tmp_path / "native.tob1"
     header = b"TOB1 fixture\r\nTIMESTAMP,U,V,W,CO2,H2O,P,TA\r\n"
