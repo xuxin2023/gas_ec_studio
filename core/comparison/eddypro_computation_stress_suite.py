@@ -807,6 +807,22 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
         "lag_phase": {"strategy": "covariance_max", "search_window_s": 1.0, "expected_lag_s": 0.4},
         "network_output": {"schema_target": "FLUXNET", "timestamp_refers_to": "start", "timezone_offset_hours": 0.0},
         "trace_gas": {
+            "profile_registry": {
+                "stress_n2o_empirical_profile": {
+                    "gas": "n2o",
+                    "label": "Stress N2O empirical correction profile",
+                    "source": "stress_fixture",
+                    "source_file": "references/eddypro/n2o/stress_n2o_empirical_profile.json",
+                    "normalization_command": "gas_ec normalize-trace-gas --gas n2o --profile stress",
+                    "method": "n2o_empirical_correction_sequence_v1",
+                    "spectral_correction_factor": 1.025,
+                    "analyzer_correction_factor": 0.985,
+                    "density_correction_factor": 1.005,
+                    "known_limitations": [
+                        "Stress profile proves propagation only; not an official N2O analyzer parity profile.",
+                    ],
+                }
+            },
             "ch4": {
                 "coefficient_profile_id": "stress_li7700_multi_gas",
                 "coefficient_registry": {
@@ -843,10 +859,7 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
             },
             "n2o": {
                 "enabled": True,
-                "method": "n2o_empirical_correction_sequence_v1",
-                "spectral_correction_factor": 1.025,
-                "analyzer_correction_factor": 0.985,
-                "density_correction_factor": 1.005,
+                "coefficient_profile_id": "stress_n2o_empirical_profile",
                 "truthfulness_boundary": "N2O high-frequency covariance flux plus configured empirical correction sequence is computed; N2O-specific proprietary analyzer parity is not yet claimed.",
             },
         },
@@ -910,6 +923,10 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
         failures.append(f"trace_gas_family_n2o_method={n2o_family.get('method', '')}")
     if diagnostics.get("n2o_correction_sequence", {}).get("status") != "computed":
         failures.append("n2o_correction_sequence_not_computed")
+    if diagnostics.get("n2o_coefficient_profile_id") != "stress_n2o_empirical_profile":
+        failures.append(f"n2o_profile_id={diagnostics.get('n2o_coefficient_profile_id', '')}")
+    if diagnostics.get("n2o_coefficient_registry_status") != "resolved":
+        failures.append(f"n2o_profile_status={diagnostics.get('n2o_coefficient_registry_status', '')}")
     if diagnostics.get("n2o_flux_level0_nmol_m2_s") == diagnostics.get("n2o_flux_nmol_m2_s"):
         failures.append("n2o_correction_sequence_did_not_change_level0")
     if int(trace_summary.get("n2o_computed_window_count", 0) or 0) != len(windows):
@@ -933,6 +950,8 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
             "n2o_flux_nmol_m2_s": diagnostics.get("n2o_flux_nmol_m2_s"),
             "n2o_flux_level0_nmol_m2_s": diagnostics.get("n2o_flux_level0_nmol_m2_s"),
             "n2o_method": diagnostics.get("n2o_method", ""),
+            "n2o_coefficient_profile_id": diagnostics.get("n2o_coefficient_profile_id", ""),
+            "n2o_coefficient_registry_status": diagnostics.get("n2o_coefficient_registry_status", ""),
             "n2o_computed_window_count": trace_summary.get("n2o_computed_window_count", 0),
             "n2o_boundary_status": "computed_empirical_sequence",
         },

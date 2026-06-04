@@ -321,6 +321,16 @@ def test_li7700_coefficient_registry_profile_merges_before_pipeline() -> None:
             }
         },
         "trace_gas": {
+            "profile_registry": {
+                "tower_n2o_2026": {
+                    "gas": "n2o",
+                    "label": "Tower N2O 2026 coefficients",
+                    "source_file": "references/eddypro/n2o/tower_n2o_2026.json",
+                    "normalization_command": "gas_ec normalize-trace-gas --gas n2o --profile tower_n2o_2026",
+                    "spectral_correction_factor": 1.02,
+                    "analyzer_correction_factor": 0.99,
+                }
+            },
             "ch4": {
                 "coefficient_registry": {
                     "tower_li7700_2026": {
@@ -341,7 +351,8 @@ def test_li7700_coefficient_registry_profile_merges_before_pipeline() -> None:
                         "known_limitations": ["Fixture coefficients are valid only for the synthetic parity tower."],
                     }
                 }
-            }
+            },
+            "n2o": {"coefficient_profile_id": "tower_n2o_2026"},
         },
     }
 
@@ -354,6 +365,12 @@ def test_li7700_coefficient_registry_profile_merges_before_pipeline() -> None:
     assert ch4["coefficient_profile_normalization_command"].startswith("gas_ec normalize-li7700")
     assert ch4["spectroscopic_correction"]["mode"] == "empirical"
     assert ch4["self_heating_correction"]["temperature_excess_c"] == 1.5
+    n2o = trace_config["n2o"]
+    assert n2o["coefficient_profile_id"] == "tower_n2o_2026"
+    assert n2o["coefficient_registry_status"] == "resolved"
+    assert n2o["coefficient_profile_source_file"].endswith("tower_n2o_2026.json")
+    assert n2o["spectral_correction_factor"] == pytest.approx(1.02)
+    assert n2o["analyzer_correction_factor"] == pytest.approx(0.99)
 
 
 def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> None:
@@ -370,6 +387,20 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
         "lag_phase": {"strategy": "covariance_max", "search_window_s": 1.0, "expected_lag_s": 0.4},
         "network_output": {"schema_target": "FLUXNET", "timestamp_refers_to": "start", "timezone_offset_hours": 0.0},
         "trace_gas": {
+            "profile_registry": {
+                "synthetic_n2o_trace_gas_profile": {
+                    "gas": "n2o",
+                    "label": "Synthetic N2O empirical profile",
+                    "source": "normalized_reference",
+                    "source_file": "references/eddypro/n2o/synthetic_profile.json",
+                    "normalization_command": "gas_ec normalize-trace-gas --gas n2o",
+                    "method": "n2o_empirical_correction_sequence_v1",
+                    "spectral_correction_factor": 1.03,
+                    "analyzer_correction_factor": 0.98,
+                    "density_correction_factor": 1.01,
+                    "known_limitations": ["Synthetic N2O profile requires paired analyzer parity before publication use."],
+                }
+            },
             "ch4": {
                 "coefficient_profile_id": "tower_li7700_2026",
                 "coefficient_registry": {
@@ -396,13 +427,7 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
                 "apply_water_vapor_dilution": True,
             },
             "n2o": {
-                "method": "n2o_empirical_correction_sequence_v1",
-                "spectral_correction_factor": 1.03,
-                "analyzer_correction_factor": 0.98,
-                "density_correction_factor": 1.01,
                 "coefficient_profile_id": "synthetic_n2o_trace_gas_profile",
-                "coefficient_profile_source_file": "references/eddypro/n2o/synthetic_profile.json",
-                "coefficient_profile_normalization_command": "gas_ec normalize-trace-gas --gas n2o",
             },
         },
     }
@@ -421,8 +446,13 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert diagnostics["n2o_correction_sequence"]["levels"]["level1"]["factor"] == pytest.approx(1.03)
     assert diagnostics["n2o_correction_sequence"]["levels"]["level2"]["factor"] == pytest.approx(0.98)
     assert diagnostics["n2o_correction_sequence"]["levels"]["level3"]["factor"] == pytest.approx(1.01)
+    assert diagnostics["n2o_coefficient_profile_id"] == "synthetic_n2o_trace_gas_profile"
+    assert diagnostics["n2o_coefficient_registry_status"] == "resolved"
+    assert diagnostics["n2o_coefficient_source_file"].endswith("synthetic_profile.json")
+    assert diagnostics["n2o_coefficient_normalization_command"].startswith("gas_ec normalize-trace-gas")
     assert diagnostics["trace_gas_family"]["n2o"]["status"] == "computed"
     assert diagnostics["trace_gas_family"]["n2o"]["correction_sequence_status"] == "computed"
+    assert diagnostics["trace_gas_family"]["n2o"]["coefficient_profile_id"] == "synthetic_n2o_trace_gas_profile"
     assert diagnostics["ch4_flux_level0_nmol_m2_s"] != diagnostics["ch4_flux_nmol_m2_s"]
     assert diagnostics["ch4_correction_sequence"]["levels"]["level1"]["factor"] == 1.04
     assert diagnostics["ch4_coefficient_profile_id"] == "tower_li7700_2026"
@@ -441,6 +471,7 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert result["rp_result"].summary["trace_gas_summary"]["average_n2o_flux_nmol_m2_s"] is not None
     assert result["rp_result"].summary["trace_gas_summary"]["average_n2o_level0_flux_nmol_m2_s"] is not None
     assert result["rp_result"].summary["trace_gas_summary"]["n2o_correction_sequence"]["status"] == "computed"
+    assert result["rp_result"].summary["trace_gas_summary"]["n2o_coefficient_profile_id"] == "synthetic_n2o_trace_gas_profile"
     assert result["rp_result"].summary["trace_gas_summary"]["coefficient_profile_id"] == "tower_li7700_2026"
     assert result["rp_result"].summary["trace_gas_summary"]["li7700_diagnostics_status"] == "pass"
     assert result["manifest"]["trace_gas_summary"]["status"] == "computed"
@@ -482,6 +513,8 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert rp_rows[0]["n2o_method"] == "n2o_empirical_correction_sequence_v1"
     assert float(rp_rows[0]["n2o_flux_level0_nmol_m2_s"]) != float(rp_rows[0]["n2o_flux_nmol_m2_s"])
     assert "n2o_empirical_correction_sequence_v1" in rp_rows[0]["n2o_correction_sequence"]
+    assert rp_rows[0]["n2o_coefficient_profile_id"] == "synthetic_n2o_trace_gas_profile"
+    assert rp_rows[0]["n2o_coefficient_registry_status"] == "resolved"
     assert "FCH4" in fluxnet["rows"][0]
     assert fluxnet["rows"][0]["FCH4"] != -9999.0
     assert "FN2O" in fluxnet["rows"][0]
@@ -492,6 +525,7 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert "ch4_flux_nmol_m2_s" in manifest["trace_gas_fields"]
     assert "n2o_flux_nmol_m2_s" in manifest["trace_gas_fields"]
     assert "n2o_correction_sequence" in manifest["trace_gas_fields"]
+    assert "n2o_coefficient_profile_id" in manifest["trace_gas_fields"]
     assert "ch4_coefficient_profile_id" in manifest["trace_gas_fields"]
     assert "li7700_diagnostics_status" in manifest["trace_gas_fields"]
     assert "FCH4" in manifest["network_trace_gas_fields"]

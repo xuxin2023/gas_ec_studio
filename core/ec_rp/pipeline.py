@@ -96,6 +96,30 @@ LI7700_BUILTIN_COEFFICIENT_PROFILES: dict[str, dict[str, Any]] = {
 }
 
 
+TRACE_GAS_BUILTIN_CORRECTION_PROFILES: dict[str, dict[str, Any]] = {
+    "n2o_identity_empirical": {
+        "profile_id": "n2o_identity_empirical",
+        "gas": "n2o",
+        "label": "N2O identity empirical correction profile",
+        "source": "builtin",
+        "source_file": "builtin:n2o_identity_empirical",
+        "normalization_command": "gas_ec_studio builtin n2o_identity_empirical",
+        "method": "n2o_empirical_correction_sequence_v1",
+        "spectral_correction_factor": 1.0,
+        "analyzer_correction_factor": 1.0,
+        "density_correction_factor": 1.0,
+        "provenance": (
+            "Built-in N2O empirical trace-gas profile that preserves Level 0 covariance flux "
+            "until site-specific spectral/analyzer correction evidence is configured."
+        ),
+        "known_limitations": [
+            "Identity factors do not represent an N2O-specific analyzer or spectral transfer model.",
+            "Numeric EddyPro parity for N2O requires paired reference output and analyzer-specific settings.",
+        ],
+    }
+}
+
+
 class ECRPPipeline:
     def run(
         self,
@@ -1014,6 +1038,15 @@ class ECRPPipeline:
         )
         diagnostics["n2o_correction_sequence"] = n2o_sequence
         diagnostics["n2o_detail"] = {**n2o_metrics, "correction_sequence": n2o_sequence}
+        diagnostics["n2o_coefficient_profile_id"] = n2o_sequence.get("coefficient_profile_id", n2o_config.get("coefficient_profile_id", ""))
+        diagnostics["n2o_coefficient_registry_status"] = n2o_sequence.get("coefficient_registry_status", n2o_config.get("coefficient_registry_status", ""))
+        diagnostics["n2o_coefficient_profile_label"] = n2o_sequence.get("coefficient_profile_label", n2o_config.get("coefficient_profile_label", ""))
+        diagnostics["n2o_coefficient_profile_source"] = n2o_sequence.get("coefficient_profile_source", n2o_config.get("coefficient_profile_source", ""))
+        diagnostics["n2o_coefficient_source_file"] = n2o_sequence.get("coefficient_source_file", n2o_config.get("coefficient_profile_source_file", ""))
+        diagnostics["n2o_coefficient_normalization_command"] = n2o_sequence.get("coefficient_normalization_command", n2o_config.get("coefficient_profile_normalization_command", ""))
+        diagnostics["n2o_coefficient_profile_provenance"] = n2o_sequence.get("coefficient_profile_provenance", n2o_config.get("coefficient_profile_provenance", ""))
+        diagnostics["n2o_coefficient_profile_limitations"] = list(n2o_config.get("coefficient_profile_limitations", []) or [])
+        diagnostics["n2o_coefficient_profile"] = dict(n2o_config.get("coefficient_profile", {}) or {})
         if n2o_sequence.get("status") == "computed":
             diagnostics["n2o_status"] = "computed"
             diagnostics["n2o_method"] = n2o_sequence.get("selected_method", "n2o_empirical_correction_sequence_v1")
@@ -1036,6 +1069,10 @@ class ECRPPipeline:
                     "spectral_correction_factor": diagnostics["n2o_spectral_correction_factor"],
                     "analyzer_correction_factor": diagnostics["n2o_analyzer_correction_factor"],
                     "density_correction_factor": diagnostics["n2o_density_correction_factor"],
+                    "coefficient_profile_id": diagnostics["n2o_coefficient_profile_id"],
+                    "coefficient_registry_status": diagnostics["n2o_coefficient_registry_status"],
+                    "coefficient_profile_source_file": diagnostics["n2o_coefficient_source_file"],
+                    "coefficient_profile_provenance": diagnostics["n2o_coefficient_profile_provenance"],
                     "provenance": diagnostics["n2o_provenance"],
                     "limitations": diagnostics["n2o_limitations"],
                 }
@@ -2356,6 +2393,10 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
             "average_n2o_level0_flux_nmol_m2_s": None,
             "n2o_method": "not_available",
             "n2o_correction_sequence": {},
+            "n2o_coefficient_profile_id": "",
+            "n2o_coefficient_registry_status": "",
+            "n2o_coefficient_profile_source_file": "",
+            "n2o_coefficient_profile_provenance": "",
             "method": "not_available",
             "coefficient_profile_id": "",
             "coefficient_registry_status": "",
@@ -2417,6 +2458,13 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
         ),
         "n2o_method": n2o_first.get("n2o_method", "not_available"),
         "n2o_correction_sequence": n2o_first.get("n2o_correction_sequence", {}),
+        "n2o_coefficient_profile_id": n2o_first.get("n2o_coefficient_profile_id", ""),
+        "n2o_coefficient_registry_status": n2o_first.get("n2o_coefficient_registry_status", ""),
+        "n2o_coefficient_profile_label": n2o_first.get("n2o_coefficient_profile_label", ""),
+        "n2o_coefficient_profile_source_file": n2o_first.get("n2o_coefficient_source_file", ""),
+        "n2o_coefficient_profile_normalization_command": n2o_first.get("n2o_coefficient_normalization_command", ""),
+        "n2o_coefficient_profile_provenance": n2o_first.get("n2o_coefficient_profile_provenance", ""),
+        "n2o_coefficient_profile_limitations": list(n2o_first.get("n2o_coefficient_profile_limitations", []) or []),
         "n2o_provenance": n2o_first.get("n2o_provenance", ""),
         "n2o_limitations": list(n2o_first.get("n2o_limitations", []) or []),
         "method": first.get("ch4_method", "not_available"),
@@ -2474,6 +2522,10 @@ def _empty_summary(
             "average_n2o_level0_flux_nmol_m2_s": None,
             "n2o_method": "not_available",
             "n2o_correction_sequence": {},
+            "n2o_coefficient_profile_id": "",
+            "n2o_coefficient_registry_status": "",
+            "n2o_coefficient_profile_source_file": "",
+            "n2o_coefficient_profile_provenance": "",
             "method": "not_available",
             "coefficient_profile_id": "",
             "coefficient_registry_status": "",
@@ -3014,6 +3066,15 @@ def _extract_trace_gas_config(config: dict[str, Any]) -> dict[str, Any]:
     ch4["coefficient_profile_limitations"] = list(coefficient_resolution.get("known_limitations", []) or [])
     ch4["coefficient_profile"] = coefficient_resolution.get("profile", {})
     n2o = dict(trace.get("n2o", {}) or {}) if isinstance(trace.get("n2o", {}), dict) else {}
+    n2o_profile_resolution = _resolve_trace_gas_correction_profile(
+        config=config,
+        trace=trace,
+        gas_key="n2o",
+        gas_config=n2o,
+        default_profile_id="n2o_identity_empirical",
+    )
+    n2o_profile_config = _trace_gas_profile_to_config(n2o_profile_resolution.get("profile", {}))
+    n2o = _merge_nested_dict(n2o_profile_config, n2o)
     n2o.setdefault("enabled", True)
     n2o.setdefault("method", "n2o_empirical_correction_sequence_v1")
     n2o.setdefault("spectral_correction_factor", 1.0)
@@ -3027,7 +3088,234 @@ def _extract_trace_gas_config(config: dict[str, Any]) -> dict[str, Any]:
             "N2O-specific spectral/analyzer model parity is not claimed by the default profile.",
         ],
     )
-    return {"ch4": ch4, "n2o": n2o, "coefficient_registry": {"li7700": coefficient_resolution}}
+    n2o["coefficient_profile_id"] = n2o_profile_resolution.get("profile_id", "")
+    n2o["coefficient_registry_status"] = n2o_profile_resolution.get("status", "")
+    n2o["coefficient_profile_label"] = n2o_profile_resolution.get("label", "")
+    n2o["coefficient_profile_source"] = n2o_profile_resolution.get("source", "")
+    n2o["coefficient_profile_source_file"] = n2o_profile_resolution.get("source_file", "")
+    n2o["coefficient_profile_normalization_command"] = n2o_profile_resolution.get("normalization_command", "")
+    n2o["coefficient_profile_provenance"] = n2o_profile_resolution.get("provenance", "")
+    n2o["coefficient_profile_limitations"] = list(n2o_profile_resolution.get("known_limitations", []) or [])
+    n2o["coefficient_profile"] = n2o_profile_resolution.get("profile", {})
+    return {
+        "ch4": ch4,
+        "n2o": n2o,
+        "coefficient_registry": {
+            "li7700": coefficient_resolution,
+            "trace_gas": {"n2o": n2o_profile_resolution},
+        },
+    }
+
+
+def _resolve_trace_gas_correction_profile(
+    *,
+    config: dict[str, Any],
+    trace: dict[str, Any],
+    gas_key: str,
+    gas_config: dict[str, Any],
+    default_profile_id: str,
+) -> dict[str, Any]:
+    registry = _collect_trace_gas_correction_profiles(config=config, trace=trace, gas_key=gas_key, gas_config=gas_config)
+    profile_id = _selected_trace_gas_profile_id(
+        config=config,
+        trace=trace,
+        gas_key=gas_key,
+        gas_config=gas_config,
+    )
+    status = "resolved"
+    if not profile_id:
+        profile_id = default_profile_id
+        status = "builtin_default"
+    profile = dict(registry.get(str(profile_id), {}) or {})
+    if not profile:
+        return {
+            "profile_id": str(profile_id),
+            "status": "profile_not_found",
+            "label": "",
+            "source": "",
+            "source_file": "",
+            "normalization_command": "",
+            "provenance": f"{gas_key.upper()} trace-gas correction profile '{profile_id}' was requested but not found.",
+            "known_limitations": [f"Requested {gas_key.upper()} trace-gas correction profile was not found; identity factors were used."],
+            "available_profile_ids": sorted(registry),
+            "profile": {},
+        }
+    profile.setdefault("profile_id", str(profile_id))
+    profile.setdefault("gas", gas_key)
+    profile.setdefault("label", str(profile_id))
+    profile.setdefault("source", "custom")
+    profile.setdefault("source_file", "")
+    profile.setdefault("normalization_command", "")
+    profile.setdefault("provenance", f"{gas_key.upper()} trace-gas correction profile '{profile_id}' resolved from profile registry.")
+    limitations = profile.get("known_limitations", profile.get("limitations", []))
+    if isinstance(limitations, str):
+        limitations = [limitations]
+    return {
+        "profile_id": str(profile.get("profile_id", profile_id)),
+        "status": status,
+        "label": str(profile.get("label", profile_id)),
+        "source": str(profile.get("source", "")),
+        "source_file": str(profile.get("source_file", "")),
+        "normalization_command": str(profile.get("normalization_command", "")),
+        "provenance": str(profile.get("provenance", "")),
+        "known_limitations": [str(item) for item in limitations if str(item)],
+        "available_profile_ids": sorted(registry),
+        "profile": profile,
+    }
+
+
+def _selected_trace_gas_profile_id(
+    *,
+    config: dict[str, Any],
+    trace: dict[str, Any],
+    gas_key: str,
+    gas_config: dict[str, Any],
+) -> str:
+    gas_payload = trace.get(gas_key, {}) if isinstance(trace.get(gas_key, {}), dict) else {}
+    for payload in (gas_config, gas_payload, trace):
+        if not isinstance(payload, dict):
+            continue
+        for key in (
+            "coefficient_profile_id",
+            "correction_profile_id",
+            "trace_gas_profile_id",
+            "profile_id",
+            f"{gas_key}_profile_id",
+            f"{gas_key}_coefficient_profile_id",
+        ):
+            value = payload.get(key)
+            if isinstance(value, dict):
+                value = value.get("profile_id", value.get("id", value.get("coefficient_profile_id", "")))
+            if value not in (None, ""):
+                return str(value)
+    metadata = config.get("metadata_bundle", {})
+    instruments = metadata.get("instruments", {}) if isinstance(metadata, dict) else {}
+    extra = instruments.get("extra", {}) if isinstance(instruments, dict) else {}
+    for payload in (extra, instruments):
+        if not isinstance(payload, dict):
+            continue
+        for key in (f"{gas_key}_trace_gas_profile_id", f"{gas_key}_coefficient_profile_id", "trace_gas_profile_id"):
+            value = payload.get(key)
+            if value not in (None, ""):
+                return str(value)
+    return ""
+
+
+def _collect_trace_gas_correction_profiles(
+    *,
+    config: dict[str, Any],
+    trace: dict[str, Any],
+    gas_key: str,
+    gas_config: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    profiles: dict[str, dict[str, Any]] = {
+        key: dict(value)
+        for key, value in TRACE_GAS_BUILTIN_CORRECTION_PROFILES.items()
+        if str(value.get("gas", gas_key)).lower() == gas_key
+    }
+    metadata = config.get("metadata_bundle", {})
+    instruments = metadata.get("instruments", {}) if isinstance(metadata, dict) else {}
+    extra = instruments.get("extra", {}) if isinstance(instruments, dict) else {}
+    containers = [
+        gas_config,
+        config.get("trace_gas_profile_registry"),
+        config.get("trace_gas_coefficient_registry"),
+        config.get("coefficient_registry"),
+        trace.get("profile_registry"),
+        trace.get("trace_gas_profile_registry"),
+        trace.get("coefficient_registry"),
+        gas_config.get("profile_registry"),
+        gas_config.get("coefficient_registry"),
+        gas_config.get("coefficient_profile"),
+        instruments.get("trace_gas_profile_registry") if isinstance(instruments, dict) else None,
+        extra.get("trace_gas_profile_registry") if isinstance(extra, dict) else None,
+    ]
+    for container in containers:
+        for profile_id, profile in _iter_trace_gas_registry_profiles(container, gas_key=gas_key):
+            if profile_id:
+                profiles[str(profile_id)] = profile
+    return profiles
+
+
+def _iter_trace_gas_registry_profiles(container: Any, *, gas_key: str) -> list[tuple[str, dict[str, Any]]]:
+    if not container:
+        return []
+    if isinstance(container, list):
+        results: list[tuple[str, dict[str, Any]]] = []
+        for item in container:
+            if isinstance(item, dict):
+                profile = dict(item)
+                gas = str(profile.get("gas", profile.get("gas_key", gas_key)) or gas_key).lower()
+                if gas != gas_key:
+                    continue
+                profile_id = str(profile.get("profile_id", profile.get("id", profile.get("coefficient_profile_id", ""))))
+                if profile_id:
+                    profile.setdefault("profile_id", profile_id)
+                    profile.setdefault("gas", gas_key)
+                    results.append((profile_id, profile))
+        return results
+    if not isinstance(container, dict):
+        return []
+    if _looks_like_trace_gas_profile(container, gas_key=gas_key):
+        profile = dict(container)
+        profile_id = str(profile.get("profile_id", profile.get("id", profile.get("coefficient_profile_id", ""))))
+        if profile_id:
+            profile.setdefault("profile_id", profile_id)
+            profile.setdefault("gas", gas_key)
+            return [(profile_id, profile)]
+    results = []
+    nested = container.get(gas_key) if isinstance(container.get(gas_key), dict) else None
+    if nested is not None and nested is not container:
+        results.extend(_iter_trace_gas_registry_profiles(nested, gas_key=gas_key))
+    for key, value in container.items():
+        if key == gas_key or not isinstance(value, dict):
+            continue
+        if not _looks_like_trace_gas_profile(value, gas_key=gas_key) and any(isinstance(item, dict) for item in value.values()):
+            results.extend(_iter_trace_gas_registry_profiles(value, gas_key=gas_key))
+            continue
+        profile = dict(value)
+        gas = str(profile.get("gas", profile.get("gas_key", gas_key)) or gas_key).lower()
+        if gas != gas_key:
+            continue
+        profile_id = str(profile.get("profile_id", profile.get("id", profile.get("coefficient_profile_id", key))))
+        profile.setdefault("profile_id", profile_id)
+        profile.setdefault("gas", gas_key)
+        results.append((profile_id, profile))
+    return results
+
+
+def _looks_like_trace_gas_profile(payload: dict[str, Any], *, gas_key: str) -> bool:
+    gas = str(payload.get("gas", payload.get("gas_key", gas_key)) or gas_key).lower()
+    return gas == gas_key and any(
+        key in payload
+        for key in (
+            "spectral_correction_factor",
+            "analyzer_correction_factor",
+            "density_correction_factor",
+            "spectral_correction",
+            "analyzer_correction",
+            "correction_profile",
+            "coefficient_profile_id",
+        )
+    )
+
+
+def _trace_gas_profile_to_config(profile: Any) -> dict[str, Any]:
+    if not isinstance(profile, dict) or not profile:
+        return {}
+    keep_keys = {
+        "method",
+        "spectral_correction_factor",
+        "analyzer_correction_factor",
+        "density_correction_factor",
+        "spectral_correction",
+        "analyzer_correction",
+        "density_correction",
+        "use_spectral_correction_factor",
+        "limitations",
+        "known_limitations",
+    }
+    return {key: value for key, value in dict(profile).items() if key in keep_keys}
 
 
 def _resolve_li7700_coefficient_profile(

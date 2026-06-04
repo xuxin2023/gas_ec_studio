@@ -66,6 +66,8 @@ def test_computation_stress_suite_passes_core_method_families(tmp_path: Path) ->
     assert multi_gas_case["metrics"]["ch4_correction_sequence_status"] == "computed"
     assert multi_gas_case["metrics"]["ch4_computed_window_count"] == multi_gas_case["metrics"]["window_count"]
     assert multi_gas_case["metrics"]["n2o_method"] == "n2o_empirical_correction_sequence_v1"
+    assert multi_gas_case["metrics"]["n2o_coefficient_profile_id"] == "stress_n2o_empirical_profile"
+    assert multi_gas_case["metrics"]["n2o_coefficient_registry_status"] == "resolved"
     assert multi_gas_case["metrics"]["n2o_computed_window_count"] == multi_gas_case["metrics"]["window_count"]
     assert multi_gas_case["metrics"]["n2o_boundary_status"] == "computed_empirical_sequence"
     assert multi_gas_case["metrics"]["n2o_flux_level0_nmol_m2_s"] != multi_gas_case["metrics"]["n2o_flux_nmol_m2_s"]

@@ -2141,7 +2141,9 @@ def compute_trace_gas_empirical_correction_sequence(
     normalization_command = str(
         cfg.get("coefficient_profile_normalization_command", profile.get("normalization_command", "")) or ""
     )
-    configured_limitations = [str(item) for item in cfg.get("limitations", cfg.get("known_limitations", [])) or [] if str(item)]
+    configured_limitations = [str(item) for item in cfg.get("limitations", []) or [] if str(item)]
+    configured_limitations.extend(str(item) for item in cfg.get("known_limitations", []) or [] if str(item))
+    configured_limitations.extend(str(item) for item in cfg.get("coefficient_profile_limitations", []) or [] if str(item))
     limitations = [
         f"{gas_label} correction sequence uses configured empirical factors; it is not a gas-specific proprietary analyzer model.",
         f"{gas_label} spectral/analyzer factors require paired reference evidence before EddyPro numeric parity can be claimed.",
@@ -2167,8 +2169,12 @@ def compute_trace_gas_empirical_correction_sequence(
         "density_correction_factor": density_factor,
         "changed_level0": not math.isclose(final_flux, level0_flux, rel_tol=1e-12, abs_tol=1e-12),
         "coefficient_profile_id": profile_id,
+        "coefficient_registry_status": str(cfg.get("coefficient_registry_status", "")),
+        "coefficient_profile_label": str(cfg.get("coefficient_profile_label", "")),
+        "coefficient_profile_source": str(cfg.get("coefficient_profile_source", "")),
         "coefficient_source_file": source_file,
         "coefficient_normalization_command": normalization_command,
+        "coefficient_profile_provenance": str(cfg.get("coefficient_profile_provenance", profile.get("provenance", "")) or ""),
         "coefficient_profile": profile,
         "levels": {
             "level0": {
@@ -2201,8 +2207,12 @@ def compute_trace_gas_empirical_correction_sequence(
             "density": density_cfg or {"mode": "empirical_factor", "factor": density_factor},
             "coefficient_profile": {
                 "profile_id": profile_id,
+                "registry_status": str(cfg.get("coefficient_registry_status", "")),
+                "label": str(cfg.get("coefficient_profile_label", "")),
+                "source": str(cfg.get("coefficient_profile_source", "")),
                 "source_file": source_file,
                 "normalization_command": normalization_command,
+                "provenance": str(cfg.get("coefficient_profile_provenance", profile.get("provenance", "")) or ""),
             },
         },
         "provenance": (

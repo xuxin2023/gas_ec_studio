@@ -6693,7 +6693,9 @@ class StudioController(QObject):
             table_rows.append(("trace_gas.ch4_avg_flux", str(trace_gas_summary.get("average_ch4_flux_nmol_m2_s", "--")), "Average corrected CH4 flux"))
             table_rows.append(("trace_gas.n2o_method", trace_gas_summary.get("n2o_method", "--") or "--", "N2O covariance method"))
             table_rows.append(("trace_gas.n2o_windows", str(trace_gas_summary.get("n2o_computed_window_count", 0)), "N2O computed windows"))
-            table_rows.append(("trace_gas.n2o_avg_flux", str(trace_gas_summary.get("average_n2o_flux_nmol_m2_s", "--")), "Average N2O level0 flux"))
+            table_rows.append(("trace_gas.n2o_avg_flux", str(trace_gas_summary.get("average_n2o_flux_nmol_m2_s", "--")), "Average N2O corrected flux"))
+            table_rows.append(("trace_gas.n2o_profile", trace_gas_summary.get("n2o_coefficient_profile_id", "--") or "--", "N2O correction profile"))
+            table_rows.append(("trace_gas.n2o_profile_source", trace_gas_summary.get("n2o_coefficient_profile_source_file", "--") or "--", "N2O correction profile source"))
         for detail in per_window_detail:
             ms = detail.get("match_strategy", "")
             table_rows.append((
