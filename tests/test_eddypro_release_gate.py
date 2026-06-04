@@ -134,10 +134,10 @@ def _computation_stress_suite(status: str = "pass", *, surface_status: str = "re
     return {
         "artifact_type": "eddypro_computation_stress_suite_v1",
         "status": status,
-        "case_count": 9,
-        "passed_case_count": 9 if status == "pass" else 8,
+        "case_count": 10,
+        "passed_case_count": 10 if status == "pass" else 9,
         "failed_case_count": 0 if status == "pass" else 1,
-        "pass_rate": 1.0 if status == "pass" else 8 / 9,
+        "pass_rate": 1.0 if status == "pass" else 9 / 10,
         "failed_cases": [] if status == "pass" else [{"case_id": "spectral_case", "family": "spectral_correction"}],
         "computation_surface": {
             "status": surface_status,
@@ -147,12 +147,13 @@ def _computation_stress_suite(status: str = "pass", *, surface_status: str = "re
                 "raw_import_edge_cases",
                 "rotation_lag",
                 "flux_density_energy",
+                "multi_gas_final_flux",
                 "footprint",
                 "uncertainty",
                 "spectral_correction",
                 "ch4_li7700",
             ],
-            "ready_family_count": 9 if surface_status == "ready" else 8,
+            "ready_family_count": 10 if surface_status == "ready" else 9,
             "blocked_family_count": 0 if surface_status == "ready" else 1,
             "family_status": {
                 "pipeline_core": "pass",
@@ -160,6 +161,7 @@ def _computation_stress_suite(status: str = "pass", *, surface_status: str = "re
                 "raw_import_edge_cases": "pass",
                 "rotation_lag": "pass",
                 "flux_density_energy": "pass",
+                "multi_gas_final_flux": "pass",
                 "footprint": "pass",
                 "uncertainty": "pass",
                 "spectral_correction": "pass" if surface_status == "ready" else "fail",
@@ -235,7 +237,7 @@ def test_eddypro_release_gate_releases_source_derived_computation_when_surface_r
     assert gate["source_derived_computation_ci_exit_code"] == 0
     assert gate["summary"]["source_derived_computation_gate_status"] == "pass"
     assert gate["summary"]["computation_surface_status"] == "ready"
-    assert gate["summary"]["computation_surface_ready_family_count"] == 9
+    assert gate["summary"]["computation_surface_ready_family_count"] == 10
     assert Path(gate["artifacts"]["eddypro_computation_stress_suite"]).exists()
     assert Path(gate["artifacts"]["eddypro_computation_scope_audit"]).exists()
 

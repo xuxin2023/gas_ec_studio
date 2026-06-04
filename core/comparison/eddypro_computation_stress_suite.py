@@ -51,6 +51,7 @@ def build_eddypro_computation_stress_suite(
         _raw_import_edge_cases_stress_case(root),
         _rotation_lag_stress_case(),
         _flux_density_energy_closed_path_case(),
+        _multi_gas_final_flux_stress_case(),
         _footprint_stress_case(),
         _uncertainty_stress_case(),
         _spectral_correction_stress_case(),
@@ -789,6 +790,158 @@ def _flux_density_energy_closed_path_case() -> dict[str, Any]:
     )
 
 
+def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
+    from core.headless_batch_runner import run_headless_batch
+
+    rows = _make_multi_gas_rows(samples=1200, sample_rate_hz=10.0)
+    metadata = MetadataBundle(
+        project=ProjectProfile(code="STRESS-MG", name="Multi Gas Final Flux Stress"),
+        site=SiteProfile(station_code="MG", station_name="Multi Gas Tower"),
+    )
+    config = {
+        "sample_hz": 10.0,
+        "block_minutes": 0.5,
+        "rotation_mode": "double",
+        "detrend_mode": "linear",
+        "density_correction_mode": "wpl",
+        "lag_phase": {"strategy": "covariance_max", "search_window_s": 1.0, "expected_lag_s": 0.4},
+        "network_output": {"schema_target": "FLUXNET", "timestamp_refers_to": "start", "timezone_offset_hours": 0.0},
+        "trace_gas": {
+            "ch4": {
+                "coefficient_profile_id": "stress_li7700_multi_gas",
+                "coefficient_registry": {
+                    "stress_li7700_multi_gas": {
+                        "label": "Stress LI-7700 multi-gas coefficients",
+                        "source": "source_derived_stress_fixture",
+                        "source_file": "core/comparison/eddypro_computation_stress_suite.py",
+                        "normalization_command": "gas_ec stress-suite --family multi_gas_final_flux",
+                        "spectroscopic_correction": {
+                            "mode": "empirical",
+                            "pressure_sensitivity_per_kpa": 0.001,
+                            "temperature_sensitivity_per_c": 0.0005,
+                            "h2o_sensitivity_per_molfrac": 0.1,
+                        },
+                        "self_heating_correction": {
+                            "mode": "empirical",
+                            "sensor_body_temp_c": 27.0,
+                            "flux_sensitivity_per_c": 0.01,
+                        },
+                        "known_limitations": [
+                            "Synthetic coefficients are for deterministic stress evidence only.",
+                            "Official EddyPro CH4 parity still requires paired raw/settings/Full_Output evidence.",
+                        ],
+                    }
+                },
+                "spectral_correction_factor": 1.04,
+                "apply_water_vapor_dilution": True,
+                "status_diagnostics": {
+                    "min_rssi_warning_pct": 40.0,
+                    "min_signal_strength_warning_pct": 40.0,
+                    "require_lock": True,
+                    "allowed_status_words": [0],
+                },
+            },
+            "n2o": {
+                "enabled": False,
+                "status": "not_implemented",
+                "truthfulness_boundary": "N2O high-frequency flux is intentionally not claimed until a real N2O channel/model is added.",
+            },
+        },
+    }
+    result = run_headless_batch(config=config, metadata=metadata, rows=rows, data_source="multi-gas-final-flux-stress")
+    rp_result = result["rp_result"]
+    windows = list(rp_result.windows or [])
+    first = windows[0] if windows else None
+    diagnostics = dict(first.diagnostics if first is not None else {})
+    trace_summary = dict(rp_result.summary.get("trace_gas_summary", {}) if isinstance(rp_result.summary, dict) else {})
+    manifest = dict(result.get("manifest", {}) or {})
+    manifest_trace_summary = dict(manifest.get("trace_gas_summary", {}) or {})
+    ledger = dict(diagnostics.get("flux_correction_ledger", {}) or {})
+    ledger_stages = list(ledger.get("stages", []) or [])
+    ch4_ledger_stage = next(
+        (dict(stage or {}) for stage in ledger_stages if dict(stage or {}).get("stage") == "ch4_li7700_sequence"),
+        {},
+    )
+    first_payload = json.loads(rows[0].raw_text) if rows else {}
+    trace_family = dict(diagnostics.get("trace_gas_family", {}) or {})
+    ch4_family = dict(trace_family.get("ch4", {}) or {})
+    ch4_sequence = dict(diagnostics.get("ch4_correction_sequence", {}) or {})
+
+    failures: list[str] = []
+    if len(windows) < 2:
+        failures.append(f"multi_gas_window_count={len(windows)}")
+    if first is None:
+        failures.append("multi_gas_first_window_missing")
+    if first is not None and not _finite_number(first.primary_flux):
+        failures.append("co2_primary_flux_not_finite")
+    if first is not None and not _finite_number(first.water_vapor_flux):
+        failures.append("h2o_water_vapor_flux_not_finite")
+    if diagnostics.get("ch4_status") != "computed":
+        failures.append(f"ch4_status={diagnostics.get('ch4_status', '')}")
+    if diagnostics.get("ch4_method") != "li_7700_correction_sequence_v1":
+        failures.append(f"ch4_method={diagnostics.get('ch4_method', '')}")
+    if not _positive_number(abs(float(diagnostics.get("ch4_flux_nmol_m2_s", 0.0) or 0.0))):
+        failures.append("ch4_final_flux_not_nonzero")
+    if diagnostics.get("ch4_flux_level0_nmol_m2_s") == diagnostics.get("ch4_flux_nmol_m2_s"):
+        failures.append("ch4_correction_sequence_did_not_change_level0")
+    if ch4_sequence.get("status") != "computed":
+        failures.append(f"ch4_sequence_status={ch4_sequence.get('status', '')}")
+    if ch4_ledger_stage.get("status") != "computed":
+        failures.append("flux_ledger_missing_computed_ch4_stage")
+    if trace_summary.get("status") != "computed":
+        failures.append(f"trace_summary_status={trace_summary.get('status', '')}")
+    if int(trace_summary.get("ch4_computed_window_count", 0) or 0) != len(windows):
+        failures.append("trace_summary_ch4_window_count_mismatch")
+    if manifest_trace_summary.get("status") != "computed":
+        failures.append(f"manifest_trace_summary_status={manifest_trace_summary.get('status', '')}")
+    if ch4_family.get("correction_sequence_status") != "computed":
+        failures.append("trace_gas_family_ch4_sequence_not_computed")
+    if "n2o_ppb" not in first_payload:
+        failures.append("n2o_payload_not_preserved")
+    if "n2o" in trace_family:
+        failures.append("n2o_trace_family_claimed_without_model")
+
+    return _case_payload(
+        case_id="multi_gas_final_flux_window_stress",
+        family="multi_gas_final_flux",
+        status="pass" if not failures else "fail",
+        failure_reasons=failures,
+        metrics={
+            "window_count": len(windows),
+            "co2_primary_flux": first.primary_flux if first is not None else None,
+            "primary_flux_source": first.primary_flux_source if first is not None else "",
+            "h2o_water_vapor_flux": first.water_vapor_flux if first is not None else None,
+            "ch4_flux_level0_nmol_m2_s": diagnostics.get("ch4_flux_level0_nmol_m2_s"),
+            "ch4_flux_nmol_m2_s": diagnostics.get("ch4_flux_nmol_m2_s"),
+            "ch4_correction_sequence_status": ch4_sequence.get("status", ""),
+            "trace_gas_summary_status": trace_summary.get("status", ""),
+            "ch4_computed_window_count": trace_summary.get("ch4_computed_window_count", 0),
+            "n2o_boundary_status": "not_implemented",
+        },
+        details={
+            "trace_gas_summary": trace_summary,
+            "manifest_trace_gas_summary": manifest_trace_summary,
+            "trace_gas_family": trace_family,
+            "ch4_correction_sequence": ch4_sequence,
+            "flux_correction_ch4_stage": ch4_ledger_stage,
+            "n2o_boundary": {
+                "status": "not_implemented",
+                "raw_payload_field_preserved": "n2o_ppb" in first_payload,
+                "claimed_in_trace_gas_family": "n2o" in trace_family,
+                "reason": "NormalizedHFFrame and RP diagnostics currently implement CH4 trace-gas flux, not N2O final flux.",
+                "next_required_work": [
+                    "Add an N2O high-frequency channel to normalized frames or trace-gas payload extraction.",
+                    "Implement N2O covariance, density/spectral corrections, diagnostics, exporter fields, and parity mapping.",
+                ],
+            },
+            "truthfulness_boundary": (
+                "CO2/H2O/CH4 final flux paths are stress-verified here; N2O is deliberately recorded "
+                "as not implemented rather than counted as a computed trace gas."
+            ),
+        },
+    )
+
+
 def _footprint_stress_case() -> dict[str, Any]:
     methods = ["kljun", "kormann_meixner", "hsieh"]
     stability_values = [-120.0, None, 160.0]
@@ -1078,6 +1231,54 @@ def _make_li7700_rows(samples: int = 120) -> list[NormalizedHFFrame]:
     return rows
 
 
+def _make_multi_gas_rows(samples: int = 1200, sample_rate_hz: float = 10.0) -> list[NormalizedHFFrame]:
+    start = datetime(2026, 6, 4, 9, 0, 0)
+    axis = np.arange(samples, dtype=float) / sample_rate_hz
+    w = 0.46 * np.sin(2.0 * np.pi * 0.18 * axis) + 0.09 * np.cos(2.0 * np.pi * 0.59 * axis)
+    u = 2.45 + 0.14 * np.sin(2.0 * np.pi * 0.03 * axis)
+    v = 0.22 * np.cos(2.0 * np.pi * 0.04 * axis)
+    co2 = 410.0 + 8.0 * np.roll(w, 4) + 0.04 * np.sin(2.0 * np.pi * 0.9 * axis)
+    h2o = 12.2 + 1.05 * np.roll(w, 2) + 0.02 * np.cos(2.0 * np.pi * 0.7 * axis)
+    ch4 = 1905.0 + 36.0 * w
+    n2o = 332.0 + 1.8 * np.roll(w, 3)
+    pressure = 101.25 + 0.03 * np.sin(2.0 * np.pi * 0.02 * axis)
+    temp = 24.7 + 0.35 * np.sin(2.0 * np.pi * 0.05 * axis)
+    rows: list[NormalizedHFFrame] = []
+    for index in range(samples):
+        rows.append(
+            NormalizedHFFrame(
+                timestamp=start + timedelta(seconds=float(axis[index])),
+                device_uid="stress-multi-gas",
+                device_id="multi-gas-li7700",
+                mode=2,
+                frame_quality=FrameQuality.FULL,
+                co2_ppm=float(co2[index]),
+                h2o_mmol=float(h2o[index]),
+                pressure_kpa=float(pressure[index]),
+                chamber_temp_c=float(temp[index]),
+                ch4_ppb=float(ch4[index]),
+                raw_text=json.dumps(
+                    {
+                        "u": float(u[index]),
+                        "v": float(v[index]),
+                        "w": float(w[index]),
+                        "n2o_ppb": float(n2o[index]),
+                        "li7700_rssi": float(68.0 + 2.5 * np.sin(2.0 * np.pi * 0.02 * axis[index])),
+                        "li7700_signal_strength": float(74.0 + 1.5 * np.cos(2.0 * np.pi * 0.03 * axis[index])),
+                        "mirror_rssi": 82.0,
+                        "mirror_dirty": False,
+                        "pll_locked": True,
+                        "diagnostic_status": "ok",
+                        "li7700_status_word": 0,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+            )
+        )
+    return rows
+
+
 def _fp2_word(value: float, decimals: int) -> int:
     sign_bit = 0x80 if value < 0 else 0
     mantissa = int(round(abs(value) * (10**decimals)))
@@ -1116,6 +1317,7 @@ def _computation_surface(cases: list[dict[str, Any]]) -> dict[str, Any]:
         "raw_import_edge_cases",
         "rotation_lag",
         "flux_density_energy",
+        "multi_gas_final_flux",
         "footprint",
         "uncertainty",
         "spectral_correction",

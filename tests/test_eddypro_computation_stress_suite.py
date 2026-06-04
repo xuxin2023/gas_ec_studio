@@ -15,7 +15,7 @@ def test_computation_stress_suite_passes_core_method_families(tmp_path: Path) ->
     assert payload["status"] == "pass"
     assert payload["pass_rate"] == 1.0
     assert payload["failed_cases"] == []
-    assert payload["case_count"] == 9
+    assert payload["case_count"] == 10
     assert payload["computation_surface"]["status"] == "ready"
     assert payload["computation_surface"]["blocked_family_count"] == 0
     assert payload["claim_boundary"]["core_computation_surface_ready"] is True
@@ -24,6 +24,7 @@ def test_computation_stress_suite_passes_core_method_families(tmp_path: Path) ->
     assert payload["family_counts"]["raw_import_edge_cases"] == 1
     assert payload["family_counts"]["rotation_lag"] == 1
     assert payload["family_counts"]["flux_density_energy"] == 1
+    assert payload["family_counts"]["multi_gas_final_flux"] == 1
     assert payload["family_counts"]["footprint"] == 1
     assert payload["family_counts"]["uncertainty"] == 1
     assert payload["family_counts"]["spectral_correction"] == 1
@@ -57,6 +58,14 @@ def test_computation_stress_suite_passes_core_method_families(tmp_path: Path) ->
     assert flux_case["metrics"]["density_modes_checked"] == ["mixing_ratio", "none", "wpl"]
     assert flux_case["metrics"]["momentum_flux_tau_pa"] > 0.0
     assert flux_case["metrics"]["biomet_override_status"] == "applied"
+
+    multi_gas_case = next(case for case in payload["cases"] if case["family"] == "multi_gas_final_flux")
+    assert multi_gas_case["metrics"]["window_count"] >= 2
+    assert multi_gas_case["metrics"]["primary_flux_source"] == "wpl"
+    assert multi_gas_case["metrics"]["trace_gas_summary_status"] == "computed"
+    assert multi_gas_case["metrics"]["ch4_correction_sequence_status"] == "computed"
+    assert multi_gas_case["metrics"]["ch4_computed_window_count"] == multi_gas_case["metrics"]["window_count"]
+    assert multi_gas_case["metrics"]["n2o_boundary_status"] == "not_implemented"
 
     spectral_case = next(case for case in payload["cases"] if case["family"] == "spectral_correction")
     assert spectral_case["metrics"]["fratini_measured_cospectrum_used"] is True
