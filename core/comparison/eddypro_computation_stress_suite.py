@@ -843,8 +843,11 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
             },
             "n2o": {
                 "enabled": True,
-                "method": "n2o_level0_covariance",
-                "truthfulness_boundary": "N2O high-frequency covariance flux is computed; N2O-specific spectral/analyzer corrections are not yet claimed.",
+                "method": "n2o_empirical_correction_sequence_v1",
+                "spectral_correction_factor": 1.025,
+                "analyzer_correction_factor": 0.985,
+                "density_correction_factor": 1.005,
+                "truthfulness_boundary": "N2O high-frequency covariance flux plus configured empirical correction sequence is computed; N2O-specific proprietary analyzer parity is not yet claimed.",
             },
         },
     }
@@ -903,8 +906,12 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
         failures.append(f"n2o_status={diagnostics.get('n2o_status', '')}")
     if not _positive_number(abs(float(diagnostics.get("n2o_flux_nmol_m2_s", 0.0) or 0.0))):
         failures.append("n2o_flux_not_nonzero")
-    if n2o_family.get("method") != "n2o_level0_covariance":
+    if n2o_family.get("method") != "n2o_empirical_correction_sequence_v1":
         failures.append(f"trace_gas_family_n2o_method={n2o_family.get('method', '')}")
+    if diagnostics.get("n2o_correction_sequence", {}).get("status") != "computed":
+        failures.append("n2o_correction_sequence_not_computed")
+    if diagnostics.get("n2o_flux_level0_nmol_m2_s") == diagnostics.get("n2o_flux_nmol_m2_s"):
+        failures.append("n2o_correction_sequence_did_not_change_level0")
     if int(trace_summary.get("n2o_computed_window_count", 0) or 0) != len(windows):
         failures.append("trace_summary_n2o_window_count_mismatch")
 
@@ -924,9 +931,10 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
             "trace_gas_summary_status": trace_summary.get("status", ""),
             "ch4_computed_window_count": trace_summary.get("ch4_computed_window_count", 0),
             "n2o_flux_nmol_m2_s": diagnostics.get("n2o_flux_nmol_m2_s"),
+            "n2o_flux_level0_nmol_m2_s": diagnostics.get("n2o_flux_level0_nmol_m2_s"),
             "n2o_method": diagnostics.get("n2o_method", ""),
             "n2o_computed_window_count": trace_summary.get("n2o_computed_window_count", 0),
-            "n2o_boundary_status": "computed_level0",
+            "n2o_boundary_status": "computed_empirical_sequence",
         },
         details={
             "trace_gas_summary": trace_summary,
@@ -935,19 +943,19 @@ def _multi_gas_final_flux_stress_case() -> dict[str, Any]:
             "ch4_correction_sequence": ch4_sequence,
             "flux_correction_ch4_stage": ch4_ledger_stage,
             "n2o_boundary": {
-                "status": "computed_level0",
+                "status": "computed_empirical_sequence",
                 "raw_payload_field_preserved": "n2o_ppb" in first_payload,
                 "claimed_in_trace_gas_family": "n2o" in trace_family,
                 "method": diagnostics.get("n2o_method", ""),
-                "reason": "N2O Level 0 covariance flux is computed from high-frequency N2O ppb and rotated vertical wind.",
+                "reason": "N2O Level 0 covariance flux is computed and then propagated through configured empirical spectral/analyzer/density factors.",
                 "next_required_work": [
-                    "Add N2O-specific spectral and analyzer correction families.",
+                    "Replace empirical factors with N2O-specific spectral and analyzer correction families when paired evidence is available.",
                     "Add official EddyPro-compatible N2O reference parity mapping when paired evidence is available.",
                 ],
             },
             "truthfulness_boundary": (
-                "CO2/H2O/CH4 final flux paths and N2O level0 covariance flux are stress-verified here; "
-                "N2O-specific spectral/analyzer correction parity is not claimed."
+                "CO2/H2O/CH4 final flux paths and N2O empirical correction sequence are stress-verified here; "
+                "N2O-specific proprietary analyzer correction parity is not claimed."
             ),
         },
     )

@@ -394,7 +394,16 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
                 },
                 "spectral_correction_factor": 1.04,
                 "apply_water_vapor_dilution": True,
-            }
+            },
+            "n2o": {
+                "method": "n2o_empirical_correction_sequence_v1",
+                "spectral_correction_factor": 1.03,
+                "analyzer_correction_factor": 0.98,
+                "density_correction_factor": 1.01,
+                "coefficient_profile_id": "synthetic_n2o_trace_gas_profile",
+                "coefficient_profile_source_file": "references/eddypro/n2o/synthetic_profile.json",
+                "coefficient_profile_normalization_command": "gas_ec normalize-trace-gas --gas n2o",
+            },
         },
     }
 
@@ -406,9 +415,14 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert diagnostics["ch4_method"] == "li_7700_correction_sequence_v1"
     assert diagnostics["ch4_flux_nmol_m2_s"] != 0.0
     assert diagnostics["n2o_status"] == "computed"
-    assert diagnostics["n2o_method"] == "n2o_level0_covariance"
+    assert diagnostics["n2o_method"] == "n2o_empirical_correction_sequence_v1"
     assert diagnostics["n2o_flux_nmol_m2_s"] != 0.0
+    assert diagnostics["n2o_flux_level0_nmol_m2_s"] != diagnostics["n2o_flux_nmol_m2_s"]
+    assert diagnostics["n2o_correction_sequence"]["levels"]["level1"]["factor"] == pytest.approx(1.03)
+    assert diagnostics["n2o_correction_sequence"]["levels"]["level2"]["factor"] == pytest.approx(0.98)
+    assert diagnostics["n2o_correction_sequence"]["levels"]["level3"]["factor"] == pytest.approx(1.01)
     assert diagnostics["trace_gas_family"]["n2o"]["status"] == "computed"
+    assert diagnostics["trace_gas_family"]["n2o"]["correction_sequence_status"] == "computed"
     assert diagnostics["ch4_flux_level0_nmol_m2_s"] != diagnostics["ch4_flux_nmol_m2_s"]
     assert diagnostics["ch4_correction_sequence"]["levels"]["level1"]["factor"] == 1.04
     assert diagnostics["ch4_coefficient_profile_id"] == "tower_li7700_2026"
@@ -425,6 +439,8 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert result["rp_result"].summary["trace_gas_summary"]["n2o_computed_window_count"] == len(result["rp_result"].windows)
     assert result["rp_result"].summary["trace_gas_summary"]["average_ch4_level0_flux_nmol_m2_s"] is not None
     assert result["rp_result"].summary["trace_gas_summary"]["average_n2o_flux_nmol_m2_s"] is not None
+    assert result["rp_result"].summary["trace_gas_summary"]["average_n2o_level0_flux_nmol_m2_s"] is not None
+    assert result["rp_result"].summary["trace_gas_summary"]["n2o_correction_sequence"]["status"] == "computed"
     assert result["rp_result"].summary["trace_gas_summary"]["coefficient_profile_id"] == "tower_li7700_2026"
     assert result["rp_result"].summary["trace_gas_summary"]["li7700_diagnostics_status"] == "pass"
     assert result["manifest"]["trace_gas_summary"]["status"] == "computed"
@@ -463,6 +479,9 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert rp_rows[0]["ch4_coefficient_profile_id"] == "tower_li7700_2026"
     assert rp_rows[0]["li7700_diagnostics_status"] == "pass"
     assert float(rp_rows[0]["ch4_flux_corrected_nmol_m2_s"]) == float(rp_rows[0]["ch4_flux_nmol_m2_s"])
+    assert rp_rows[0]["n2o_method"] == "n2o_empirical_correction_sequence_v1"
+    assert float(rp_rows[0]["n2o_flux_level0_nmol_m2_s"]) != float(rp_rows[0]["n2o_flux_nmol_m2_s"])
+    assert "n2o_empirical_correction_sequence_v1" in rp_rows[0]["n2o_correction_sequence"]
     assert "FCH4" in fluxnet["rows"][0]
     assert fluxnet["rows"][0]["FCH4"] != -9999.0
     assert "FN2O" in fluxnet["rows"][0]
@@ -472,6 +491,7 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert manifest["trace_gas_summary"]["li7700_diagnostics_status"] == "pass"
     assert "ch4_flux_nmol_m2_s" in manifest["trace_gas_fields"]
     assert "n2o_flux_nmol_m2_s" in manifest["trace_gas_fields"]
+    assert "n2o_correction_sequence" in manifest["trace_gas_fields"]
     assert "ch4_coefficient_profile_id" in manifest["trace_gas_fields"]
     assert "li7700_diagnostics_status" in manifest["trace_gas_fields"]
     assert "FCH4" in manifest["network_trace_gas_fields"]

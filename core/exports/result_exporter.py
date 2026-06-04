@@ -217,10 +217,18 @@ FULL_OUTPUT_SCHEMA = [
     ("ch4_detail", "trace_gas", "real"),
     ("n2o_status", "trace_gas", "real"),
     ("n2o_flux_nmol_m2_s", "trace_gas", "real"),
+    ("n2o_flux_level0_nmol_m2_s", "trace_gas", "real"),
+    ("n2o_flux_level1_spectral_nmol_m2_s", "trace_gas", "real"),
+    ("n2o_flux_level2_analyzer_nmol_m2_s", "trace_gas", "real"),
+    ("n2o_flux_corrected_nmol_m2_s", "trace_gas", "real"),
     ("cov_w_n2o_ppb", "trace_gas", "real"),
     ("mean_n2o_ppb", "trace_gas", "real"),
     ("n2o_valid_ratio", "trace_gas", "real"),
     ("n2o_method", "trace_gas", "real"),
+    ("n2o_spectral_correction_factor", "trace_gas", "real"),
+    ("n2o_analyzer_correction_factor", "trace_gas", "real"),
+    ("n2o_density_correction_factor", "trace_gas", "real"),
+    ("n2o_correction_sequence", "trace_gas", "real"),
     ("n2o_provenance", "trace_gas", "real"),
     ("n2o_limitations", "trace_gas", "real"),
     ("n2o_detail", "trace_gas", "real"),
@@ -1414,10 +1422,18 @@ class ResultExporter:
                 "ch4_limitations",
                 "n2o_status",
                 "n2o_flux_nmol_m2_s",
+                "n2o_flux_level0_nmol_m2_s",
+                "n2o_flux_level1_spectral_nmol_m2_s",
+                "n2o_flux_level2_analyzer_nmol_m2_s",
+                "n2o_flux_corrected_nmol_m2_s",
                 "cov_w_n2o_ppb",
                 "mean_n2o_ppb",
                 "n2o_valid_ratio",
                 "n2o_method",
+                "n2o_spectral_correction_factor",
+                "n2o_analyzer_correction_factor",
+                "n2o_density_correction_factor",
+                "n2o_correction_sequence",
                 "n2o_provenance",
                 "n2o_limitations",
             ],
@@ -1931,10 +1947,20 @@ class ResultExporter:
             else "",
             "n2o_status": diagnostics.get("n2o_status", ""),
             "n2o_flux_nmol_m2_s": diagnostics.get("n2o_flux_nmol_m2_s", ""),
+            "n2o_flux_level0_nmol_m2_s": diagnostics.get("n2o_flux_level0_nmol_m2_s", ""),
+            "n2o_flux_level1_spectral_nmol_m2_s": diagnostics.get("n2o_flux_level1_spectral_nmol_m2_s", ""),
+            "n2o_flux_level2_analyzer_nmol_m2_s": diagnostics.get("n2o_flux_level2_analyzer_nmol_m2_s", ""),
+            "n2o_flux_corrected_nmol_m2_s": diagnostics.get("n2o_flux_corrected_nmol_m2_s", ""),
             "cov_w_n2o_ppb": diagnostics.get("cov_w_n2o_ppb", ""),
             "mean_n2o_ppb": diagnostics.get("mean_n2o_ppb", ""),
             "n2o_valid_ratio": diagnostics.get("n2o_valid_ratio", ""),
             "n2o_method": diagnostics.get("n2o_method", ""),
+            "n2o_spectral_correction_factor": diagnostics.get("n2o_spectral_correction_factor", ""),
+            "n2o_analyzer_correction_factor": diagnostics.get("n2o_analyzer_correction_factor", ""),
+            "n2o_density_correction_factor": diagnostics.get("n2o_density_correction_factor", ""),
+            "n2o_correction_sequence": json.dumps(diagnostics.get("n2o_correction_sequence", {}), ensure_ascii=False)
+            if diagnostics.get("n2o_correction_sequence")
+            else "",
             "n2o_provenance": diagnostics.get("n2o_provenance", ""),
             "n2o_limitations": json.dumps(diagnostics.get("n2o_limitations", []), ensure_ascii=False)
             if diagnostics.get("n2o_limitations")
@@ -2169,10 +2195,18 @@ class ResultExporter:
                 "ch4_detail": json.dumps(diagnostics.get("ch4_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("ch4_detail") else "",
                 "n2o_status": diagnostics.get("n2o_status", "") if diagnostics else "",
                 "n2o_flux_nmol_m2_s": diagnostics.get("n2o_flux_nmol_m2_s", "") if diagnostics else "",
+                "n2o_flux_level0_nmol_m2_s": diagnostics.get("n2o_flux_level0_nmol_m2_s", "") if diagnostics else "",
+                "n2o_flux_level1_spectral_nmol_m2_s": diagnostics.get("n2o_flux_level1_spectral_nmol_m2_s", "") if diagnostics else "",
+                "n2o_flux_level2_analyzer_nmol_m2_s": diagnostics.get("n2o_flux_level2_analyzer_nmol_m2_s", "") if diagnostics else "",
+                "n2o_flux_corrected_nmol_m2_s": diagnostics.get("n2o_flux_corrected_nmol_m2_s", "") if diagnostics else "",
                 "cov_w_n2o_ppb": diagnostics.get("cov_w_n2o_ppb", "") if diagnostics else "",
                 "mean_n2o_ppb": diagnostics.get("mean_n2o_ppb", "") if diagnostics else "",
                 "n2o_valid_ratio": diagnostics.get("n2o_valid_ratio", "") if diagnostics else "",
                 "n2o_method": diagnostics.get("n2o_method", "") if diagnostics else "",
+                "n2o_spectral_correction_factor": diagnostics.get("n2o_spectral_correction_factor", "") if diagnostics else "",
+                "n2o_analyzer_correction_factor": diagnostics.get("n2o_analyzer_correction_factor", "") if diagnostics else "",
+                "n2o_density_correction_factor": diagnostics.get("n2o_density_correction_factor", "") if diagnostics else "",
+                "n2o_correction_sequence": json.dumps(diagnostics.get("n2o_correction_sequence", {}), ensure_ascii=False) if diagnostics and diagnostics.get("n2o_correction_sequence") else "",
                 "n2o_provenance": diagnostics.get("n2o_provenance", "") if diagnostics else "",
                 "n2o_limitations": json.dumps(diagnostics.get("n2o_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("n2o_limitations") else "",
                 "n2o_detail": json.dumps(diagnostics.get("n2o_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("n2o_detail") else "",
@@ -2640,7 +2674,9 @@ class ResultExporter:
                 "n2o_window_count": 0,
                 "n2o_computed_window_count": 0,
                 "average_n2o_flux_nmol_m2_s": None,
+                "average_n2o_level0_flux_nmol_m2_s": None,
                 "n2o_method": "not_available",
+                "n2o_correction_sequence": {},
                 "method": "not_available",
                 "coefficient_profile_id": "",
                 "coefficient_registry_status": "",
@@ -2670,6 +2706,11 @@ class ResultExporter:
             for diag in diagnostics
             if diag.get("n2o_status") == "computed" and isinstance(diag.get("n2o_flux_nmol_m2_s"), (int, float))
         ]
+        n2o_level0 = [
+            diag
+            for diag in diagnostics
+            if isinstance(diag.get("n2o_flux_level0_nmol_m2_s"), (int, float))
+        ]
         first = next((diag for diag in diagnostics if diag.get("ch4_method")), diagnostics[0] if diagnostics else {})
         n2o_first = next((diag for diag in diagnostics if diag.get("n2o_method")), {})
         return {
@@ -2693,7 +2734,13 @@ class ResultExporter:
                 if n2o_computed
                 else None
             ),
+            "average_n2o_level0_flux_nmol_m2_s": (
+                sum(float(diag["n2o_flux_level0_nmol_m2_s"]) for diag in n2o_level0) / len(n2o_level0)
+                if n2o_level0
+                else None
+            ),
             "n2o_method": n2o_first.get("n2o_method", "not_available"),
+            "n2o_correction_sequence": n2o_first.get("n2o_correction_sequence", {}),
             "n2o_provenance": n2o_first.get("n2o_provenance", ""),
             "n2o_limitations": list(n2o_first.get("n2o_limitations", []) or []),
             "method": first.get("ch4_method", "not_available"),
@@ -4379,10 +4426,18 @@ class ResultExporter:
                     "ch4_water_vapor_dilution_factor": "",
                     "n2o_status": "",
                     "n2o_flux_nmol_m2_s": "",
+                    "n2o_flux_level0_nmol_m2_s": "",
+                    "n2o_flux_level1_spectral_nmol_m2_s": "",
+                    "n2o_flux_level2_analyzer_nmol_m2_s": "",
+                    "n2o_flux_corrected_nmol_m2_s": "",
                     "cov_w_n2o_ppb": "",
                     "mean_n2o_ppb": "",
                     "n2o_valid_ratio": "",
                     "n2o_method": "",
+                    "n2o_spectral_correction_factor": "",
+                    "n2o_analyzer_correction_factor": "",
+                    "n2o_density_correction_factor": "",
+                    "n2o_correction_sequence": "",
                     "qc_grade": "",
                     "anomaly_type": "gap",
                     "reason": "no data for this averaging period",

@@ -2090,6 +2090,130 @@ def compute_n2o_flux_metrics(
     }
 
 
+def compute_trace_gas_empirical_correction_sequence(
+    *,
+    gas_key: str,
+    gas_label: str,
+    level0_metrics: dict[str, Any],
+    level0_flux_field: str,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    cfg = dict(config or {})
+    selected_method = str(cfg.get("method", f"{gas_key}_empirical_correction_sequence_v1") or f"{gas_key}_empirical_correction_sequence_v1")
+    if level0_metrics.get("status") != "computed" or not isinstance(level0_metrics.get(level0_flux_field), (int, float)):
+        return {
+            "status": "not_available",
+            "selected_method": selected_method,
+            "reason": f"{gas_label} Level 0 covariance flux is not available.",
+            "levels": {},
+            "provenance": f"{gas_label} empirical trace-gas correction sequence skipped because covariance input is missing.",
+            "limitations": [f"No {gas_label} correction sequence can be evaluated without a covariance flux."],
+        }
+
+    level0_flux = float(level0_metrics[level0_flux_field])
+    spectral_cfg = dict(cfg.get("spectral_correction", {}) or {})
+    analyzer_cfg = dict(cfg.get("analyzer_correction", {}) or {})
+    density_cfg = dict(cfg.get("density_correction", {}) or {})
+    spectral_factor = _bounded_float(
+        cfg.get("spectral_correction_factor", spectral_cfg.get("factor", 1.0)),
+        default=1.0,
+        lower=0.2,
+        upper=5.0,
+    )
+    analyzer_factor = _bounded_float(
+        cfg.get("analyzer_correction_factor", analyzer_cfg.get("factor", 1.0)),
+        default=1.0,
+        lower=0.2,
+        upper=5.0,
+    )
+    density_factor = _bounded_float(
+        cfg.get("density_correction_factor", density_cfg.get("factor", 1.0)),
+        default=1.0,
+        lower=0.2,
+        upper=5.0,
+    )
+    level1_flux = level0_flux * spectral_factor
+    level2_flux = level1_flux * analyzer_factor
+    final_flux = level2_flux * density_factor
+    profile = dict(cfg.get("coefficient_profile", cfg.get("correction_profile", {})) or {})
+    profile_id = str(cfg.get("coefficient_profile_id", profile.get("profile_id", "")) or "")
+    source_file = str(cfg.get("coefficient_profile_source_file", profile.get("source_file", "")) or "")
+    normalization_command = str(
+        cfg.get("coefficient_profile_normalization_command", profile.get("normalization_command", "")) or ""
+    )
+    configured_limitations = [str(item) for item in cfg.get("limitations", cfg.get("known_limitations", [])) or [] if str(item)]
+    limitations = [
+        f"{gas_label} correction sequence uses configured empirical factors; it is not a gas-specific proprietary analyzer model.",
+        f"{gas_label} spectral/analyzer factors require paired reference evidence before EddyPro numeric parity can be claimed.",
+    ]
+    limitations.extend(configured_limitations)
+    provenance_tail = ""
+    if profile_id:
+        provenance_tail = f" profile={profile_id}"
+        if source_file:
+            provenance_tail += f"; source_file={source_file}"
+        if normalization_command:
+            provenance_tail += f"; normalization_command={normalization_command}"
+    return {
+        "status": "computed",
+        "selected_method": selected_method,
+        "final_flux_nmol_m2_s": final_flux,
+        "level0_flux_nmol_m2_s": level0_flux,
+        "level1_spectral_flux_nmol_m2_s": level1_flux,
+        "level2_analyzer_flux_nmol_m2_s": level2_flux,
+        "level3_corrected_flux_nmol_m2_s": final_flux,
+        "spectral_correction_factor": spectral_factor,
+        "analyzer_correction_factor": analyzer_factor,
+        "density_correction_factor": density_factor,
+        "changed_level0": not math.isclose(final_flux, level0_flux, rel_tol=1e-12, abs_tol=1e-12),
+        "coefficient_profile_id": profile_id,
+        "coefficient_source_file": source_file,
+        "coefficient_normalization_command": normalization_command,
+        "coefficient_profile": profile,
+        "levels": {
+            "level0": {
+                "name": "raw_covariance",
+                "flux_nmol_m2_s": level0_flux,
+                "source_method": level0_metrics.get("selected_method", f"{gas_key}_level0_covariance"),
+            },
+            "level1": {
+                "name": "spectral_attenuation",
+                "factor": spectral_factor,
+                "mode": str(spectral_cfg.get("mode", cfg.get("spectral_correction_mode", "empirical_factor")) or "empirical_factor"),
+                "flux_nmol_m2_s": level1_flux,
+            },
+            "level2": {
+                "name": "analyzer_response",
+                "factor": analyzer_factor,
+                "mode": str(analyzer_cfg.get("mode", cfg.get("analyzer_correction_mode", "empirical_factor")) or "empirical_factor"),
+                "flux_nmol_m2_s": level2_flux,
+            },
+            "level3": {
+                "name": "density_or_user_scalar",
+                "factor": density_factor,
+                "mode": str(density_cfg.get("mode", cfg.get("density_correction_mode", "empirical_factor")) or "empirical_factor"),
+                "flux_nmol_m2_s": final_flux,
+            },
+        },
+        "components": {
+            "spectral": spectral_cfg or {"mode": "empirical_factor", "factor": spectral_factor},
+            "analyzer": analyzer_cfg or {"mode": "empirical_factor", "factor": analyzer_factor},
+            "density": density_cfg or {"mode": "empirical_factor", "factor": density_factor},
+            "coefficient_profile": {
+                "profile_id": profile_id,
+                "source_file": source_file,
+                "normalization_command": normalization_command,
+            },
+        },
+        "provenance": (
+            f"{gas_label} empirical trace-gas correction sequence v1: Level 0 covariance; "
+            "Level 1 spectral attenuation factor; Level 2 analyzer-response factor; "
+            f"Level 3 density/user scalar factor.{provenance_tail}"
+        ),
+        "limitations": limitations,
+    }
+
+
 def compute_li7700_status_diagnostics(
     *,
     rows: list[NormalizedHFFrame],

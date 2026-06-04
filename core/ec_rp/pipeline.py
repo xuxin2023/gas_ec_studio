@@ -26,6 +26,7 @@ from core.ec_rp.analysis import (
     compute_li7700_status_diagnostics,
     compute_li7700_correction_sequence,
     compute_n2o_flux_metrics,
+    compute_trace_gas_empirical_correction_sequence,
     compute_footprint,
     compute_footprint_2d_grid,
     compute_planar_fit_coefficients,
@@ -998,6 +999,47 @@ class ECRPPipeline:
             diagnostics["spectral_correction_measured_cospectrum_window_id"] = str(sc.get("measured_cospectrum_window_id", ""))
             diagnostics["spectral_correction_cospectrum_match"] = dict(sc.get("measured_cospectrum_match", {}))
             performance_sections["spectral_correction_ms"] = round((time.perf_counter() - section_start) * 1000.0, 3)
+        n2o_config = dict((trace_gas_config or {}).get("n2o", {}) or {})
+        if n2o_config.get("use_spectral_correction_factor", False):
+            n2o_config["spectral_correction_factor"] = n2o_config.get(
+                "spectral_correction_factor",
+                diagnostics.get("spectral_correction_factor", 1.0),
+            )
+        n2o_sequence = compute_trace_gas_empirical_correction_sequence(
+            gas_key="n2o",
+            gas_label="N2O",
+            level0_metrics=n2o_metrics,
+            level0_flux_field="n2o_flux_nmol_m2_s",
+            config=n2o_config,
+        )
+        diagnostics["n2o_correction_sequence"] = n2o_sequence
+        diagnostics["n2o_detail"] = {**n2o_metrics, "correction_sequence": n2o_sequence}
+        if n2o_sequence.get("status") == "computed":
+            diagnostics["n2o_status"] = "computed"
+            diagnostics["n2o_method"] = n2o_sequence.get("selected_method", "n2o_empirical_correction_sequence_v1")
+            diagnostics["n2o_flux_level0_nmol_m2_s"] = n2o_sequence.get("level0_flux_nmol_m2_s")
+            diagnostics["n2o_flux_level1_spectral_nmol_m2_s"] = n2o_sequence.get("level1_spectral_flux_nmol_m2_s")
+            diagnostics["n2o_flux_level2_analyzer_nmol_m2_s"] = n2o_sequence.get("level2_analyzer_flux_nmol_m2_s")
+            diagnostics["n2o_flux_corrected_nmol_m2_s"] = n2o_sequence.get("final_flux_nmol_m2_s")
+            diagnostics["n2o_flux_nmol_m2_s"] = n2o_sequence.get("final_flux_nmol_m2_s")
+            diagnostics["n2o_spectral_correction_factor"] = n2o_sequence.get("spectral_correction_factor")
+            diagnostics["n2o_analyzer_correction_factor"] = n2o_sequence.get("analyzer_correction_factor")
+            diagnostics["n2o_density_correction_factor"] = n2o_sequence.get("density_correction_factor")
+            diagnostics["n2o_provenance"] = n2o_sequence.get("provenance", "")
+            diagnostics["n2o_limitations"] = n2o_sequence.get("limitations", [])
+            diagnostics["trace_gas_family"]["n2o"].update(
+                {
+                    "method": diagnostics["n2o_method"],
+                    "flux_nmol_m2_s": diagnostics["n2o_flux_nmol_m2_s"],
+                    "level0_flux_nmol_m2_s": diagnostics["n2o_flux_level0_nmol_m2_s"],
+                    "correction_sequence_status": n2o_sequence.get("status", ""),
+                    "spectral_correction_factor": diagnostics["n2o_spectral_correction_factor"],
+                    "analyzer_correction_factor": diagnostics["n2o_analyzer_correction_factor"],
+                    "density_correction_factor": diagnostics["n2o_density_correction_factor"],
+                    "provenance": diagnostics["n2o_provenance"],
+                    "limitations": diagnostics["n2o_limitations"],
+                }
+            )
         ch4_config = dict((trace_gas_config or {}).get("ch4", {}) or {})
         li7700_status_config = dict(
             ch4_config.get("status_diagnostics", ch4_config.get("li7700_status_diagnostics", {})) or {}
@@ -1768,18 +1810,26 @@ def _build_flux_correction_ledger(
             }
         )
     if diagnostics.get("n2o_status") == "computed":
+        n2o_sequence = dict(diagnostics.get("n2o_correction_sequence", {}) or {})
         stages.append(
             {
                 "level": "trace_gas",
-                "stage": "n2o_covariance_flux",
-                "method": str(diagnostics.get("n2o_method", "n2o_level0_covariance")),
+                "stage": "n2o_trace_gas_sequence" if n2o_sequence.get("status") == "computed" else "n2o_covariance_flux",
+                "method": str(diagnostics.get("n2o_method", "n2o_empirical_correction_sequence_v1")),
                 "status": str(diagnostics.get("n2o_status", "")),
                 "units": "nmol m-2 s-1",
                 "values": {
                     "cov_w_n2o_ppb": diagnostics.get("cov_w_n2o_ppb"),
                     "mean_n2o_ppb": diagnostics.get("mean_n2o_ppb"),
+                    "level0": diagnostics.get("n2o_flux_level0_nmol_m2_s", diagnostics.get("n2o_flux_nmol_m2_s")),
+                    "level1_spectral": diagnostics.get("n2o_flux_level1_spectral_nmol_m2_s"),
+                    "level2_analyzer": diagnostics.get("n2o_flux_level2_analyzer_nmol_m2_s"),
                     "final": diagnostics.get("n2o_flux_nmol_m2_s"),
+                    "spectral_correction_factor": diagnostics.get("n2o_spectral_correction_factor"),
+                    "analyzer_correction_factor": diagnostics.get("n2o_analyzer_correction_factor"),
+                    "density_correction_factor": diagnostics.get("n2o_density_correction_factor"),
                 },
+                "correction_sequence": n2o_sequence,
                 "provenance": str(diagnostics.get("n2o_provenance", "")),
                 "limitations": list(diagnostics.get("n2o_limitations", []) or []),
             }
@@ -1823,7 +1873,7 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
                 spectral_methods[method] = spectral_methods.get(method, 0) + 1
             if stage_payload.get("stage") == "ch4_li7700_sequence":
                 ch4_sequence_count += 1
-            if stage_payload.get("stage") == "n2o_covariance_flux":
+            if stage_payload.get("stage") in {"n2o_covariance_flux", "n2o_trace_gas_sequence"}:
                 n2o_sequence_count += 1
     return {
         "artifact_type": "flux_correction_ledger_summary_v1",
@@ -1835,6 +1885,7 @@ def _summarize_flux_correction_ledgers(windows: list[WindowRPResult]) -> dict[st
         "spectral_correction_method_counts": dict(sorted(spectral_methods.items())),
         "ch4_sequence_window_count": ch4_sequence_count,
         "n2o_covariance_window_count": n2o_sequence_count,
+        "n2o_correction_sequence_window_count": n2o_sequence_count,
         "average_raw_flux": float(np.mean([window.raw_flux for window in windows])) if windows else None,
         "average_mixing_ratio_flux": float(np.mean([window.mixing_ratio_flux for window in windows])) if windows else None,
         "average_density_corrected_flux": float(np.mean([window.density_corrected_flux for window in windows])) if windows else None,
@@ -2302,7 +2353,9 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
             "n2o_window_count": 0,
             "n2o_computed_window_count": 0,
             "average_n2o_flux_nmol_m2_s": None,
+            "average_n2o_level0_flux_nmol_m2_s": None,
             "n2o_method": "not_available",
+            "n2o_correction_sequence": {},
             "method": "not_available",
             "coefficient_profile_id": "",
             "coefficient_registry_status": "",
@@ -2329,6 +2382,11 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
         for diag in diagnostics
         if diag.get("n2o_status") == "computed" and isinstance(diag.get("n2o_flux_nmol_m2_s"), (int, float))
     ]
+    n2o_level0 = [
+        diag
+        for diag in diagnostics
+        if isinstance(diag.get("n2o_flux_level0_nmol_m2_s"), (int, float))
+    ]
     n2o_first = next((diag for diag in diagnostics if diag.get("n2o_method")), {})
     first = next((diag for diag in diagnostics if diag.get("ch4_method")), diagnostics[0])
     return {
@@ -2352,7 +2410,13 @@ def _summarize_trace_gas_windows(windows: list[WindowRPResult]) -> dict[str, Any
             if n2o_computed
             else None
         ),
+        "average_n2o_level0_flux_nmol_m2_s": (
+            sum(float(diag["n2o_flux_level0_nmol_m2_s"]) for diag in n2o_level0) / len(n2o_level0)
+            if n2o_level0
+            else None
+        ),
         "n2o_method": n2o_first.get("n2o_method", "not_available"),
+        "n2o_correction_sequence": n2o_first.get("n2o_correction_sequence", {}),
         "n2o_provenance": n2o_first.get("n2o_provenance", ""),
         "n2o_limitations": list(n2o_first.get("n2o_limitations", []) or []),
         "method": first.get("ch4_method", "not_available"),
@@ -2407,7 +2471,9 @@ def _empty_summary(
             "n2o_window_count": 0,
             "n2o_computed_window_count": 0,
             "average_n2o_flux_nmol_m2_s": None,
+            "average_n2o_level0_flux_nmol_m2_s": None,
             "n2o_method": "not_available",
+            "n2o_correction_sequence": {},
             "method": "not_available",
             "coefficient_profile_id": "",
             "coefficient_registry_status": "",
@@ -2947,7 +3013,21 @@ def _extract_trace_gas_config(config: dict[str, Any]) -> dict[str, Any]:
     ch4["coefficient_profile_provenance"] = coefficient_resolution.get("provenance", "")
     ch4["coefficient_profile_limitations"] = list(coefficient_resolution.get("known_limitations", []) or [])
     ch4["coefficient_profile"] = coefficient_resolution.get("profile", {})
-    return {"ch4": ch4, "coefficient_registry": {"li7700": coefficient_resolution}}
+    n2o = dict(trace.get("n2o", {}) or {}) if isinstance(trace.get("n2o", {}), dict) else {}
+    n2o.setdefault("enabled", True)
+    n2o.setdefault("method", "n2o_empirical_correction_sequence_v1")
+    n2o.setdefault("spectral_correction_factor", 1.0)
+    n2o.setdefault("analyzer_correction_factor", 1.0)
+    n2o.setdefault("density_correction_factor", 1.0)
+    n2o.setdefault("use_spectral_correction_factor", False)
+    n2o.setdefault(
+        "limitations",
+        [
+            "N2O defaults use identity empirical correction factors until site-specific reference evidence is configured.",
+            "N2O-specific spectral/analyzer model parity is not claimed by the default profile.",
+        ],
+    )
+    return {"ch4": ch4, "n2o": n2o, "coefficient_registry": {"li7700": coefficient_resolution}}
 
 
 def _resolve_li7700_coefficient_profile(
