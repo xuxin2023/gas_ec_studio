@@ -10,6 +10,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
+from core.protocol.licor_diag_parser import parse_licor_diag_frame
 from core.protocol.mode1_parser import parse_mode1_frame
 from core.protocol.mode2_parser import parse_mode2_frame
 from models.hf_models import FrameQuality, NormalizedHFFrame
@@ -149,6 +150,15 @@ def load_raw_text_frames(
             device_id=device_id,
             mode=mode,
         )
+    if _looks_like_licor_diagnostic_protocol(text, bundle):
+        return _load_licor_diagnostic_frames(
+            text,
+            source_path=source_path,
+            bundle=bundle,
+            device_uid=device_uid,
+            device_id=device_id,
+            mode=mode,
+        )
     rows = _read_tabular_text(
         text,
         delimiter=delimiter,
@@ -183,6 +193,18 @@ def _looks_like_ygas_protocol(text: str, bundle: MetadataBundle) -> bool:
         if not candidate:
             continue
         return candidate.upper().startswith("YGAS,")
+    return False
+
+
+def _looks_like_licor_diagnostic_protocol(text: str, bundle: MetadataBundle) -> bool:
+    source_type = str(bundle.raw_file_description.source_type or "").strip().lower()
+    if source_type in {"licor_diagnostic", "licor_protocol", "li7200", "li7500", "li7200_diagnostic", "li7500_diagnostic"}:
+        return True
+    for line in str(text or "").splitlines():
+        candidate = line.strip().strip("<>")
+        if not candidate:
+            continue
+        return parse_licor_diag_frame(candidate) is not None
     return False
 
 
@@ -236,6 +258,50 @@ def _load_ygas_protocol_frames(
                 pressure_kpa=parsed.get("pressure_kpa"),
                 chamber_temp_c=parsed.get("chamber_temp_c"),
                 case_temp_c=parsed.get("case_temp_c"),
+                status_text=parsed.get("status_text"),
+                raw_text=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            )
+        )
+    frames.sort(key=lambda item: item.timestamp)
+    return frames
+
+
+def _load_licor_diagnostic_frames(
+    text: str,
+    *,
+    source_path: Path,
+    bundle: MetadataBundle,
+    device_uid: str | None,
+    device_id: str | None,
+    mode: int,
+) -> list[NormalizedHFFrame]:
+    settings = bundle.raw_file_settings
+    resolved_device_uid = device_uid or bundle.project.code or bundle.raw_file_description.source_name or source_path.stem
+    sample_hz = float(settings.sample_hz or 10.0)
+    start_time = str(settings.extra.get("start_time", "") or "")
+    start = datetime.fromisoformat(start_time) if start_time else datetime(2000, 1, 1)
+    frames: list[NormalizedHFFrame] = []
+    for index, line in enumerate(line for line in text.splitlines() if line.strip()):
+        raw = line.strip()
+        parsed = parse_licor_diag_frame(raw)
+        if not parsed:
+            continue
+        timestamp = start + timedelta(seconds=index / max(sample_hz, 1.0))
+        payload = dict(parsed.get("normalized_payload", {}) or {})
+        payload["raw_source"] = str(source_path)
+        payload.setdefault("licor_primary_analyzer_import", {})["source_file"] = str(source_path)
+        frames.append(
+            NormalizedHFFrame(
+                timestamp=timestamp,
+                device_uid=resolved_device_uid,
+                device_id=device_id or str(parsed.get("device_id") or bundle.instruments.analyzer_instrument_id or "LICOR"),
+                mode=int(parsed.get("mode") or mode),
+                frame_quality=parsed.get("frame_quality", FrameQuality.FULL),
+                co2_ppm=parsed.get("co2_ppm"),
+                h2o_mmol=parsed.get("h2o_mmol"),
+                pressure_kpa=parsed.get("cell_pressure_kpa") or parsed.get("pressure_kpa"),
+                chamber_temp_c=parsed.get("cell_temperature_c"),
+                case_temp_c=parsed.get("cell_temperature_c"),
                 status_text=parsed.get("status_text"),
                 raw_text=json.dumps(payload, ensure_ascii=False, sort_keys=True),
             )

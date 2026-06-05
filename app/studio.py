@@ -260,7 +260,12 @@ class StudioController(QObject):
         runtime.ftd_hz = min(runtime.ftd_hz, analyzer.max_sample_hz)
         runtime.extra["gas_analyzer_profile"] = analyzer.to_summary()
         runtime.last_message = "尚未开始采集"
-        adapter = build_adapter(port=config.port, baudrate=config.baudrate, device_id=config.device_id)
+        adapter = build_adapter(
+            port=config.port,
+            baudrate=config.baudrate,
+            device_id=config.device_id,
+            analyzer_profile=analyzer.profile_id,
+        )
         entry = ManagedDevice(
             config=config,
             runtime=runtime,
@@ -7490,6 +7495,12 @@ class StudioController(QObject):
         self.raw_store.append(frame)
 
         if frame.parsed and frame.parsed.get("co2_ppm") is not None:
+            normalized_payload = frame.parsed.get("normalized_payload")
+            raw_text = (
+                json.dumps(normalized_payload, ensure_ascii=False, sort_keys=True)
+                if isinstance(normalized_payload, dict) and normalized_payload
+                else frame.raw_text
+            )
             normalized = NormalizedHFFrame(
                 timestamp=frame.received_at,
                 device_uid=device_uid,
@@ -7502,7 +7513,7 @@ class StudioController(QObject):
                 chamber_temp_c=frame.parsed.get("chamber_temp_c"),
                 case_temp_c=frame.parsed.get("case_temp_c"),
                 status_text=frame.status_text or frame.parsed.get("status_text"),
-                raw_text=frame.raw_text,
+                raw_text=raw_text,
             )
             self.realtime_buffer.append(normalized)
             self.hf_store.append_csv(normalized)

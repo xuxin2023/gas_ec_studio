@@ -8,8 +8,9 @@ from core.adapters.base import BaseGasAnalyzerAdapter
 
 
 class MockGasAnalyzerAdapter(BaseGasAnalyzerAdapter):
-    def __init__(self, *, device_id: str, seed: int = 42) -> None:
+    def __init__(self, *, device_id: str, seed: int = 42, analyzer_profile: str = "ygas_irga") -> None:
         super().__init__(device_id=device_id)
+        self.analyzer_profile = str(analyzer_profile or "ygas_irga")
         self.mode = 1
         self.active_send = True
         self.ftd_hz = 10
@@ -52,6 +53,9 @@ class MockGasAnalyzerAdapter(BaseGasAnalyzerAdapter):
         with self._lock:
             self._require_open()
             parts = [part.strip() for part in command_text.strip().split(",") if part.strip()]
+            simple_command = str(command_text or "").strip().upper()
+            if simple_command in {"READDATA", "DIAG", "GETDIAG", "DATA?"}:
+                return self._generate_frame()
             if len(parts) < 3:
                 return f"YGAS,{self.device_id},F,BAD_COMMAND"
             command = parts[0].upper()
@@ -161,7 +165,7 @@ class MockGasAnalyzerAdapter(BaseGasAnalyzerAdapter):
 
             if command == "PING":
                 return self._ack(True, "legacy ping response")
-            if command == "READDATA":
+            if command in {"READDATA", "DIAG", "GETDIAG", "DATA?"}:
                 return self._generate_frame()
             return self._ack(False, "unsupported command")
 
@@ -200,6 +204,8 @@ class MockGasAnalyzerAdapter(BaseGasAnalyzerAdapter):
     def _generate_frame(self) -> str:
         self._tick += 1
         phase = self._tick / max(1.0, float(self.ftd_hz))
+        if self.analyzer_profile in {"licor_li7500_family", "licor_li7200_family"}:
+            return self._generate_licor_frame(phase)
         co2 = 418.0 + math.sin(phase * 1.1) * 18.0 + self._random.uniform(-1.2, 1.2)
         h2o = 11.8 + math.cos(phase * 0.8) * 1.6 + self._random.uniform(-0.2, 0.2)
         pressure = 101.2 + math.sin(phase * 0.15) * 0.35
@@ -219,4 +225,24 @@ class MockGasAnalyzerAdapter(BaseGasAnalyzerAdapter):
             f"{co2 * 1.80:.3f},{h2o * 0.80:.3f},{co2 / 420.0:.6f},{co2 / 422.0:.6f},"
             f"{h2o / 8.2:.6f},{h2o / 8.4:.6f},{self.reference_signal_mv:d},{co2_signal:.3f},{h2o_signal:.3f},"
             f"{chamber_temp:.3f},{case_temp:.3f},{pressure:.3f},OK"
+        )
+
+    def _generate_licor_frame(self, phase: float) -> str:
+        model = "LI7200" if self.analyzer_profile == "licor_li7200_family" else "LI7500"
+        co2 = 417.0 + math.sin(phase * 1.0) * 12.0 + self._random.uniform(-0.8, 0.8)
+        h2o = 12.4 + math.cos(phase * 0.9) * 1.2 + self._random.uniform(-0.15, 0.15)
+        co2_signal = 86.0 + math.sin(phase * 0.4) * 0.8
+        h2o_signal = 88.0 + math.cos(phase * 0.4) * 0.8
+        reference_signal = 91.0 + math.sin(phase * 0.2) * 0.3
+        diagnostic_word = 0
+        if self.analyzer_profile == "licor_li7200_family":
+            cell_pressure = 101.2 + math.sin(phase * 0.15) * 0.2
+            cell_temp = 24.8 + math.cos(phase * 0.25) * 0.2
+            return (
+                f"LICOR,{model},{co2:.3f},{h2o:.3f},{co2_signal:.2f},{h2o_signal:.2f},"
+                f"{reference_signal:.2f},{diagnostic_word},{cell_pressure:.3f},{cell_temp:.3f}"
+            )
+        return (
+            f"LICOR,{model},{co2:.3f},{h2o:.3f},{co2_signal:.2f},{h2o_signal:.2f},"
+            f"{reference_signal:.2f},{diagnostic_word}"
         )

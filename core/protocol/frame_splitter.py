@@ -5,13 +5,14 @@ from dataclasses import dataclass
 
 from core.protocol.ack_parser import parse_ack
 from core.protocol.coefficient_codec import parse_coefficient_line
+from core.protocol.licor_diag_parser import parse_licor_diag_frame
 from core.protocol.mode1_parser import parse_mode1_frame
 from core.protocol.mode2_parser import parse_mode2_frame
 from core.protocol.parameter_parser import parse_parameter_response
 from models.hf_models import FrameQuality
 
 
-FRAME_START_RE = re.compile(r"YGAS\s*,", re.IGNORECASE)
+FRAME_START_RE = re.compile(r"(?:YGAS\s*,|LICOR\s*,|LI-?7(?:200|500)(?:A|DS|RS)?\s*[,;\s])", re.IGNORECASE)
 
 
 @dataclass(slots=True)
@@ -30,11 +31,14 @@ def classify_frame_text(text: str) -> FrameQuality:
         return parse_mode2_frame(candidate)["frame_quality"]
     if parse_mode1_frame(candidate):
         return parse_mode1_frame(candidate)["frame_quality"]
+    licor = parse_licor_diag_frame(candidate)
+    if licor:
+        return licor["frame_quality"]
     if parse_coefficient_line(candidate):
         return FrameQuality.FULL
     if parse_parameter_response(candidate):
         return FrameQuality.FULL
-    if "YGAS" in candidate.upper():
+    if any(token in candidate.upper() for token in ("YGAS", "LICOR", "LI7200", "LI-7200", "LI7500", "LI-7500")):
         return FrameQuality.CORRUPTED
     return FrameQuality.UNKNOWN
 
@@ -102,6 +106,6 @@ class FrameSplitter:
             return quality
         if quality == FrameQuality.PARTIAL:
             return FrameQuality.TRUNCATED
-        if "YGAS" in text.upper():
+        if any(token in text.upper() for token in ("YGAS", "LICOR", "LI7200", "LI-7200", "LI7500", "LI-7500")):
             return FrameQuality.TRUNCATED
         return FrameQuality.CORRUPTED

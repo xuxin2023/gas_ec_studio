@@ -15,6 +15,7 @@ from core.exports.result_exporter import AMERIFLUX_FIELD_MAP, FLUXNET_HALF_HOURL
 from core.protocol.command_builder import CommandBuilder
 from core.protocol.frame_splitter import classify_frame_text
 from core.protocol.gas_analyzer_profiles import get_gas_analyzer_profile, list_gas_analyzer_profiles
+from core.protocol.licor_diag_parser import parse_licor_diag_frame
 from core.protocol.mode1_parser import parse_mode1_frame
 from core.protocol.mode2_parser import parse_mode2_frame
 from core.protocol.parameter_parser import parse_parameter_response
@@ -192,6 +193,29 @@ def test_mode_parsers_preserve_ygas_status_register_checksum_and_mode2_layout() 
     assert mode2["pressure_kpa"] == 103.97
 
 
+def test_licor_diag_parser_classifies_li7200_li7500_records() -> None:
+    li7200 = parse_licor_diag_frame("LICOR,LI7200,412.30,12.50,86.2,88.1,91.0,0,101.23,24.85")
+
+    assert li7200 is not None
+    assert li7200["frame_quality"] == FrameQuality.FULL
+    assert li7200["profile_id"] == "licor_li7200_family"
+    assert li7200["instrument_family"] == "enclosed_path_irga"
+    assert li7200["co2_ppm"] == 412.30
+    assert li7200["h2o_mmol"] == 12.50
+    assert li7200["cell_pressure_kpa"] == 101.23
+    assert li7200["cell_temperature_c"] == 24.85
+    assert li7200["normalized_payload"]["profile_id"] == "licor_li7200_family"
+    assert classify_frame_text("LICOR,LI7200,412.30,12.50,86.2,88.1,91.0,0,101.23,24.85") == FrameQuality.FULL
+
+    li7500_fault = parse_licor_diag_frame("LI7500 CO2=411.2 H2O=11.7 CO2_AGC=84 H2O_AGC=87 DIAG=4")
+
+    assert li7500_fault is not None
+    assert li7500_fault["profile_id"] == "licor_li7500_family"
+    assert li7500_fault["diagnostic_word"] == 4
+    assert li7500_fault["status_ok"] is False
+    assert "diagnostic_word:4" in li7500_fault["active_faults"][0]
+
+
 def test_parameter_responses_are_valid_transaction_frames() -> None:
     parsed = parse_parameter_response("<YGAS,000,115200,8,N,1>")
 
@@ -228,6 +252,53 @@ def test_mock_adapter_executes_full_ygas_command_family() -> None:
         assert parse_mode1_frame(adapter.send_command("READDATA,YGAS,000")) is not None
     finally:
         adapter.close()
+
+
+def test_mock_adapter_and_raw_importer_emit_licor_primary_analyzer_payload(tmp_path: Path) -> None:
+    adapter = MockGasAnalyzerAdapter(device_id="LI7200", analyzer_profile="licor_li7200_family")
+    adapter.open()
+    try:
+        response = adapter.send_command("GETDIAG")
+    finally:
+        adapter.close()
+
+    parsed = parse_licor_diag_frame(response)
+    assert parsed is not None
+    assert parsed["profile_id"] == "licor_li7200_family"
+    assert parsed["normalized_payload"]["licor_primary_analyzer_import"]["status"] == "decoded"
+
+    source = tmp_path / "li7200_diag.log"
+    source.write_text(
+        "\n".join(
+            [
+                response,
+                "LICOR,LI7200,413.10,12.70,86.5,88.4,91.1,0,101.22,24.90",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    metadata = MetadataBundle(
+        raw_file_description=RawFileDescriptionMetadata(source_type="licor_diagnostic"),
+        raw_file_settings=RawFileSettingsMetadata(sample_hz=10.0, extra={"start_time": "2026-05-25T09:00:00"}),
+    )
+
+    rows = load_raw_text_frames(source, metadata=metadata, device_uid="dev-li7200")
+    payload = json.loads(rows[0].raw_text)
+    detail = compute_primary_analyzer_diagnostics(
+        rows=rows,
+        config={"profile_id": "licor_li7200_family", "min_signal_warning_pct": 50.0},
+    )
+
+    assert len(rows) == 2
+    assert rows[0].device_uid == "dev-li7200"
+    assert rows[0].timestamp == datetime(2026, 5, 25, 9, 0, 0)
+    assert rows[0].co2_ppm is not None
+    assert payload["profile_id"] == "licor_li7200_family"
+    assert payload["licor_primary_analyzer_import"]["source_file"].endswith("li7200_diag.log")
+    assert payload["cell_pressure_kpa"] is not None
+    assert detail["status"] == "pass"
+    assert detail["profile_id"] == "licor_li7200_family"
+    assert detail["telemetry_detected"] is True
 
 
 def test_ygas_protocol_log_imports_to_normalized_frames(tmp_path: Path) -> None:

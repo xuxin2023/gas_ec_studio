@@ -13,6 +13,7 @@ from core.adapters.base import BaseGasAnalyzerAdapter
 from core.protocol.ack_parser import parse_ack
 from core.protocol.command_builder import CommandBuilder
 from core.protocol.frame_splitter import FrameChunk, FrameSplitter
+from core.protocol.licor_diag_parser import parse_licor_diag_frame
 from core.protocol.mode1_parser import parse_mode1_frame
 from core.protocol.mode2_parser import parse_mode2_frame
 from core.protocol.parameter_parser import parse_parameter_response
@@ -251,7 +252,13 @@ class AcquisitionService:
     ) -> ProtocolFrame:
         raw_text = chunk.text.strip()
         ack = parse_ack(raw_text)
-        parsed = parse_mode2_frame(raw_text) or parse_mode1_frame(raw_text) or parse_parameter_response(raw_text) or {}
+        parsed = (
+            parse_mode2_frame(raw_text)
+            or parse_mode1_frame(raw_text)
+            or parse_licor_diag_frame(raw_text)
+            or parse_parameter_response(raw_text)
+            or {}
+        )
         quality = chunk.quality
         if parsed and "frame_quality" in parsed:
             quality = parsed["frame_quality"]
