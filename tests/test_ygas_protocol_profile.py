@@ -11,7 +11,7 @@ from app.studio import StudioController
 from core.adapters.mock_adapter import MockGasAnalyzerAdapter
 from core.ec_rp.analysis import compute_primary_analyzer_diagnostics, compute_ygas_primary_analyzer_diagnostics
 from core.ec_rp.pipeline import ECRPPipeline
-from core.exports.result_exporter import ResultExporter
+from core.exports.result_exporter import AMERIFLUX_FIELD_MAP, FLUXNET_HALF_HOURLY_SCHEMA, ICOS_FIELD_MAP, ResultExporter
 from core.protocol.command_builder import CommandBuilder
 from core.protocol.frame_splitter import classify_frame_text
 from core.protocol.gas_analyzer_profiles import get_gas_analyzer_profile, list_gas_analyzer_profiles
@@ -420,7 +420,10 @@ def test_licor_li7200_primary_analyzer_reaches_rp_ledger_and_result_exporter(tmp
     export = exporter.export_minimal_bundle(
         rp_result=result,
         spectral_result=None,
-        rp_config_snapshot={"primary_analyzer": {"profile_id": "licor_li7200_family"}},
+        rp_config_snapshot={
+            "primary_analyzer": {"profile_id": "licor_li7200_family"},
+            "network_output": {"schema_target": "FLUXNET"},
+        },
         spectral_config_snapshot={},
         project={"code": "LICOR"},
         site={"station_code": "L7200"},
@@ -430,12 +433,26 @@ def test_licor_li7200_primary_analyzer_reaches_rp_ledger_and_result_exporter(tmp
     manifest = json.loads(Path(export["files"]["export_manifest"]).read_text(encoding="utf-8"))
     full_output = Path(export["files"]["full_output"]).read_text(encoding="utf-8")
     primary_artifact = json.loads(Path(export["files"]["primary_analyzer_artifact"]).read_text(encoding="utf-8"))
+    network_artifact = json.loads(Path(export["files"]["fluxnet_half_hourly_artifact"]).read_text(encoding="utf-8"))
+    network_data_rows = [row for row in network_artifact["rows"] if row.get("FC") != -9999.0]
 
     assert "licor_status" in full_output
     assert "li7200_factory_site_profile" in full_output
     assert manifest["primary_analyzer_summary"]["status"] == "pass"
     assert "licor_status" in manifest["primary_analyzer_fields"]
+    assert "PRIMARY_ANALYZER_PROFILE_ID" in manifest["network_method_fields"]
+    assert "PRIMARY_ANALYZER_NORMALIZATION_COMMAND" in manifest["network_method_fields"]
     assert manifest["primary_analyzer_artifact"].endswith("primary_analyzer_diagnostics.json")
     assert primary_artifact["summary"]["status"] == "pass"
     assert primary_artifact["windows"][0]["diagnostics"]["profile_id"] == "licor_li7200_family"
     assert primary_artifact["windows"][0]["diagnostics"]["cell_pressure_mean_kpa"] is not None
+    schema_names = {field[0] for field in FLUXNET_HALF_HOURLY_SCHEMA}
+    assert "PRIMARY_ANALYZER_PROFILE_ID" in schema_names
+    assert AMERIFLUX_FIELD_MAP["PRIMARY_ANALYZER_STATUS"] == "PRIMARY_ANALYZER_STATUS"
+    assert ICOS_FIELD_MAP["PRIMARY_ANALYZER_STATUS"] == "PrimaryAnalyzerStatus"
+    assert network_data_rows
+    assert network_data_rows[0]["PRIMARY_ANALYZER_PROFILE_ID"] == "licor_li7200_family"
+    assert network_data_rows[0]["PRIMARY_ANALYZER_STATUS"] == "pass"
+    assert network_data_rows[0]["PRIMARY_ANALYZER_METHOD"] == "licor_co2h2o_primary_analyzer_diagnostics_v1"
+    assert network_data_rows[0]["PRIMARY_ANALYZER_CALIBRATION_PROFILE_ID"] == "li7200_factory_site_profile"
+    assert network_data_rows[0]["PRIMARY_ANALYZER_NORMALIZATION_COMMAND"].endswith("li7200_factory_site_profile")
