@@ -105,6 +105,18 @@ def test_ec_processing_page_method_controls_roundtrip_to_snapshot(monkeypatch, t
         page.spectral_zm_spin.setValue(3.8)
         page.spectral_ol_spin.setValue(-80.0)
         page.spectral_cospectrum_combo.setCurrentText("fcc_auto")
+        page.primary_analyzer_profile_combo.setCurrentIndex(
+            page.primary_analyzer_profile_combo.findData("licor_li7200_family")
+        )
+        page.primary_analyzer_enable_combo.setCurrentText("enabled")
+        page.primary_signal_warning_spin.setValue(30.0)
+        page.primary_signal_fail_spin.setValue(8.0)
+        page.primary_require_status_combo.setCurrentText("required")
+        page.primary_cell_thermo_combo.setCurrentText("required")
+        page.primary_allowed_diag_words_edit.setText("0,2")
+        page.primary_calibration_profile_edit.setText("li7200_tower_zero_span_2026")
+        page.primary_source_file_edit.setText("D:/fixtures/li7200_tower_zero_span_2026.json")
+        page.primary_normalization_command_edit.setText("gas_ec_studio normalize-licor --profile li7200_tower_zero_span_2026")
         page.method_compare_combo.setCurrentText("enabled")
         page.method_compare_threshold_spin.setValue(0.30)
 
@@ -125,6 +137,14 @@ def test_ec_processing_page_method_controls_roundtrip_to_snapshot(monkeypatch, t
         assert payload["steps"]["uncertainty"]["confidence_level"] == 0.9
         assert payload["steps"]["spectral_correction"]["method"] == "fratini"
         assert payload["steps"]["spectral_correction"]["use_fcc_measured_cospectrum"] is True
+        assert payload["steps"]["primary_analyzer"]["profile_id"] == "licor_li7200_family"
+        assert payload["steps"]["primary_analyzer"]["min_signal_warning_pct"] == 30.0
+        assert payload["steps"]["primary_analyzer"]["min_signal_fail_pct"] == 8.0
+        assert payload["steps"]["primary_analyzer"]["require_cell_thermodynamics"] is True
+        assert payload["steps"]["primary_analyzer"]["allowed_diagnostic_words"] == [0, 2]
+        assert payload["steps"]["primary_analyzer"]["calibration_profile_id"] == "li7200_tower_zero_span_2026"
+        assert payload["steps"]["primary_analyzer"]["source_file"].endswith("li7200_tower_zero_span_2026.json")
+        assert payload["steps"]["primary_analyzer"]["normalization_command"].startswith("gas_ec_studio normalize-licor")
         assert payload["steps"]["method_compare"]["enabled"] is True
         assert payload["steps"]["method_compare"]["deviation_threshold"] == 0.3
 
@@ -146,6 +166,14 @@ def test_ec_processing_page_method_controls_roundtrip_to_snapshot(monkeypatch, t
         assert snapshot["uncertainty"]["confidence_level"] == 0.9
         assert snapshot["spectral_correction"]["method"] == "fratini"
         assert snapshot["spectral_correction"]["fcc_measured_cospectra"] == []
+        assert snapshot["primary_analyzer"]["profile_id"] == "licor_li7200_family"
+        assert snapshot["primary_analyzer"]["min_signal_warning_pct"] == 30.0
+        assert snapshot["primary_analyzer"]["min_signal_fail_pct"] == 8.0
+        assert snapshot["primary_analyzer"]["require_cell_thermodynamics"] is True
+        assert snapshot["primary_analyzer"]["allowed_diagnostic_words"] == [0, 2]
+        assert snapshot["primary_analyzer"]["calibration_profile_id"] == "li7200_tower_zero_span_2026"
+        assert snapshot["primary_analyzer"]["source_file"].endswith("li7200_tower_zero_span_2026.json")
+        assert snapshot["primary_analyzer"]["normalization_command"].startswith("gas_ec_studio normalize-licor")
         assert snapshot["method_compare"]["enabled"] is True
         assert snapshot["method_compare"]["deviation_threshold"] == 0.3
     finally:

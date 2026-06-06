@@ -170,6 +170,42 @@ class ECProcessingPage(QWidget):
         self.spectral_zm_spin.setValue(float(spectral_step.get("z_m", 3.0) or 3.0))
         self.spectral_ol_spin.setValue(float(spectral_step.get("ol", 0.0) or 0.0))
         self.spectral_cospectrum_combo.setCurrentIndex(0 if spectral_step.get("use_fcc_measured_cospectrum", True) else 1)
+        primary_step = dict(steps.get("primary_analyzer", {}) or {})
+        primary_snapshot = self.controller._primary_analyzer_config_snapshot(
+            selected=self.controller.selected_device(),
+            existing=primary_step,
+        )
+        primary_profile_id = str(primary_snapshot.get("profile_id", "ygas_irga"))
+        self._set_combo_data(self.primary_analyzer_profile_combo, primary_profile_id)
+        self.primary_analyzer_enable_combo.setCurrentIndex(0 if primary_snapshot.get("enabled", True) else 1)
+        warning_value = primary_step.get(
+            "min_signal_warning_pct",
+            primary_step.get("min_signal_warning", primary_snapshot.get("min_signal_warning_pct", primary_snapshot.get("min_signal_warning", 0.10))),
+        )
+        fail_value = primary_step.get(
+            "min_signal_fail_pct",
+            primary_step.get("min_signal_fail", primary_snapshot.get("min_signal_fail_pct", primary_snapshot.get("min_signal_fail", 0.0))),
+        )
+        warning_pct = float(warning_value or 0.0)
+        fail_pct = float(fail_value or 0.0)
+        if primary_profile_id == "ygas_irga":
+            warning_pct = warning_pct * 100.0 if warning_pct <= 1.0 else warning_pct
+            fail_pct = fail_pct * 100.0 if fail_pct <= 1.0 else fail_pct
+        self.primary_signal_warning_spin.setValue(warning_pct)
+        self.primary_signal_fail_spin.setValue(fail_pct)
+        self.primary_require_status_combo.setCurrentIndex(0 if primary_snapshot.get("require_status_ok", True) else 1)
+        if "require_cell_thermodynamics" in primary_step:
+            self.primary_cell_thermo_combo.setCurrentText("required" if primary_snapshot.get("require_cell_thermodynamics") else "not_required")
+        else:
+            self.primary_cell_thermo_combo.setCurrentText("auto")
+        allowed_words = primary_snapshot.get("allowed_diagnostic_words", [0])
+        if isinstance(allowed_words, (list, tuple)):
+            self.primary_allowed_diag_words_edit.setText(",".join(str(value) for value in allowed_words))
+        else:
+            self.primary_allowed_diag_words_edit.setText(str(allowed_words or "0"))
+        self.primary_calibration_profile_edit.setText(str(primary_snapshot.get("calibration_profile_id", "")))
+        self.primary_source_file_edit.setText(str(primary_snapshot.get("source_file", "")))
+        self.primary_normalization_command_edit.setText(str(primary_snapshot.get("normalization_command", "")))
         method_compare_step = steps.get("method_compare", {})
         self.method_compare_combo.setCurrentIndex(0 if method_compare_step.get("enabled", True) else 1)
         self.method_compare_threshold_spin.setValue(float(method_compare_step.get("deviation_threshold", 0.25) or 0.25))
@@ -189,6 +225,7 @@ class ECProcessingPage(QWidget):
         self._refresh_steadiness_preview()
         self._refresh_turbulence_preview()
         self._refresh_uncertainty_preview()
+        self._refresh_primary_analyzer_preview()
         self._refresh_output_preview()
         self._sync_step_from_controller()
 
@@ -788,6 +825,48 @@ class ECProcessingPage(QWidget):
         spectral_layout.addWidget(self.spectral_summary_label)
         param_layout.addWidget(spectral_card)
 
+        primary_card = CardFrame(muted=True)
+        primary_layout = QVBoxLayout(primary_card)
+        primary_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        primary_layout.setSpacing(TOKENS.spacing_sm)
+        primary_layout.addWidget(section_title("Primary Analyzer QC", "Profile-aware CO2/H2O analyzer provenance and diagnostic thresholds."))
+        primary_form = QFormLayout()
+        self.primary_analyzer_enable_combo = QComboBox()
+        self.primary_analyzer_enable_combo.addItems(["enabled", "disabled"])
+        self.primary_analyzer_profile_combo = QComboBox()
+        for profile in self.controller.available_gas_analyzer_profiles():
+            self.primary_analyzer_profile_combo.addItem(str(profile["label"]), str(profile["profile_id"]))
+        self.primary_signal_warning_spin = self._double_spin(0.0, 100.0, 1, suffix=" %")
+        self.primary_signal_fail_spin = self._double_spin(0.0, 100.0, 1, suffix=" %")
+        self.primary_require_status_combo = QComboBox()
+        self.primary_require_status_combo.addItems(["required", "not_required"])
+        self.primary_cell_thermo_combo = QComboBox()
+        self.primary_cell_thermo_combo.addItems(["auto", "required", "not_required"])
+        self.primary_allowed_diag_words_edit = QLineEdit()
+        self.primary_allowed_diag_words_edit.setPlaceholderText("0")
+        self.primary_calibration_profile_edit = QLineEdit()
+        self.primary_calibration_profile_edit.setPlaceholderText("site_zero_span_2026")
+        self.primary_source_file_edit = QLineEdit()
+        self.primary_source_file_edit.setPlaceholderText("source calibration or normalized diagnostic file")
+        self.primary_normalization_command_edit = QLineEdit()
+        self.primary_normalization_command_edit.setPlaceholderText("gas_ec_studio normalize-licor --input ...")
+        primary_form.addRow("enabled", self.primary_analyzer_enable_combo)
+        primary_form.addRow("profile_id", self.primary_analyzer_profile_combo)
+        primary_form.addRow("signal_warning", self.primary_signal_warning_spin)
+        primary_form.addRow("signal_fail", self.primary_signal_fail_spin)
+        primary_form.addRow("status_ok", self.primary_require_status_combo)
+        primary_form.addRow("cell_thermodynamics", self.primary_cell_thermo_combo)
+        primary_form.addRow("allowed_diag_words", self.primary_allowed_diag_words_edit)
+        primary_form.addRow("calibration_profile_id", self.primary_calibration_profile_edit)
+        primary_form.addRow("source_file", self.primary_source_file_edit)
+        primary_form.addRow("normalization_command", self.primary_normalization_command_edit)
+        primary_layout.addLayout(primary_form)
+        self.primary_analyzer_summary_label = QLabel("--")
+        self.primary_analyzer_summary_label.setObjectName("subtitle")
+        self.primary_analyzer_summary_label.setWordWrap(True)
+        primary_layout.addWidget(self.primary_analyzer_summary_label)
+        param_layout.addWidget(primary_card)
+
         compare_card = CardFrame(muted=True)
         compare_layout = QVBoxLayout(compare_card)
         compare_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -902,6 +981,16 @@ class ECProcessingPage(QWidget):
         self.spectral_zm_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.spectral_ol_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.spectral_cospectrum_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
+        self.primary_analyzer_enable_combo.currentIndexChanged.connect(self._refresh_primary_analyzer_preview)
+        self.primary_analyzer_profile_combo.currentIndexChanged.connect(self._refresh_primary_analyzer_preview)
+        self.primary_signal_warning_spin.valueChanged.connect(self._refresh_primary_analyzer_preview)
+        self.primary_signal_fail_spin.valueChanged.connect(self._refresh_primary_analyzer_preview)
+        self.primary_require_status_combo.currentIndexChanged.connect(self._refresh_primary_analyzer_preview)
+        self.primary_cell_thermo_combo.currentIndexChanged.connect(self._refresh_primary_analyzer_preview)
+        self.primary_allowed_diag_words_edit.textChanged.connect(self._refresh_primary_analyzer_preview)
+        self.primary_calibration_profile_edit.textChanged.connect(self._refresh_primary_analyzer_preview)
+        self.primary_source_file_edit.textChanged.connect(self._refresh_primary_analyzer_preview)
+        self.primary_normalization_command_edit.textChanged.connect(self._refresh_primary_analyzer_preview)
         self.method_compare_combo.currentIndexChanged.connect(self._refresh_uncertainty_preview)
         self.method_compare_threshold_spin.valueChanged.connect(self._refresh_uncertainty_preview)
         self.output_fields_edit.textChanged.connect(self._refresh_output_preview)
@@ -1058,6 +1147,7 @@ class ECProcessingPage(QWidget):
                     "use_fcc_measured_cospectrum": self.spectral_cospectrum_combo.currentText().strip() == "fcc_auto",
                     "preview": self.spectral_summary_label.text().strip(),
                 },
+                "primary_analyzer": self._collect_primary_analyzer_payload(),
                 "method_compare": {
                     "title": "Method compare",
                     "method": "enabled" if self.method_compare_combo.currentText().strip() == "enabled" else "disabled",
@@ -1081,6 +1171,56 @@ class ECProcessingPage(QWidget):
                 },
             },
         }
+
+    def _parse_int_list(self, text: str) -> list[int]:
+        values: list[int] = []
+        for token in text.replace(";", ",").split(","):
+            token = token.strip()
+            if not token:
+                continue
+            values.append(int(token, 0))
+        return values
+
+    def _collect_primary_analyzer_payload(self) -> dict:
+        profile_id = str(self.primary_analyzer_profile_combo.currentData() or "ygas_irga")
+        warning_pct = float(self.primary_signal_warning_spin.value())
+        fail_pct = float(self.primary_signal_fail_spin.value())
+        cell_mode = self.primary_cell_thermo_combo.currentText().strip()
+        allowed_text = self.primary_allowed_diag_words_edit.text().strip()
+        payload = {
+            "title": "Primary analyzer QC",
+            "method": profile_id,
+            "applicable": "CO2/H2O analyzer diagnostic screening and calibration provenance for RP processing.",
+            "recommended": "Use the selected acquisition profile; keep source_file and normalization_command tied to the real calibration or diagnostic input.",
+            "enabled": self.primary_analyzer_enable_combo.currentText().strip() == "enabled",
+            "profile_id": profile_id,
+            "gas_analyzer_profile_id": profile_id,
+            "calibration_profile_id": self.primary_calibration_profile_edit.text().strip(),
+            "source_file": self.primary_source_file_edit.text().strip(),
+            "calibration_source_file": self.primary_source_file_edit.text().strip(),
+            "normalization_command": self.primary_normalization_command_edit.text().strip(),
+            "calibration_normalization_command": self.primary_normalization_command_edit.text().strip(),
+            "require_status_ok": self.primary_require_status_combo.currentText().strip() == "required",
+            "cell_thermodynamics_mode": cell_mode,
+            "preview": self.primary_analyzer_summary_label.text().strip(),
+        }
+        if profile_id == "ygas_irga":
+            payload["min_signal_warning"] = warning_pct / 100.0
+            payload["min_signal_fail"] = fail_pct / 100.0
+        else:
+            payload["min_signal_warning_pct"] = warning_pct
+            payload["min_signal_fail_pct"] = fail_pct
+        if cell_mode == "required":
+            payload["require_cell_thermodynamics"] = True
+        elif cell_mode == "not_required":
+            payload["require_cell_thermodynamics"] = False
+        if allowed_text:
+            try:
+                payload["allowed_diagnostic_words"] = self._parse_int_list(allowed_text)
+            except ValueError as exc:
+                payload["allowed_diagnostic_words_text"] = allowed_text
+                payload["allowed_diagnostic_words_parse_error"] = str(exc)
+        return payload
 
     def _collect_crosswind_payload(self) -> dict:
         coefficients_text = self.crosswind_coefficients_edit.toPlainText().strip()
@@ -1405,6 +1545,50 @@ class ECProcessingPage(QWidget):
         self.uncertainty_processing_label.setText(values[2])
         self.uncertainty_preview_note.setText(note)
 
+    def _refresh_primary_analyzer_preview(self, *_args) -> None:
+        profile_id = str(self.primary_analyzer_profile_combo.currentData() or "ygas_irga")
+        profile = next(
+            (
+                item
+                for item in self.controller.available_gas_analyzer_profiles()
+                if str(item.get("profile_id", "")) == profile_id
+            ),
+            {},
+        )
+        commands = [
+            str(command.get("command", ""))
+            for command in profile.get("command_specs", [])
+            if isinstance(command, dict) and str(command.get("mode", "")).lower().find("read") >= 0
+        ]
+        raw_fields = list(profile.get("raw_output_fields", []) or [])
+        source_file = self.primary_source_file_edit.text().strip()
+        normalization = self.primary_normalization_command_edit.text().strip()
+        threshold_text = (
+            f"warning={self.primary_signal_warning_spin.value():.1f}% / "
+            f"fail={self.primary_signal_fail_spin.value():.1f}%"
+        )
+        config_summary = (
+            f"profile={profile_id} / enabled={self.primary_analyzer_enable_combo.currentText().strip()} / "
+            f"{threshold_text} / status_ok={self.primary_require_status_combo.currentText().strip()} / "
+            f"cell={self.primary_cell_thermo_combo.currentText().strip()} / "
+            f"commands={','.join(commands) or '--'} / fields={len(raw_fields)}"
+        )
+        current = self._current_window()
+        if current is None:
+            self.primary_analyzer_summary_label.setText(
+                f"{config_summary}\nsource={source_file or '--'} / normalization={normalization or '--'}"
+            )
+            return
+        diagnostics = current.diagnostics or {}
+        detail = dict(diagnostics.get("primary_analyzer_detail", {}) or {})
+        status = diagnostics.get("primary_analyzer_status", detail.get("status", "not_available"))
+        telemetry = detail.get("telemetry_detected", diagnostics.get("primary_analyzer_telemetry_detected", False))
+        fault_count = len(detail.get("active_faults", []) or [])
+        self.primary_analyzer_summary_label.setText(
+            f"{config_summary}\nrun_status={status} / telemetry={telemetry} / faults={fault_count} / "
+            f"calibration_profile={detail.get('calibration_profile_id', self.primary_calibration_profile_edit.text().strip()) or '--'}"
+        )
+
     def _refresh_output_preview(self, *_args) -> None:
         workspace = self.controller.ec_processing_workspace
         current = self._current_window()
@@ -1482,3 +1666,13 @@ class ECProcessingPage(QWidget):
             combo.addItem(text)
             index = combo.findText(text)
         combo.setCurrentIndex(index)
+
+    def _set_combo_data(self, combo: QComboBox, value: str) -> None:
+        text = value.strip()
+        if not text:
+            return
+        index = combo.findData(text)
+        if index < 0:
+            index = combo.findText(text)
+        if index >= 0:
+            combo.setCurrentIndex(index)

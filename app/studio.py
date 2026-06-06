@@ -3480,6 +3480,26 @@ class StudioController(QObject):
                 "detail": spectral_detail,
             }
             steps["spectral_correction"]["risks"] = list(diagnostics.get("spectral_correction_limitations", []))[:3] or [current_window.reason]
+        if "primary_analyzer" in steps:
+            primary_detail = dict(diagnostics.get("primary_analyzer_detail", {}) or {})
+            primary_status = str(diagnostics.get("primary_analyzer_status", primary_detail.get("status", "not_available")) or "not_available")
+            primary_profile = str(diagnostics.get("primary_analyzer_profile_id", primary_detail.get("profile_id", "")) or "")
+            steps["primary_analyzer"]["real_summary"] = (
+                f"profile={primary_profile or '--'}, status={primary_status}, "
+                f"telemetry={bool(primary_detail.get('telemetry_detected', False))}, "
+                f"faults={len(primary_detail.get('active_faults', []) or [])}."
+            )
+            steps["primary_analyzer"]["intermediate"] = {
+                "status": primary_status,
+                "profile_id": primary_profile,
+                "telemetry_detected": primary_detail.get("telemetry_detected", False),
+                "calibration_profile_id": primary_detail.get("calibration_profile_id", ""),
+                "calibration_source_file": primary_detail.get("calibration_source_file", ""),
+                "calibration_normalization_command": primary_detail.get("calibration_normalization_command", ""),
+                "active_faults": list(primary_detail.get("active_faults", []) or []),
+                "detail": primary_detail,
+            }
+            steps["primary_analyzer"]["risks"] = list(primary_detail.get("limitations", []) or [])[:3] or [current_window.reason]
         if "method_compare" in steps:
             method_compare = diagnostics.get("method_compare_summary", {})
             recommendations = diagnostics.get("method_compare_recommendations", {})
@@ -8025,6 +8045,24 @@ class StudioController(QObject):
                     "z_m": 3.0,
                     "ol": 0.0,
                     "use_fcc_measured_cospectrum": True,
+                },
+                "primary_analyzer": {
+                    "title": "Primary analyzer QC",
+                    "method": "selected_device",
+                    "applicable": "CO2/H2O analyzer diagnostic screening and calibration provenance for RP processing.",
+                    "recommended": "Use the selected acquisition profile and keep source_file plus normalization_command tied to real calibration evidence.",
+                    "enabled": True,
+                    "profile_id": "",
+                    "gas_analyzer_profile_id": "",
+                    "min_signal_warning": 0.10,
+                    "min_signal_fail": 0.0,
+                    "require_status_ok": True,
+                    "cell_thermodynamics_mode": "auto",
+                    "calibration_profile_id": "",
+                    "source_file": "",
+                    "calibration_source_file": "",
+                    "normalization_command": "",
+                    "calibration_normalization_command": "",
                 },
                 "method_compare": {
                     "title": "Method compare",
