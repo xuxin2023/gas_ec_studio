@@ -36,6 +36,17 @@ class GasAnalyzerProfile:
     known_limitations: tuple[str, ...] = ()
 
     def to_summary(self) -> dict[str, Any]:
+        command_specs = [
+            {
+                "name": command.name,
+                "command": command.command,
+                "mode": command.mode,
+                "range_text": command.range_text,
+                "notes": command.notes,
+                "dangerous": command.dangerous,
+            }
+            for command in self.command_specs
+        ]
         return {
             "profile_id": self.profile_id,
             "label": self.label,
@@ -50,6 +61,7 @@ class GasAnalyzerProfile:
             "measured_variables": list(self.measured_variables),
             "calibration_groups": list(self.calibration_groups),
             "command_count": len(self.command_specs),
+            "command_specs": command_specs,
             "raw_output_fields": list(self.raw_output_fields),
             "eddypro_peer": self.eddypro_peer,
             "primary_project_device": self.primary_project_device,
@@ -141,6 +153,56 @@ YGAS_PROFILE = GasAnalyzerProfile(
 )
 
 
+LICOR_CO2H2O_COMMANDS: tuple[GasAnalyzerCommandSpec, ...] = (
+    GasAnalyzerCommandSpec(
+        "read latest data",
+        "READDATA",
+        "read",
+        "",
+        "Adapter-level request for one normalized LI-COR CO2/H2O diagnostic text record.",
+    ),
+    GasAnalyzerCommandSpec(
+        "diagnostic record",
+        "GETDIAG",
+        "read",
+        "",
+        "Reads the diagnostic record parsed by Gas EC Studio's LI-7500/LI-7200 text decoder.",
+    ),
+    GasAnalyzerCommandSpec(
+        "diagnostic alias",
+        "DIAG",
+        "read",
+        "",
+        "Alias accepted by supported acquisition adapters for LI-COR diagnostic telemetry.",
+    ),
+    GasAnalyzerCommandSpec(
+        "data query alias",
+        "DATA?",
+        "read",
+        "",
+        "Passive query alias used by simulator and text-acquisition adapters.",
+    ),
+)
+
+
+LICOR_LI7500_RAW_OUTPUT_FIELDS: tuple[str, ...] = (
+    "co2_ppm",
+    "h2o_mmol",
+    "co2_signal_strength_pct",
+    "h2o_signal_strength_pct",
+    "reference_signal_pct",
+    "diagnostic_word",
+    "status_ok",
+)
+
+
+LICOR_LI7200_RAW_OUTPUT_FIELDS: tuple[str, ...] = (
+    *LICOR_LI7500_RAW_OUTPUT_FIELDS,
+    "cell_pressure_kpa",
+    "cell_temperature_c",
+)
+
+
 LICOR_PEER_PROFILES: tuple[GasAnalyzerProfile, ...] = (
     GasAnalyzerProfile(
         profile_id="licor_li7500_family",
@@ -154,12 +216,18 @@ LICOR_PEER_PROFILES: tuple[GasAnalyzerProfile, ...] = (
         supported_modes=(1,),
         max_sample_hz=20,
         measured_variables=("co2_mol_fraction", "h2o_mol_fraction", "diagnostics"),
+        command_specs=LICOR_CO2H2O_COMMANDS,
+        raw_output_fields=LICOR_LI7500_RAW_OUTPUT_FIELDS,
         eddypro_peer=True,
         source_reference={
             "eddypro_engine": "https://github.com/LI-COR-Environmental/eddypro-engine",
             "eddypro_gui": "https://github.com/LI-COR-Environmental/eddypro-gui",
+            "normalized_at": "2026-06-06",
+            "normalization": "LI-COR diagnostic text frames normalized through parse_licor_diag_frame.",
         },
-        known_limitations=("Registered for EddyPro parity metadata; native LI-COR binary/RS protocol control remains a separate parity track.",),
+        known_limitations=(
+            "Diagnostic text parsing and adapter-level read commands are supported; native proprietary binary/RS control remains a separate parity track.",
+        ),
     ),
     GasAnalyzerProfile(
         profile_id="licor_li7200_family",
@@ -173,12 +241,19 @@ LICOR_PEER_PROFILES: tuple[GasAnalyzerProfile, ...] = (
         supported_modes=(1,),
         max_sample_hz=20,
         measured_variables=("co2_mol_fraction", "h2o_mol_fraction", "cell_temperature", "cell_pressure", "diagnostics"),
+        command_specs=LICOR_CO2H2O_COMMANDS,
+        raw_output_fields=LICOR_LI7200_RAW_OUTPUT_FIELDS,
         eddypro_peer=True,
         source_reference={
             "eddypro_engine": "https://github.com/LI-COR-Environmental/eddypro-engine",
             "eddypro_flux_docs": "https://www.licor.com/support/EddyPro/topics/calculate-flux-7200-and-7700.html",
+            "normalized_at": "2026-06-06",
+            "normalization": "LI-7200 diagnostic text frames normalized through parse_licor_diag_frame, including cell pressure and temperature.",
         },
-        known_limitations=("Full closed-path cell thermodynamic parity is tracked in RP correction tests.",),
+        known_limitations=(
+            "Diagnostic text parsing and adapter-level read commands are supported; native proprietary binary/RS control remains a separate parity track.",
+            "Full closed-path cell thermodynamic parity is tracked in RP correction tests.",
+        ),
     ),
     GasAnalyzerProfile(
         profile_id="licor_li7700_family",

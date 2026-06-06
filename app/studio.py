@@ -2910,6 +2910,115 @@ class StudioController(QObject):
             "fcc_measured_cospectra": cospectra,
         }
 
+    def _primary_analyzer_config_snapshot(
+        self,
+        *,
+        selected: ManagedDevice | None,
+        existing: dict | None = None,
+    ) -> dict[str, object]:
+        merged: dict[str, object] = {}
+        for candidate in (
+            self.project_workspace.get("primary_analyzer", {}),
+            self.report_center_workspace.get("primary_analyzer", {}),
+            existing or {},
+        ):
+            if isinstance(candidate, dict):
+                merged.update(deepcopy(candidate))
+
+        explicit_profile = (
+            merged.get("profile_id")
+            or merged.get("gas_analyzer_profile_id")
+            or merged.get("gas_analyzer_profile")
+            or merged.get("analyzer_profile")
+        )
+        selected_profile = selected.config.analyzer_profile if selected is not None else ""
+        analyzer = get_gas_analyzer_profile(str(explicit_profile or selected_profile or "ygas_irga"))
+        profile_summary = analyzer.to_summary()
+        source_reference = dict(profile_summary.get("source_reference", {}) or {})
+        calibration_profile = dict(merged.get("calibration_profile", {}) or {}) if isinstance(merged.get("calibration_profile"), dict) else {}
+        default_source_file = str(
+            source_reference.get("manual")
+            or source_reference.get("eddypro_flux_docs")
+            or source_reference.get("eddypro_engine")
+            or ""
+        )
+        source_file = str(
+            merged.get("source_file")
+            or merged.get("calibration_source_file")
+            or calibration_profile.get("source_file")
+            or default_source_file
+            or ""
+        )
+        if analyzer.profile_id == "ygas_irga":
+            default_normalization = f"gas_ec_studio normalize-ygas --input raw_text/status_text --profile {analyzer.profile_id}"
+        elif analyzer.profile_id in {"licor_li7500_family", "licor_li7200_family"}:
+            default_normalization = f"gas_ec_studio normalize-licor --input raw_text/status_text --profile {analyzer.profile_id}"
+        else:
+            default_normalization = f"gas_ec_studio normalize-primary-analyzer --input raw_text/status_text --profile {analyzer.profile_id}"
+        normalization_command = str(
+            merged.get("normalization_command")
+            or merged.get("calibration_normalization_command")
+            or calibration_profile.get("normalization_command")
+            or default_normalization
+        )
+        diagnostic_commands = [
+            command.command
+            for command in analyzer.command_specs
+            if "read" in str(command.mode).lower()
+        ]
+        snapshot: dict[str, object] = {
+            "enabled": bool(merged.get("enabled", True)),
+            "profile_id": analyzer.profile_id,
+            "gas_analyzer_profile_id": analyzer.profile_id,
+            "profile_label": analyzer.label,
+            "manufacturer": analyzer.manufacturer,
+            "instrument_family": analyzer.instrument_family,
+            "default_baudrate": analyzer.default_baudrate,
+            "default_mode": analyzer.default_mode,
+            "default_active_send": analyzer.default_active_send,
+            "sample_hz": float(selected.runtime.ftd_hz if selected is not None else analyzer.max_sample_hz),
+            "diagnostic_commands": diagnostic_commands,
+            "raw_output_fields": list(analyzer.raw_output_fields),
+            "source_reference": source_reference,
+            "source_file": source_file,
+            "calibration_source_file": source_file,
+            "normalization_command": normalization_command,
+            "calibration_normalization_command": normalization_command,
+            "calibration_profile_id": str(
+                merged.get("calibration_profile_id")
+                or merged.get("coefficient_profile_id")
+                or calibration_profile.get("profile_id")
+                or ""
+            ),
+            "calibration_profile": calibration_profile,
+            "known_limitations": list(analyzer.known_limitations),
+        }
+        if analyzer.profile_id == "ygas_irga":
+            snapshot.update(
+                {
+                    "min_signal_warning": float(merged.get("min_signal_warning", 0.10) or 0.10),
+                    "min_signal_fail": float(merged.get("min_signal_fail", 0.0) or 0.0),
+                    "min_reference_signal_warning": float(merged.get("min_reference_signal_warning", 0.0) or 0.0),
+                    "require_status_ok": bool(merged.get("require_status_ok", True)),
+                }
+            )
+        elif analyzer.profile_id in {"licor_li7500_family", "licor_li7200_family"}:
+            snapshot.update(
+                {
+                    "min_signal_warning_pct": float(merged.get("min_signal_warning_pct", 20.0) or 20.0),
+                    "min_signal_fail_pct": float(merged.get("min_signal_fail_pct", 5.0) or 5.0),
+                    "allowed_diagnostic_words": list(merged.get("allowed_diagnostic_words", [0]) or [0]),
+                    "require_status_ok": bool(merged.get("require_status_ok", True)),
+                    "require_cell_thermodynamics": bool(
+                        merged.get("require_cell_thermodynamics", analyzer.profile_id == "licor_li7200_family")
+                    ),
+                }
+            )
+        for key, value in merged.items():
+            if key not in snapshot and value not in (None, ""):
+                snapshot[key] = deepcopy(value)
+        return snapshot
+
     def _collect_rp_rows(self) -> list[NormalizedHFFrame]:
         selected = self.selected_device()
         rows = self.realtime_rows(device_uid=selected.config.uid) if selected else self.realtime_rows()
@@ -2926,6 +3035,7 @@ class StudioController(QObject):
         spectral_step = dict(config.get("spectral_correction", {}) or {})
         crosswind_step = dict(config.get("crosswind_correction", {}) or {})
         method_compare_step = dict(config.get("method_compare", {}) or {})
+        primary_analyzer_step = dict(config.get("primary_analyzer", {}) or {})
         sample_hz = config.get("window_sampling", {}).get("sample_hz") or timing.get("sample_hz")
         if not sample_hz and selected is not None:
             sample_hz = selected.runtime.ftd_hz
@@ -3023,6 +3133,12 @@ class StudioController(QObject):
             "uncertainty_methods": list(method_compare_step.get("uncertainty_methods", ["mann_lenschow", "finkelstein_sims"])),
             "spectral_correction_methods": list(method_compare_step.get("spectral_correction_methods", ["massman", "horst", "ibrom", "fratini"])),
         }
+        config["primary_analyzer"] = self._primary_analyzer_config_snapshot(
+            selected=selected,
+            existing=primary_analyzer_step,
+        )
+        config["gas_analyzer_profile_id"] = str(config["primary_analyzer"].get("profile_id", "ygas_irga"))
+        self.report_center_workspace["primary_analyzer"] = dict(config["primary_analyzer"])
         benchmark_config = self._effective_benchmark_config()
         if benchmark_config.get("reference_id"):
             benchmark_config["status"] = benchmark_config.get("status") or "active"

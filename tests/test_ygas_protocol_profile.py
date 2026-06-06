@@ -140,6 +140,12 @@ def test_ygas_profile_is_first_class_next_to_eddypro_peer_analyzers() -> None:
     assert profiles["ygas_irga"].primary_project_device is True
     assert profiles["ygas_irga"].source_reference["manual"].endswith("气体分析仪指令.docx")
     assert any(command.command == "SETCOM" for command in profiles["ygas_irga"].command_specs)
+    assert any(command.command == "GETDIAG" for command in profiles["licor_li7200_family"].command_specs)
+    assert "cell_pressure_kpa" in profiles["licor_li7200_family"].raw_output_fields
+    assert "diagnostic_word" in profiles["licor_li7500_family"].raw_output_fields
+    li7200_summary = profiles["licor_li7200_family"].to_summary()
+    assert li7200_summary["command_count"] >= 4
+    assert any(command["command"] == "GETDIAG" for command in li7200_summary["command_specs"])
     assert get_gas_analyzer_profile("standard").profile_id == "ygas_irga"
 
 
@@ -357,6 +363,39 @@ def test_studio_controller_exposes_ygas_profile_and_manual_commands(monkeypatch,
 
         snapshot = controller.device_detail_snapshot(uid)
         assert snapshot["gas_analyzer_profile"]["profile_id"] == "ygas_irga"
+    finally:
+        controller.shutdown()
+
+
+def test_studio_controller_injects_licor_primary_analyzer_snapshot(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    try:
+        uid = controller.add_device(
+            label="Tower LI-7200",
+            port="SIM2",
+            baudrate=9600,
+            device_id="LI7200",
+            analyzer_profile="licor_li7200_family",
+        )
+        controller.select_device(uid)
+
+        detail = controller.device_detail_snapshot(uid)
+        profile_summary = detail["gas_analyzer_profile"]
+        config = controller._rp_config_snapshot(precheck_only=False)
+        primary = config["primary_analyzer"]
+
+        assert profile_summary["profile_id"] == "licor_li7200_family"
+        assert any(command["command"] == "GETDIAG" for command in profile_summary["command_specs"])
+        assert primary["profile_id"] == "licor_li7200_family"
+        assert primary["diagnostic_commands"] == ["READDATA", "GETDIAG", "DIAG", "DATA?"]
+        assert primary["require_cell_thermodynamics"] is True
+        assert primary["normalization_command"].startswith("gas_ec_studio normalize-licor")
+        assert primary["source_file"].startswith("https://")
+        assert "cell_temperature_c" in primary["raw_output_fields"]
+        assert "native proprietary binary/RS control" in primary["known_limitations"][0]
+        assert config["gas_analyzer_profile_id"] == "licor_li7200_family"
+        assert controller.report_center_workspace["primary_analyzer"]["profile_id"] == "licor_li7200_family"
     finally:
         controller.shutdown()
 
