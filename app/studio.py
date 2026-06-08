@@ -39,7 +39,7 @@ from core.comparison.official_raw_fixture_bundle import (
     validate_official_raw_fixture_acquisition,
 )
 from core.ec_fcc.pipeline import ECFCCPipeline
-from core.ec_rp.pipeline import ECRPPipeline, LI7700_BUILTIN_COEFFICIENT_PROFILES
+from core.ec_rp.pipeline import ECRPPipeline, LI7700_BUILTIN_COEFFICIENT_PROFILES, TRACE_GAS_BUILTIN_CORRECTION_PROFILES
 from core.exports.delivery_exporter import export_delivery_package
 from core.exports.evidence_exporter import EvidenceExporter
 from core.exports.report_exporter import export_formal_report, export_report_snapshot
@@ -3107,11 +3107,11 @@ class StudioController(QObject):
             merged.update(data)
             if isinstance(nested_trace, dict):
                 merged.update(deepcopy(nested_trace))
-                for nested_key in ("li7700", "ch4"):
+                for nested_key in ("li7700", "ch4", "n2o"):
                     nested_payload = nested_trace.get(nested_key)
                     if isinstance(nested_payload, dict):
                         merged.update(deepcopy(nested_payload))
-            for nested_key in ("li7700", "ch4"):
+            for nested_key in ("li7700", "ch4", "n2o"):
                 nested_payload = data.get(nested_key)
                 if isinstance(nested_payload, dict):
                     merged.update(deepcopy(nested_payload))
@@ -3130,6 +3130,18 @@ class StudioController(QObject):
                 or (selected.config.analyzer_profile if selected is not None else "licor_li7700_family")
             )
         )
+        requested_gas = str(merged.get("gas", merged.get("gas_key", "")) or "").strip().lower()
+        existing_gas = str((existing or {}).get("gas", (existing or {}).get("gas_key", "")) or "").strip().lower()
+        if analyzer.profile_id == "generic_n2o_trace_gas_family" and not existing_gas:
+            requested_gas = "n2o"
+        if not requested_gas:
+            requested_gas = "n2o" if analyzer.profile_id == "generic_n2o_trace_gas_family" else "ch4"
+        if requested_gas == "n2o":
+            return self._n2o_trace_gas_config_snapshot(
+                selected=selected,
+                analyzer=analyzer,
+                merged=merged,
+            )
         default_profile_id = "li7700_factory_compensated"
         coefficient_profile_id = str(
             merged.get("coefficient_profile_id")
@@ -3301,6 +3313,164 @@ class StudioController(QObject):
             "min_signal_strength_warning_pct": status_diagnostics["min_signal_strength_warning_pct"],
             "require_lock": status_diagnostics["require_lock"],
             "status_diagnostics": status_diagnostics,
+            "coefficient_profile": deepcopy(profile),
+            "coefficient_registry": {coefficient_profile_id: deepcopy(profile)},
+            "provenance": provenance,
+            "known_limitations": limitations,
+            "trace_gas": trace_payload,
+        }
+
+    def _n2o_trace_gas_config_snapshot(
+        self,
+        *,
+        selected: ManagedDevice | None,
+        analyzer,
+        merged: dict[str, object],
+    ) -> dict[str, object]:
+        def truthy(value: object, default: bool) -> bool:
+            if value in (None, ""):
+                return default
+            if isinstance(value, str):
+                return value.strip().lower() not in {"0", "false", "no", "disabled", "not_required"}
+            return bool(value)
+
+        def string_list(value: object) -> list[str]:
+            if value in (None, ""):
+                return []
+            if isinstance(value, str):
+                return [value]
+            if isinstance(value, (list, tuple, set)):
+                return [str(item) for item in value if str(item)]
+            return [str(value)]
+
+        default_profile_id = "n2o_identity_empirical"
+        coefficient_profile_id = str(
+            merged.get("coefficient_profile_id")
+            or merged.get("correction_profile_id")
+            or merged.get("n2o_coefficient_profile_id")
+            or default_profile_id
+        ).strip()
+        profile: dict[str, object] = dict(TRACE_GAS_BUILTIN_CORRECTION_PROFILES.get(coefficient_profile_id, {}) or {})
+        registry = merged.get("profile_registry", merged.get("coefficient_registry", merged.get("trace_gas_profile_registry", {})))
+        if isinstance(registry, dict):
+            nested_registry = registry.get("n2o")
+            if isinstance(nested_registry, dict) and coefficient_profile_id in nested_registry:
+                candidate = nested_registry.get(coefficient_profile_id)
+                if isinstance(candidate, dict):
+                    profile.update(deepcopy(candidate))
+            candidate = registry.get(coefficient_profile_id)
+            if isinstance(candidate, dict):
+                profile.update(deepcopy(candidate))
+            elif str(registry.get("gas", "") or "").lower() == "n2o" and (
+                "profile_id" in registry or "coefficient_profile_id" in registry
+            ):
+                profile.update(deepcopy(registry))
+        custom_profile = merged.get("coefficient_profile")
+        if isinstance(custom_profile, dict):
+            custom_profile_id = str(
+                custom_profile.get("profile_id")
+                or custom_profile.get("coefficient_profile_id")
+                or coefficient_profile_id
+            )
+            custom_gas = str(custom_profile.get("gas", custom_profile.get("gas_key", "n2o")) or "n2o").lower()
+            if custom_profile_id == coefficient_profile_id and custom_gas == "n2o":
+                profile.update(deepcopy(custom_profile))
+        profile["profile_id"] = coefficient_profile_id
+        profile["gas"] = "n2o"
+        profile.setdefault("label", coefficient_profile_id)
+        profile.setdefault("method", "n2o_empirical_correction_sequence_v1")
+        profile.setdefault("source", "builtin" if coefficient_profile_id in TRACE_GAS_BUILTIN_CORRECTION_PROFILES else "custom")
+        source_file = str(
+            merged.get("source_file")
+            or merged.get("coefficient_profile_source_file")
+            or profile.get("source_file")
+            or (f"builtin:{coefficient_profile_id}" if coefficient_profile_id in TRACE_GAS_BUILTIN_CORRECTION_PROFILES else "")
+        )
+        normalization_command = str(
+            merged.get("normalization_command")
+            or merged.get("coefficient_profile_normalization_command")
+            or profile.get("normalization_command")
+            or f"gas_ec_studio normalize-trace-gas --gas n2o --profile {coefficient_profile_id}"
+        )
+        spectral_factor = float(
+            merged.get("spectral_correction_factor", profile.get("spectral_correction_factor", 1.0)) or 1.0
+        )
+        analyzer_factor = float(
+            merged.get("analyzer_correction_factor", profile.get("analyzer_correction_factor", 1.0)) or 1.0
+        )
+        density_factor = float(
+            merged.get("density_correction_factor", profile.get("density_correction_factor", 1.0)) or 1.0
+        )
+        use_spectral = truthy(merged.get("use_spectral_correction_factor"), bool(merged.get("use_spectral_correction_factor", True)))
+        enabled = truthy(merged.get("enabled"), analyzer.profile_id == "generic_n2o_trace_gas_family")
+        method = str(merged.get("method") or profile.get("method") or "n2o_empirical_correction_sequence_v1")
+        limitations = string_list(
+            merged.get("known_limitations")
+            or merged.get("limitations")
+            or profile.get("known_limitations")
+            or analyzer.known_limitations
+        )
+        provenance = str(
+            merged.get("provenance")
+            or profile.get("provenance")
+            or (
+                f"Device-level N2O trace-gas profile '{coefficient_profile_id}' "
+                f"resolved for {selected.config.label if selected is not None else 'the selected analyzer'}."
+            )
+        )
+        profile.update(
+            {
+                "source_file": source_file,
+                "normalization_command": normalization_command,
+                "spectral_correction_factor": spectral_factor,
+                "analyzer_correction_factor": analyzer_factor,
+                "density_correction_factor": density_factor,
+                "provenance": provenance,
+                "known_limitations": list(limitations),
+            }
+        )
+        n2o_config: dict[str, object] = {
+            "enabled": enabled,
+            "gas": "n2o",
+            "method": method,
+            "analyzer_profile_id": analyzer.profile_id,
+            "coefficient_profile_id": coefficient_profile_id,
+            "coefficient_registry": {coefficient_profile_id: deepcopy(profile)},
+            "profile_registry": {coefficient_profile_id: deepcopy(profile)},
+            "coefficient_profile": deepcopy(profile),
+            "coefficient_profile_source_file": source_file,
+            "coefficient_profile_normalization_command": normalization_command,
+            "coefficient_profile_provenance": provenance,
+            "coefficient_profile_limitations": list(limitations),
+            "spectral_correction_factor": spectral_factor,
+            "analyzer_correction_factor": analyzer_factor,
+            "density_correction_factor": density_factor,
+            "use_spectral_correction_factor": use_spectral,
+        }
+        trace_payload: dict[str, object] = {
+            "enabled": enabled,
+            "gas": "n2o",
+            "method": method,
+            "analyzer_profile_id": analyzer.profile_id,
+            "coefficient_profile_id": coefficient_profile_id,
+            "profile_registry": {coefficient_profile_id: deepcopy(profile)},
+            "coefficient_registry": {coefficient_profile_id: deepcopy(profile)},
+            "n2o": deepcopy(n2o_config),
+        }
+        return {
+            "enabled": enabled,
+            "gas": "n2o",
+            "method": method,
+            "analyzer_profile_id": analyzer.profile_id,
+            "analyzer_profile_label": analyzer.label,
+            "coefficient_profile_id": coefficient_profile_id,
+            "coefficient_profile_label": str(profile.get("label", coefficient_profile_id)),
+            "source_file": source_file,
+            "normalization_command": normalization_command,
+            "spectral_correction_factor": spectral_factor,
+            "analyzer_correction_factor": analyzer_factor,
+            "density_correction_factor": density_factor,
+            "use_spectral_correction_factor": use_spectral,
             "coefficient_profile": deepcopy(profile),
             "coefficient_registry": {coefficient_profile_id: deepcopy(profile)},
             "provenance": provenance,

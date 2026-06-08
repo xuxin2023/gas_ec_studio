@@ -130,3 +130,68 @@ def test_device_detail_page_applies_li7700_trace_gas_profile_to_pipeline(monkeyp
         assert "tower_li7700_device_2026" in page.trace_gas_summary_label.text()
     finally:
         controller.shutdown()
+
+
+def test_device_detail_page_applies_n2o_trace_gas_profile_to_pipeline(monkeypatch, tmp_path: Path) -> None:
+    _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    try:
+        uid = controller.add_device(
+            label="Tower N2O",
+            port="SIM4",
+            baudrate=9600,
+            device_id="N2O01",
+            analyzer_profile="generic_n2o_trace_gas_family",
+        )
+        controller.select_device(uid)
+        page = DeviceDetailPage(controller)
+        page.refresh()
+
+        assert page.trace_gas_gas_combo.currentData() == "n2o"
+        page.trace_gas_enable_combo.setCurrentText("enabled")
+        page.trace_gas_coefficient_profile_edit.setText("tower_n2o_device_2026")
+        page.trace_gas_source_file_edit.setText("D:/fixtures/tower_n2o_device_2026.json")
+        page.trace_gas_normalization_command_edit.setText(
+            "gas_ec_studio normalize-trace-gas --gas n2o --profile tower_n2o_device_2026"
+        )
+        page.trace_gas_spectral_factor_combo.setCurrentText("enabled")
+        page.trace_gas_spectral_factor_value_spin.setValue(1.07)
+        page.trace_gas_analyzer_factor_spin.setValue(0.98)
+        page.trace_gas_density_factor_spin.setValue(1.01)
+
+        payload = page._collect_trace_gas_payload()
+        assert payload["gas"] == "n2o"
+        assert payload["method"] == "n2o_empirical_correction_sequence_v1"
+        assert payload["analyzer_profile_id"] == "generic_n2o_trace_gas_family"
+        assert payload["coefficient_profile_id"] == "tower_n2o_device_2026"
+
+        snapshot = controller.apply_device_trace_gas_config(uid, payload)
+        page._populate_trace_gas_config(dict(snapshot))
+
+        trace_step = controller.ec_processing["steps"]["trace_gas"]
+        n2o_step = trace_step["n2o"]
+        assert trace_step["gas"] == "n2o"
+        assert n2o_step["coefficient_profile_id"] == "tower_n2o_device_2026"
+        assert n2o_step["coefficient_registry"]["tower_n2o_device_2026"]["source_file"].endswith(
+            "tower_n2o_device_2026.json"
+        )
+        assert n2o_step["spectral_correction_factor"] == 1.07
+        assert n2o_step["analyzer_correction_factor"] == 0.98
+        assert n2o_step["density_correction_factor"] == 1.01
+        assert controller.report_center_workspace["trace_gas"]["gas"] == "n2o"
+
+        rp_config = controller._rp_config_snapshot(precheck_only=False)
+        trace_config = _extract_trace_gas_config(rp_config)
+        n2o = trace_config["n2o"]
+        assert n2o["coefficient_profile_id"] == "tower_n2o_device_2026"
+        assert n2o["coefficient_registry_status"] == "resolved"
+        assert n2o["coefficient_profile_source_file"].endswith("tower_n2o_device_2026.json")
+        assert n2o["coefficient_profile_normalization_command"].startswith("gas_ec_studio normalize-trace-gas")
+        assert n2o["spectral_correction_factor"] == 1.07
+        assert n2o["analyzer_correction_factor"] == 0.98
+        assert n2o["density_correction_factor"] == 1.01
+        assert controller.device_detail_snapshot(uid)["trace_gas_config"]["gas"] == "n2o"
+        assert "tower_n2o_device_2026" in page.trace_gas_summary_label.text()
+    finally:
+        controller.shutdown()

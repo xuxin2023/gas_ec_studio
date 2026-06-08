@@ -274,6 +274,31 @@ LICOR_PEER_PROFILES: tuple[GasAnalyzerProfile, ...] = (
         },
         known_limitations=("Raw WMS line-shape fitting is not fully implemented yet; correction-sequence parity remains tracked separately.",),
     ),
+    GasAnalyzerProfile(
+        profile_id="generic_n2o_trace_gas_family",
+        label="Generic N2O trace-gas analyzer",
+        manufacturer="Generic",
+        instrument_family="trace_gas_n2o",
+        command_prefix="",
+        default_baudrate=9600,
+        default_mode=1,
+        default_active_send=True,
+        supported_modes=(1,),
+        max_sample_hz=20,
+        measured_variables=("n2o_mol_fraction", "diagnostics"),
+        command_specs=LICOR_CO2H2O_COMMANDS,
+        raw_output_fields=("n2o_ppb", "n2o_signal_strength_pct", "diagnostic_word", "status_ok"),
+        eddypro_peer=True,
+        source_reference={
+            "eddypro_engine": "https://github.com/LI-COR-Environmental/eddypro-engine",
+            "normalized_at": "2026-06-08",
+            "normalization": "Generic high-frequency N2O analyzer profile for RP trace-gas correction registry and export mapping.",
+        },
+        known_limitations=(
+            "No vendor-specific serial control is claimed; use raw/HF row import or a vendor adapter for live acquisition.",
+            "Default correction factors are identity until site-specific N2O coefficient evidence is configured.",
+        ),
+    ),
 )
 
 
@@ -291,6 +316,8 @@ def get_gas_analyzer_profile(profile_id: str | None) -> GasAnalyzerProfile:
         "li7500": "licor_li7500_family",
         "li7200": "licor_li7200_family",
         "li7700": "licor_li7700_family",
+        "n2o": "generic_n2o_trace_gas_family",
+        "generic_n2o": "generic_n2o_trace_gas_family",
     }
     resolved = aliases.get(key, key)
     return GAS_ANALYZER_PROFILES.get(resolved, YGAS_PROFILE)

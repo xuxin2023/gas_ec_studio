@@ -137,16 +137,20 @@ def test_ygas_profile_is_first_class_next_to_eddypro_peer_analyzers() -> None:
     assert "licor_li7500_family" in profiles
     assert "licor_li7200_family" in profiles
     assert "licor_li7700_family" in profiles
+    assert "generic_n2o_trace_gas_family" in profiles
     assert profiles["ygas_irga"].primary_project_device is True
     assert profiles["ygas_irga"].source_reference["manual"].endswith("气体分析仪指令.docx")
     assert any(command.command == "SETCOM" for command in profiles["ygas_irga"].command_specs)
     assert any(command.command == "GETDIAG" for command in profiles["licor_li7200_family"].command_specs)
     assert "cell_pressure_kpa" in profiles["licor_li7200_family"].raw_output_fields
     assert "diagnostic_word" in profiles["licor_li7500_family"].raw_output_fields
+    assert "n2o_ppb" in profiles["generic_n2o_trace_gas_family"].raw_output_fields
+    assert profiles["generic_n2o_trace_gas_family"].eddypro_peer is True
     li7200_summary = profiles["licor_li7200_family"].to_summary()
     assert li7200_summary["command_count"] >= 4
     assert any(command["command"] == "GETDIAG" for command in li7200_summary["command_specs"])
     assert get_gas_analyzer_profile("standard").profile_id == "ygas_irga"
+    assert get_gas_analyzer_profile("n2o").profile_id == "generic_n2o_trace_gas_family"
 
 
 def test_command_builder_covers_manual_command_set_and_validates_ranges() -> None:
