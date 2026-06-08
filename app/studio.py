@@ -39,7 +39,7 @@ from core.comparison.official_raw_fixture_bundle import (
     validate_official_raw_fixture_acquisition,
 )
 from core.ec_fcc.pipeline import ECFCCPipeline
-from core.ec_rp.pipeline import ECRPPipeline
+from core.ec_rp.pipeline import ECRPPipeline, LI7700_BUILTIN_COEFFICIENT_PROFILES
 from core.exports.delivery_exporter import export_delivery_package
 from core.exports.evidence_exporter import EvidenceExporter
 from core.exports.report_exporter import export_formal_report, export_report_snapshot
@@ -872,6 +872,44 @@ class StudioController(QObject):
         self._append_log(
             "info",
             f"{entry.config.label} primary analyzer QC profile applied to EC processing: {snapshot.get('profile_id', '')}",
+        )
+        self.project_changed.emit()
+        self.processing_changed.emit()
+        self.report_changed.emit()
+        self.devices_changed.emit()
+        return snapshot
+
+    def device_trace_gas_config_snapshot(self, device_uid: str) -> dict[str, object]:
+        entry = self._get_device(device_uid)
+        device_configs = self.project_workspace.setdefault("trace_gas_devices", {})
+        saved = {}
+        if isinstance(device_configs, dict):
+            saved = dict(device_configs.get(device_uid, {}) or {})
+        runtime_saved = entry.runtime.extra.get("trace_gas_config", {})
+        if isinstance(runtime_saved, dict):
+            saved = {**saved, **runtime_saved}
+        return self._trace_gas_config_snapshot(selected=entry, existing=saved)
+
+    def apply_device_trace_gas_config(self, device_uid: str, payload: dict) -> dict[str, object]:
+        entry = self._get_device(device_uid)
+        requested = dict(payload or {})
+        requested.setdefault("analyzer_profile_id", entry.config.analyzer_profile)
+        snapshot = self._trace_gas_config_snapshot(selected=entry, existing=requested)
+        device_configs = self.project_workspace.setdefault("trace_gas_devices", {})
+        if isinstance(device_configs, dict):
+            device_configs[device_uid] = deepcopy(snapshot)
+        entry.runtime.extra["trace_gas_config"] = deepcopy(snapshot)
+        trace_payload = deepcopy(snapshot.get("trace_gas", {}))
+        trace_payload["selected_device_uid"] = entry.config.uid
+        trace_payload["selected_device_label"] = entry.config.label
+        self.ec_processing.setdefault("steps", {})["trace_gas"] = deepcopy(trace_payload)
+        self.project_workspace["trace_gas"] = deepcopy(trace_payload)
+        self.report_center_workspace["trace_gas"] = deepcopy(snapshot)
+        self._sync_ec_processing_workspace_from_state()
+        self._append_log(
+            "info",
+            f"{entry.config.label} trace-gas CH4/LI-7700 profile applied to EC processing: "
+            f"{snapshot.get('coefficient_profile_id', '')}",
         )
         self.project_changed.emit()
         self.processing_changed.emit()
@@ -3053,6 +3091,223 @@ class StudioController(QObject):
                 snapshot[key] = deepcopy(value)
         return snapshot
 
+    def _trace_gas_config_snapshot(
+        self,
+        *,
+        selected: ManagedDevice | None,
+        existing: dict | None = None,
+    ) -> dict[str, object]:
+        merged: dict[str, object] = {}
+
+        def absorb(candidate: object) -> None:
+            if not isinstance(candidate, dict):
+                return
+            data = deepcopy(candidate)
+            nested_trace = data.pop("trace_gas", None)
+            merged.update(data)
+            if isinstance(nested_trace, dict):
+                merged.update(deepcopy(nested_trace))
+                for nested_key in ("li7700", "ch4"):
+                    nested_payload = nested_trace.get(nested_key)
+                    if isinstance(nested_payload, dict):
+                        merged.update(deepcopy(nested_payload))
+            for nested_key in ("li7700", "ch4"):
+                nested_payload = data.get(nested_key)
+                if isinstance(nested_payload, dict):
+                    merged.update(deepcopy(nested_payload))
+
+        for candidate in (
+            self.project_workspace.get("trace_gas", {}),
+            self.report_center_workspace.get("trace_gas", {}),
+            existing or {},
+        ):
+            absorb(candidate)
+
+        analyzer = get_gas_analyzer_profile(
+            str(
+                merged.get("analyzer_profile_id")
+                or merged.get("gas_analyzer_profile_id")
+                or (selected.config.analyzer_profile if selected is not None else "licor_li7700_family")
+            )
+        )
+        default_profile_id = "li7700_factory_compensated"
+        coefficient_profile_id = str(
+            merged.get("coefficient_profile_id")
+            or merged.get("li7700_coefficient_profile_id")
+            or default_profile_id
+        ).strip()
+        profile: dict[str, object] = dict(LI7700_BUILTIN_COEFFICIENT_PROFILES.get(coefficient_profile_id, {}) or {})
+        registry = merged.get("coefficient_registry", merged.get("li7700_coefficient_registry", {}))
+        if isinstance(registry, dict):
+            registry_profile = registry.get(coefficient_profile_id)
+            if isinstance(registry_profile, dict):
+                profile.update(deepcopy(registry_profile))
+            elif "profile_id" in registry or "coefficient_profile_id" in registry:
+                profile.update(deepcopy(registry))
+        custom_profile = merged.get("coefficient_profile")
+        if isinstance(custom_profile, dict):
+            custom_profile_id = str(
+                custom_profile.get("profile_id")
+                or custom_profile.get("coefficient_profile_id")
+                or coefficient_profile_id
+            )
+            if custom_profile_id == coefficient_profile_id:
+                profile.update(deepcopy(custom_profile))
+        profile["profile_id"] = coefficient_profile_id
+        profile.setdefault("label", coefficient_profile_id)
+        profile.setdefault("instrument_family", "LI-7700")
+        profile.setdefault("source", "builtin" if coefficient_profile_id in LI7700_BUILTIN_COEFFICIENT_PROFILES else "custom")
+        source_file = str(
+            merged.get("source_file")
+            or merged.get("coefficient_profile_source_file")
+            or profile.get("source_file")
+            or (f"builtin:{coefficient_profile_id}" if coefficient_profile_id in LI7700_BUILTIN_COEFFICIENT_PROFILES else "")
+        )
+        normalization_command = str(
+            merged.get("normalization_command")
+            or merged.get("coefficient_profile_normalization_command")
+            or profile.get("normalization_command")
+            or f"gas_ec_studio normalize-li7700 --profile {coefficient_profile_id}"
+        )
+        profile["source_file"] = source_file
+        profile["normalization_command"] = normalization_command
+
+        def truthy(value: object, default: bool) -> bool:
+            if value in (None, ""):
+                return default
+            if isinstance(value, str):
+                return value.strip().lower() not in {"0", "false", "no", "disabled", "not_required"}
+            return bool(value)
+
+        def string_list(value: object) -> list[str]:
+            if value in (None, ""):
+                return []
+            if isinstance(value, str):
+                return [value]
+            if isinstance(value, (list, tuple, set)):
+                return [str(item) for item in value if str(item)]
+            return [str(value)]
+
+        enabled = truthy(merged.get("enabled"), analyzer.profile_id == "licor_li7700_family")
+        method = str(merged.get("method") or "li_7700_correction_sequence_v1")
+        spectroscopic = dict(profile.get("spectroscopic_correction", {}) or {})
+        if isinstance(merged.get("spectroscopic_correction"), dict):
+            spectroscopic.update(deepcopy(merged.get("spectroscopic_correction", {})))
+        spectroscopic["mode"] = str(
+            merged.get("spectroscopic_correction_mode")
+            or spectroscopic.get("mode")
+            or "input_corrected"
+        )
+        self_heating = dict(profile.get("self_heating_correction", {}) or {})
+        if isinstance(merged.get("self_heating_correction"), dict):
+            self_heating.update(deepcopy(merged.get("self_heating_correction", {})))
+        self_heating["mode"] = str(
+            merged.get("self_heating_mode")
+            or self_heating.get("mode")
+            or "not_configured"
+        )
+        status_diagnostics = dict(profile.get("status_diagnostics", {}) or {})
+        for key in ("status_diagnostics", "li7700_status_diagnostics"):
+            payload = merged.get(key)
+            if isinstance(payload, dict):
+                status_diagnostics.update(deepcopy(payload))
+        status_diagnostics["min_rssi_warning_pct"] = float(
+            merged.get("min_rssi_warning_pct", status_diagnostics.get("min_rssi_warning_pct", 20.0)) or 20.0
+        )
+        status_diagnostics["min_rssi_fail_pct"] = float(
+            merged.get("min_rssi_fail_pct", status_diagnostics.get("min_rssi_fail_pct", 10.0)) or 10.0
+        )
+        status_diagnostics["min_signal_strength_warning_pct"] = float(
+            merged.get(
+                "min_signal_strength_warning_pct",
+                status_diagnostics.get("min_signal_strength_warning_pct", status_diagnostics["min_rssi_warning_pct"]),
+            )
+            or status_diagnostics["min_rssi_warning_pct"]
+        )
+        status_diagnostics["require_lock"] = truthy(
+            merged.get("require_lock", status_diagnostics.get("require_lock")),
+            bool(status_diagnostics.get("require_lock", False)),
+        )
+        limitations = string_list(
+            merged.get("known_limitations")
+            or merged.get("limitations")
+            or profile.get("known_limitations")
+            or analyzer.known_limitations
+        )
+        provenance = str(
+            merged.get("provenance")
+            or profile.get("provenance")
+            or (
+                f"Device-level LI-7700 coefficient profile '{coefficient_profile_id}' "
+                f"resolved for {selected.config.label if selected is not None else 'the selected analyzer'}."
+            )
+        )
+        profile["spectroscopic_correction"] = deepcopy(spectroscopic)
+        profile["self_heating_correction"] = deepcopy(self_heating)
+        profile["status_diagnostics"] = deepcopy(status_diagnostics)
+        profile["known_limitations"] = list(limitations)
+        profile["provenance"] = provenance
+
+        ch4_config: dict[str, object] = {
+            "enabled": enabled,
+            "gas": "ch4",
+            "method": method,
+            "analyzer_profile_id": analyzer.profile_id,
+            "coefficient_profile_id": coefficient_profile_id,
+            "coefficient_registry": {coefficient_profile_id: deepcopy(profile)},
+            "coefficient_profile": deepcopy(profile),
+            "coefficient_profile_source_file": source_file,
+            "coefficient_profile_normalization_command": normalization_command,
+            "coefficient_profile_provenance": provenance,
+            "coefficient_profile_limitations": list(limitations),
+            "apply_water_vapor_dilution": truthy(
+                merged.get("apply_water_vapor_dilution"),
+                bool(profile.get("apply_water_vapor_dilution", True)),
+            ),
+            "use_spectral_correction_factor": truthy(
+                merged.get("use_spectral_correction_factor"),
+                bool(profile.get("use_spectral_correction_factor", True)),
+            ),
+            "spectroscopic_correction": deepcopy(spectroscopic),
+            "self_heating_correction": deepcopy(self_heating),
+            "status_diagnostics": deepcopy(status_diagnostics),
+        }
+        trace_payload: dict[str, object] = {
+            "enabled": enabled,
+            "gas": "ch4",
+            "method": method,
+            "analyzer_profile_id": analyzer.profile_id,
+            "coefficient_profile_id": coefficient_profile_id,
+            "coefficient_registry": {coefficient_profile_id: deepcopy(profile)},
+            "ch4": deepcopy(ch4_config),
+            "li7700": deepcopy(ch4_config),
+        }
+        return {
+            "enabled": enabled,
+            "gas": "ch4",
+            "method": method,
+            "analyzer_profile_id": analyzer.profile_id,
+            "analyzer_profile_label": analyzer.label,
+            "coefficient_profile_id": coefficient_profile_id,
+            "coefficient_profile_label": str(profile.get("label", coefficient_profile_id)),
+            "source_file": source_file,
+            "normalization_command": normalization_command,
+            "spectroscopic_correction_mode": spectroscopic["mode"],
+            "self_heating_mode": self_heating["mode"],
+            "apply_water_vapor_dilution": ch4_config["apply_water_vapor_dilution"],
+            "use_spectral_correction_factor": ch4_config["use_spectral_correction_factor"],
+            "min_rssi_warning_pct": status_diagnostics["min_rssi_warning_pct"],
+            "min_rssi_fail_pct": status_diagnostics["min_rssi_fail_pct"],
+            "min_signal_strength_warning_pct": status_diagnostics["min_signal_strength_warning_pct"],
+            "require_lock": status_diagnostics["require_lock"],
+            "status_diagnostics": status_diagnostics,
+            "coefficient_profile": deepcopy(profile),
+            "coefficient_registry": {coefficient_profile_id: deepcopy(profile)},
+            "provenance": provenance,
+            "known_limitations": limitations,
+            "trace_gas": trace_payload,
+        }
+
     def _collect_rp_rows(self) -> list[NormalizedHFFrame]:
         selected = self.selected_device()
         rows = self.realtime_rows(device_uid=selected.config.uid) if selected else self.realtime_rows()
@@ -3070,6 +3325,7 @@ class StudioController(QObject):
         crosswind_step = dict(config.get("crosswind_correction", {}) or {})
         method_compare_step = dict(config.get("method_compare", {}) or {})
         primary_analyzer_step = dict(config.get("primary_analyzer", {}) or {})
+        trace_gas_step = dict(config.get("trace_gas", {}) or {})
         sample_hz = config.get("window_sampling", {}).get("sample_hz") or timing.get("sample_hz")
         if not sample_hz and selected is not None:
             sample_hz = selected.runtime.ftd_hz
@@ -3173,6 +3429,10 @@ class StudioController(QObject):
         )
         config["gas_analyzer_profile_id"] = str(config["primary_analyzer"].get("profile_id", "ygas_irga"))
         self.report_center_workspace["primary_analyzer"] = dict(config["primary_analyzer"])
+        trace_gas_snapshot = self._trace_gas_config_snapshot(selected=selected, existing=trace_gas_step)
+        if trace_gas_snapshot.get("enabled") or trace_gas_step:
+            config["trace_gas"] = deepcopy(trace_gas_snapshot.get("trace_gas", {}))
+            self.report_center_workspace["trace_gas"] = deepcopy(trace_gas_snapshot)
         benchmark_config = self._effective_benchmark_config()
         if benchmark_config.get("reference_id"):
             benchmark_config["status"] = benchmark_config.get("status") or "active"
@@ -6333,6 +6593,7 @@ class StudioController(QObject):
             "entry": entry,
             "gas_analyzer_profile": analyzer.to_summary(),
             "primary_analyzer_config": self.device_primary_analyzer_config_snapshot(device_uid),
+            "trace_gas_config": self.device_trace_gas_config_snapshot(device_uid),
             "latest_frame": latest_frame[0] if latest_frame else None,
             "latest_numeric": latest_numeric,
             "transactions": self.recent_transactions(device_uid=device_uid, limit=24),

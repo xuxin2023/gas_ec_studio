@@ -313,6 +313,25 @@ def test_li7700_status_diagnostics_parses_rssi_mirror_and_faults() -> None:
     assert any("mirror_dirty" in flag for flag in bad_status["diagnostic_flags"])
 
 
+def test_li7700_correction_sequence_respects_disabled_config() -> None:
+    sequence = compute_li7700_correction_sequence(
+        ch4_metrics={"status": "computed", "ch4_flux_nmol_m2_s": 12.0},
+        mean_h2o_mmol=12.0,
+        mean_pressure_kpa=101.3,
+        mean_temp_c=25.0,
+        spectral_correction_factor=1.05,
+        config={
+            "enabled": False,
+            "method": "li_7700_correction_sequence_v1",
+            "coefficient_profile_id": "li7700_factory_compensated",
+        },
+    )
+
+    assert sequence["status"] == "disabled"
+    assert sequence["coefficient_profile_id"] == "li7700_factory_compensated"
+    assert "config.enabled is false" in sequence["provenance"]
+
+
 def test_li7700_coefficient_registry_profile_merges_before_pipeline() -> None:
     config = {
         "metadata_bundle": {

@@ -2140,6 +2140,18 @@ def compute_trace_gas_empirical_correction_sequence(
 ) -> dict[str, Any]:
     cfg = dict(config or {})
     selected_method = str(cfg.get("method", f"{gas_key}_empirical_correction_sequence_v1") or f"{gas_key}_empirical_correction_sequence_v1")
+    enabled = cfg.get("enabled", True)
+    if isinstance(enabled, str):
+        enabled = enabled.strip().lower() not in {"0", "false", "no", "disabled"}
+    if not enabled:
+        return {
+            "status": "disabled",
+            "selected_method": selected_method,
+            "reason": f"{gas_label} trace-gas correction sequence is disabled by configuration.",
+            "levels": {},
+            "provenance": f"{gas_label} empirical trace-gas correction sequence skipped because config.enabled is false.",
+            "limitations": [],
+        }
     if level0_metrics.get("status") != "computed" or not isinstance(level0_metrics.get(level0_flux_field), (int, float)):
         return {
             "status": "not_available",
@@ -3214,6 +3226,25 @@ def compute_li7700_correction_sequence(
         or ""
     )
     status_diagnostics = dict(config.get("li7700_status_diagnostics", {}) or {})
+    enabled = config.get("enabled", True)
+    if isinstance(enabled, str):
+        enabled = enabled.strip().lower() not in {"0", "false", "no", "disabled"}
+    if not enabled:
+        return {
+            "status": "disabled",
+            "selected_method": str(config.get("method", "li_7700_correction_sequence_v1") or "li_7700_correction_sequence_v1"),
+            "reason": "CH4 LI-7700 correction sequence is disabled by configuration.",
+            "levels": {},
+            "coefficient_profile_id": coefficient_profile_id,
+            "coefficient_registry_status": coefficient_registry_status,
+            "coefficient_profile_provenance": coefficient_provenance,
+            "coefficient_source_file": coefficient_source_file,
+            "coefficient_normalization_command": coefficient_normalization_command,
+            "coefficient_profile": coefficient_profile,
+            "li7700_status_diagnostics": status_diagnostics,
+            "provenance": "LI-7700 correction sequence skipped because config.enabled is false.",
+            "limitations": [],
+        }
     if ch4_metrics.get("status") != "computed" or not isinstance(ch4_metrics.get("ch4_flux_nmol_m2_s"), (int, float)):
         return {
             "status": "not_available",

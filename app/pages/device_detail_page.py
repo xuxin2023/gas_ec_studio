@@ -182,6 +182,7 @@ class DeviceDetailPage(QWidget):
         self.filter_spin.setValue(entry.runtime.filter_window)
         self.device_id_input.setText(entry.config.device_id)
         self._populate_primary_analyzer_config(dict(snapshot.get("primary_analyzer_config", {}) or {}))
+        self._populate_trace_gas_config(dict(snapshot.get("trace_gas_config", {}) or {}))
 
         self.coeff_warning_label.setVisible(self.controller.view_mode == "engineer")
         self.coeff_result.setPlainText(self._coeff_result_text)
@@ -344,6 +345,7 @@ class DeviceDetailPage(QWidget):
         card_layout.addWidget(self._labeled_row("设备编号维护", id_row))
         layout.addWidget(config_card)
         layout.addWidget(self._build_primary_analyzer_card())
+        layout.addWidget(self._build_trace_gas_card())
         layout.addStretch(1)
 
     def _build_primary_analyzer_card(self) -> CardFrame:
@@ -423,6 +425,90 @@ class DeviceDetailPage(QWidget):
         self.primary_calibration_profile_edit.textChanged.connect(self._refresh_primary_analyzer_summary)
         self.primary_source_file_edit.textChanged.connect(self._refresh_primary_analyzer_summary)
         self.primary_normalization_command_edit.textChanged.connect(self._refresh_primary_analyzer_summary)
+        return card
+
+    def _build_trace_gas_card(self) -> CardFrame:
+        card = CardFrame(muted=True)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        layout.setSpacing(TOKENS.spacing_md)
+        layout.addWidget(
+            section_title(
+                "Trace Gas CH4 / LI-7700",
+                "Device-level methane coefficient profile, LI-7700 diagnostics, and correction provenance used by RP trace-gas processing.",
+            )
+        )
+
+        top_row = QHBoxLayout()
+        self.trace_gas_enable_combo = QComboBox()
+        self.trace_gas_enable_combo.addItems(["enabled", "disabled"])
+        self.trace_gas_spectroscopic_mode_combo = QComboBox()
+        self.trace_gas_spectroscopic_mode_combo.addItems(["input_corrected", "empirical", "wms_line_shape"])
+        self.trace_gas_self_heating_mode_combo = QComboBox()
+        self.trace_gas_self_heating_mode_combo.addItems(["not_configured", "empirical"])
+        apply_button = QPushButton("Apply CH4 profile")
+        apply_button.setProperty("variant", "primary")
+        apply_button.clicked.connect(self._apply_trace_gas_config)
+        top_row.addWidget(QLabel("enabled"))
+        top_row.addWidget(self.trace_gas_enable_combo)
+        top_row.addWidget(QLabel("spectroscopic"))
+        top_row.addWidget(self.trace_gas_spectroscopic_mode_combo)
+        top_row.addWidget(QLabel("self_heating"))
+        top_row.addWidget(self.trace_gas_self_heating_mode_combo)
+        top_row.addWidget(apply_button)
+        layout.addLayout(top_row)
+
+        correction_row = QHBoxLayout()
+        self.trace_gas_water_vapor_combo = QComboBox()
+        self.trace_gas_water_vapor_combo.addItems(["enabled", "disabled"])
+        self.trace_gas_spectral_factor_combo = QComboBox()
+        self.trace_gas_spectral_factor_combo.addItems(["enabled", "disabled"])
+        self.trace_gas_require_lock_combo = QComboBox()
+        self.trace_gas_require_lock_combo.addItems(["not_required", "required"])
+        self.trace_gas_rssi_warning_spin = self._double_spin(0.0, 100.0, 1, suffix=" %")
+        self.trace_gas_rssi_fail_spin = self._double_spin(0.0, 100.0, 1, suffix=" %")
+        correction_row.addWidget(QLabel("H2O dilution"))
+        correction_row.addWidget(self.trace_gas_water_vapor_combo)
+        correction_row.addWidget(QLabel("spectral factor"))
+        correction_row.addWidget(self.trace_gas_spectral_factor_combo)
+        correction_row.addWidget(QLabel("lock"))
+        correction_row.addWidget(self.trace_gas_require_lock_combo)
+        correction_row.addWidget(QLabel("RSSI warn"))
+        correction_row.addWidget(self.trace_gas_rssi_warning_spin)
+        correction_row.addWidget(QLabel("RSSI fail"))
+        correction_row.addWidget(self.trace_gas_rssi_fail_spin)
+        layout.addLayout(correction_row)
+
+        self.trace_gas_coefficient_profile_edit = QLineEdit()
+        self.trace_gas_coefficient_profile_edit.setPlaceholderText("li7700_factory_compensated")
+        self.trace_gas_source_file_edit = QLineEdit()
+        self.trace_gas_source_file_edit.setPlaceholderText("builtin:li7700_factory_compensated or normalized coefficient artifact")
+        self.trace_gas_normalization_command_edit = QLineEdit()
+        self.trace_gas_normalization_command_edit.setPlaceholderText("gas_ec_studio normalize-li7700 --profile ...")
+        for title, widget in (
+            ("coefficient_profile_id", self.trace_gas_coefficient_profile_edit),
+            ("source_file", self.trace_gas_source_file_edit),
+            ("normalization_command", self.trace_gas_normalization_command_edit),
+        ):
+            row = QHBoxLayout()
+            row.addWidget(widget)
+            layout.addWidget(self._labeled_row(title, row))
+
+        self.trace_gas_summary_label = QLabel("--")
+        self.trace_gas_summary_label.setObjectName("subtitle")
+        self.trace_gas_summary_label.setWordWrap(True)
+        layout.addWidget(self.trace_gas_summary_label)
+        self.trace_gas_enable_combo.currentIndexChanged.connect(self._refresh_trace_gas_summary)
+        self.trace_gas_spectroscopic_mode_combo.currentIndexChanged.connect(self._refresh_trace_gas_summary)
+        self.trace_gas_self_heating_mode_combo.currentIndexChanged.connect(self._refresh_trace_gas_summary)
+        self.trace_gas_water_vapor_combo.currentIndexChanged.connect(self._refresh_trace_gas_summary)
+        self.trace_gas_spectral_factor_combo.currentIndexChanged.connect(self._refresh_trace_gas_summary)
+        self.trace_gas_require_lock_combo.currentIndexChanged.connect(self._refresh_trace_gas_summary)
+        self.trace_gas_rssi_warning_spin.valueChanged.connect(self._refresh_trace_gas_summary)
+        self.trace_gas_rssi_fail_spin.valueChanged.connect(self._refresh_trace_gas_summary)
+        self.trace_gas_coefficient_profile_edit.textChanged.connect(self._refresh_trace_gas_summary)
+        self.trace_gas_source_file_edit.textChanged.connect(self._refresh_trace_gas_summary)
+        self.trace_gas_normalization_command_edit.textChanged.connect(self._refresh_trace_gas_summary)
         return card
 
     def _build_coeff_tab(self) -> None:
@@ -666,6 +752,87 @@ class DeviceDetailPage(QWidget):
             f"calibration={self.primary_calibration_profile_edit.text().strip() or '--'}; "
             f"source={self.primary_source_file_edit.text().strip() or '--'}; "
             f"limitation={limitations[0] if limitations else '--'}"
+        )
+
+    def _populate_trace_gas_config(self, config: dict[str, object]) -> None:
+        self.trace_gas_enable_combo.setCurrentText("enabled" if config.get("enabled", False) else "disabled")
+        self.trace_gas_coefficient_profile_edit.setText(
+            str(config.get("coefficient_profile_id") or "li7700_factory_compensated")
+        )
+        self.trace_gas_source_file_edit.setText(str(config.get("source_file", "") or ""))
+        self.trace_gas_normalization_command_edit.setText(str(config.get("normalization_command", "") or ""))
+        self.trace_gas_spectroscopic_mode_combo.setCurrentText(
+            str(config.get("spectroscopic_correction_mode") or "input_corrected")
+        )
+        self.trace_gas_self_heating_mode_combo.setCurrentText(str(config.get("self_heating_mode") or "not_configured"))
+        self.trace_gas_water_vapor_combo.setCurrentText(
+            "enabled" if config.get("apply_water_vapor_dilution", True) else "disabled"
+        )
+        self.trace_gas_spectral_factor_combo.setCurrentText(
+            "enabled" if config.get("use_spectral_correction_factor", True) else "disabled"
+        )
+        self.trace_gas_require_lock_combo.setCurrentText("required" if config.get("require_lock", False) else "not_required")
+        self.trace_gas_rssi_warning_spin.setValue(float(config.get("min_rssi_warning_pct", 20.0) or 20.0))
+        self.trace_gas_rssi_fail_spin.setValue(float(config.get("min_rssi_fail_pct", 10.0) or 10.0))
+        self._refresh_trace_gas_summary()
+
+    def _collect_trace_gas_payload(self) -> dict[str, object]:
+        coefficient_profile_id = self.trace_gas_coefficient_profile_edit.text().strip() or "li7700_factory_compensated"
+        return {
+            "enabled": self.trace_gas_enable_combo.currentText().strip() == "enabled",
+            "gas": "ch4",
+            "method": "li_7700_correction_sequence_v1",
+            "analyzer_profile_id": "licor_li7700_family",
+            "coefficient_profile_id": coefficient_profile_id,
+            "source_file": self.trace_gas_source_file_edit.text().strip(),
+            "normalization_command": self.trace_gas_normalization_command_edit.text().strip(),
+            "spectroscopic_correction_mode": self.trace_gas_spectroscopic_mode_combo.currentText().strip(),
+            "self_heating_mode": self.trace_gas_self_heating_mode_combo.currentText().strip(),
+            "apply_water_vapor_dilution": self.trace_gas_water_vapor_combo.currentText().strip() == "enabled",
+            "use_spectral_correction_factor": self.trace_gas_spectral_factor_combo.currentText().strip() == "enabled",
+            "require_lock": self.trace_gas_require_lock_combo.currentText().strip() == "required",
+            "min_rssi_warning_pct": float(self.trace_gas_rssi_warning_spin.value()),
+            "min_rssi_fail_pct": float(self.trace_gas_rssi_fail_spin.value()),
+            "status_diagnostics": {
+                "min_rssi_warning_pct": float(self.trace_gas_rssi_warning_spin.value()),
+                "min_rssi_fail_pct": float(self.trace_gas_rssi_fail_spin.value()),
+                "require_lock": self.trace_gas_require_lock_combo.currentText().strip() == "required",
+            },
+        }
+
+    def _apply_trace_gas_config(self) -> None:
+        entry = self.controller.selected_device()
+        if entry is None:
+            QMessageBox.information(self, "No device selected", "Select a device before applying trace-gas settings.")
+            return
+        try:
+            snapshot = self.controller.apply_device_trace_gas_config(
+                entry.config.uid,
+                self._collect_trace_gas_payload(),
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Trace gas CH4 / LI-7700", str(exc))
+            return
+        self._populate_trace_gas_config(dict(snapshot))
+        QMessageBox.information(
+            self,
+            "Trace gas CH4 / LI-7700",
+            f"Applied CH4 coefficient profile {snapshot.get('coefficient_profile_id', '')} to EC processing.",
+        )
+
+    def _refresh_trace_gas_summary(self, *_args) -> None:
+        source_file = self.trace_gas_source_file_edit.text().strip() or "--"
+        normalization = self.trace_gas_normalization_command_edit.text().strip() or "--"
+        self.trace_gas_summary_label.setText(
+            f"gas=ch4; analyzer=licor_li7700_family; enabled={self.trace_gas_enable_combo.currentText().strip()}; "
+            f"coefficient_profile={self.trace_gas_coefficient_profile_edit.text().strip() or 'li7700_factory_compensated'}; "
+            f"spectroscopic={self.trace_gas_spectroscopic_mode_combo.currentText().strip()}; "
+            f"self_heating={self.trace_gas_self_heating_mode_combo.currentText().strip()}; "
+            f"h2o_dilution={self.trace_gas_water_vapor_combo.currentText().strip()}; "
+            f"spectral_factor={self.trace_gas_spectral_factor_combo.currentText().strip()}; "
+            f"rssi_warn={self.trace_gas_rssi_warning_spin.value():.1f}%; "
+            f"rssi_fail={self.trace_gas_rssi_fail_spin.value():.1f}%; source={source_file}; "
+            f"normalization={normalization}"
         )
 
     def _labeled_row(self, title: str, row_layout: QHBoxLayout) -> QWidget:

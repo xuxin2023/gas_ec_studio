@@ -1135,6 +1135,24 @@ class ECRPPipeline:
                     "limitations": diagnostics["n2o_limitations"],
                 }
             )
+        elif n2o_sequence.get("status") == "disabled":
+            diagnostics["n2o_status"] = "disabled"
+            diagnostics["n2o_method"] = n2o_sequence.get("selected_method", "n2o_empirical_correction_sequence_v1")
+            diagnostics["n2o_provenance"] = n2o_sequence.get("provenance", "")
+            diagnostics["n2o_limitations"] = n2o_sequence.get("limitations", [])
+            diagnostics["trace_gas_family"]["n2o"].update(
+                {
+                    "status": "disabled",
+                    "method": diagnostics["n2o_method"],
+                    "correction_sequence_status": "disabled",
+                    "coefficient_profile_id": diagnostics["n2o_coefficient_profile_id"],
+                    "coefficient_registry_status": diagnostics["n2o_coefficient_registry_status"],
+                    "coefficient_profile_source_file": diagnostics["n2o_coefficient_source_file"],
+                    "coefficient_profile_provenance": diagnostics["n2o_coefficient_profile_provenance"],
+                    "provenance": diagnostics["n2o_provenance"],
+                    "limitations": diagnostics["n2o_limitations"],
+                }
+            )
         ch4_config = dict((trace_gas_config or {}).get("ch4", {}) or {})
         li7700_status_config = dict(
             ch4_config.get("status_diagnostics", ch4_config.get("li7700_status_diagnostics", {})) or {}
@@ -1222,6 +1240,27 @@ class ECRPPipeline:
                     "flux_nmol_m2_s": diagnostics["ch4_flux_nmol_m2_s"],
                     "level0_flux_nmol_m2_s": diagnostics["ch4_flux_level0_nmol_m2_s"],
                     "correction_sequence_status": ch4_sequence.get("status", ""),
+                    "coefficient_profile_id": diagnostics["ch4_coefficient_profile_id"],
+                    "coefficient_registry_status": diagnostics["ch4_coefficient_registry_status"],
+                    "coefficient_profile_source_file": diagnostics["ch4_coefficient_source_file"],
+                    "coefficient_profile_provenance": diagnostics["ch4_coefficient_profile_provenance"],
+                    "li7700_diagnostics_status": diagnostics["li7700_diagnostics_status"],
+                    "li7700_wms_fit_quality_status": diagnostics["li7700_wms_fit_quality_status"],
+                    "li7700_wms_selected_fit_model": diagnostics["li7700_wms_selected_fit_model"],
+                    "provenance": diagnostics["ch4_provenance"],
+                    "limitations": diagnostics["ch4_limitations"],
+                }
+            )
+        elif ch4_sequence.get("status") == "disabled":
+            diagnostics["ch4_status"] = "disabled"
+            diagnostics["ch4_method"] = ch4_sequence.get("selected_method", "li_7700_correction_sequence_v1")
+            diagnostics["ch4_provenance"] = ch4_sequence.get("provenance", "")
+            diagnostics["ch4_limitations"] = ch4_sequence.get("limitations", [])
+            diagnostics["trace_gas_family"]["ch4"].update(
+                {
+                    "status": "disabled",
+                    "method": diagnostics["ch4_method"],
+                    "correction_sequence_status": "disabled",
                     "coefficient_profile_id": diagnostics["ch4_coefficient_profile_id"],
                     "coefficient_registry_status": diagnostics["ch4_coefficient_registry_status"],
                     "coefficient_profile_source_file": diagnostics["ch4_coefficient_source_file"],
