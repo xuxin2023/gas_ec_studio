@@ -845,6 +845,40 @@ class StudioController(QObject):
         self._append_log("info", "EC 处理配置已保存。")
         self.processing_changed.emit()
 
+    def device_primary_analyzer_config_snapshot(self, device_uid: str) -> dict[str, object]:
+        entry = self._get_device(device_uid)
+        device_configs = self.project_workspace.setdefault("primary_analyzer_devices", {})
+        saved = {}
+        if isinstance(device_configs, dict):
+            saved = dict(device_configs.get(device_uid, {}) or {})
+        runtime_saved = entry.runtime.extra.get("primary_analyzer_config", {})
+        if isinstance(runtime_saved, dict):
+            saved = {**saved, **runtime_saved}
+        return self._primary_analyzer_config_snapshot(selected=entry, existing=saved)
+
+    def apply_device_primary_analyzer_config(self, device_uid: str, payload: dict) -> dict[str, object]:
+        entry = self._get_device(device_uid)
+        requested = dict(payload or {})
+        requested.setdefault("profile_id", entry.config.analyzer_profile)
+        snapshot = self._primary_analyzer_config_snapshot(selected=entry, existing=requested)
+        device_configs = self.project_workspace.setdefault("primary_analyzer_devices", {})
+        if isinstance(device_configs, dict):
+            device_configs[device_uid] = deepcopy(snapshot)
+        entry.runtime.extra["primary_analyzer_config"] = deepcopy(snapshot)
+        self.ec_processing.setdefault("steps", {})["primary_analyzer"] = deepcopy(snapshot)
+        self.project_workspace["primary_analyzer"] = deepcopy(snapshot)
+        self.report_center_workspace["primary_analyzer"] = deepcopy(snapshot)
+        self._sync_ec_processing_workspace_from_state()
+        self._append_log(
+            "info",
+            f"{entry.config.label} primary analyzer QC profile applied to EC processing: {snapshot.get('profile_id', '')}",
+        )
+        self.project_changed.emit()
+        self.processing_changed.emit()
+        self.report_changed.emit()
+        self.devices_changed.emit()
+        return snapshot
+
     def restore_default_ec_processing(self) -> None:
         self.ec_processing = self._build_default_ec_processing()
         self.ec_processing_workspace = self._build_default_ec_processing_workspace()
@@ -6298,6 +6332,7 @@ class StudioController(QObject):
         return {
             "entry": entry,
             "gas_analyzer_profile": analyzer.to_summary(),
+            "primary_analyzer_config": self.device_primary_analyzer_config_snapshot(device_uid),
             "latest_frame": latest_frame[0] if latest_frame else None,
             "latest_numeric": latest_numeric,
             "transactions": self.recent_transactions(device_uid=device_uid, limit=24),
