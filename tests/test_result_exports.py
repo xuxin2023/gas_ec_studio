@@ -75,6 +75,7 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
             "spectral_assessment_library.json",
             "spectral_assessment_library_groups.csv",
             "spectral_assessment_library_bins.csv",
+            "trace_gas_provenance.json",
             "eddypro_source_inventory.json",
             "public_eddypro_fixture_catalog.json",
             "official_raw_fixture_manifest.json",
@@ -122,6 +123,8 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["spectral_assessment_library"]["artifact_type"] == "spectral_assessment_library_v1"
         assert summary_payload["spectral_assessment_library"]["status"] == "ok"
         assert summary_payload["spectral_assessment_library_files"]["spectral_assessment_library_bins_csv"].endswith("spectral_assessment_library_bins.csv")
+        assert summary_payload["trace_gas_provenance"]["artifact_type"] == "trace_gas_provenance_v1"
+        assert summary_payload["trace_gas_provenance_artifact"].endswith("trace_gas_provenance.json")
         assert summary_payload["flux_correction_ledger_summary"]["status"] == "ok"
         assert summary_payload["public_eddypro_fixture_catalog"]["status"] == "pass"
         assert summary_payload["public_eddypro_fixture_catalog_artifact"].endswith("public_eddypro_fixture_catalog.json")
@@ -210,6 +213,8 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["spectral_assessment_library_artifact"].endswith("spectral_assessment_library.json")
         assert manifest_payload["spectral_assessment_library"]["group_count"] >= 1
         assert manifest_payload["spectral_assessment_library_files"]["spectral_assessment_library_groups_csv"].endswith("spectral_assessment_library_groups.csv")
+        assert manifest_payload["trace_gas_provenance"]["artifact_type"] == "trace_gas_provenance_v1"
+        assert manifest_payload["trace_gas_provenance_artifact"].endswith("trace_gas_provenance.json")
         assert manifest_payload["flux_correction_ledger_summary"]["status"] == "ok"
         assert manifest_payload["flux_correction_ledger_artifact"].endswith("flux_correction_ledger.json")
         assert manifest_payload["network_energy_fields"] == ["H", "LE", "ET", "TAU"]

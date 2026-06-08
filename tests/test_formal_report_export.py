@@ -129,6 +129,7 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert snapshot["delivery_audit"]["artifact_index"]["spectral_binned_ensemble_csv"]["exists"] is True
         assert snapshot["delivery_audit"]["artifact_index"]["spectral_assessment_library_artifact"]["exists"] is True
         assert snapshot["delivery_audit"]["artifact_index"]["fixture_pack_summary_artifact"]["exists"] is True
+        assert snapshot["delivery_audit"]["artifact_index"]["trace_gas_provenance_artifact"]["exists"] is True
         assert snapshot["delivery_audit"]["artifact_index"]["official_raw_fixture_manifest_artifact"]["exists"] is True
         assert snapshot["delivery_audit"]["artifact_index"]["official_raw_fixture_detail_artifact"]["exists"] is True
         assert snapshot["delivery_audit"]["artifact_index"]["official_raw_evidence_pack_artifact"]["exists"] is True
@@ -166,6 +167,9 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert snapshot["delivery_audit"]["spectral_assessment"]["artifact_type"] == "spectral_assessment_export_v1"
         assert snapshot["delivery_audit"]["spectral_assessment_library"]["artifact_type"] == "spectral_assessment_library_v1"
         assert snapshot["delivery_audit"]["flux_correction_ledger_summary"]["status"] == "ok"
+        assert snapshot["delivery_audit"]["trace_gas_provenance"]["artifact_type"] == "trace_gas_provenance_v1"
+        assert "trace_gas_status" in snapshot["delivery_audit"]["result_manifest_summary"]
+        assert manifest["trace_gas_provenance"]["artifact_type"] == "trace_gas_provenance_v1"
 
         delivery_dir = _latest_delivery_dir(tmp_path)
         package_manifest = json.loads((delivery_dir / "package_manifest.json").read_text(encoding="utf-8"))
@@ -177,6 +181,7 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert delivery_audit["artifact_index"]["spectral_full_windows_csv"]["packaged"] is True
         assert delivery_audit["artifact_index"]["spectral_assessment_library_bins_csv"]["packaged"] is True
         assert delivery_audit["artifact_index"]["method_parity_matrix_artifact"]["packaged"] is True
+        assert delivery_audit["artifact_index"]["trace_gas_provenance_artifact"]["packaged"] is True
         assert delivery_audit["artifact_index"]["fixture_pack_summary_artifact"]["packaged"] is True
         assert delivery_audit["artifact_index"]["official_raw_fixture_manifest_artifact"]["packaged"] is True
         assert delivery_audit["artifact_index"]["official_raw_fixture_detail_artifact"]["packaged"] is True

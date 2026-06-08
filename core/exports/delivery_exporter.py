@@ -124,6 +124,8 @@ def export_delivery_package(
         "raw_to_final_parity": audit.get("raw_to_final_parity", {}),
         "raw_to_final_parity_diagnostics": audit.get("raw_to_final_parity_diagnostics", {}),
         "raw_to_final_trace_gas_parity": audit.get("raw_to_final_trace_gas_parity", {}),
+        "trace_gas_summary": audit.get("trace_gas_summary", {}),
+        "trace_gas_provenance": audit.get("trace_gas_provenance", {}),
         "neon_hdf5_validation_package": audit.get("neon_hdf5_validation_package", {}),
         "neon_hdf5_fixture_profile": audit.get("neon_hdf5_fixture_profile", {}),
         "neon_hdf5_summary": audit.get("neon_hdf5_summary", {}),
@@ -325,6 +327,11 @@ def _build_delivery_audit(
     runtime_deployment_feedback = dict(result_manifest.get("runtime_deployment_feedback_summary", {}) or {})
     clock_sync = dict(result_manifest.get("clock_sync_summary", {}) or {})
     flux_correction_ledger = dict(result_manifest.get("flux_correction_ledger_summary", {}) or {})
+    trace_gas_summary = dict(result_manifest.get("trace_gas_summary", {}) or {})
+    trace_gas_provenance = dict(
+        result_manifest.get("trace_gas_provenance", {})
+        or _read_json_file(result_files.get("trace_gas_provenance_artifact", ""))
+    )
     biomet_ambient = dict(result_manifest.get("biomet_ambient_summary", {}) or {})
     spectral_assessment = dict(result_manifest.get("spectral_assessment", {}) or {})
     spectral_assessment_library = dict(result_manifest.get("spectral_assessment_library", {}) or {})
@@ -475,6 +482,7 @@ def _build_delivery_audit(
         "benchmark_summary_artifact",
         "parity_artifact",
         "reference_provenance_artifact",
+        "trace_gas_provenance_artifact",
         "network_validation_summary",
     ]
     artifact_index: dict[str, dict[str, Any]] = {}
@@ -520,6 +528,14 @@ def _build_delivery_audit(
             "biomet_ambient_applied_window_count": biomet_ambient.get("applied_window_count", 0),
             "flux_correction_ledger_status": dict(result_manifest.get("flux_correction_ledger_summary", {}) or {}).get("status", ""),
             "flux_correction_ledger_window_count": dict(result_manifest.get("flux_correction_ledger_summary", {}) or {}).get("ledger_window_count", 0),
+            "trace_gas_status": trace_gas_summary.get("status", ""),
+            "trace_gas_ch4_profile_id": trace_gas_summary.get("coefficient_profile_id", ""),
+            "trace_gas_ch4_source_file": trace_gas_summary.get("coefficient_profile_source_file", ""),
+            "trace_gas_ch4_normalization_command": trace_gas_summary.get("coefficient_profile_normalization_command", ""),
+            "trace_gas_n2o_profile_id": trace_gas_summary.get("n2o_coefficient_profile_id", ""),
+            "trace_gas_n2o_source_file": trace_gas_summary.get("n2o_coefficient_profile_source_file", ""),
+            "trace_gas_n2o_normalization_command": trace_gas_summary.get("n2o_coefficient_profile_normalization_command", ""),
+            "trace_gas_provenance_status": trace_gas_provenance.get("status", ""),
             "spectral_assessment_status": spectral_assessment.get("status", ""),
             "spectral_assessment_bin_count": dict(spectral_assessment.get("binned_ensemble", {}) or {}).get("bin_count", 0),
             "spectral_assessment_full_window_row_count": spectral_assessment.get("full_window_row_count", 0),
@@ -872,6 +888,8 @@ def _build_delivery_audit(
         "raw_to_final_parity": raw_to_final_parity,
         "raw_to_final_parity_diagnostics": raw_to_final_parity_diagnostics,
         "raw_to_final_trace_gas_parity": raw_to_final_trace_gas,
+        "trace_gas_summary": trace_gas_summary,
+        "trace_gas_provenance": trace_gas_provenance,
         "benchmark_summary": benchmark_summary,
         "method_artifact_keys": [key for key in artifact_keys if key in result_files],
         "method_parity_matrix": {

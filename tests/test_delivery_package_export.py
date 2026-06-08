@@ -147,8 +147,12 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["artifact_index"]["eddypro_release_gate_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["eddypro_partial_capability_closure_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["flux_correction_ledger_artifact"]["packaged"] is True
+        assert manifest["artifact_index"]["trace_gas_provenance_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["method_rollup_artifact"]["packaged"] is True
         assert manifest["artifact_index"]["method_parity_matrix_artifact"]["packaged"] is True
+        assert manifest["trace_gas_provenance"]["artifact_type"] == "trace_gas_provenance_v1"
+        assert "trace_gas_status" in manifest["result_manifest_summary"]
+        assert audit["trace_gas_provenance"]["artifact_type"] == "trace_gas_provenance_v1"
         assert manifest["fixture_pack_summary"]["status"] == "pass"
         assert manifest["public_eddypro_fixture_catalog"]["status"] == "pass"
         assert manifest["public_eddypro_fixture_catalog"]["fixture_count"] == 6

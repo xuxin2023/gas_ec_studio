@@ -158,6 +158,8 @@ def export_formal_report(
             "runtime_deployment_feedback_summary": snapshot.get("delivery_audit", {}).get("runtime_deployment_feedback_summary", {}),
             "clock_sync_summary": snapshot.get("delivery_audit", {}).get("clock_sync_summary", {}),
             "biomet_ambient_summary": snapshot.get("delivery_audit", {}).get("biomet_ambient_summary", {}),
+            "trace_gas_summary": snapshot.get("delivery_audit", {}).get("trace_gas_summary", {}),
+            "trace_gas_provenance": snapshot.get("delivery_audit", {}).get("trace_gas_provenance", {}),
             "official_raw_fixture_manifest": snapshot.get("delivery_audit", {}).get("official_raw_fixture_manifest", {}),
             "official_raw_fixture_detail": snapshot.get("delivery_audit", {}).get("official_raw_fixture_detail", {}),
             "eddypro_coverage_audit": snapshot.get("delivery_audit", {}).get("eddypro_coverage_audit", {}),
@@ -287,6 +289,11 @@ def _build_formal_report_snapshot(
         or {}
     )
     flux_correction_ledger_summary = dict(result_manifest.get("flux_correction_ledger_summary", {}) or {})
+    trace_gas_summary = dict(result_manifest.get("trace_gas_summary", {}) or {})
+    trace_gas_provenance = dict(
+        result_manifest.get("trace_gas_provenance", {})
+        or _read_json_file(bundle_files.get("trace_gas_provenance_artifact", ""))
+    )
     spectral_assessment = dict(result_manifest.get("spectral_assessment", {}) or {})
     spectral_assessment_library = dict(result_manifest.get("spectral_assessment_library", {}) or {})
     delivery_audit = {
@@ -329,6 +336,7 @@ def _build_formal_report_snapshot(
                 "runtime_deployment_feedback_artifact",
                 "clock_sync_artifact",
                 "flux_correction_ledger_artifact",
+                "trace_gas_provenance_artifact",
                 "reference_provenance_artifact",
                 "fixture_pack_summary_artifact",
                 "official_raw_fixture_manifest_artifact",
@@ -360,6 +368,8 @@ def _build_formal_report_snapshot(
         "runtime_deployment_feedback_summary": runtime_deployment_feedback_summary,
         "clock_sync_summary": clock_sync_summary,
         "biomet_ambient_summary": biomet_ambient_summary,
+        "trace_gas_summary": trace_gas_summary,
+        "trace_gas_provenance": trace_gas_provenance,
         "fixture_pack_summary": fixture_pack_summary,
         "official_raw_fixture_manifest": official_raw_fixture_manifest,
         "official_raw_fixture_detail": official_raw_fixture_detail,
@@ -371,6 +381,14 @@ def _build_formal_report_snapshot(
             "official_raw_fixture_detail_id": official_raw_fixture_detail.get("fixture_id", ""),
             "official_raw_fixture_detail_status": official_raw_fixture_detail.get("status", ""),
             "official_raw_fixture_detail_readiness": official_raw_fixture_detail.get("readiness_level", ""),
+            "trace_gas_status": trace_gas_summary.get("status", ""),
+            "trace_gas_ch4_profile_id": trace_gas_summary.get("coefficient_profile_id", ""),
+            "trace_gas_ch4_source_file": trace_gas_summary.get("coefficient_profile_source_file", ""),
+            "trace_gas_ch4_normalization_command": trace_gas_summary.get("coefficient_profile_normalization_command", ""),
+            "trace_gas_n2o_profile_id": trace_gas_summary.get("n2o_coefficient_profile_id", ""),
+            "trace_gas_n2o_source_file": trace_gas_summary.get("n2o_coefficient_profile_source_file", ""),
+            "trace_gas_n2o_normalization_command": trace_gas_summary.get("n2o_coefficient_profile_normalization_command", ""),
+            "trace_gas_provenance_status": trace_gas_provenance.get("status", ""),
             "official_raw_acquisition_status": official_raw_acquisition_validation.get("status", ""),
             "official_raw_acquisition_gate_status": official_raw_acquisition_validation.get("gate_status", ""),
             "official_raw_acquisition_missing_requirements": list(official_raw_acquisition_validation.get("missing_requirements", []) or []),
@@ -874,6 +892,14 @@ def _build_formal_report_snapshot(
                         ["biomet_ambient_fields", json.dumps(biomet_ambient_summary.get("applied_fields", {}), ensure_ascii=False)],
                         ["flux_correction_ledger_status", str(flux_correction_ledger_summary.get("status", "--"))],
                         ["flux_correction_ledger_windows", str(flux_correction_ledger_summary.get("ledger_window_count", "--"))],
+                        ["trace_gas_status", str(trace_gas_summary.get("status", "--"))],
+                        ["trace_gas_ch4_profile", str(trace_gas_summary.get("coefficient_profile_id", "--"))],
+                        ["trace_gas_ch4_source", str(trace_gas_summary.get("coefficient_profile_source_file", "--"))],
+                        ["trace_gas_ch4_normalization", str(trace_gas_summary.get("coefficient_profile_normalization_command", "--"))],
+                        ["trace_gas_n2o_profile", str(trace_gas_summary.get("n2o_coefficient_profile_id", "--"))],
+                        ["trace_gas_n2o_source", str(trace_gas_summary.get("n2o_coefficient_profile_source_file", "--"))],
+                        ["trace_gas_n2o_normalization", str(trace_gas_summary.get("n2o_coefficient_profile_normalization_command", "--"))],
+                        ["trace_gas_provenance_artifact_status", str(trace_gas_provenance.get("status", "--"))],
                         ["spectral_assessment_status", str(spectral_assessment.get("status", "--"))],
                         ["spectral_assessment_bins", str(dict(spectral_assessment.get("binned_ensemble", {}) or {}).get("bin_count", "--"))],
                         ["spectral_full_window_rows", str(spectral_assessment.get("full_window_row_count", "--"))],

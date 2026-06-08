@@ -236,7 +236,9 @@ FULL_OUTPUT_SCHEMA = [
     ("ch4_coefficient_profile_id", "trace_gas", "real"),
     ("ch4_coefficient_registry_status", "trace_gas", "real"),
     ("ch4_coefficient_profile_source_file", "trace_gas", "real"),
+    ("ch4_coefficient_profile_normalization_command", "trace_gas", "real"),
     ("ch4_coefficient_profile_provenance", "trace_gas", "real"),
+    ("ch4_coefficient_profile_limitations", "trace_gas", "real"),
     ("ch4_spectral_correction_factor", "trace_gas", "real"),
     ("ch4_water_vapor_dilution_factor", "trace_gas", "real"),
     ("ch4_spectroscopic_correction_factor", "trace_gas", "real"),
@@ -275,7 +277,9 @@ FULL_OUTPUT_SCHEMA = [
     ("n2o_coefficient_profile_id", "trace_gas", "real"),
     ("n2o_coefficient_registry_status", "trace_gas", "real"),
     ("n2o_coefficient_profile_source_file", "trace_gas", "real"),
+    ("n2o_coefficient_profile_normalization_command", "trace_gas", "real"),
     ("n2o_coefficient_profile_provenance", "trace_gas", "real"),
+    ("n2o_coefficient_profile_limitations", "trace_gas", "real"),
     ("n2o_provenance", "trace_gas", "real"),
     ("n2o_limitations", "trace_gas", "real"),
     ("n2o_detail", "trace_gas", "real"),
@@ -417,6 +421,11 @@ class ResultExporter:
         benchmark_rollup = self._benchmark_rollup(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
         method_summary = self._method_summary(rp_result=rp_result, rp_config_snapshot=rp_config_snapshot)
         trace_gas_summary = self._trace_gas_summary(rp_result=rp_result)
+        trace_gas_provenance_path = self.export_trace_gas_provenance_artifact(
+            rp_result=rp_result,
+            export_root=export_root,
+        )
+        trace_gas_provenance = self._read_json_if_available(trace_gas_provenance_path)
         li7700_wms_fit_acceptance_path = self.export_li7700_wms_fit_acceptance_artifact(
             rp_result=rp_result,
             rp_config_snapshot=rp_config_snapshot,
@@ -865,6 +874,8 @@ class ResultExporter:
             exported_files.append(method_rollup_path.name)
         if planar_fit_library_path is not None:
             exported_files.append(planar_fit_library_path.name)
+        if trace_gas_provenance_path is not None:
+            exported_files.append(trace_gas_provenance_path.name)
         if li7700_wms_fit_acceptance_path is not None:
             exported_files.append(li7700_wms_fit_acceptance_path.name)
         if spectral_assessment_path is not None:
@@ -979,6 +990,8 @@ class ResultExporter:
                 },
                 "method_summary": method_summary,
                 "trace_gas_summary": trace_gas_summary,
+                "trace_gas_provenance": trace_gas_provenance,
+                "trace_gas_provenance_artifact": str(trace_gas_provenance_path) if trace_gas_provenance_path is not None else "",
                 "li7700_wms_fit_acceptance": li7700_wms_fit_acceptance,
                 "li7700_wms_fit_acceptance_artifact": str(li7700_wms_fit_acceptance_path) if li7700_wms_fit_acceptance_path is not None else "",
                 "spectral_assessment": spectral_assessment_summary,
@@ -1438,6 +1451,8 @@ class ResultExporter:
             "planar_fit_library_path": planar_fit_library_summary.get("coefficient_library_path", ""),
             "planar_fit_valid_sector_count": int(planar_fit_library_summary.get("valid_sector_count", 0) or 0),
             "trace_gas_summary": trace_gas_summary,
+            "trace_gas_provenance": trace_gas_provenance,
+            "trace_gas_provenance_artifact": str(trace_gas_provenance_path) if trace_gas_provenance_path is not None else "",
             "li7700_wms_fit_acceptance": li7700_wms_fit_acceptance,
             "li7700_wms_fit_acceptance_artifact": str(li7700_wms_fit_acceptance_path) if li7700_wms_fit_acceptance_path is not None else "",
             "trace_gas_fields": [
@@ -1454,7 +1469,9 @@ class ResultExporter:
                 "ch4_coefficient_profile_id",
                 "ch4_coefficient_registry_status",
                 "ch4_coefficient_profile_source_file",
+                "ch4_coefficient_profile_normalization_command",
                 "ch4_coefficient_profile_provenance",
+                "ch4_coefficient_profile_limitations",
                 "ch4_spectral_correction_factor",
                 "ch4_water_vapor_dilution_factor",
                 "ch4_spectroscopic_correction_factor",
@@ -1492,7 +1509,9 @@ class ResultExporter:
                 "n2o_coefficient_profile_id",
                 "n2o_coefficient_registry_status",
                 "n2o_coefficient_profile_source_file",
+                "n2o_coefficient_profile_normalization_command",
                 "n2o_coefficient_profile_provenance",
+                "n2o_coefficient_profile_limitations",
                 "n2o_provenance",
                 "n2o_limitations",
             ],
@@ -1772,6 +1791,8 @@ class ResultExporter:
             files["method_rollup_artifact"] = str(method_rollup_path)
         if planar_fit_library_path is not None:
             files["planar_fit_library_artifact"] = str(planar_fit_library_path)
+        if trace_gas_provenance_path is not None:
+            files["trace_gas_provenance_artifact"] = str(trace_gas_provenance_path)
         if li7700_wms_fit_acceptance_path is not None:
             files["li7700_wms_fit_acceptance_artifact"] = str(li7700_wms_fit_acceptance_path)
         if spectral_assessment_path is not None:
@@ -2087,7 +2108,11 @@ class ResultExporter:
             "ch4_coefficient_profile_id": diagnostics.get("ch4_coefficient_profile_id", ""),
             "ch4_coefficient_registry_status": diagnostics.get("ch4_coefficient_registry_status", ""),
             "ch4_coefficient_profile_source_file": diagnostics.get("ch4_coefficient_source_file", ""),
+            "ch4_coefficient_profile_normalization_command": diagnostics.get("ch4_coefficient_normalization_command", ""),
             "ch4_coefficient_profile_provenance": diagnostics.get("ch4_coefficient_profile_provenance", ""),
+            "ch4_coefficient_profile_limitations": json.dumps(diagnostics.get("ch4_coefficient_profile_limitations", []), ensure_ascii=False)
+            if diagnostics.get("ch4_coefficient_profile_limitations")
+            else "",
             "ch4_spectral_correction_factor": diagnostics.get("ch4_spectral_correction_factor", ""),
             "ch4_water_vapor_dilution_factor": diagnostics.get("ch4_water_vapor_dilution_factor", ""),
             "li7700_diagnostics_status": diagnostics.get("li7700_diagnostics_status", ""),
@@ -2128,7 +2153,11 @@ class ResultExporter:
             "n2o_coefficient_profile_id": diagnostics.get("n2o_coefficient_profile_id", ""),
             "n2o_coefficient_registry_status": diagnostics.get("n2o_coefficient_registry_status", ""),
             "n2o_coefficient_profile_source_file": diagnostics.get("n2o_coefficient_source_file", ""),
+            "n2o_coefficient_profile_normalization_command": diagnostics.get("n2o_coefficient_normalization_command", ""),
             "n2o_coefficient_profile_provenance": diagnostics.get("n2o_coefficient_profile_provenance", ""),
+            "n2o_coefficient_profile_limitations": json.dumps(diagnostics.get("n2o_coefficient_profile_limitations", []), ensure_ascii=False)
+            if diagnostics.get("n2o_coefficient_profile_limitations")
+            else "",
             "n2o_provenance": diagnostics.get("n2o_provenance", ""),
             "n2o_limitations": json.dumps(diagnostics.get("n2o_limitations", []), ensure_ascii=False)
             if diagnostics.get("n2o_limitations")
@@ -2380,7 +2409,9 @@ class ResultExporter:
                 "ch4_coefficient_profile_id": diagnostics.get("ch4_coefficient_profile_id", "") if diagnostics else "",
                 "ch4_coefficient_registry_status": diagnostics.get("ch4_coefficient_registry_status", "") if diagnostics else "",
                 "ch4_coefficient_profile_source_file": diagnostics.get("ch4_coefficient_source_file", "") if diagnostics else "",
+                "ch4_coefficient_profile_normalization_command": diagnostics.get("ch4_coefficient_normalization_command", "") if diagnostics else "",
                 "ch4_coefficient_profile_provenance": diagnostics.get("ch4_coefficient_profile_provenance", "") if diagnostics else "",
+                "ch4_coefficient_profile_limitations": json.dumps(diagnostics.get("ch4_coefficient_profile_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("ch4_coefficient_profile_limitations") else "",
                 "ch4_spectral_correction_factor": diagnostics.get("ch4_spectral_correction_factor", "") if diagnostics else "",
                 "ch4_water_vapor_dilution_factor": diagnostics.get("ch4_water_vapor_dilution_factor", "") if diagnostics else "",
                 "ch4_spectroscopic_correction_factor": diagnostics.get("ch4_spectroscopic_correction_factor", "") if diagnostics else "",
@@ -2425,7 +2456,9 @@ class ResultExporter:
                 "n2o_coefficient_profile_id": diagnostics.get("n2o_coefficient_profile_id", "") if diagnostics else "",
                 "n2o_coefficient_registry_status": diagnostics.get("n2o_coefficient_registry_status", "") if diagnostics else "",
                 "n2o_coefficient_profile_source_file": diagnostics.get("n2o_coefficient_source_file", "") if diagnostics else "",
+                "n2o_coefficient_profile_normalization_command": diagnostics.get("n2o_coefficient_normalization_command", "") if diagnostics else "",
                 "n2o_coefficient_profile_provenance": diagnostics.get("n2o_coefficient_profile_provenance", "") if diagnostics else "",
+                "n2o_coefficient_profile_limitations": json.dumps(diagnostics.get("n2o_coefficient_profile_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("n2o_coefficient_profile_limitations") else "",
                 "n2o_provenance": diagnostics.get("n2o_provenance", "") if diagnostics else "",
                 "n2o_limitations": json.dumps(diagnostics.get("n2o_limitations", []), ensure_ascii=False) if diagnostics and diagnostics.get("n2o_limitations") else "",
                 "n2o_detail": json.dumps(diagnostics.get("n2o_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("n2o_detail") else "",
@@ -2895,16 +2928,29 @@ class ResultExporter:
                 "average_n2o_flux_nmol_m2_s": None,
                 "average_n2o_level0_flux_nmol_m2_s": None,
                 "n2o_method": "not_available",
+                "n2o_spectral_correction_factor": None,
+                "n2o_analyzer_correction_factor": None,
+                "n2o_density_correction_factor": None,
                 "n2o_correction_sequence": {},
                 "n2o_coefficient_profile_id": "",
                 "n2o_coefficient_registry_status": "",
                 "n2o_coefficient_profile_source_file": "",
+                "n2o_coefficient_profile_normalization_command": "",
                 "n2o_coefficient_profile_provenance": "",
+                "n2o_coefficient_profile_limitations": [],
+                "n2o_provenance": "",
+                "n2o_limitations": [],
                 "method": "not_available",
+                "ch4_spectral_correction_factor": None,
+                "ch4_water_vapor_dilution_factor": None,
+                "ch4_spectroscopic_correction_factor": None,
+                "ch4_self_heating_correction_factor": None,
                 "coefficient_profile_id": "",
                 "coefficient_registry_status": "",
                 "coefficient_profile_source_file": "",
+                "coefficient_profile_normalization_command": "",
                 "coefficient_profile_provenance": "",
+                "coefficient_profile_limitations": [],
                 "li7700_diagnostics_status": "not_available",
                 "li7700_status_diagnostics": {},
                 "li7700_wms_fit_quality_status": "",
@@ -2963,6 +3009,9 @@ class ResultExporter:
                 else None
             ),
             "n2o_method": n2o_first.get("n2o_method", "not_available"),
+            "n2o_spectral_correction_factor": n2o_first.get("n2o_spectral_correction_factor"),
+            "n2o_analyzer_correction_factor": n2o_first.get("n2o_analyzer_correction_factor"),
+            "n2o_density_correction_factor": n2o_first.get("n2o_density_correction_factor"),
             "n2o_correction_sequence": n2o_first.get("n2o_correction_sequence", {}),
             "n2o_coefficient_profile_id": n2o_first.get("n2o_coefficient_profile_id", ""),
             "n2o_coefficient_registry_status": n2o_first.get("n2o_coefficient_registry_status", ""),
@@ -2974,6 +3023,10 @@ class ResultExporter:
             "n2o_provenance": n2o_first.get("n2o_provenance", ""),
             "n2o_limitations": list(n2o_first.get("n2o_limitations", []) or []),
             "method": first.get("ch4_method", "not_available"),
+            "ch4_spectral_correction_factor": first.get("ch4_spectral_correction_factor"),
+            "ch4_water_vapor_dilution_factor": first.get("ch4_water_vapor_dilution_factor"),
+            "ch4_spectroscopic_correction_factor": first.get("ch4_spectroscopic_correction_factor"),
+            "ch4_self_heating_correction_factor": first.get("ch4_self_heating_correction_factor"),
             "correction_sequence": first.get("ch4_correction_sequence", {}),
             "coefficient_profile_id": first.get("ch4_coefficient_profile_id", ""),
             "coefficient_registry_status": first.get("ch4_coefficient_registry_status", ""),
@@ -2992,6 +3045,117 @@ class ResultExporter:
             "provenance": first.get("ch4_provenance", ""),
             "limitations": list(first.get("ch4_limitations", []) or []),
         }
+
+    def export_trace_gas_provenance_artifact(
+        self,
+        *,
+        rp_result: RPRunResult | None,
+        export_root: Path,
+    ) -> Path:
+        summary = self._trace_gas_summary(rp_result=rp_result)
+
+        def _string_list(*values: Any) -> list[str]:
+            items: list[str] = []
+            for value in values:
+                if value is None:
+                    continue
+                if isinstance(value, list):
+                    candidates = value
+                else:
+                    candidates = [value]
+                for item in candidates:
+                    text = str(item).strip()
+                    if text and text not in items:
+                        items.append(text)
+            return items
+
+        ch4_profile = {
+            "method": summary.get("method", "not_available"),
+            "computed_window_count": summary.get("ch4_computed_window_count", 0),
+            "average_flux_nmol_m2_s": summary.get("average_ch4_flux_nmol_m2_s"),
+            "coefficient_profile_id": summary.get("coefficient_profile_id", ""),
+            "coefficient_registry_status": summary.get("coefficient_registry_status", ""),
+            "coefficient_profile_label": summary.get("coefficient_profile_label", ""),
+            "source_file": summary.get("coefficient_profile_source_file", ""),
+            "normalization_command": summary.get("coefficient_profile_normalization_command", ""),
+            "provenance": summary.get("coefficient_profile_provenance", "") or summary.get("provenance", ""),
+            "limitations": _string_list(summary.get("coefficient_profile_limitations", []), summary.get("limitations", [])),
+            "correction_sequence": summary.get("correction_sequence", {}),
+            "correction_factors": {
+                "spectral": summary.get("ch4_spectral_correction_factor"),
+                "water_vapor_dilution": summary.get("ch4_water_vapor_dilution_factor"),
+                "spectroscopic": summary.get("ch4_spectroscopic_correction_factor"),
+                "self_heating": summary.get("ch4_self_heating_correction_factor"),
+            },
+            "li7700_diagnostics_status": summary.get("li7700_diagnostics_status", "not_available"),
+            "li7700_wms_fit_quality_status": summary.get("li7700_wms_fit_quality_status", ""),
+            "li7700_wms_selected_fit_model": summary.get("li7700_wms_selected_fit_model", ""),
+        }
+        n2o_profile = {
+            "method": summary.get("n2o_method", "not_available"),
+            "computed_window_count": summary.get("n2o_computed_window_count", 0),
+            "average_flux_nmol_m2_s": summary.get("average_n2o_flux_nmol_m2_s"),
+            "coefficient_profile_id": summary.get("n2o_coefficient_profile_id", ""),
+            "coefficient_registry_status": summary.get("n2o_coefficient_registry_status", ""),
+            "coefficient_profile_label": summary.get("n2o_coefficient_profile_label", ""),
+            "source_file": summary.get("n2o_coefficient_profile_source_file", ""),
+            "normalization_command": summary.get("n2o_coefficient_profile_normalization_command", ""),
+            "provenance": summary.get("n2o_coefficient_profile_provenance", "") or summary.get("n2o_provenance", ""),
+            "limitations": _string_list(summary.get("n2o_coefficient_profile_limitations", []), summary.get("n2o_limitations", [])),
+            "correction_sequence": summary.get("n2o_correction_sequence", {}),
+            "correction_factors": {
+                "spectral": summary.get("n2o_spectral_correction_factor"),
+                "analyzer": summary.get("n2o_analyzer_correction_factor"),
+                "density": summary.get("n2o_density_correction_factor"),
+            },
+        }
+        windows: list[dict[str, Any]] = []
+        if rp_result is not None:
+            for window in rp_result.windows:
+                diagnostics = dict(window.diagnostics or {})
+                if not diagnostics.get("ch4_status") and not diagnostics.get("n2o_status"):
+                    continue
+                windows.append(
+                    {
+                        "window_id": window.window_id,
+                        "start_time": window.start_time.isoformat(),
+                        "end_time": window.end_time.isoformat(),
+                        "qc_grade": window.qc_grade,
+                        "ch4_status": diagnostics.get("ch4_status", ""),
+                        "ch4_method": diagnostics.get("ch4_method", ""),
+                        "ch4_coefficient_profile_id": diagnostics.get("ch4_coefficient_profile_id", ""),
+                        "ch4_coefficient_source_file": diagnostics.get("ch4_coefficient_source_file", ""),
+                        "ch4_coefficient_normalization_command": diagnostics.get("ch4_coefficient_normalization_command", ""),
+                        "ch4_correction_sequence_status": dict(diagnostics.get("ch4_correction_sequence", {}) or {}).get("status", ""),
+                        "n2o_status": diagnostics.get("n2o_status", ""),
+                        "n2o_method": diagnostics.get("n2o_method", ""),
+                        "n2o_coefficient_profile_id": diagnostics.get("n2o_coefficient_profile_id", ""),
+                        "n2o_coefficient_source_file": diagnostics.get("n2o_coefficient_source_file", ""),
+                        "n2o_coefficient_normalization_command": diagnostics.get("n2o_coefficient_normalization_command", ""),
+                        "n2o_spectral_correction_factor": diagnostics.get("n2o_spectral_correction_factor"),
+                        "n2o_analyzer_correction_factor": diagnostics.get("n2o_analyzer_correction_factor"),
+                        "n2o_density_correction_factor": diagnostics.get("n2o_density_correction_factor"),
+                        "n2o_correction_sequence_status": dict(diagnostics.get("n2o_correction_sequence", {}) or {}).get("status", ""),
+                    }
+                )
+        payload = {
+            "artifact_type": "trace_gas_provenance_v1",
+            "status": summary.get("status", "not_available"),
+            "generated_at": datetime.now().isoformat(),
+            "run_id": getattr(rp_result, "run_id", "") if rp_result is not None else "",
+            "created_at": rp_result.created_at.isoformat() if rp_result is not None else "",
+            "window_count": len(getattr(rp_result, "windows", []) or []),
+            "gases": {
+                "ch4": ch4_profile,
+                "n2o": n2o_profile,
+            },
+            "summary": summary,
+            "windows": windows,
+            "truthfulness_note": "Trace-gas provenance is derived from RP diagnostics already applied to exported fluxes; missing fields are reported as empty rather than inferred.",
+        }
+        path = export_root / "trace_gas_provenance.json"
+        self._write_json(path, payload)
+        return path
 
     def _li7700_wms_fit_acceptance_thresholds(self, rp_config_snapshot: dict[str, Any]) -> dict[str, Any]:
         trace = rp_config_snapshot.get("trace_gas", {}) if isinstance(rp_config_snapshot.get("trace_gas", {}), dict) else {}

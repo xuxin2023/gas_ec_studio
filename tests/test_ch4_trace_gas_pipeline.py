@@ -491,7 +491,12 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert result["rp_result"].summary["trace_gas_summary"]["average_n2o_level0_flux_nmol_m2_s"] is not None
     assert result["rp_result"].summary["trace_gas_summary"]["n2o_correction_sequence"]["status"] == "computed"
     assert result["rp_result"].summary["trace_gas_summary"]["n2o_coefficient_profile_id"] == "synthetic_n2o_trace_gas_profile"
+    assert result["rp_result"].summary["trace_gas_summary"]["n2o_coefficient_profile_normalization_command"].startswith("gas_ec normalize-trace-gas")
+    assert result["rp_result"].summary["trace_gas_summary"]["n2o_spectral_correction_factor"] == pytest.approx(1.03)
+    assert result["rp_result"].summary["trace_gas_summary"]["n2o_analyzer_correction_factor"] == pytest.approx(0.98)
+    assert result["rp_result"].summary["trace_gas_summary"]["n2o_density_correction_factor"] == pytest.approx(1.01)
     assert result["rp_result"].summary["trace_gas_summary"]["coefficient_profile_id"] == "tower_li7700_2026"
+    assert result["rp_result"].summary["trace_gas_summary"]["coefficient_profile_normalization_command"].startswith("gas_ec normalize-li7700")
     assert result["rp_result"].summary["trace_gas_summary"]["li7700_diagnostics_status"] == "pass"
     assert result["manifest"]["trace_gas_summary"]["status"] == "computed"
     assert result["manifest"]["trace_gas_summary"]["n2o_computed_window_count"] == len(result["rp_result"].windows)
@@ -523,10 +528,12 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert "LI-7700" in full_rows[0]["ch4_provenance"]
     assert full_rows[0]["ch4_coefficient_profile_id"] == "tower_li7700_2026"
     assert full_rows[0]["ch4_coefficient_registry_status"] == "resolved"
+    assert full_rows[0]["ch4_coefficient_profile_normalization_command"].startswith("gas_ec normalize-li7700")
     assert full_rows[0]["li7700_diagnostics_status"] == "pass"
     assert float(full_rows[0]["li7700_rssi_mean_pct"]) > 60.0
     assert rp_rows[0]["ch4_method"] == "li_7700_correction_sequence_v1"
     assert rp_rows[0]["ch4_coefficient_profile_id"] == "tower_li7700_2026"
+    assert rp_rows[0]["ch4_coefficient_profile_normalization_command"].startswith("gas_ec normalize-li7700")
     assert rp_rows[0]["li7700_diagnostics_status"] == "pass"
     assert float(rp_rows[0]["ch4_flux_corrected_nmol_m2_s"]) == float(rp_rows[0]["ch4_flux_nmol_m2_s"])
     assert rp_rows[0]["n2o_method"] == "n2o_empirical_correction_sequence_v1"
@@ -534,22 +541,34 @@ def test_rp_pipeline_exports_ch4_li7700_correction_sequence(tmp_path: Path) -> N
     assert "n2o_empirical_correction_sequence_v1" in rp_rows[0]["n2o_correction_sequence"]
     assert rp_rows[0]["n2o_coefficient_profile_id"] == "synthetic_n2o_trace_gas_profile"
     assert rp_rows[0]["n2o_coefficient_registry_status"] == "resolved"
+    assert rp_rows[0]["n2o_coefficient_profile_normalization_command"].startswith("gas_ec normalize-trace-gas")
     assert "FCH4" in fluxnet["rows"][0]
     assert fluxnet["rows"][0]["FCH4"] != -9999.0
     assert "FN2O" in fluxnet["rows"][0]
     assert fluxnet["rows"][0]["FN2O"] != -9999.0
     assert manifest["trace_gas_summary"]["status"] == "computed"
     assert manifest["trace_gas_summary"]["coefficient_profile_id"] == "tower_li7700_2026"
+    assert manifest["trace_gas_summary"]["coefficient_profile_normalization_command"].startswith("gas_ec normalize-li7700")
+    assert manifest["trace_gas_summary"]["n2o_coefficient_profile_normalization_command"].startswith("gas_ec normalize-trace-gas")
+    assert manifest["trace_gas_summary"]["n2o_spectral_correction_factor"] == pytest.approx(1.03)
     assert manifest["trace_gas_summary"]["li7700_diagnostics_status"] == "pass"
+    assert manifest["trace_gas_provenance"]["artifact_type"] == "trace_gas_provenance_v1"
+    assert manifest["trace_gas_provenance"]["gases"]["ch4"]["normalization_command"].startswith("gas_ec normalize-li7700")
+    assert manifest["trace_gas_provenance"]["gases"]["n2o"]["normalization_command"].startswith("gas_ec normalize-trace-gas")
+    assert manifest["trace_gas_provenance"]["gases"]["n2o"]["correction_factors"]["spectral"] == pytest.approx(1.03)
+    assert Path(manifest["trace_gas_provenance_artifact"]).name == "trace_gas_provenance.json"
     assert "ch4_flux_nmol_m2_s" in manifest["trace_gas_fields"]
     assert "n2o_flux_nmol_m2_s" in manifest["trace_gas_fields"]
     assert "n2o_correction_sequence" in manifest["trace_gas_fields"]
     assert "n2o_coefficient_profile_id" in manifest["trace_gas_fields"]
+    assert "n2o_coefficient_profile_normalization_command" in manifest["trace_gas_fields"]
     assert "ch4_coefficient_profile_id" in manifest["trace_gas_fields"]
+    assert "ch4_coefficient_profile_normalization_command" in manifest["trace_gas_fields"]
     assert "li7700_diagnostics_status" in manifest["trace_gas_fields"]
     assert "FCH4" in manifest["network_trace_gas_fields"]
     assert "FN2O" in manifest["network_trace_gas_fields"]
     assert summary["trace_gas_summary"]["ch4_computed_window_count"] == len(result["rp_result"].windows)
+    assert summary["trace_gas_provenance"]["gases"]["n2o"]["source_file"].endswith("synthetic_profile.json")
 
 
 def test_rp_pipeline_preserves_ch4_wms_line_shape_components(tmp_path: Path) -> None:
