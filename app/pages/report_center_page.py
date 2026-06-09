@@ -19,8 +19,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -190,17 +192,48 @@ class ReportCenterPage(QWidget):
         self.delivery_gate_card = self._build_delivery_gate_card()
         delivery_layout.addWidget(self.delivery_gate_card)
 
-        self.inner_inspector = QWidget()
+        self.inner_inspector = CardFrame(muted=True, role="panel")
         inspector_layout = QVBoxLayout(self.inner_inspector)
-        inspector_layout.setContentsMargins(0, 0, 0, 0)
+        inspector_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         inspector_layout.setSpacing(TOKENS.spacing_md)
+        inspector_layout.addWidget(section_title("交付详情", "导出、文件、版本和使用建议用分段面板收纳，减少右侧长页面。"))
+
+        switch_row = QHBoxLayout()
+        switch_row.setContentsMargins(0, 0, 0, 0)
+        switch_row.setSpacing(TOKENS.spacing_xs)
+        self.inspector_switches: dict[str, QToolButton] = {}
+        for key, text in (
+            ("export", "导出"),
+            ("file", "文件"),
+            ("version", "版本"),
+            ("usage", "建议"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, section=key: self._show_inspector_section(section))
+            self.inspector_switches[key] = button
+            switch_row.addWidget(button)
+        switch_row.addStretch(1)
+        inspector_layout.addLayout(switch_row)
+
+        self.inspector_stack = QStackedWidget()
 
         self.export_card, self.export_content = self._inspector_card("导出选项", "把当前报告的导出方式和出口统一放在这里。")
         self.file_card, self.file_content = self._inspector_card("文件信息", "不只显示路径，还要说明状态和用途。")
         self.version_card, self.version_content = self._inspector_card("版本与来源", "说明模板版本、来源批次和方法依据。")
         self.usage_card, self.usage_content = self._inspector_card("使用建议", "按操作员、工程师、管理汇报三个场景给出建议。")
-        for card in (self.export_card, self.file_card, self.version_card, self.usage_card):
-            inspector_layout.addWidget(card)
+        self.inspector_sections = {
+            "export": self.export_card,
+            "file": self.file_card,
+            "version": self.version_card,
+            "usage": self.usage_card,
+        }
+        for card in self.inspector_sections.values():
+            self.inspector_stack.addWidget(card)
+        inspector_layout.addWidget(self.inspector_stack)
+        self._show_inspector_section("export")
         delivery_layout.addWidget(self.inner_inspector)
 
         self.batch_card = CardFrame(muted=True, role="panel")
@@ -216,8 +249,8 @@ class ReportCenterPage(QWidget):
         self.batch_compare_value = QLabel("--")
         self.batch_diff_value = QLabel("--")
         batch_grid.addWidget(self._metric_card("当前批次", self.batch_current_value), 0, 0)
-        batch_grid.addWidget(self._metric_card("对比批次", self.batch_compare_value), 1, 0)
-        batch_grid.addWidget(self._metric_card("差异摘要", self.batch_diff_value), 2, 0)
+        batch_grid.addWidget(self._metric_card("对比批次", self.batch_compare_value), 0, 1)
+        batch_grid.addWidget(self._metric_card("差异摘要", self.batch_diff_value), 1, 0, 1, 2)
         batch_layout.addLayout(batch_grid)
         self.batch_summary_layout = QVBoxLayout()
         self.batch_summary_layout.setSpacing(TOKENS.spacing_sm)
@@ -1397,10 +1430,16 @@ class ReportCenterPage(QWidget):
         failed_fields = str(self._table_value(benchmark_report, "failed_fields") or "待运行")
         status_lower = status.strip().lower()
         active = status_lower not in {"", "--", "inactive", "no_rp_result", "not_requested"}
+        display_status = {
+            "inactive": "未激活",
+            "no_rp_result": "无 RP 结果",
+            "not_requested": "未请求",
+            "active": "已激活",
+        }.get(status_lower, status or "未激活")
         tone = "success" if active and pass_rate != "--" else ("accent" if reference_id != "--" else "warning")
         return {
-            "value": reference_id if reference_id != "--" else status,
-            "note": f"状态：{status}；通过率：{pass_rate}；失败字段：{failed_fields}",
+            "value": reference_id if reference_id != "--" else display_status,
+            "note": f"状态：{display_status}；通过率：{pass_rate}；失败字段：{failed_fields}",
             "tone": tone,
         }
 
@@ -1453,6 +1492,18 @@ class ReportCenterPage(QWidget):
         if not text or text in {"not_exported", "not exported yet", "尚未导出"}:
             return False
         return not any(token in text for token in ("not_exported", "not exported", "尚未导出", "未导出"))
+
+    def _show_inspector_section(self, section: str) -> None:
+        card = self.inspector_sections.get(section)
+        if card is None:
+            return
+        self.inspector_stack.setCurrentWidget(card)
+        for key, button in self.inspector_switches.items():
+            button.blockSignals(True)
+            button.setChecked(key == section)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def _refresh_inner_inspector(self, report: dict, export_status: str, view_mode: str) -> None:
         self._clear_layout(self.export_content)
@@ -1510,14 +1561,16 @@ class ReportCenterPage(QWidget):
             self.batch_diff_value.setText(_ui_safe_text(f"{len(summary)} 项变化"))
 
         self._clear_layout(self.batch_summary_layout)
-        for text in summary[:4]:
+        batch_notes = summary[:2] + [str(item) for item in batch_compare.get("risk_summary", [])[:1]]
+        for text in batch_notes:
             label = QLabel(_ui_safe_text(f"- {text}"))
             label.setObjectName("subtitle")
             label.setWordWrap(True)
             self.batch_summary_layout.addWidget(label)
 
-        for text in batch_compare.get("risk_summary", [])[:2]:
-            label = QLabel(_ui_safe_text(f"- {text}"))
+        overflow = max(0, len(summary) + len(batch_compare.get("risk_summary", [])) - len(batch_notes))
+        if overflow:
+            label = QLabel(_ui_safe_text(f"另有 {overflow} 条批次说明，可在报告正文查看。"))
             label.setObjectName("subtitle")
             label.setWordWrap(True)
             self.batch_summary_layout.addWidget(label)

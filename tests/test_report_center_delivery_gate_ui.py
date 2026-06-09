@@ -30,6 +30,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_card.property("cardRole") == "cockpit"
         assert page.preview_header_card.property("cardRole") == "cockpit"
         assert page.preview_content_card.property("cardRole") == "panel"
+        assert page.inner_inspector.property("cardRole") == "panel"
+        assert page.inspector_stack.count() == 4
+        assert page.inspector_stack.currentWidget() is page.export_card
+        assert page.inspector_switches["export"].isChecked() is True
         assert set(page.delivery_gate_values) == {
             "report",
             "export",
@@ -41,8 +45,16 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_values["export"][0].text() in {"待运行", "可导出", "已导出"}
         assert page.delivery_gate_values["report"][0].text() == "待生成"
         assert page.delivery_gate_values["manifest"][0].text() == "待导出"
+        assert "inactive" not in page.delivery_gate_values["benchmark"][0].text()
+        assert "inactive" not in page.delivery_gate_values["benchmark"][1].text()
         assert page.delivery_gate_chip.text() in {"待生成", "待复核"}
         assert page.delivery_gate_next_value.text() in {"生成报告", "运行处理", "导出交付包"}
+
+        page._show_inspector_section("file")
+
+        assert page.inspector_stack.currentWidget() is page.file_card
+        assert page.inspector_switches["file"].isChecked() is True
+        assert page.inspector_switches["export"].isChecked() is False
     finally:
         page.deleteLater()
         controller.shutdown()
