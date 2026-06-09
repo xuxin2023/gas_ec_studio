@@ -12,6 +12,8 @@ from zoneinfo import ZoneInfo
 
 from PySide6.QtCore import QObject, Signal
 
+from app.ui_text import ui_safe_text as _ui_safe_text
+
 from core.acquisition.acquisition_service import AcquisitionService
 from core.acquisition.realtime_buffer import RealtimeBuffer
 from core.adapters.factory import build_adapter
@@ -74,20 +76,6 @@ from models.station_models import (
     load_dynamic_metadata_csv,
     metadata_completeness,
 )
-
-
-UI_REFERENCE_REPLACEMENTS = (
-    ("EddyPro", "行业参考"),
-    ("EDDYPRO", "行业参考"),
-    ("eddypro", "industry_reference"),
-)
-
-
-def _ui_safe_text(value: object) -> str:
-    text = str(value)
-    for old, new in UI_REFERENCE_REPLACEMENTS:
-        text = text.replace(old, new)
-    return text
 
 
 @dataclass(slots=True)

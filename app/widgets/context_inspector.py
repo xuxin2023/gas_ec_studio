@@ -3,20 +3,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from app.theme import CardFrame, TOKENS, chip, section_title
-
-
-UI_REFERENCE_REPLACEMENTS = (
-    ("EddyPro", "行业参考"),
-    ("EDDYPRO", "行业参考"),
-    ("eddypro", "industry_reference"),
-)
-
-
-def _ui_safe_text(value: object) -> str:
-    text = str(value)
-    for old, new in UI_REFERENCE_REPLACEMENTS:
-        text = text.replace(old, new)
-    return text
+from app.ui_text import ui_safe_text as _ui_safe_text
 
 
 PROJECT_SECTION_LABELS = {

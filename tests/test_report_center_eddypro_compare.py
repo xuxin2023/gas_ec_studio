@@ -9,7 +9,7 @@ import numpy as np
 from PySide6.QtWidgets import QApplication, QLabel
 
 from app.main_window import StudioMainWindow
-from app.pages.report_center_page import ReportCenterPage
+from app.pages.report_center_page import ReportCenterPage, _ui_safe_text
 from app.studio import StudioController
 from app.widgets.context_inspector import ContextInspector
 from models.hf_models import FrameQuality, NormalizedHFFrame
@@ -24,7 +24,26 @@ def _assert_no_forbidden_ui_text(widget) -> None:
                 item = table.item(row, col)
                 if item is not None:
                     visible_texts.append(item.text())
-    assert not any("EddyPro" in text for text in visible_texts)
+    forbidden = ("EddyPro", "EDDYPRO", "eddypro", "industry_reference")
+    assert not any(fragment in text for text in visible_texts for fragment in forbidden)
+
+
+def test_report_center_ui_safe_text_maps_reference_internal_keys() -> None:
+    text = (
+        "public_eddypro_fixture_catalog "
+        "official_eddypro_executable_run "
+        "eddypro_computation_stress_suite "
+        "references/eddypro/official_raw/site_001"
+    )
+
+    safe = _ui_safe_text(text)
+
+    assert "public_reference_fixture_catalog" in safe
+    assert "official_reference_run" in safe
+    assert "reference_computation_stress_suite" in safe
+    assert "references/reference/official_raw/site_001" in safe
+    assert "eddypro" not in safe
+    assert "industry_reference" not in safe
 
 
 def _app() -> QApplication:

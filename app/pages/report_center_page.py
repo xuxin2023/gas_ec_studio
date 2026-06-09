@@ -28,20 +28,7 @@ from PySide6.QtWidgets import (
 
 from app.studio import StudioController
 from app.theme import CardFrame, TOKENS, chip, section_title
-
-
-UI_REFERENCE_REPLACEMENTS = (
-    ("EddyPro", "行业参考"),
-    ("EDDYPRO", "行业参考"),
-    ("eddypro", "industry_reference"),
-)
-
-
-def _ui_safe_text(value: object) -> str:
-    text = str(value)
-    for old, new in UI_REFERENCE_REPLACEMENTS:
-        text = text.replace(old, new)
-    return text
+from app.ui_text import ui_safe_text as _ui_safe_text
 
 
 REPORT_SECTIONS = [
@@ -590,7 +577,7 @@ class ReportCenterPage(QWidget):
             ctrl_row.setSpacing(TOKENS.spacing_md)
             ctrl_row.addWidget(QLabel("Bundle:"))
             self._official_bundle_path = QLineEdit()
-            self._official_bundle_path.setPlaceholderText("references/industry_reference/official_raw/site_001")
+            self._official_bundle_path.setPlaceholderText("references/reference/official_raw/site_001")
             ctrl_row.addWidget(self._official_bundle_path, 1)
             self._official_bundle_browse = QPushButton("Browse")
             self._official_bundle_build_manifest = QPushButton("Build Manifest")
