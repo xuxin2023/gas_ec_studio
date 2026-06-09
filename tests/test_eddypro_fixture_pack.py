@@ -152,6 +152,12 @@ def test_fixture_pack_summary_validates_hashes_windows_and_protocol_rows() -> No
     assert li7700["raw_to_final_parity"]["trace_gas_parity"]["status"] == "pass"
     assert li7700["raw_to_final_parity"]["trace_gas_parity"]["coefficient_profile_id"] == "synthetic_li7700_profile"
     assert li7700["raw_to_final_parity"]["trace_gas_parity"]["comparison_count"] == 6
+    assert li7700["raw_to_final_parity"]["trace_gas_provenance_summary"]["artifact_type"] == "trace_gas_parity_provenance_v1"
+    assert li7700["trace_gas_coefficient_profile_source_file"].endswith("synthetic_li7700_trace_gas_001_reference.json")
+    assert li7700["trace_gas_coefficient_profile_normalization_command"].startswith(
+        "python scripts/generate_synthetic_li7700_fixture.py"
+    )
+    assert li7700["trace_gas_known_limitations"] == ["Synthetic oracle, not a public LI-7700 field fixture."]
     assert li7700["provenance"]["normalization_time"] == "2026-05-27T10:00:00"
 
     source_wms = by_id["eddypro_source_li7700_wms_001"]
@@ -165,6 +171,12 @@ def test_fixture_pack_summary_validates_hashes_windows_and_protocol_rows() -> No
     assert "applied_wms_line_shape" in source_wms_trace["wms_line_shape_statuses"]
     assert source_wms_trace["windows"][0]["li7700_wms_fit_quality_status"] == "pass"
     assert source_wms_trace["windows"][0]["ch4_spectroscopic_status"] == "applied_wms_line_shape"
+    assert source_wms["trace_gas_coefficient_profile_source_file"].endswith(
+        "eddypro_source_li7700_wms_001_reference.json"
+    )
+    assert source_wms["trace_gas_coefficient_profile_normalization_command"] == (
+        "python scripts/generate_source_derived_li7700_wms_fixture.py --register"
+    )
 
 
 def test_raw_to_final_fixture_allows_embedded_ghg_metadata_without_metadata_json(tmp_path: Path) -> None:
@@ -600,6 +612,10 @@ def test_official_raw_fixture_manifest_keeps_synthetic_guardrails_separate() -> 
     li7700_guardrail = by_id["synthetic_li7700_trace_gas_001"]
     assert li7700_guardrail["trace_gas_parity_status"] == "pass"
     assert li7700_guardrail["trace_gas_coefficient_profile_id"] == "synthetic_li7700_profile"
+    assert li7700_guardrail["trace_gas_coefficient_profile_source_file"].endswith(
+        "synthetic_li7700_trace_gas_001_reference.json"
+    )
+    assert len(li7700_guardrail["trace_gas_known_limitations"]) == 1
     source_tob1 = by_id["eddypro_source_tob1_seconds_001"]
     assert source_tob1["readiness_level"] == "source_derived_conformance"
     assert source_tob1["evidence_role"] == "source_derived_raw_import_conformance"
@@ -623,6 +639,9 @@ def test_official_raw_fixture_manifest_keeps_synthetic_guardrails_separate() -> 
     assert source_wms_detail["evidence_role"] == "source_derived_raw_import_conformance"
     assert source_wms_detail["trace_gas_parity_status"] == "pass"
     assert source_wms_detail["trace_gas_coefficient_profile_id"] == "source_li7700_wms_profile"
+    assert source_wms_detail["trace_gas_coefficient_profile_normalization_command"] == (
+        "python scripts/generate_source_derived_li7700_wms_fixture.py --register"
+    )
     assert source_wms_detail["parity_diagnostics"]["status"] == "ok"
     public_ghg = by_id["ghg_sample_data_2021_licor_public_raw_candidate"]
     assert public_ghg["official_eddypro_run"]["gate_status"] == "pass"
@@ -633,6 +652,7 @@ def test_official_raw_fixture_manifest_keeps_synthetic_guardrails_separate() -> 
     assert public_ghg["official_run_normalization"]["qc_mapping_strategy"] == "EddyPro 0/1/2 -> gas_ec_studio A/B/C"
     matrix_by_id = {row["fixture_id"]: row for row in manifest["evidence_matrix"]["rows"]}
     assert matrix_by_id["synthetic_li7700_trace_gas_001"]["trace_gas_parity_status"] == "pass"
+    assert matrix_by_id["synthetic_li7700_trace_gas_001"]["trace_gas_known_limitation_count"] == 1
     assert matrix_by_id["synthetic_raw_csv_001"]["normalization_status"] in {"present", "ready"}
     assert matrix_by_id["synthetic_raw_csv_001"]["qc_mapping_strategy"]
     assert matrix_by_id["eddypro_source_tob1_seconds_001"]["readiness_level"] == "source_derived_conformance"

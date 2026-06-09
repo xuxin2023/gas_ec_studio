@@ -608,6 +608,11 @@ def _build_formal_report_snapshot(
         "eddypro_closure_plan": eddypro_closure_plan,
         "raw_to_final_parity": raw_to_final_parity,
         "raw_to_final_trace_gas_parity": raw_to_final_trace_gas,
+        "raw_to_final_trace_gas_provenance_summary": dict(
+            result_manifest.get("raw_to_final_trace_gas_provenance_summary", {})
+            or raw_to_final_trace_gas.get("provenance_summary", {})
+            or {}
+        ),
         "flux_correction_ledger_summary": flux_correction_ledger_summary,
         "spectral_assessment": spectral_assessment,
         "spectral_assessment_library": spectral_assessment_library,
@@ -929,6 +934,8 @@ def _build_formal_report_snapshot(
                         ["raw_to_final_trace_gas_status", str(raw_to_final_trace_gas.get("status", "--"))],
                         ["raw_to_final_trace_gas_pass_rate", _fmt(raw_to_final_trace_gas.get("pass_rate"), 3)],
                         ["raw_to_final_trace_gas_profile", str(raw_to_final_trace_gas.get("coefficient_profile_id", "--"))],
+                        ["raw_to_final_trace_gas_source", str(raw_to_final_trace_gas.get("coefficient_profile_source_file", "--"))],
+                        ["raw_to_final_trace_gas_normalization", str(raw_to_final_trace_gas.get("coefficient_profile_normalization_command", "--"))],
                         ["eddypro_coverage_audit_status", str(eddypro_coverage_audit.get("status", "--"))],
                         ["eddypro_coverage_completion_score", _fmt(dict(eddypro_coverage_audit.get("capability_summary", {}) or {}).get("completion_score"), 3)],
                         ["can_claim_full_eddypro_parity", str(eddypro_coverage_audit.get("can_claim_full_eddypro_parity", False))],

@@ -779,6 +779,11 @@ class ResultExporter:
         )
         raw_to_final_parity_summary = self._read_json_if_available(raw_to_final_parity_path)
         raw_to_final_trace_gas_parity = dict(raw_to_final_parity_summary.get("trace_gas_parity", {}) or {})
+        raw_to_final_trace_gas_provenance_summary = dict(
+            raw_to_final_parity_summary.get("trace_gas_provenance_summary", {})
+            or raw_to_final_trace_gas_parity.get("provenance_summary", {})
+            or {}
+        )
         raw_to_final_parity_diagnostics = dict(raw_to_final_parity_summary.get("parity_diagnostics", {}) or {})
         raw_to_final_parity_failure_groups = [
             str(item.get("category", ""))
@@ -1166,6 +1171,9 @@ class ResultExporter:
                 "raw_to_final_trace_gas_pass_rate": float(raw_to_final_trace_gas_parity.get("pass_rate", 0.0) or 0.0),
                 "raw_to_final_trace_gas_failed_fields": list(raw_to_final_trace_gas_parity.get("failed_fields", []) or []),
                 "raw_to_final_trace_gas_coefficient_profile_id": str(raw_to_final_trace_gas_parity.get("coefficient_profile_id", "")),
+                "raw_to_final_trace_gas_coefficient_profile_source_file": str(raw_to_final_trace_gas_parity.get("coefficient_profile_source_file", "")),
+                "raw_to_final_trace_gas_coefficient_profile_normalization_command": str(raw_to_final_trace_gas_parity.get("coefficient_profile_normalization_command", "")),
+                "raw_to_final_trace_gas_provenance_summary": raw_to_final_trace_gas_provenance_summary,
                 "raw_to_final_parity_artifact": str(raw_to_final_parity_path) if raw_to_final_parity_path is not None else "",
                 "external_artifacts": external_artifact_files,
                 "neon_hdf5_validation_package": neon_hdf5_validation_package,
@@ -1366,6 +1374,9 @@ class ResultExporter:
             "raw_to_final_trace_gas_pass_rate": float(raw_to_final_trace_gas_parity.get("pass_rate", 0.0) or 0.0),
             "raw_to_final_trace_gas_failed_fields": list(raw_to_final_trace_gas_parity.get("failed_fields", []) or []),
             "raw_to_final_trace_gas_coefficient_profile_id": str(raw_to_final_trace_gas_parity.get("coefficient_profile_id", "")),
+            "raw_to_final_trace_gas_coefficient_profile_source_file": str(raw_to_final_trace_gas_parity.get("coefficient_profile_source_file", "")),
+            "raw_to_final_trace_gas_coefficient_profile_normalization_command": str(raw_to_final_trace_gas_parity.get("coefficient_profile_normalization_command", "")),
+            "raw_to_final_trace_gas_provenance_summary": raw_to_final_trace_gas_provenance_summary,
             "raw_to_final_parity_artifact": str(raw_to_final_parity_path) if raw_to_final_parity_path is not None else "",
             "external_artifacts": external_artifact_files,
             "neon_hdf5_validation_package": neon_hdf5_validation_package,

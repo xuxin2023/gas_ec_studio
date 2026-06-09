@@ -707,6 +707,16 @@ def _build_delivery_audit(
             "raw_to_final_trace_gas_pass_rate": raw_to_final_trace_gas.get("pass_rate", 0.0),
             "raw_to_final_trace_gas_failed_fields": list(raw_to_final_trace_gas.get("failed_fields", []) or []),
             "raw_to_final_trace_gas_coefficient_profile_id": raw_to_final_trace_gas.get("coefficient_profile_id", ""),
+            "raw_to_final_trace_gas_coefficient_profile_source_file": raw_to_final_trace_gas.get("coefficient_profile_source_file", ""),
+            "raw_to_final_trace_gas_coefficient_profile_normalization_command": raw_to_final_trace_gas.get(
+                "coefficient_profile_normalization_command",
+                "",
+            ),
+            "raw_to_final_trace_gas_provenance_summary": dict(
+                result_manifest.get("raw_to_final_trace_gas_provenance_summary", {})
+                or raw_to_final_trace_gas.get("provenance_summary", {})
+                or {}
+            ),
             "neon_hdf5_validation_status": neon_validation.get("status", ""),
             "neon_hdf5_metadata_status": neon_validation.get("metadata_status", ""),
             "neon_hdf5_row_status": neon_validation.get("row_status", ""),

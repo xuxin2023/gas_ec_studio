@@ -144,6 +144,13 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert snapshot["delivery_audit"]["official_raw_acquisition_validation"]["artifact_type"] == "official_raw_fixture_acquisition_validation_v1"
         assert snapshot["delivery_audit"]["official_raw_evidence_pack"]["artifact_type"] == "official_raw_fixture_evidence_pack_v1"
         assert snapshot["delivery_audit"]["official_raw_fixture_detail"]["trace_gas_parity_status"] == "pass"
+        assert snapshot["delivery_audit"]["official_raw_fixture_detail"]["trace_gas_coefficient_profile_source_file"].endswith(
+            "synthetic_li7700_trace_gas_001_reference.json"
+        )
+        assert snapshot["delivery_audit"]["official_raw_fixture_detail"]["trace_gas_provenance_summary"]["artifact_type"] == (
+            "trace_gas_parity_provenance_v1"
+        )
+        assert "raw_to_final_trace_gas_provenance_summary" in snapshot["delivery_audit"]
         assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_evidence_pack_acceptance_status"] == "not_run"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_normalization_status"] in {"present", "ready"}
         assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_qc_mapping_strategy"]
@@ -197,6 +204,7 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert "official_raw_acquisition_status" in delivery_audit["result_manifest_summary"]
         assert "official_raw_evidence_pack_status" in delivery_audit["result_manifest_summary"]
         assert delivery_audit["result_manifest_summary"]["official_raw_evidence_pack_acceptance_status"] == "not_run"
+        assert "raw_to_final_trace_gas_provenance_summary" in delivery_audit["result_manifest_summary"]
         assert delivery_audit["eddypro_source_inventory"]["feature_count"] >= 10
         assert delivery_audit["eddypro_coverage_audit"]["claim_gate"]["status"] == "blocked"
         assert delivery_audit["eddypro_computation_surface"]["status"] == "ready"

@@ -231,6 +231,7 @@ def run_raw_to_final_parity_harness(
         "benchmark_summary": benchmark_summary,
         "parity_diagnostics": parity_diagnostics,
         "trace_gas_parity": trace_gas_parity,
+        "trace_gas_provenance_summary": dict(trace_gas_parity.get("provenance_summary", {}) or {}),
         "li7700_level_parity": trace_gas_parity,
         "windows": _jsonable(benchmark_results),
         "actual_windows": [_window_summary(window) for window in rp_result.windows],
@@ -690,6 +691,10 @@ def _trace_gas_parity_summary(
                 "ch4_method": diagnostics.get("ch4_method", ""),
                 "ch4_coefficient_profile_id": diagnostics.get("ch4_coefficient_profile_id", ""),
                 "ch4_coefficient_registry_status": diagnostics.get("ch4_coefficient_registry_status", ""),
+                "ch4_coefficient_profile_source_file": diagnostics.get("ch4_coefficient_source_file", ""),
+                "ch4_coefficient_profile_normalization_command": diagnostics.get("ch4_coefficient_normalization_command", ""),
+                "ch4_coefficient_profile_provenance": diagnostics.get("ch4_coefficient_profile_provenance", ""),
+                "ch4_coefficient_profile_limitations": list(diagnostics.get("ch4_coefficient_profile_limitations", []) or []),
                 "ch4_correction_sequence_status": sequence.get("status", ""),
                 "ch4_spectroscopic_status": spectroscopic.get("status", ""),
                 "li7700_wms_fit_quality_status": diagnostics.get("li7700_wms_fit_quality_status", ""),
@@ -699,6 +704,15 @@ def _trace_gas_parity_summary(
 
     if comparison_count == 0:
         status = "fail" if reference_trace_window_count > 0 else "not_available"
+        provenance_summary = _trace_gas_parity_provenance_summary(
+            rp_result=rp_result,
+            trace_status=status,
+            first_diag=first_diag,
+            threshold=rel_threshold,
+            reference_trace_window_count=reference_trace_window_count,
+            matched_reference_count=matched_reference_count,
+            comparison_count=comparison_count,
+        )
         return {
             "artifact_type": "li7700_trace_gas_parity_v1",
             "status": status,
@@ -712,6 +726,11 @@ def _trace_gas_parity_summary(
             "method": first_diag.get("ch4_method", ""),
             "coefficient_profile_id": first_diag.get("ch4_coefficient_profile_id", ""),
             "coefficient_registry_status": first_diag.get("ch4_coefficient_registry_status", ""),
+            "coefficient_profile_source_file": first_diag.get("ch4_coefficient_source_file", ""),
+            "coefficient_profile_normalization_command": first_diag.get("ch4_coefficient_normalization_command", ""),
+            "coefficient_profile_provenance": first_diag.get("ch4_coefficient_profile_provenance", ""),
+            "coefficient_profile_limitations": list(first_diag.get("ch4_coefficient_profile_limitations", []) or []),
+            "provenance_summary": provenance_summary,
             "wms_line_shape_window_count": wms_line_shape_window_count,
             "wms_line_shape_statuses": sorted(wms_statuses),
             "wms_line_shape_fit_models": sorted(wms_fit_models),
@@ -729,6 +748,15 @@ def _trace_gas_parity_summary(
         )
     else:
         known_limitations.insert(0, "Raw WMS line-shape fitting is not reproduced by this parity layer.")
+    provenance_summary = _trace_gas_parity_provenance_summary(
+        rp_result=rp_result,
+        trace_status=status,
+        first_diag=first_diag,
+        threshold=rel_threshold,
+        reference_trace_window_count=reference_trace_window_count,
+        matched_reference_count=matched_reference_count,
+        comparison_count=comparison_count,
+    )
     return {
         "artifact_type": "li7700_trace_gas_parity_v1",
         "status": status,
@@ -736,7 +764,10 @@ def _trace_gas_parity_summary(
         "coefficient_profile_id": first_diag.get("ch4_coefficient_profile_id", ""),
         "coefficient_registry_status": first_diag.get("ch4_coefficient_registry_status", ""),
         "coefficient_profile_source_file": first_diag.get("ch4_coefficient_source_file", ""),
+        "coefficient_profile_normalization_command": first_diag.get("ch4_coefficient_normalization_command", ""),
         "coefficient_profile_provenance": first_diag.get("ch4_coefficient_profile_provenance", ""),
+        "coefficient_profile_limitations": list(first_diag.get("ch4_coefficient_profile_limitations", []) or []),
+        "provenance_summary": provenance_summary,
         "threshold": rel_threshold,
         "window_count": len(rp_result.windows),
         "reference_trace_window_count": reference_trace_window_count,
@@ -754,6 +785,91 @@ def _trace_gas_parity_summary(
             "A pass is official EddyPro evidence only when those reference fields originate from the matching EddyPro run."
         ),
         "known_limitations": known_limitations,
+    }
+
+
+def _trace_gas_parity_provenance_summary(
+    *,
+    rp_result: Any,
+    trace_status: str,
+    first_diag: dict[str, Any],
+    threshold: float,
+    reference_trace_window_count: int,
+    matched_reference_count: int,
+    comparison_count: int,
+) -> dict[str, Any]:
+    summary = dict(dict(getattr(rp_result, "summary", {}) or {}).get("trace_gas_summary", {}) or {})
+
+    def _string_list(*values: Any) -> list[str]:
+        items: list[str] = []
+        for value in values:
+            if value is None:
+                continue
+            candidates = value if isinstance(value, list) else [value]
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                text = str(candidate).strip()
+                if text and text not in items:
+                    items.append(text)
+        return items
+
+    ch4 = {
+        "method": summary.get("method", first_diag.get("ch4_method", "")),
+        "coefficient_profile_id": summary.get("coefficient_profile_id", first_diag.get("ch4_coefficient_profile_id", "")),
+        "coefficient_registry_status": summary.get("coefficient_registry_status", first_diag.get("ch4_coefficient_registry_status", "")),
+        "coefficient_profile_source_file": summary.get("coefficient_profile_source_file", first_diag.get("ch4_coefficient_source_file", "")),
+        "coefficient_profile_normalization_command": summary.get(
+            "coefficient_profile_normalization_command",
+            first_diag.get("ch4_coefficient_normalization_command", ""),
+        ),
+        "coefficient_profile_provenance": summary.get("coefficient_profile_provenance", first_diag.get("ch4_coefficient_profile_provenance", "")),
+        "coefficient_profile_limitations": _string_list(
+            summary.get("coefficient_profile_limitations", []),
+            first_diag.get("ch4_coefficient_profile_limitations", []),
+        ),
+        "correction_factors": {
+            "spectral": summary.get("ch4_spectral_correction_factor", first_diag.get("ch4_spectral_correction_factor")),
+            "water_vapor_dilution": summary.get("ch4_water_vapor_dilution_factor", first_diag.get("ch4_water_vapor_dilution_factor")),
+            "spectroscopic": summary.get("ch4_spectroscopic_correction_factor", first_diag.get("ch4_spectroscopic_correction_factor")),
+            "self_heating": summary.get("ch4_self_heating_correction_factor", first_diag.get("ch4_self_heating_correction_factor")),
+        },
+    }
+    n2o = {
+        "method": summary.get("n2o_method", first_diag.get("n2o_method", "")),
+        "coefficient_profile_id": summary.get("n2o_coefficient_profile_id", first_diag.get("n2o_coefficient_profile_id", "")),
+        "coefficient_registry_status": summary.get("n2o_coefficient_registry_status", first_diag.get("n2o_coefficient_registry_status", "")),
+        "coefficient_profile_source_file": summary.get("n2o_coefficient_profile_source_file", first_diag.get("n2o_coefficient_source_file", "")),
+        "coefficient_profile_normalization_command": summary.get(
+            "n2o_coefficient_profile_normalization_command",
+            first_diag.get("n2o_coefficient_normalization_command", ""),
+        ),
+        "coefficient_profile_provenance": summary.get("n2o_coefficient_profile_provenance", first_diag.get("n2o_coefficient_profile_provenance", "")),
+        "coefficient_profile_limitations": _string_list(
+            summary.get("n2o_coefficient_profile_limitations", []),
+            first_diag.get("n2o_coefficient_profile_limitations", []),
+        ),
+        "correction_factors": {
+            "spectral": summary.get("n2o_spectral_correction_factor", first_diag.get("n2o_spectral_correction_factor")),
+            "analyzer": summary.get("n2o_analyzer_correction_factor", first_diag.get("n2o_analyzer_correction_factor")),
+            "density": summary.get("n2o_density_correction_factor", first_diag.get("n2o_density_correction_factor")),
+        },
+    }
+    return {
+        "artifact_type": "trace_gas_parity_provenance_v1",
+        "status": trace_status,
+        "threshold": threshold,
+        "reference_trace_window_count": reference_trace_window_count,
+        "matched_reference_count": matched_reference_count,
+        "comparison_count": comparison_count,
+        "gases": {
+            "ch4": ch4,
+            "n2o": n2o,
+        },
+        "truthfulness_note": (
+            "Trace-gas parity provenance records the coefficient/source metadata used by the RP run; "
+            "it does not infer missing EddyPro reference metadata."
+        ),
     }
 
 
@@ -815,6 +931,8 @@ def _window_summary(window: Any) -> dict[str, Any]:
         "ch4_flux_level2_density_nmol_m2_s": diagnostics.get("ch4_flux_level2_density_nmol_m2_s"),
         "ch4_flux_corrected_nmol_m2_s": diagnostics.get("ch4_flux_corrected_nmol_m2_s"),
         "ch4_coefficient_profile_id": diagnostics.get("ch4_coefficient_profile_id", ""),
+        "ch4_coefficient_profile_source_file": diagnostics.get("ch4_coefficient_source_file", ""),
+        "ch4_coefficient_profile_normalization_command": diagnostics.get("ch4_coefficient_normalization_command", ""),
         "ch4_spectroscopic_correction_factor": diagnostics.get("ch4_spectroscopic_correction_factor"),
         "ch4_correction_sequence_status": dict(diagnostics.get("ch4_correction_sequence", {}) or {}).get("status", ""),
         "li7700_wms_fit_quality_status": diagnostics.get("li7700_wms_fit_quality_status", ""),

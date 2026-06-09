@@ -141,6 +141,15 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["official_raw_repair_plan_artifact"].endswith("official_raw_repair_plan.json")
         assert summary_payload["official_raw_repair_plan_status"] == "not_available"
         assert summary_payload["official_raw_fixture_detail"]["artifact_type"] == "official_raw_fixture_detail_v1"
+        assert summary_payload["official_raw_fixture_detail"]["trace_gas_provenance_summary"]["artifact_type"] == (
+            "trace_gas_parity_provenance_v1"
+        )
+        assert summary_payload["official_raw_fixture_detail"]["trace_gas_coefficient_profile_source_file"].endswith(
+            "synthetic_li7700_trace_gas_001_reference.json"
+        )
+        assert summary_payload["official_raw_fixture_detail"]["trace_gas_coefficient_profile_normalization_command"].startswith(
+            "python scripts/generate_synthetic_li7700_fixture.py"
+        )
         assert summary_payload["official_raw_acquisition_validation"]["artifact_type"] == "official_raw_fixture_acquisition_validation_v1"
         assert "official_raw_acquisition_status" in summary_payload
         assert summary_payload["official_raw_evidence_pack"]["artifact_type"] == "official_raw_fixture_evidence_pack_v1"
@@ -249,6 +258,15 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["official_raw_fixture_manifest"]["evidence_matrix"]["raw_format_counts"]["csv"] >= 1
         assert manifest_payload["official_raw_fixture_detail"]["trace_gas_parity_status"] == "pass"
         assert manifest_payload["official_raw_fixture_detail"]["trace_gas_coefficient_profile_id"] == "synthetic_li7700_profile"
+        assert manifest_payload["official_raw_fixture_detail"]["trace_gas_provenance_summary"]["artifact_type"] == (
+            "trace_gas_parity_provenance_v1"
+        )
+        assert manifest_payload["official_raw_fixture_detail"]["trace_gas_coefficient_profile_source_file"].endswith(
+            "synthetic_li7700_trace_gas_001_reference.json"
+        )
+        assert manifest_payload["official_raw_fixture_detail"]["trace_gas_coefficient_profile_normalization_command"].startswith(
+            "python scripts/generate_synthetic_li7700_fixture.py"
+        )
         assert "raw_to_final_parity_diagnostics" in manifest_payload
         assert "raw_to_final_parity_failure_groups" in manifest_payload
         assert "raw_to_final_parity_top_failed_fields" in manifest_payload

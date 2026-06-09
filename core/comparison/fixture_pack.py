@@ -1571,6 +1571,12 @@ def build_official_raw_fixture_detail(
     parity = dict(summary_asset.get("raw_to_final_parity", {}) or {})
     benchmark_summary = dict(parity.get("benchmark_summary", {}) or {})
     trace_gas_parity = dict(parity.get("trace_gas_parity", {}) or {})
+    trace_gas_provenance_summary = dict(
+        parity.get("trace_gas_provenance_summary", {})
+        or trace_gas_parity.get("provenance_summary", {})
+        or {}
+    )
+    trace_gas_ch4_provenance = dict(dict(trace_gas_provenance_summary.get("gases", {}) or {}).get("ch4", {}) or {})
     parity_diagnostics = dict(parity.get("parity_diagnostics", {}) or {})
     provenance = dict(summary_asset.get("provenance", {}) or {})
     known_limitations = _merged_string_list(
@@ -1643,6 +1649,20 @@ def build_official_raw_fixture_detail(
         "trace_gas_pass_rate": float(trace_gas_parity.get("pass_rate", matrix_row.get("trace_gas_pass_rate", 0.0)) or 0.0),
         "trace_gas_failed_fields": list(trace_gas_parity.get("failed_fields", matrix_row.get("trace_gas_failed_fields", [])) or []),
         "trace_gas_coefficient_profile_id": str(trace_gas_parity.get("coefficient_profile_id", "")),
+        "trace_gas_coefficient_profile_source_file": str(
+            trace_gas_parity.get("coefficient_profile_source_file", trace_gas_ch4_provenance.get("coefficient_profile_source_file", ""))
+        ),
+        "trace_gas_coefficient_profile_normalization_command": str(
+            trace_gas_parity.get(
+                "coefficient_profile_normalization_command",
+                trace_gas_ch4_provenance.get("coefficient_profile_normalization_command", ""),
+            )
+        ),
+        "trace_gas_provenance_summary": trace_gas_provenance_summary,
+        "trace_gas_known_limitations": list(
+            trace_gas_parity.get("coefficient_profile_limitations", trace_gas_ch4_provenance.get("coefficient_profile_limitations", []))
+            or []
+        ),
         "provenance": provenance,
         "normalization": normalization,
         "official_run_normalization": official_run_normalization,
@@ -1700,6 +1720,11 @@ def _official_raw_fixture_evidence_matrix(assets: list[dict[str, Any]]) -> dict[
             "trace_gas_pass_rate": float(asset.get("trace_gas_pass_rate", 0.0) or 0.0),
             "trace_gas_failed_fields": list(asset.get("trace_gas_failed_fields", []) or []),
             "trace_gas_coefficient_profile_id": str(asset.get("trace_gas_coefficient_profile_id", "")),
+            "trace_gas_coefficient_profile_source_file": str(asset.get("trace_gas_coefficient_profile_source_file", "")),
+            "trace_gas_coefficient_profile_normalization_command": str(
+                asset.get("trace_gas_coefficient_profile_normalization_command", "")
+            ),
+            "trace_gas_known_limitation_count": len(list(asset.get("trace_gas_known_limitations", []) or [])),
             "disabled": bool(asset.get("disabled", False)),
             "disabled_reason": str(asset.get("disabled_reason", "")),
             "has_raw_input": bool(asset.get("has_raw_input", False)),
@@ -1760,6 +1785,12 @@ def _official_raw_fixture_item(asset: dict[str, Any], validation: dict[str, Any]
     parity = dict(validation.get("raw_to_final_parity", {}) or {})
     benchmark_summary = dict(parity.get("benchmark_summary", {}) or {})
     trace_gas_parity = dict(parity.get("trace_gas_parity", {}) or {})
+    trace_gas_provenance_summary = dict(
+        parity.get("trace_gas_provenance_summary", {})
+        or trace_gas_parity.get("provenance_summary", {})
+        or {}
+    )
+    trace_gas_ch4_provenance = dict(dict(trace_gas_provenance_summary.get("gases", {}) or {}).get("ch4", {}) or {})
     parity_diagnostics = dict(parity.get("parity_diagnostics", {}) or {})
     top_failure_groups = [str(item.get("category", "")) for item in list(parity_diagnostics.get("failure_groups", []) or [])[:4]]
     normalization = _normalization_summary_from_validation(validation, files)
@@ -1799,6 +1830,19 @@ def _official_raw_fixture_item(asset: dict[str, Any], validation: dict[str, Any]
         "trace_gas_pass_rate": trace_gas_parity.get("pass_rate", 0.0),
         "trace_gas_failed_fields": list(trace_gas_parity.get("failed_fields", []) or []),
         "trace_gas_coefficient_profile_id": trace_gas_parity.get("coefficient_profile_id", ""),
+        "trace_gas_coefficient_profile_source_file": trace_gas_parity.get(
+            "coefficient_profile_source_file",
+            trace_gas_ch4_provenance.get("coefficient_profile_source_file", ""),
+        ),
+        "trace_gas_coefficient_profile_normalization_command": trace_gas_parity.get(
+            "coefficient_profile_normalization_command",
+            trace_gas_ch4_provenance.get("coefficient_profile_normalization_command", ""),
+        ),
+        "trace_gas_provenance_summary": trace_gas_provenance_summary,
+        "trace_gas_known_limitations": list(
+            trace_gas_parity.get("coefficient_profile_limitations", trace_gas_ch4_provenance.get("coefficient_profile_limitations", []))
+            or []
+        ),
         "known_limitations": list(validation.get("known_limitations", asset.get("known_limitations", [])) or []),
         "disabled": bool(asset.get("disabled", False)),
         "disabled_reason": str(asset.get("disabled_reason", "")),
@@ -2437,18 +2481,44 @@ def _validate_raw_to_final_asset(asset: dict[str, Any], result: dict[str, Any], 
     result["raw_row_count"] = harness.get("raw_input", {}).get("row_count", 0)
     result["window_count"] = harness.get("pipeline", {}).get("window_count", 0)
     result["reference_window_count"] = harness.get("reference", {}).get("reference_window_count", 0)
+    trace_gas_parity = dict(harness.get("trace_gas_parity", {}) or {})
+    trace_gas_provenance_summary = dict(
+        harness.get("trace_gas_provenance_summary", {})
+        or trace_gas_parity.get("provenance_summary", {})
+        or {}
+    )
+    trace_gas_ch4_provenance = dict(dict(trace_gas_provenance_summary.get("gases", {}) or {}).get("ch4", {}) or {})
     result["raw_to_final_parity"] = {
         "artifact_type": harness.get("artifact_type", ""),
         "status": harness.get("status", ""),
         "fixture_id": harness.get("fixture_id", ""),
         "raw_input": harness.get("raw_input", {}),
         "benchmark_summary": harness.get("benchmark_summary", {}),
-        "trace_gas_parity": harness.get("trace_gas_parity", {}),
+        "trace_gas_parity": trace_gas_parity,
+        "trace_gas_provenance_summary": trace_gas_provenance_summary,
         "li7700_level_parity": harness.get("li7700_level_parity", {}),
         "parity_diagnostics": harness.get("parity_diagnostics", {}),
         "truthfulness_note": harness.get("truthfulness_note", ""),
         "known_limitations": harness.get("known_limitations", []),
     }
+    result["trace_gas_parity_status"] = str(trace_gas_parity.get("status", ""))
+    result["trace_gas_pass_rate"] = float(trace_gas_parity.get("pass_rate", 0.0) or 0.0)
+    result["trace_gas_failed_fields"] = list(trace_gas_parity.get("failed_fields", []) or [])
+    result["trace_gas_coefficient_profile_id"] = str(trace_gas_parity.get("coefficient_profile_id", ""))
+    result["trace_gas_coefficient_profile_source_file"] = str(
+        trace_gas_parity.get("coefficient_profile_source_file", trace_gas_ch4_provenance.get("coefficient_profile_source_file", ""))
+    )
+    result["trace_gas_coefficient_profile_normalization_command"] = str(
+        trace_gas_parity.get(
+            "coefficient_profile_normalization_command",
+            trace_gas_ch4_provenance.get("coefficient_profile_normalization_command", ""),
+        )
+    )
+    result["trace_gas_provenance_summary"] = trace_gas_provenance_summary
+    result["trace_gas_known_limitations"] = list(
+        trace_gas_parity.get("coefficient_profile_limitations", trace_gas_ch4_provenance.get("coefficient_profile_limitations", []))
+        or []
+    )
     result["provenance"] = {
         "artifact_type": provenance_payload.get("artifact_type", ""),
         "source_file": (

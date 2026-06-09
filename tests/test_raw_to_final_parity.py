@@ -83,6 +83,11 @@ def test_raw_to_final_parity_harness_compares_li7700_level_sequence(tmp_path: Pa
     assert trace["status"] == "pass"
     assert trace["method"] == "li_7700_correction_sequence_v1"
     assert trace["coefficient_profile_id"] == "synthetic_li7700_profile"
+    assert trace["coefficient_profile_source_file"].endswith("synthetic_li7700_trace_gas.json")
+    assert trace["coefficient_profile_normalization_command"] == "gas_ec synthetic-li7700-oracle"
+    assert trace["coefficient_profile_limitations"] == ["Synthetic oracle, not a public LI-7700 field fixture."]
+    assert trace["provenance_summary"]["artifact_type"] == "trace_gas_parity_provenance_v1"
+    assert trace["provenance_summary"]["gases"]["ch4"]["coefficient_profile_normalization_command"] == "gas_ec synthetic-li7700-oracle"
     assert trace["comparison_count"] == 6
     assert trace["pass_rate"] == 1.0
     assert trace["failed_fields"] == []
@@ -96,6 +101,10 @@ def test_raw_to_final_parity_harness_compares_li7700_level_sequence(tmp_path: Pa
         "ch4_method",
     }
     assert artifact["actual_windows"][0]["ch4_coefficient_profile_id"] == "synthetic_li7700_profile"
+    assert artifact["actual_windows"][0]["ch4_coefficient_profile_normalization_command"] == "gas_ec synthetic-li7700-oracle"
+    assert artifact["trace_gas_provenance_summary"]["gases"]["ch4"]["coefficient_profile_source_file"].endswith(
+        "synthetic_li7700_trace_gas.json"
+    )
 
 
 def test_raw_to_final_parity_harness_fails_li7700_level_mismatch(tmp_path: Path) -> None:

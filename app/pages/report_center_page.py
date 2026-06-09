@@ -840,6 +840,24 @@ class ReportCenterPage(QWidget):
             trace_line.setObjectName("subtitle")
             trace_line.setWordWrap(True)
             self.conclusion_content.addWidget(trace_line)
+            trace_provenance = dict(detail.get("trace_gas_provenance_summary", {}) or trace_gas_parity.get("provenance_summary", {}) or {})
+            trace_ch4 = dict(dict(trace_provenance.get("gases", {}) or {}).get("ch4", {}) or {})
+            trace_source = detail.get("trace_gas_coefficient_profile_source_file") or trace_ch4.get("coefficient_profile_source_file", "")
+            trace_normalization = (
+                detail.get("trace_gas_coefficient_profile_normalization_command")
+                or trace_ch4.get("coefficient_profile_normalization_command", "")
+            )
+            trace_limits = " / ".join(
+                str(item)
+                for item in list(detail.get("trace_gas_known_limitations", trace_ch4.get("coefficient_profile_limitations", [])) or [])[:3]
+            ) or "none"
+            trace_provenance_line = QLabel(
+                f"trace_profile_source={trace_source or '--'} | "
+                f"normalization={trace_normalization or '--'} | limitations={trace_limits}"
+            )
+            trace_provenance_line.setObjectName("subtitle")
+            trace_provenance_line.setWordWrap(True)
+            self.conclusion_content.addWidget(trace_provenance_line)
 
         limitations = list(detail.get("known_limitations", []) or [])
         for limitation in limitations[:3]:

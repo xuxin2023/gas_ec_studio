@@ -215,6 +215,13 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["result_manifest_summary"]["official_raw_official_run_qc_mapping_strategy"] == "EddyPro 0/1/2 -> gas_ec_studio A/B/C"
         assert manifest["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
         assert manifest["official_raw_fixture_detail"]["trace_gas_parity_status"] == "pass"
+        assert manifest["official_raw_fixture_detail"]["trace_gas_coefficient_profile_source_file"].endswith(
+            "synthetic_li7700_trace_gas_001_reference.json"
+        )
+        assert manifest["official_raw_fixture_detail"]["trace_gas_provenance_summary"]["artifact_type"] == (
+            "trace_gas_parity_provenance_v1"
+        )
+        assert "raw_to_final_trace_gas_provenance_summary" in manifest["result_manifest_summary"]
         assert manifest["result_manifest_summary"]["eddypro_source_inventory_feature_count"] >= 10
         assert manifest["result_manifest_summary"]["eddypro_computation_stress_suite_status"] == "pass"
         assert manifest["result_manifest_summary"]["eddypro_computation_stress_failed_case_count"] == 0

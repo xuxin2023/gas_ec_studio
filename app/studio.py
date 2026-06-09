@@ -5820,6 +5820,8 @@ class StudioController(QObject):
                         (
                             f"pass_rate={float(parity.get('trace_gas_pass_rate', 0.0) or 0.0):.1%}; "
                             f"profile={parity.get('trace_gas_coefficient_profile_id', '') or '--'}; "
+                            f"source={parity.get('trace_gas_coefficient_profile_source_file', '') or '--'}; "
+                            f"normalization={parity.get('trace_gas_coefficient_profile_normalization_command', '') or '--'}; "
                             f"failed_fields={trace_failed}"
                         ),
                     )
@@ -5874,6 +5876,25 @@ class StudioController(QObject):
                     ),
                 )
             )
+            trace_detail = dict(selected_detail.get("trace_gas_provenance_summary", {}) or {})
+            trace_ch4 = dict(dict(trace_detail.get("gases", {}) or {}).get("ch4", {}) or {})
+            if trace_ch4 or selected_detail.get("trace_gas_parity_status"):
+                trace_limits = " / ".join(
+                    str(item)
+                    for item in list(selected_detail.get("trace_gas_known_limitations", trace_ch4.get("coefficient_profile_limitations", [])) or [])[:3]
+                ) or "none"
+                rows.append(
+                    (
+                        f"selected_fixture_trace_gas:{selected_detail.get('fixture_id', '')}",
+                        str(selected_detail.get("trace_gas_parity_status", "") or trace_detail.get("status", "--")),
+                        (
+                            f"profile={selected_detail.get('trace_gas_coefficient_profile_id', trace_ch4.get('coefficient_profile_id', '')) or '--'}; "
+                            f"source={selected_detail.get('trace_gas_coefficient_profile_source_file', trace_ch4.get('coefficient_profile_source_file', '')) or '--'}; "
+                            f"normalization={selected_detail.get('trace_gas_coefficient_profile_normalization_command', trace_ch4.get('coefficient_profile_normalization_command', '')) or '--'}; "
+                            f"limitations={trace_limits}"
+                        ),
+                    )
+                )
         for tier, count in sorted(dict(summary.get("tier_counts", {}) or {}).items()):
             rows.append((f"tier:{tier}", str(count), "Fixture count by evidence tier."))
         for asset in list(summary.get("assets", []) or []):
@@ -5887,8 +5908,19 @@ class StudioController(QObject):
             ]
             trace_payload = dict(dict(payload.get("raw_to_final_parity", {}) or {}).get("trace_gas_parity", {}) or {})
             if trace_payload.get("status"):
+                trace_prov = dict(trace_payload.get("provenance_summary", {}) or dict(payload.get("trace_gas_provenance_summary", {}) or {}))
+                trace_ch4 = dict(dict(trace_prov.get("gases", {}) or {}).get("ch4", {}) or {})
                 detail_parts.append(
                     f"trace_gas={trace_payload.get('status')}/{float(trace_payload.get('pass_rate', 0.0) or 0.0):.1%}"
+                )
+                detail_parts.append(
+                    "trace_source="
+                    + str(
+                        payload.get("trace_gas_coefficient_profile_source_file")
+                        or trace_payload.get("coefficient_profile_source_file")
+                        or trace_ch4.get("coefficient_profile_source_file", "")
+                        or "n/a"
+                    )
                 )
             if limits:
                 detail_parts.append(f"limitations={limits}")
