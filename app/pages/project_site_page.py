@@ -66,7 +66,7 @@ class ProjectSitePage(QWidget):
         body.setSpacing(TOKENS.spacing_md)
         layout.addLayout(body, 1)
 
-        self.tree_card = CardFrame(muted=True)
+        self.tree_card = CardFrame(muted=True, role="rail")
         tree_layout = QVBoxLayout(self.tree_card)
         tree_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         tree_layout.setSpacing(TOKENS.spacing_md)
@@ -83,6 +83,11 @@ class ProjectSitePage(QWidget):
 
         self.content_stack = QStackedWidget()
         body.addWidget(self.content_stack, 1)
+
+        self.site_ops_rail = self._build_site_ops_rail()
+        self.site_ops_rail.setMinimumWidth(300)
+        self.site_ops_rail.setMaximumWidth(360)
+        body.addWidget(self.site_ops_rail, 0)
 
         self._build_directory()
         self._build_pages()
@@ -222,7 +227,7 @@ class ProjectSitePage(QWidget):
         self._sync_section_from_controller()
 
     def _build_top_bar(self) -> CardFrame:
-        card = CardFrame()
+        card = CardFrame(role="command")
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
@@ -268,6 +273,63 @@ class ProjectSitePage(QWidget):
         button_column.addLayout(row1)
         button_column.addLayout(row2)
         layout.addLayout(button_column)
+        return card
+
+    def _build_site_ops_rail(self) -> CardFrame:
+        card = CardFrame(muted=True, role="rail")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_md)
+        layout.addWidget(section_title("站点闭合台", "核心元数据、几何、采样链路和交付状态保持常驻，避免在长表单里迷路。"))
+        self.site_ops_chip = chip("待检查", "warning")
+        layout.addWidget(self.site_ops_chip)
+        self.site_ops_values: dict[str, tuple[QLabel, QLabel]] = {}
+        for key, title in (
+            ("readiness", "完整性"),
+            ("geometry", "站点几何"),
+            ("chain", "采样链路"),
+            ("timing", "时间窗"),
+            ("delivery", "交付模板"),
+            ("metadata", "元数据"),
+        ):
+            layout.addWidget(self._site_ops_tile(key, title))
+
+        next_card = CardFrame(muted=True, role="tile")
+        next_layout = QVBoxLayout(next_card)
+        next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        next_layout.setSpacing(TOKENS.spacing_xs)
+        next_label = QLabel("下一步")
+        next_label.setObjectName("metricLabel")
+        self.site_ops_next_value = QLabel("--")
+        self.site_ops_next_value.setObjectName("metricValue")
+        self.site_ops_next_value.setWordWrap(True)
+        self.site_ops_next_note = QLabel("--")
+        self.site_ops_next_note.setObjectName("subtitle")
+        self.site_ops_next_note.setWordWrap(True)
+        next_layout.addWidget(next_label)
+        next_layout.addWidget(self.site_ops_next_value)
+        next_layout.addWidget(self.site_ops_next_note)
+        layout.addWidget(next_card)
+        layout.addStretch(1)
+        return card
+
+    def _site_ops_tile(self, key: str, title: str) -> CardFrame:
+        card = CardFrame(muted=True, role="tile")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
+        label = QLabel(title)
+        label.setObjectName("metricLabel")
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setWordWrap(True)
+        note = QLabel("--")
+        note.setObjectName("subtitle")
+        note.setWordWrap(True)
+        layout.addWidget(label)
+        layout.addWidget(value)
+        layout.addWidget(note)
+        self.site_ops_values[key] = (value, note)
         return card
 
     def _build_directory(self) -> None:
@@ -1065,6 +1127,7 @@ class ProjectSitePage(QWidget):
             self.section_tree.setCurrentItem(item)
             self.section_tree.blockSignals(False)
         self.content_stack.setCurrentIndex(self.section_indexes[key])
+        self._refresh_top_bar()
 
     def _collect_payload(self) -> dict:
         return {
@@ -1203,6 +1266,114 @@ class ProjectSitePage(QWidget):
         self.overview_metric_project_code.setText(overview["project_code"] or "待填写")
         self.overview_metric_principal.setText(overview["principal"] or "待填写")
         self.overview_metric_archive_root.setText(overview["archive_root"] or "待填写")
+        self._refresh_site_ops_rail(workspace, score=score)
+
+    def _refresh_site_ops_rail(self, workspace: dict, *, score: int | None = None) -> None:
+        if not hasattr(self, "site_ops_values"):
+            return
+        if score is None:
+            score = self._local_completeness_score(workspace)
+        section_key = self.controller.project_nav_section
+        section_title_text = next((title for key, title, _subtitle in PROJECT_SECTIONS if key == section_key), "项目配置")
+        overview = workspace["overview"]
+        site_info = workspace["site_info"]
+        layout_cfg = workspace["instrument_layout"]
+        chain = workspace["sampling_chain"]
+        timing = workspace["timing"]
+        output = workspace["output_template"]
+        runtime = workspace["runtime_template"]
+        metadata = workspace.get("metadata", {}) or {}
+
+        self.site_ops_values["readiness"][0].setText(f"{score} 分")
+        self.site_ops_values["readiness"][1].setText(f"当前区段：{section_title_text} · 状态：{overview.get('status') or '草拟'}")
+
+        canopy_height = float(site_info.get("canopy_height_m", 0.0) or 0.0)
+        mast_height = float(layout_cfg.get("mast_height_m", 0.0) or 0.0)
+        sonic_height = float(layout_cfg.get("sonic_height_m", 0.0) or 0.0)
+        analyzer_height = float(layout_cfg.get("analyzer_height_m", 0.0) or 0.0)
+        height_delta = float(layout_cfg.get("height_delta_m", 0.0) or 0.0)
+        orientation = int(layout_cfg.get("orientation_deg", 0) or 0)
+        self.site_ops_values["geometry"][0].setText(f"{canopy_height:.1f} m 冠层")
+        self.site_ops_values["geometry"][1].setText(
+            f"塔 {mast_height:.1f} m · 声风 {sonic_height:.1f} m · 分析仪 {analyzer_height:.1f} m · Δ{height_delta:.2f} m · {orientation}°"
+        )
+
+        tube_length = float(chain.get("tube_length_m", 0.0) or 0.0)
+        tube_diameter = float(chain.get("tube_diameter_mm", 0.0) or 0.0)
+        flow_lpm = float(chain.get("flow_lpm", 0.0) or 0.0)
+        chain_flags = []
+        if chain.get("heat_traced"):
+            chain_flags.append("伴热")
+        if chain.get("insulated"):
+            chain_flags.append("保温")
+        chain_flag_text = " / ".join(chain_flags) if chain_flags else "未设温控"
+        self.site_ops_values["chain"][0].setText(f"{flow_lpm:.1f} L/min")
+        self.site_ops_values["chain"][1].setText(
+            f"{tube_length:.1f} m / {tube_diameter:.1f} mm · {chain.get('pump_model') or '泵待填'} · {chain_flag_text}"
+        )
+
+        sample_hz = float(timing.get("sample_hz", 0.0) or 0.0)
+        block_minutes = float(timing.get("block_minutes", 0.0) or 0.0)
+        samples_per_window = int(sample_hz * block_minutes * 60)
+        self.site_ops_values["timing"][0].setText(f"{sample_hz:g} Hz")
+        self.site_ops_values["timing"][1].setText(
+            f"{block_minutes:g} min · {samples_per_window:,} 点/窗口 · {timing.get('clock_source') or '时钟待定'}"
+        )
+
+        delivery_parts = []
+        delivery_parts.append("诊断" if output.get("include_diagnostics") else "无诊断")
+        delivery_parts.append("QC" if output.get("include_qc") else "无 QC")
+        delivery_value = " + ".join(delivery_parts)
+        runtime_mode = runtime.get("precheck_mode") or "预检待定"
+        self.site_ops_values["delivery"][0].setText(delivery_value)
+        self.site_ops_values["delivery"][1].setText(
+            f"{output.get('template_name') or '模板待填'} · {runtime_mode} · {output.get('file_pattern') or '{site}_{date}_{window}.csv'}"
+        )
+
+        station_meta = metadata.get("station", {}) or {}
+        instruments = metadata.get("instruments", {}) or {}
+        raw_description = metadata.get("raw_file_description", {}) or {}
+        raw_settings = metadata.get("raw_file_settings", {}) or {}
+        metadata_checks = [
+            bool(station_meta.get("latitude")) and bool(station_meta.get("longitude")),
+            bool(instruments.get("sonic_model")) and bool(instruments.get("analyzer_model")),
+            bool(raw_description.get("source_name")),
+            bool(raw_description.get("timestamp_column")),
+            bool(raw_settings.get("sample_hz")),
+        ]
+        ready_metadata = sum(1 for item in metadata_checks if item)
+        self.site_ops_values["metadata"][0].setText(f"{ready_metadata}/{len(metadata_checks)} ready")
+        alternative_metadata = metadata.get("alternative_metadata", {}) or {}
+        active_profile = alternative_metadata.get("active_profile") if isinstance(alternative_metadata, dict) else ""
+        self.site_ops_values["metadata"][1].setText(
+            f"profile={active_profile or 'active'} · raw={raw_description.get('source_type') or 'hf_frame'}"
+        )
+
+        if score < 70:
+            chip_text, tone = "待补齐", "warning"
+            next_value = "补齐项目身份"
+            next_note = "优先补项目、站点、归档根目录和基础高度，后续处理才有可靠上下文。"
+        elif not tube_length or not flow_lpm:
+            chip_text, tone = "链路待核", "warning"
+            next_value = "复核采样链路"
+            next_note = "管路长度、流量和温控会影响滞后与谱修正，建议在运行前闭合。"
+        elif not output.get("template_name"):
+            chip_text, tone = "交付待定", "accent"
+            next_value = "确认导出模板"
+            next_note = "补齐模板名和文件命名规则，便于报告中心和批处理复用。"
+        else:
+            chip_text, tone = "可进入处理", "success"
+            next_value = "保存并运行"
+            next_note = "站点上下文已具备进入处理页的基础条件，建议先保存再执行预检。"
+        self._set_site_ops_chip(chip_text, tone)
+        self.site_ops_next_value.setText(next_value)
+        self.site_ops_next_note.setText(next_note)
+
+    def _set_site_ops_chip(self, text: str, tone: str) -> None:
+        self.site_ops_chip.setText(text)
+        self.site_ops_chip.setProperty("chipTone", tone)
+        self.site_ops_chip.style().unpolish(self.site_ops_chip)
+        self.site_ops_chip.style().polish(self.site_ops_chip)
 
     def _refresh_layout_diagram(self, *_args) -> None:
         self.layout_diagram_labels["sonic"].setText(
@@ -1263,7 +1434,7 @@ class ProjectSitePage(QWidget):
         self.runtime_preview_note.setText(f"{archive_text}，{replay_text}。")
 
     def _metric_box(self, title: str, widget: QWidget) -> CardFrame:
-        card = CardFrame(muted=True)
+        card = CardFrame(muted=True, role="tile")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_xs)
