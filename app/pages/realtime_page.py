@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.studio import StudioController
-from app.theme import CardFrame, PLOT_SERIES_COLORS, TOKENS, configure_plot_theme, section_title
+from app.theme import CardFrame, PLOT_SERIES_COLORS, TOKENS, chip, configure_plot_theme, section_title
 
 
 class RealtimePage(QWidget):
@@ -82,6 +82,7 @@ class RealtimePage(QWidget):
         self.summary_values["valid_frame_rate"].setText(f"{stats['valid_frame_rate']:.2f} 帧/秒")
         self.summary_values["residual_frame_rate"].setText(f"{stats['residual_frame_rate']:.2f} 帧/秒")
         self.summary_values["anomaly_count"].setText(str(stats["anomaly_count"]))
+        self._refresh_session_deck(entry, rows, stats)
 
         if not self.display_paused:
             self._refresh_plot(rows, reset_view=view_key != self._last_view_key)
@@ -92,8 +93,36 @@ class RealtimePage(QWidget):
     def current_window_seconds(self) -> float:
         return self.window_options.get(self.window_combo.currentText(), 120.0)
 
+    def _refresh_session_deck(self, entry, rows, stats: dict) -> None:
+        connected = bool(entry.runtime.connected)
+        row_count = len(rows)
+        anomaly_count = int(stats.get("anomaly_count", 0) or 0)
+        valid_rate = float(stats.get("valid_frame_rate", 0.0) or 0.0)
+        residual_rate = float(stats.get("residual_frame_rate", 0.0) or 0.0)
+        if not connected:
+            self._set_session_chip("待连接", "warning")
+        elif anomaly_count > 0 or residual_rate > valid_rate:
+            self._set_session_chip("需关注", "danger")
+        elif row_count > 0:
+            self._set_session_chip("采集中", "success")
+        else:
+            self._set_session_chip("等待帧", "warning")
+        self.session_device_value.setText(entry.config.label)
+        self.session_window_note.setText(
+            f"{entry.config.port} · {self.window_combo.currentText()} · buffer={row_count} frames"
+        )
+        self.session_health_note.setText(
+            f"valid={valid_rate:.2f}/s，residual={residual_rate:.2f}/s，anomaly={anomaly_count}"
+        )
+
+    def _set_session_chip(self, text: str, tone: str) -> None:
+        self.session_state_chip.setText(text)
+        self.session_state_chip.setProperty("chipTone", tone)
+        self.session_state_chip.style().unpolish(self.session_state_chip)
+        self.session_state_chip.style().polish(self.session_state_chip)
+
     def _build_control_bar(self) -> CardFrame:
-        card = CardFrame()
+        card = CardFrame(role="command")
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
@@ -145,10 +174,30 @@ class RealtimePage(QWidget):
         return card
 
     def _build_summary_bar(self) -> CardFrame:
-        card = CardFrame(muted=True)
+        card = CardFrame(role="cockpit")
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
+        session_card = CardFrame(muted=True, role="tile")
+        session_layout = QVBoxLayout(session_card)
+        session_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        session_layout.setSpacing(TOKENS.spacing_xs)
+        session_layout.addWidget(section_title("采集会话", "目标、时间窗和信号健康同屏确认。"))
+        self.session_state_chip = chip("等待设备", "warning")
+        session_layout.addWidget(self.session_state_chip)
+        self.session_device_value = QLabel("--")
+        self.session_device_value.setObjectName("metricValue")
+        self.session_device_value.setWordWrap(True)
+        self.session_window_note = QLabel("--")
+        self.session_window_note.setObjectName("subtitle")
+        self.session_window_note.setWordWrap(True)
+        self.session_health_note = QLabel("--")
+        self.session_health_note.setObjectName("subtitle")
+        self.session_health_note.setWordWrap(True)
+        session_layout.addWidget(self.session_device_value)
+        session_layout.addWidget(self.session_window_note)
+        session_layout.addWidget(self.session_health_note)
+        layout.addWidget(session_card, 2)
         self.summary_values: dict[str, QLabel] = {}
         for key, title in (
             ("sample_rate", "当前采样率"),
@@ -156,7 +205,7 @@ class RealtimePage(QWidget):
             ("residual_frame_rate", "残帧率"),
             ("anomaly_count", "最近异常次数"),
         ):
-            metric_card = CardFrame()
+            metric_card = CardFrame(muted=True, role="tile")
             metric_layout = QVBoxLayout(metric_card)
             metric_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
             metric_layout.setSpacing(0)
@@ -171,7 +220,7 @@ class RealtimePage(QWidget):
         return card
 
     def _build_plot_area(self) -> CardFrame:
-        card = CardFrame()
+        card = CardFrame(role="panel")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         layout.setSpacing(TOKENS.spacing_md)
@@ -205,7 +254,7 @@ class RealtimePage(QWidget):
         return card
 
     def _build_bottom_area(self) -> CardFrame:
-        card = CardFrame(muted=True)
+        card = CardFrame(muted=True, role="rail")
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         layout.setSpacing(TOKENS.spacing_md)

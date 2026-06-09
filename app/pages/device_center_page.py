@@ -51,7 +51,7 @@ class DeviceCenterPage(QWidget):
             )
         )
 
-        self.status_card = CardFrame()
+        self.status_card = CardFrame(role="cockpit")
         self.status_layout = QHBoxLayout(self.status_card)
         self.status_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         self.status_layout.setSpacing(TOKENS.spacing_md)
@@ -68,10 +68,13 @@ class DeviceCenterPage(QWidget):
             self.status_layout.addWidget(card, 1 if key != "recent_alarm" else 2)
         self.layout.addWidget(self.status_card)
 
+        self.field_readiness_card = self._build_field_readiness()
+        self.layout.addWidget(self.field_readiness_card)
+
         self.quick_card = self._build_quick_actions()
         self.layout.addWidget(self.quick_card)
 
-        self.device_grid_card = CardFrame()
+        self.device_grid_card = CardFrame(role="panel")
         device_grid_layout = QVBoxLayout(self.device_grid_card)
         device_grid_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         device_grid_layout.setSpacing(TOKENS.spacing_md)
@@ -82,7 +85,7 @@ class DeviceCenterPage(QWidget):
         device_grid_layout.addLayout(self.device_grid)
         self.layout.addWidget(self.device_grid_card)
 
-        self.activity_card = CardFrame(muted=True)
+        self.activity_card = CardFrame(muted=True, role="rail")
         activity_layout = QHBoxLayout(self.activity_card)
         activity_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         activity_layout.setSpacing(TOKENS.spacing_md)
@@ -127,12 +130,13 @@ class DeviceCenterPage(QWidget):
         else:
             self.current_target.setText("当前设备：尚未选择")
 
+        self._refresh_field_readiness(summary, selected)
         self._rebuild_device_cards()
         self._refresh_recent_activity()
         self.activity_card.setVisible(self.controller.view_mode == "engineer")
 
     def _status_metric_card(self, title: str) -> CardFrame:
-        card = CardFrame(muted=True)
+        card = CardFrame(muted=True, role="tile")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         layout.setSpacing(4)
@@ -145,8 +149,80 @@ class DeviceCenterPage(QWidget):
         layout.addWidget(value)
         return card
 
+    def _build_field_readiness(self) -> CardFrame:
+        card = CardFrame(role="panel")
+        layout = QGridLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        layout.setHorizontalSpacing(TOKENS.spacing_md)
+        layout.setVerticalSpacing(TOKENS.spacing_sm)
+        layout.addWidget(section_title("现场就绪驾驶舱", "把设备舰队、当前目标、协议链路和下一步动作压缩到一行，减少来回找状态。"), 0, 0, 1, 4)
+        self.readiness_values: dict[str, tuple[QLabel, QLabel]] = {}
+        for index, (key, title) in enumerate(
+            (
+                ("fleet", "舰队状态"),
+                ("target", "当前目标"),
+                ("protocol", "协议链路"),
+                ("next", "下一步"),
+            )
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+            tile_layout.setSpacing(TOKENS.spacing_xs)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value = QLabel("--")
+            value.setObjectName("metricValue")
+            value.setWordWrap(True)
+            note = QLabel("--")
+            note.setObjectName("subtitle")
+            note.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value)
+            tile_layout.addWidget(note)
+            self.readiness_values[key] = (value, note)
+            layout.addWidget(tile, 1, index)
+        return card
+
+    def _refresh_field_readiness(self, summary: dict, selected) -> None:
+        fleet_value, fleet_note = self.readiness_values["fleet"]
+        target_value, target_note = self.readiness_values["target"]
+        protocol_value, protocol_note = self.readiness_values["protocol"]
+        next_value, next_note = self.readiness_values["next"]
+
+        total = int(summary.get("total_devices", 0) or 0)
+        online = int(summary.get("online_devices", 0) or 0)
+        abnormal = int(summary.get("abnormal_devices", 0) or 0)
+        sampling = int(summary.get("sampling_devices", 0) or 0)
+        fleet_value.setText("可采" if total and abnormal == 0 and online > 0 else "待检查")
+        fleet_note.setText(f"online={online}/{total}，sampling={sampling}，abnormal={abnormal}")
+
+        if selected is None:
+            target_value.setText("未选择")
+            target_note.setText("先选择或新增一台分析仪，再进入连接/采集。")
+            protocol_value.setText("--")
+            protocol_note.setText("等待设备目标。")
+            next_value.setText("选择设备")
+            next_note.setText("从设备面板选择目标，或使用快捷新增。")
+            return
+
+        runtime = selected.runtime
+        target_value.setText(selected.config.label)
+        target_note.setText(f"{selected.config.port} · ID {selected.config.device_id} · MODE{runtime.mode}")
+        protocol_value.setText("主动输出" if runtime.active_send else "按需读取")
+        protocol_note.setText(f"{selected.config.analyzer_profile} · {selected.config.baudrate} bps · {runtime.last_message}")
+        if abnormal > 0:
+            next_value.setText("处理异常")
+            next_note.setText("先查看右侧检查器和现场动态，再决定是否继续采集。")
+        elif runtime.connected:
+            next_value.setText("进入采集")
+            next_note.setText("设备已连接，可进入实时采集页检查趋势和原始帧。")
+        else:
+            next_value.setText("连接设备")
+            next_note.setText("先连接当前目标，再读取一帧确认协议链路。")
+
     def _build_quick_actions(self) -> CardFrame:
-        card = CardFrame()
+        card = CardFrame(role="command")
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         layout.setSpacing(TOKENS.spacing_lg)
@@ -209,7 +285,7 @@ class DeviceCenterPage(QWidget):
             button_grid.addWidget(button, index // 2, index % 2)
         actions_block.addLayout(button_grid)
 
-        tip_card = CardFrame(muted=True)
+        tip_card = CardFrame(role="panel")
         tip_layout = QVBoxLayout(tip_card)
         tip_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         tip_layout.setSpacing(6)
@@ -246,7 +322,7 @@ class DeviceCenterPage(QWidget):
             return
 
         for index, data in enumerate(cards):
-            card = CardFrame(muted=not data["is_selected"])
+            card = CardFrame(muted=not data["is_selected"], role="cockpit" if data["is_selected"] else "tile")
             layout = QVBoxLayout(card)
             layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
             layout.setSpacing(TOKENS.spacing_sm)
@@ -305,7 +381,7 @@ class DeviceCenterPage(QWidget):
             self.device_grid.addWidget(card, index // 2, index % 2)
 
     def _mini_metric(self, title: str, value: str) -> CardFrame:
-        card = CardFrame(muted=True)
+        card = CardFrame(muted=True, role="tile")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
         layout.setSpacing(0)
