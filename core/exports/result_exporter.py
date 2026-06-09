@@ -7,6 +7,7 @@ import math
 import shutil
 import struct
 from collections import Counter
+from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from pathlib import Path
@@ -374,6 +375,76 @@ class ResultExporter:
         self.runtime_root = Path(runtime_root)
         self.exports_root = self.runtime_root / "exports" / "results"
         self.exports_root.mkdir(parents=True, exist_ok=True)
+        self._fixture_pack_cache: dict[tuple[str, str, int, int], dict[str, Any]] = {}
+
+    def _fixture_pack_cache_key(
+        self,
+        fixture_pack_path: str | Path | None,
+        workspace_root: str | Path | None,
+    ) -> tuple[str, str, int, int]:
+        root_path = Path(workspace_root) if workspace_root else Path.cwd()
+        pack_path = Path(fixture_pack_path) if fixture_pack_path else root_path / "references" / "eddypro" / "fixture_pack_v1.json"
+        try:
+            resolved_pack = pack_path.resolve()
+        except OSError:
+            resolved_pack = pack_path.absolute()
+        try:
+            resolved_root = root_path.resolve()
+        except OSError:
+            resolved_root = root_path.absolute()
+        try:
+            stat = resolved_pack.stat()
+            mtime_ns = int(stat.st_mtime_ns)
+            size = int(stat.st_size)
+        except OSError:
+            mtime_ns = 0
+            size = -1
+        return (str(resolved_pack), str(resolved_root), mtime_ns, size)
+
+    def _cached_fixture_pack_artifacts(
+        self,
+        *,
+        fixture_pack_path: str,
+        workspace_root: str,
+    ) -> dict[str, Any]:
+        key = self._fixture_pack_cache_key(fixture_pack_path or None, workspace_root or None)
+        if key in self._fixture_pack_cache:
+            entry = self._fixture_pack_cache[key]
+            entry["hit_count"] = int(entry.get("hit_count", 0) or 0) + 1
+            entry["last_hit_at"] = datetime.now().isoformat()
+            cached = deepcopy(entry)
+            cached_cache = dict(cached.get("cache", {}) or {})
+            cached_cache["status"] = "hit"
+            cached_cache["hit_count"] = int(entry.get("hit_count", 0) or 0)
+            cached_cache["last_hit_at"] = str(entry.get("last_hit_at", ""))
+            cached["cache"] = cached_cache
+            return cached
+        summary = build_fixture_pack_summary(fixture_pack_path or None, workspace_root=workspace_root or None)
+        public_catalog = dict(
+            summary.get("public_eddypro_fixture_catalog", {})
+            or build_public_eddypro_fixture_catalog(workspace_root=workspace_root or None)
+        )
+        manifest = build_official_raw_fixture_manifest(
+            fixture_pack_path or None,
+            workspace_root=workspace_root or None,
+            fixture_summary=summary,
+        )
+        entry = {
+            "summary": summary,
+            "public_catalog": public_catalog,
+            "manifest": manifest,
+            "cache": {
+                "status": "miss",
+                "pack_path": key[0],
+                "workspace_root": key[1],
+                "mtime_ns": key[2],
+                "size_bytes": key[3],
+                "created_at": datetime.now().isoformat(),
+                "hit_count": 0,
+            },
+        }
+        self._fixture_pack_cache[key] = entry
+        return deepcopy(entry)
 
     def export_minimal_bundle(
         self,
@@ -585,23 +656,18 @@ class ResultExporter:
         }
         fixture_pack_path = str(rp_config_snapshot.get("fixture_pack_path", "") or "").strip()
         fixture_pack_workspace_root = str(rp_config_snapshot.get("fixture_pack_workspace_root", "") or "").strip()
-        fixture_pack_summary = build_fixture_pack_summary(
-            fixture_pack_path or None,
-            workspace_root=fixture_pack_workspace_root or None,
+        fixture_pack_artifacts = self._cached_fixture_pack_artifacts(
+            fixture_pack_path=fixture_pack_path,
+            workspace_root=fixture_pack_workspace_root,
         )
+        fixture_pack_summary = dict(fixture_pack_artifacts.get("summary", {}) or {})
+        fixture_pack_cache_summary = dict(fixture_pack_artifacts.get("cache", {}) or {})
         fixture_pack_summary_path = export_root / "fixture_pack_summary.json"
         self._write_json(fixture_pack_summary_path, fixture_pack_summary)
-        public_eddypro_fixture_catalog = dict(
-            fixture_pack_summary.get("public_eddypro_fixture_catalog", {})
-            or build_public_eddypro_fixture_catalog(workspace_root=fixture_pack_workspace_root or None)
-        )
+        public_eddypro_fixture_catalog = dict(fixture_pack_artifacts.get("public_catalog", {}) or {})
         public_eddypro_fixture_catalog_path = export_root / "public_eddypro_fixture_catalog.json"
         self._write_json(public_eddypro_fixture_catalog_path, public_eddypro_fixture_catalog)
-        official_raw_fixture_manifest = build_official_raw_fixture_manifest(
-            fixture_pack_path or None,
-            workspace_root=fixture_pack_workspace_root or None,
-            fixture_summary=fixture_pack_summary,
-        )
+        official_raw_fixture_manifest = dict(fixture_pack_artifacts.get("manifest", {}) or {})
         official_raw_fixture_manifest_path = export_root / "official_raw_fixture_manifest.json"
         self._write_json(official_raw_fixture_manifest_path, official_raw_fixture_manifest)
         official_raw_bundle_config = dict(rp_config_snapshot.get("official_raw_bundle", {}) or {})
@@ -1039,6 +1105,7 @@ class ResultExporter:
                 "fixture_pack_path": fixture_pack_path,
                 "fixture_pack_summary": fixture_pack_summary,
                 "fixture_pack_summary_artifact": str(fixture_pack_summary_path),
+                "fixture_pack_cache": fixture_pack_cache_summary,
                 "public_eddypro_fixture_catalog": public_eddypro_fixture_catalog,
                 "public_eddypro_fixture_catalog_artifact": str(public_eddypro_fixture_catalog_path),
                 "public_eddypro_fixture_catalog_status": str(public_eddypro_fixture_catalog.get("status", "")),
@@ -1242,6 +1309,7 @@ class ResultExporter:
             "fixture_pack_path": fixture_pack_path,
             "fixture_pack_summary": fixture_pack_summary,
             "fixture_pack_summary_artifact": str(fixture_pack_summary_path),
+            "fixture_pack_cache": fixture_pack_cache_summary,
             "public_eddypro_fixture_catalog": public_eddypro_fixture_catalog,
             "public_eddypro_fixture_catalog_artifact": str(public_eddypro_fixture_catalog_path),
             "public_eddypro_fixture_catalog_status": str(public_eddypro_fixture_catalog.get("status", "")),

@@ -144,6 +144,7 @@ class StudioController(QObject):
         self.ec_processing_workspace = self._build_default_ec_processing_workspace()
         self.spectral_qc_workspace = self._build_default_spectral_qc_workspace()
         self.report_center_workspace = self._build_default_report_center_workspace()
+        self._fixture_pack_cache: dict[tuple[str, str, int, int], dict[str, object]] = {}
         self._persist_metadata_bundle()
 
         self.acquisition = AcquisitionService(
@@ -1126,6 +1127,7 @@ class StudioController(QObject):
     def refresh_public_eddypro_fixtures_for_report_center(self, *, overwrite: bool = False) -> dict:
         state = self.report_center_workspace.setdefault("public_eddypro_fixtures", self._default_public_eddypro_fixture_state())
         fixture_workspace_root = self._active_fixture_pack_workspace_root()
+        self._invalidate_fixture_pack_cache("public_eddypro_fixture_refresh")
         artifact_root = self.runtime_root / "exports" / "public_eddypro_fixtures"
         artifact_root.mkdir(parents=True, exist_ok=True)
 
@@ -1448,6 +1450,7 @@ class StudioController(QObject):
             }
         )
         if registration.get("status") == "registered":
+            self._invalidate_fixture_pack_cache("official_raw_bundle_registered")
             self.inspect_official_raw_bundle_for_report_center(bundle_path)
             state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
             state["registration"] = registration
@@ -1880,6 +1883,7 @@ class StudioController(QObject):
             }
         )
         if int(registration.get("registered_count", 0) or 0) > 0:
+            self._invalidate_fixture_pack_cache("official_raw_bundle_tree_registered")
             batch_parity = self._official_raw_bundle_batch_parity_payload(write_artifact=True)
             selected_fixture = str(
                 next(
@@ -2546,6 +2550,148 @@ class StudioController(QObject):
             return self.workspace_root
         return Path.cwd()
 
+    def _fixture_pack_cache_key(self, pack_path: Path, workspace_root: Path) -> tuple[str, str, int, int]:
+        try:
+            resolved_pack = pack_path.resolve()
+        except OSError:
+            resolved_pack = pack_path.absolute()
+        try:
+            resolved_root = workspace_root.resolve()
+        except OSError:
+            resolved_root = workspace_root.absolute()
+        try:
+            stat = resolved_pack.stat()
+            mtime_ns = int(stat.st_mtime_ns)
+            size = int(stat.st_size)
+        except OSError:
+            mtime_ns = 0
+            size = -1
+        return (str(resolved_pack), str(resolved_root), mtime_ns, size)
+
+    def _record_fixture_pack_cache_state(self, *, status: str, key: tuple[str, str, int, int] | None, artifact: str) -> None:
+        state = {
+            "status": status,
+            "artifact": artifact,
+            "entry_count": len(self._fixture_pack_cache),
+            "updated_at": datetime.now().isoformat(),
+        }
+        if key is not None:
+            state.update(
+                {
+                    "pack_path": key[0],
+                    "workspace_root": key[1],
+                    "mtime_ns": key[2],
+                    "size_bytes": key[3],
+                }
+            )
+        self.report_center_workspace["fixture_pack_cache"] = state
+
+    def _invalidate_fixture_pack_cache(self, reason: str = "") -> None:
+        self._fixture_pack_cache.clear()
+        self.report_center_workspace["fixture_pack_cache"] = {
+            "status": "invalidated",
+            "reason": reason,
+            "entry_count": 0,
+            "updated_at": datetime.now().isoformat(),
+        }
+
+    def _fixture_pack_cache_entry(
+        self,
+        pack_path: Path | None = None,
+        *,
+        workspace_root: Path | None = None,
+        force: bool = False,
+    ) -> tuple[tuple[str, str, int, int], dict[str, object]]:
+        active_pack = Path(pack_path or self._active_fixture_pack_path())
+        active_root = Path(workspace_root or self._active_fixture_pack_workspace_root())
+        key = self._fixture_pack_cache_key(active_pack, active_root)
+        if not force and key in self._fixture_pack_cache:
+            entry = self._fixture_pack_cache[key]
+            entry["hit_count"] = int(entry.get("hit_count", 0) or 0) + 1
+            entry["last_hit_at"] = datetime.now().isoformat()
+            self._record_fixture_pack_cache_state(status="hit", key=key, artifact="summary")
+            return key, entry
+        summary = build_fixture_pack_summary(active_pack, workspace_root=active_root)
+        entry = {
+            "summary": summary,
+            "manifest": None,
+            "details": {},
+            "hit_count": 0,
+            "created_at": datetime.now().isoformat(),
+            "pack_path": str(active_pack),
+            "workspace_root": str(active_root),
+        }
+        self._fixture_pack_cache[key] = entry
+        self._record_fixture_pack_cache_state(status="miss", key=key, artifact="summary")
+        return key, entry
+
+    def _cached_fixture_pack_summary(
+        self,
+        pack_path: Path | None = None,
+        *,
+        workspace_root: Path | None = None,
+        force: bool = False,
+    ) -> dict:
+        _key, entry = self._fixture_pack_cache_entry(pack_path, workspace_root=workspace_root, force=force)
+        return deepcopy(entry.get("summary", {}) or {})
+
+    def _cached_official_raw_fixture_manifest(
+        self,
+        pack_path: Path | None = None,
+        *,
+        workspace_root: Path | None = None,
+        force: bool = False,
+    ) -> dict:
+        key, entry = self._fixture_pack_cache_entry(pack_path, workspace_root=workspace_root, force=force)
+        if not force and isinstance(entry.get("manifest"), dict):
+            self._record_fixture_pack_cache_state(status="hit", key=key, artifact="official_raw_manifest")
+            return deepcopy(entry.get("manifest", {}) or {})
+        summary = dict(entry.get("summary", {}) or {})
+        manifest = build_official_raw_fixture_manifest(
+            Path(str(entry.get("pack_path", pack_path or self._active_fixture_pack_path()))),
+            workspace_root=Path(str(entry.get("workspace_root", workspace_root or self._active_fixture_pack_workspace_root()))),
+            fixture_summary=summary,
+        )
+        entry["manifest"] = manifest
+        self._record_fixture_pack_cache_state(status="miss", key=key, artifact="official_raw_manifest")
+        return deepcopy(manifest)
+
+    def _cached_official_raw_fixture_detail(
+        self,
+        fixture_id: str = "",
+        *,
+        pack_path: Path | None = None,
+        workspace_root: Path | None = None,
+        force: bool = False,
+    ) -> dict:
+        key, entry = self._fixture_pack_cache_entry(pack_path, workspace_root=workspace_root, force=force)
+        normalized_fixture_id = str(fixture_id or "").strip()
+        details = entry.setdefault("details", {})
+        if not force and isinstance(details, dict) and normalized_fixture_id in details:
+            self._record_fixture_pack_cache_state(status="hit", key=key, artifact="official_raw_detail")
+            return deepcopy(details.get(normalized_fixture_id, {}) or {})
+        summary = dict(entry.get("summary", {}) or {})
+        if not force and isinstance(entry.get("manifest"), dict):
+            manifest = dict(entry.get("manifest", {}) or {})
+        else:
+            manifest = build_official_raw_fixture_manifest(
+                Path(str(entry.get("pack_path", pack_path or self._active_fixture_pack_path()))),
+                workspace_root=Path(str(entry.get("workspace_root", workspace_root or self._active_fixture_pack_workspace_root()))),
+                fixture_summary=summary,
+            )
+            entry["manifest"] = manifest
+        detail = build_official_raw_fixture_detail(
+            Path(str(entry.get("pack_path", pack_path or self._active_fixture_pack_path()))),
+            fixture_id=normalized_fixture_id,
+            workspace_root=Path(str(entry.get("workspace_root", workspace_root or self._active_fixture_pack_workspace_root()))),
+            fixture_summary=summary,
+            fixture_manifest=manifest,
+        )
+        if isinstance(details, dict):
+            details[normalized_fixture_id] = detail
+        self._record_fixture_pack_cache_state(status="miss", key=key, artifact="official_raw_detail")
+        return deepcopy(detail)
+
     def _official_raw_bundle_parity_payload(self, fixture_id: str = "", *, write_artifact: bool = False) -> dict:
         workspace = getattr(self, "report_center_workspace", {}) or {}
         state = dict(workspace.get("official_raw_bundle", {}) or {})
@@ -2560,7 +2706,7 @@ class StudioController(QObject):
             or str(dict(state.get("inspection", {}) or {}).get("fixture_id", "")).strip()
         )
         try:
-            summary = build_fixture_pack_summary(pack_path, workspace_root=workspace_root)
+            summary = self._cached_fixture_pack_summary(pack_path, workspace_root=workspace_root, force=write_artifact)
         except Exception as exc:  # pragma: no cover - defensive UI/report fallback
             return {
                 "artifact_type": "official_raw_bundle_parity_rollup_v1",
@@ -2628,8 +2774,8 @@ class StudioController(QObject):
         pack_path = self._active_fixture_pack_path()
         workspace_root = self._active_fixture_pack_workspace_root()
         try:
-            summary = build_fixture_pack_summary(pack_path, workspace_root=workspace_root)
-            manifest = build_official_raw_fixture_manifest(pack_path, workspace_root=workspace_root, fixture_summary=summary)
+            summary = self._cached_fixture_pack_summary(pack_path, workspace_root=workspace_root, force=write_artifact)
+            manifest = self._cached_official_raw_fixture_manifest(pack_path, workspace_root=workspace_root)
         except Exception as exc:  # pragma: no cover - defensive UI/report fallback
             return {
                 "artifact_type": "official_raw_batch_parity_rollup_v1",
@@ -2732,14 +2878,11 @@ class StudioController(QObject):
         pack_path = self._active_fixture_pack_path()
         workspace_root = self._active_fixture_pack_workspace_root()
         try:
-            summary = build_fixture_pack_summary(pack_path, workspace_root=workspace_root)
-            manifest = build_official_raw_fixture_manifest(pack_path, workspace_root=workspace_root, fixture_summary=summary)
-            payload = build_official_raw_fixture_detail(
-                pack_path,
+            payload = self._cached_official_raw_fixture_detail(
                 fixture_id=fixture_id,
+                pack_path=pack_path,
                 workspace_root=workspace_root,
-                fixture_summary=summary,
-                fixture_manifest=manifest,
+                force=write_artifact,
             )
         except Exception as exc:  # pragma: no cover - defensive UI/report fallback
             payload = {
@@ -2814,11 +2957,9 @@ class StudioController(QObject):
         if not fixture_id:
             return {}
         try:
-            summary = build_fixture_pack_summary(self._active_fixture_pack_path(), workspace_root=self._active_fixture_pack_workspace_root())
-            manifest = build_official_raw_fixture_manifest(
+            manifest = self._cached_official_raw_fixture_manifest(
                 self._active_fixture_pack_path(),
                 workspace_root=self._active_fixture_pack_workspace_root(),
-                fixture_summary=summary,
             )
         except Exception:
             return {}
@@ -2853,6 +2994,7 @@ class StudioController(QObject):
         state = self.report_center_workspace.setdefault("official_raw_bundle", self._default_official_raw_bundle_state())
         state["registered_pack_path"] = str(target_pack)
         state["registered_pack_workspace_root"] = str(workspace_root)
+        self._invalidate_fixture_pack_cache("official_raw_fixture_disabled")
         return {"status": "disabled", "fixture_id": fixture_id, "pack_path": str(target_pack)}
 
     def _official_raw_bundle_parity_rows(self) -> list[tuple[str, str, str]]:
@@ -5337,16 +5479,13 @@ class StudioController(QObject):
         active_pack_path = self._active_fixture_pack_path()
         active_pack_root = self._active_fixture_pack_workspace_root()
         official_bundle_state = dict(self.report_center_workspace.get("official_raw_bundle", {}) or self._default_official_raw_bundle_state())
+        fixture_pack_cache_state = dict(self.report_center_workspace.get("fixture_pack_cache", {}) or {})
         public_fixture_state = dict(
             self.report_center_workspace.get("public_eddypro_fixtures", {}) or self._default_public_eddypro_fixture_state()
         )
         try:
-            summary = build_fixture_pack_summary(active_pack_path, workspace_root=active_pack_root)
-            official_raw_manifest = build_official_raw_fixture_manifest(
-                active_pack_path,
-                workspace_root=active_pack_root,
-                fixture_summary=summary,
-            )
+            summary = self._cached_fixture_pack_summary(active_pack_path, workspace_root=active_pack_root)
+            official_raw_manifest = self._cached_official_raw_fixture_manifest(active_pack_path, workspace_root=active_pack_root)
         except Exception as exc:  # pragma: no cover - defensive UI fallback
             summary = {
                 "fixture_pack_id": "eddypro_real_fixture_pack_v1",
@@ -5372,6 +5511,7 @@ class StudioController(QObject):
                 "assets": [],
                 "truthfulness_note": str(exc),
             }
+        fixture_pack_cache_state = dict(self.report_center_workspace.get("fixture_pack_cache", {}) or fixture_pack_cache_state)
         public_catalog = dict(
             public_fixture_state.get("catalog", {})
             or summary.get("public_eddypro_fixture_catalog", {})
@@ -5563,6 +5703,24 @@ class StudioController(QObject):
                 "active_fixture_pack",
                 str(active_pack_path),
                 "Report Center and exporter use this fixture pack path for the current session.",
+            ),
+            (
+                "fixture_pack_cache",
+                str(fixture_pack_cache_state.get("status", "cold")),
+                (
+                    f"entries={fixture_pack_cache_state.get('entry_count', 0)}; "
+                    f"artifact={fixture_pack_cache_state.get('artifact', '--')}; "
+                    f"updated={fixture_pack_cache_state.get('updated_at', '--')}; "
+                    f"pack={fixture_pack_cache_state.get('pack_path', active_pack_path)}"
+                ),
+            ),
+            (
+                "official_website_real_data_strategy",
+                "program_first",
+                (
+                    "Official website raw-data acquisition is not on the critical path now; "
+                    "program/UI completion uses bundled, synthetic, and source-derived parity fixtures while real paired bundles remain an explicit future evidence gate."
+                ),
             ),
             (
                 "official_bundle_ui_state",
@@ -6079,6 +6237,7 @@ class StudioController(QObject):
             "table_rows": rows,
             "conclusions": [
                 "Fixture Pack report is generated from the same validated registry used by headless manifests and result exports.",
+                "Official website raw data is intentionally non-blocking in this round; program and UI completion continue on validated bundled/source-derived evidence.",
                 str(eddypro_coverage_audit.get("truthfulness_note", "")),
                 str(official_raw_manifest.get("truthfulness_note", "")),
                 str(summary.get("truthfulness_note", "")) or "Coverage gaps remain explicit until matching real fixtures are added.",
@@ -6088,6 +6247,7 @@ class StudioController(QObject):
             "versions": [
                 f"运行 ID：{run_result.run_id}",
                 f"Registry: {active_pack_path}",
+                f"Fixture cache: {fixture_pack_cache_state.get('status', 'cold')}",
             ],
             "usage": [
                 "工程师用此页确认 EddyPro reference fixtures、YGAS protocol fixtures 与 hash/window 校验是否可复现。",
@@ -6098,6 +6258,7 @@ class StudioController(QObject):
             "official_raw_selected_fixture_id": str(official_bundle_state.get("selected_fixture_id", "")),
             "official_raw_selected_fixture_detail": selected_detail,
             "official_raw_selected_fixture_detail_artifact": str(official_bundle_state.get("selected_fixture_detail_artifact", "")),
+            "fixture_pack_cache": fixture_pack_cache_state,
             "eddypro_coverage_audit": eddypro_coverage_audit,
             "eddypro_partial_capability_closure": eddypro_partial_capability_closure,
             "public_eddypro_fixture_catalog": public_catalog,
