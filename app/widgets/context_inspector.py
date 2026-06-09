@@ -5,6 +5,20 @@ from PySide6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 from app.theme import CardFrame, TOKENS, chip, section_title
 
 
+UI_REFERENCE_REPLACEMENTS = (
+    ("EddyPro", "行业参考"),
+    ("EDDYPRO", "行业参考"),
+    ("eddypro", "industry_reference"),
+)
+
+
+def _ui_safe_text(value: object) -> str:
+    text = str(value)
+    for old, new in UI_REFERENCE_REPLACEMENTS:
+        text = text.replace(old, new)
+    return text
+
+
 PROJECT_SECTION_LABELS = {
     "overview": "项目概览",
     "site_info": "站点基础信息",
@@ -84,6 +98,7 @@ class ContextInspector(CardFrame):
         else:
             self._render_device_inspector(context)
 
+        self._sanitize_visible_labels()
         self.content_layout.addStretch(1)
 
     def _render_project_inspector(self, context: dict) -> None:
@@ -305,10 +320,10 @@ class ContextInspector(CardFrame):
     def _render_eddypro_compare_inspector(self, context: dict) -> None:
         data = context["eddypro_compare_inspector"]
 
-        title_card = self._card("EddyPro 对标", "在右侧快速确认本次对标对象、匹配情况和主要风险。")
+        title_card = self._card("行业参考对标", "在右侧快速确认本次对标对象、匹配情况和主要风险。")
         title_layout = title_card.layout()
         title_layout.addWidget(chip(data.get("status", "空状态"), "accent"))
-        title = QLabel(data.get("compare_id", "当前还没有 EddyPro 对标结果"))
+        title = QLabel(data.get("compare_id", "当前还没有行业参考对标结果"))
         title.setObjectName("metricValue")
         title.setWordWrap(True)
         title_layout.addWidget(title)
@@ -334,7 +349,7 @@ class ContextInspector(CardFrame):
 
         risk_card = self._card("风险提示", "把需要优先复核的差异直接列出来。")
         risk_layout = risk_card.layout()
-        for item in (data.get("risk_summary", []) or ["当前未发现显著 EddyPro 对标风险。"])[:4]:
+        for item in (data.get("risk_summary", []) or ["当前未发现显著行业参考对标风险。"])[:4]:
             row = QLabel(f"• {item}")
             row.setObjectName("subtitle")
             row.setWordWrap(True)
@@ -355,14 +370,14 @@ class ContextInspector(CardFrame):
     def _render_eddypro_attribution_inspector(self, context: dict) -> None:
         data = context["eddypro_attribution_inspector"]
 
-        title_card = self._card("EddyPro 归因解释", "把对标差异的主要解释和下一步复核动作收在同一侧栏。")
+        title_card = self._card("行业参考归因解释", "把对标差异的主要解释和下一步复核动作收在同一侧栏。")
         title_layout = title_card.layout()
         title_layout.addWidget(chip(data.get("status", "空状态"), "accent"))
         title = QLabel(" / ".join(data.get("dominant_causes", [])[:3]) or "当前还没有对标归因结果")
         title.setObjectName("metricValue")
         title.setWordWrap(True)
         title_layout.addWidget(title)
-        summary = QLabel(data.get("summary_text", "请先运行 EddyPro 对标比较"))
+        summary = QLabel(data.get("summary_text", "请先运行行业参考对标比较"))
         summary.setObjectName("subtitle")
         summary.setWordWrap(True)
         title_layout.addWidget(summary)
@@ -383,7 +398,7 @@ class ContextInspector(CardFrame):
 
         recommendation_card = self._card("关键建议", "优先处理最可能改变对标结论的复核动作。")
         recommendation_layout = recommendation_card.layout()
-        recommendations = data.get("recommendations", []) or ["当前还没有对标归因结果", "请先运行 EddyPro 对标比较"]
+        recommendations = data.get("recommendations", []) or ["当前还没有对标归因结果", "请先运行行业参考对标比较"]
         for item in recommendations[:4]:
             row = QLabel(f"- {item}")
             row.setObjectName("subtitle")
@@ -490,5 +505,11 @@ class ContextInspector(CardFrame):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_sm)
-        layout.addWidget(section_title(title, subtitle))
+        layout.addWidget(section_title(_ui_safe_text(title), _ui_safe_text(subtitle)))
         return card
+
+    def _sanitize_visible_labels(self) -> None:
+        for label in self.content.findChildren(QLabel):
+            safe = _ui_safe_text(label.text())
+            if safe != label.text():
+                label.setText(safe)

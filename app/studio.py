@@ -76,6 +76,20 @@ from models.station_models import (
 )
 
 
+UI_REFERENCE_REPLACEMENTS = (
+    ("EddyPro", "行业参考"),
+    ("EDDYPRO", "行业参考"),
+    ("eddypro", "industry_reference"),
+)
+
+
+def _ui_safe_text(value: object) -> str:
+    text = str(value)
+    for old, new in UI_REFERENCE_REPLACEMENTS:
+        text = text.replace(old, new)
+    return text
+
+
 @dataclass(slots=True)
 class ManagedDevice:
     config: DeviceConnectionConfig
@@ -1150,7 +1164,7 @@ class StudioController(QObject):
             {
                 "status": str(acquisition.get("status", catalog.get("status", "unknown"))),
                 "message": (
-                    f"Public EddyPro fixtures refreshed: {acquisition.get('status', catalog.get('status', 'unknown'))}; "
+                    f"Public reference fixtures refreshed: {acquisition.get('status', catalog.get('status', 'unknown'))}; "
                     f"datasets={catalog.get('dataset_count', 0)}; "
                     f"fixtures={catalog.get('valid_fixture_count', 0)}/{catalog.get('fixture_count', 0)}; "
                     f"downloaded={acquisition.get('downloaded_count', 0)}; skipped={acquisition.get('skipped_count', 0)}"
@@ -1336,7 +1350,7 @@ class StudioController(QObject):
             self.report_changed.emit()
             return {"message": state["message"], "status": state["status"]}
         if not command.strip():
-            state.update({"status": "missing_official_run_command", "message": "Official EddyPro run command is required."})
+            state.update({"status": "missing_official_run_command", "message": "Official reference run command is required."})
             self.report_changed.emit()
             return {"message": state["message"], "status": state["status"]}
 
@@ -1388,7 +1402,7 @@ class StudioController(QObject):
                 "acquisition_validation": acquisition,
                 "acquisition_validation_artifact": str(acquisition_artifact),
                 "message": (
-                    f"Official EddyPro run capture: {capture.get('status', 'unknown')}; "
+                    f"Official reference run capture: {capture.get('status', 'unknown')}; "
                     f"gate={capture.get('gate_status', 'blocked')}; "
                     f"sidecar={capture.get('sidecar_path', '')}"
                 ),
@@ -1398,7 +1412,7 @@ class StudioController(QObject):
             state["evidence_pack"] = evidence_pack
             state["evidence_pack_artifact"] = str(evidence_pack.get("artifact", ""))
         self._sync_report_center_from_results(mark_refreshed=True)
-        self._append_log("info", f"Official EddyPro run capture {capture.get('status', 'unknown')}: {bundle_path}")
+        self._append_log("info", f"Official reference run capture {capture.get('status', 'unknown')}: {bundle_path}")
         self.report_changed.emit()
         return {
             "message": state["message"],
@@ -2375,7 +2389,7 @@ class StudioController(QObject):
             self.report_center_workspace["eddypro_attribution"] = self._empty_eddypro_attribution_payload()
             self._sync_report_center_from_results()
             self.report_changed.emit()
-            return {"message": f"EddyPro 参考结果目录不存在：{reference_root}"}
+            return {"message": f"行业参考结果目录不存在：{reference_root}"}
 
         try:
             comparator = EddyProComparator(self.runtime_root)
@@ -2399,9 +2413,9 @@ class StudioController(QObject):
         self.report_center_workspace["eddypro_compare"] = self._eddypro_compare_payload_from_result(result, manifest)
         self.report_center_workspace["eddypro_attribution"] = self._eddypro_attribution_workspace_state()
         self._sync_report_center_from_results()
-        self._append_log("info", f"EddyPro 对标已更新：{result.compare_id}")
+        self._append_log("info", f"行业参考对标已更新：{result.compare_id}")
         self.report_changed.emit()
-        return {"message": f"EddyPro 对标完成：{result.compare_id}"}
+        return {"message": f"行业参考对标完成：{result.compare_id}"}
 
     def _load_persisted_results(self) -> None:
         self.spectral_runs = self.run_result_store.list_recent_runs()
@@ -2477,7 +2491,7 @@ class StudioController(QObject):
     def _default_public_eddypro_fixture_state(self) -> dict:
         return {
             "status": "not_run",
-            "message": "Public EddyPro fixtures have not been refreshed yet.",
+            "message": "Public reference fixtures have not been refreshed yet.",
             "catalog": {},
             "catalog_artifact": "",
             "acquisition": {},
@@ -5254,7 +5268,7 @@ class StudioController(QObject):
                     str(payload.get("status", "")),
                     (
                         f"gas={payload.get('normalized_gas_ec_studio_method', payload.get('gas_ec_studio_method', ''))}; "
-                        f"eddypro={payload.get('normalized_eddypro_method', payload.get('eddypro_method', ''))}; "
+                        f"reference={payload.get('normalized_eddypro_method', payload.get('eddypro_method', ''))}; "
                         f"source={payload.get('reference_evidence_source', '')}"
                     ),
                 )
@@ -5309,7 +5323,7 @@ class StudioController(QObject):
             "table_rows": method_compare_rows,
             "conclusions": [
                 "This report is backed by the run-level method_compare artifact and method parity matrix, not by a view-only refresh.",
-                "EddyPro method fields that are absent from the reference metadata remain marked as not_reported in the exported matrix.",
+                "Reference-method fields that are absent from the reference metadata remain marked as not_reported in the exported matrix.",
             ],
             "export_options": ["导出当前报告", "导出证据包"],
             "file_info": method_compare_files,
@@ -5318,7 +5332,7 @@ class StudioController(QObject):
                 "Artifacts: method_compare_artifact.json, method_parity_matrix.json, footprint_2d_contour.svg, performance_profile.json, runtime_watchdog_artifact.json, runtime_service_artifact.json, daemon_telemetry_artifact.json, supervisor_integration_artifact.json, installable_runtime_artifact.json, runtime_deployment_artifact.json, runtime_deployment_feedback_artifact.json",
             ],
             "usage": [
-                "工程师用此页快速检查三族方法对比、EddyPro 方法元数据覆盖情况和长窗口耗时。",
+                "工程师用此页快速检查三族方法对比、参考方法元数据覆盖情况和长窗口耗时。",
                 "交付时优先引用 artifact 文件，页面仅作为统一入口。",
             ],
         }
@@ -5420,7 +5434,7 @@ class StudioController(QObject):
                 (
                     "computation_surface",
                     str(surface.get("status", "not_exported")),
-                    "Run result export first; computation surface is read from eddypro_computation_stress_suite.json.",
+                    "Run result export first; computation surface is read from the computation stress-suite artifact.",
                 )
             ]
         for item in blocked_families[:5]:
@@ -5435,7 +5449,7 @@ class StudioController(QObject):
         return {
             "report_key": "computation_surface",
             "title": "Computation Surface",
-            "source": f"EddyPro source-derived computation stress suite / {batch_label}",
+            "source": f"Industry-reference computation stress suite / {batch_label}",
             "updated_at": updated_at,
             "metrics": [
                 ("surface_status", str(surface.get("status", "not_exported"))),
@@ -5447,7 +5461,7 @@ class StudioController(QObject):
             "table_headers": ["family", "status", "detail"],
             "table_rows": rows,
             "conclusions": [
-                "Computation surface is backed by eddypro_computation_stress_suite.json and delivery manifests, not by a view-only refresh.",
+                "Computation surface is backed by the computation stress-suite artifact and delivery manifests, not by a view-only refresh.",
                 "A ready computation surface supports source-derived computational-superiority evidence; official field numeric parity still requires paired raw/settings/Full_Output evidence.",
             ],
             "export_options": ["Export current report", "Export evidence package"],
@@ -5459,10 +5473,10 @@ class StudioController(QObject):
             "versions": [
                 f"Run ID: {run_result.run_id}",
                 f"stress_suite_status={stress_suite.get('status', 'not_exported')}",
-                "Truthfulness: official numeric parity remains blocked until real paired EddyPro evidence exists.",
+                "Truthfulness: official numeric parity remains blocked until real paired reference evidence exists.",
             ],
             "usage": [
-                "Use this card to verify which EC computation families are ready before making EddyPro-overlap claims.",
+                "Use this card to verify which EC computation families are ready before making reference-overlap claims.",
                 "Use the stress suite artifact for audit-level detail and the scope audit for claim-boundary wording.",
             ],
         }
@@ -5583,7 +5597,7 @@ class StudioController(QObject):
             (
                 "real_reference_windows",
                 str(summary.get("real_reference_window_count", 0)),
-                "Sum of validated EddyPro reference windows available for parity checks.",
+                "Sum of validated industry-reference windows available for parity checks.",
             ),
             (
                 "ygas_protocol_rows",
@@ -5593,12 +5607,12 @@ class StudioController(QObject):
             (
                 "official_raw_fixture_status",
                 str(official_raw_manifest.get("status", "unknown")),
-                "Official raw-to-final readiness for EddyPro-compatible parity claims.",
+                "Official raw-to-final readiness for reference-compatible parity claims.",
             ),
             (
                 "official_raw_ready_count",
                 str(official_raw_manifest.get("official_raw_to_final_ready_count", 0)),
-                "Fixtures with raw input, EddyPro settings, official output, normalized reference and provenance.",
+                "Fixtures with raw input, reference settings, official output, normalized reference and provenance.",
             ),
             (
                 "registered_raw_to_final_fixtures",
@@ -6191,16 +6205,16 @@ class StudioController(QObject):
             **file_info_for("fixture_pack"),
             **({"Fixture Pack Artifact": str(result_export_files.get("fixture_pack_summary_artifact"))} if result_export_files.get("fixture_pack_summary_artifact") else {}),
             **({"Official Raw Fixture Manifest": str(result_export_files.get("official_raw_fixture_manifest_artifact"))} if result_export_files.get("official_raw_fixture_manifest_artifact") else {}),
-            **({"EddyPro Coverage Audit": str(result_export_files.get("eddypro_coverage_audit_artifact"))} if result_export_files.get("eddypro_coverage_audit_artifact") else {}),
-            **({"EddyPro Partial Capability Closure": str(result_export_files.get("eddypro_partial_capability_closure_artifact"))} if result_export_files.get("eddypro_partial_capability_closure_artifact") else {}),
+            **({"Reference Coverage Audit": str(result_export_files.get("eddypro_coverage_audit_artifact"))} if result_export_files.get("eddypro_coverage_audit_artifact") else {}),
+            **({"Reference Partial Capability Closure": str(result_export_files.get("eddypro_partial_capability_closure_artifact"))} if result_export_files.get("eddypro_partial_capability_closure_artifact") else {}),
             **({"Public EC Acquisition Closure": str(result_export_files.get("public_ec_acquisition_closure_artifact"))} if result_export_files.get("public_ec_acquisition_closure_artifact") else {}),
-            **({"Public EddyPro Fixture Catalog": str(result_export_files.get("public_eddypro_fixture_catalog_artifact"))} if result_export_files.get("public_eddypro_fixture_catalog_artifact") else {}),
+            **({"Public Reference Fixture Catalog": str(result_export_files.get("public_eddypro_fixture_catalog_artifact"))} if result_export_files.get("public_eddypro_fixture_catalog_artifact") else {}),
             "Active Fixture Pack": str(active_pack_path),
             "Fixture Pack Workspace Root": str(active_pack_root),
             "Official Raw Manifest Build": str(official_bundle_state.get("manifest_build_artifact", "")),
             "Official Bundle Inspection": str(official_bundle_state.get("inspection_artifact", "")),
-            "Official EddyPro Run Capture": str(official_bundle_state.get("official_run_capture_artifact", "")),
-            "Official EddyPro Run Sidecar": str(official_bundle_state.get("official_eddypro_run_sidecar", "")),
+            "Official Reference Run Capture": str(official_bundle_state.get("official_run_capture_artifact", "")),
+            "Official Reference Run Sidecar": str(official_bundle_state.get("official_eddypro_run_sidecar", "")),
             "Official Raw Closure Run": str(official_bundle_state.get("closure_run_artifact", "")),
             "Registered Fixture Pack": str(official_bundle_state.get("registered_pack_path", "")),
             "Official Raw Parity": str(official_bundle_state.get("parity_artifact", "")),
@@ -6210,8 +6224,8 @@ class StudioController(QObject):
             "Official Raw Batch Parity": str(official_bundle_state.get("batch_parity_artifact", "")),
             "Official Raw Fixture Detail": str(official_bundle_state.get("selected_fixture_detail_artifact", "")),
             "Official Raw Evidence Pack": str(official_bundle_state.get("evidence_pack_artifact", "")),
-            "Public EddyPro Fixture Catalog Runtime": str(public_fixture_state.get("catalog_artifact", "")),
-            "Public EddyPro Fixture Acquisition": str(public_fixture_state.get("acquisition_artifact", "")),
+            "Public Reference Fixture Catalog Runtime": str(public_fixture_state.get("catalog_artifact", "")),
+            "Public Reference Fixture Acquisition": str(public_fixture_state.get("acquisition_artifact", "")),
             "Public EC Acquisition Closure Runtime": str(public_fixture_state.get("public_ec_acquisition_closure_artifact", "")),
         }
         return {
@@ -6250,7 +6264,7 @@ class StudioController(QObject):
                 f"Fixture cache: {fixture_pack_cache_state.get('status', 'cold')}",
             ],
             "usage": [
-                "工程师用此页确认 EddyPro reference fixtures、YGAS protocol fixtures 与 hash/window 校验是否可复现。",
+                "工程师用此页确认行业参考 fixtures、YGAS protocol fixtures 与 hash/window 校验是否可复现。",
                 "交付时优先引用 fixture_pack_summary.json，而不是只引用界面截图。",
             ],
             "official_raw_evidence_matrix": evidence_matrix,
@@ -7112,7 +7126,7 @@ class StudioController(QObject):
             "site_method": "站点方法说明",
             "evidence_pack": "证据包",
             "fixture_pack": "Fixture Pack",
-            "eddypro_compare": "EddyPro 对标报告",
+            "eddypro_compare": "行业参考对标报告",
             "method_provenance": "方法溯源",
             "method_compare": "Method Compare",
             "computation_surface": "Computation Surface",
@@ -7125,8 +7139,8 @@ class StudioController(QObject):
                 "metrics": [("状态", "未运行"), ("批次", "--"), ("窗口", "0"), ("导出", "未生成")],
                 "plot_series": [],
                 "table_headers": ["项目", "数值", "说明"],
-                "table_rows": [("状态", "未生成", "请先运行谱分析或准备 EddyPro 对标结果。")],
-                "conclusions": ["当前页面仅显示真实运行结果，请先运行谱分析或生成 EddyPro 对标结果。"],
+                "table_rows": [("状态", "未生成", "请先运行谱分析或准备行业参考对标结果。")],
+                "conclusions": ["当前页面仅显示真实运行结果，请先运行谱分析或生成行业参考对标结果。"],
                 "export_options": ["导出当前报告", "导出证据包"],
                 "file_info": {"状态": "尚未导出"},
                 "versions": [],
@@ -7152,11 +7166,11 @@ class StudioController(QObject):
                 "avg_correction_factor_delta": None,
                 "qc_match_ratio": 0.0,
             },
-            "risk_summary": ["当前还没有 EddyPro 对标结果"],
+            "risk_summary": ["当前还没有行业参考对标结果"],
             "window_rows": [],
             "files": {},
-            "notes": ["当前还没有 EddyPro 对标结果", "请先选择参考结果并运行对标比较"],
-            "message": "当前还没有 EddyPro 对标结果\n请先选择参考结果并运行对标比较",
+            "notes": ["当前还没有行业参考对标结果", "请先选择参考结果并运行对标比较"],
+            "message": "当前还没有行业参考对标结果\n请先选择参考结果并运行对标比较",
         }
 
     def _empty_eddypro_attribution_payload(self) -> dict:
@@ -7168,13 +7182,13 @@ class StudioController(QObject):
             "secondary_causes": [],
             "risk_level": "未知",
             "summary_text": "当前还没有对标归因结果",
-            "notes": ["当前还没有对标归因结果", "请先运行 EddyPro 对标比较"],
+            "notes": ["当前还没有对标归因结果", "请先运行行业参考对标比较"],
             "window_rows": [],
             "coverage": {
                 "attribution_count": 0,
                 "window_coverage_count": 0,
             },
-            "message": "当前还没有对标归因结果\n请先运行 EddyPro 对标比较",
+            "message": "当前还没有对标归因结果\n请先运行行业参考对标比较",
         }
 
     def _eddypro_compare_workspace_state(self) -> dict:
@@ -7276,10 +7290,10 @@ class StudioController(QObject):
         compare = self.report_center_workspace.get("eddypro_compare", self._empty_eddypro_compare_payload())
         attribution = self.report_center_workspace.get("eddypro_attribution", self._empty_eddypro_attribution_payload())
         if compare.get("status") != "ready":
-            compare_message = str(compare.get("message") or "当前还没有 EddyPro 对标结果\n请先选择参考结果并运行对标比较")
-            attribution_message = str(attribution.get("message") or "当前还没有对标归因结果\n请先运行 EddyPro 对标比较")
+            compare_message = str(compare.get("message") or "当前还没有行业参考对标结果\n请先选择参考结果并运行对标比较")
+            attribution_message = str(attribution.get("message") or "当前还没有对标归因结果\n请先运行行业参考对标比较")
             return {
-                "title": "EddyPro 对标报告",
+                "title": "行业参考对标报告",
                 "source": "对标摘要",
                 "updated_at": "--",
                 "report_key": "eddypro_compare",
@@ -7288,10 +7302,10 @@ class StudioController(QObject):
                 "table_headers": ["项目", "数值", "说明"],
                 "table_rows": [("状态", "未生成", compare_message), ("归因状态", "未生成", attribution_message)],
                 "conclusions": [compare_message, attribution_message],
-                "export_options": ["运行 EddyPro 对标后查看摘要", "核对参考文件映射"],
-                "file_info": {"状态": "尚无 EddyPro 对标导出"},
+                "export_options": ["运行行业参考对标后查看摘要", "核对参考文件映射"],
+                "file_info": {"状态": "尚无行业参考对标导出"},
                 "versions": [],
-                "usage": ["请先运行 EddyPro 对标比较。"],
+                "usage": ["请先运行行业参考对标比较。"],
             }
 
         summary = compare.get("summary_metrics", {})
@@ -7302,9 +7316,9 @@ class StudioController(QObject):
         secondary_causes = [str(item) for item in attribution.get("secondary_causes", [])]
         attribution_rows = list(attribution.get("window_rows", []))
         table_rows = [
-            ("compare_id", compare.get("compare_id", "--"), "最近一次 EddyPro 对标任务 ID"),
+            ("compare_id", compare.get("compare_id", "--"), "最近一次行业参考对标任务 ID"),
             ("当前来源", compare.get("current_source", "--"), "本软件当前真实导出结果目录"),
-            ("参考来源", compare.get("reference_source", "--"), "EddyPro 参考结果目录或映射"),
+            ("参考来源", compare.get("reference_source", "--"), "行业参考结果目录或映射"),
             ("current_window_count", summary.get("current_window_count", 0), "当前结果窗口数量"),
             ("reference_window_count", summary.get("reference_window_count", 0), "参考结果窗口数量"),
             ("matched_window_count", summary.get("matched_window_count", 0), "成功匹配的窗口数量"),
@@ -7332,7 +7346,7 @@ class StudioController(QObject):
             )
         else:
             table_rows.append(
-                ("归因状态", "未生成", str(attribution.get("message") or "当前还没有对标归因结果\n请先运行 EddyPro 对标比较"))
+                ("归因状态", "未生成", str(attribution.get("message") or "当前还没有对标归因结果\n请先运行行业参考对标比较"))
             )
         for row in window_rows:
             table_rows.append(
@@ -7352,7 +7366,7 @@ class StudioController(QObject):
                 )
             )
         return {
-            "title": "EddyPro 对标报告",
+            "title": "行业参考对标报告",
             "source": compare.get("current_source", "--"),
             "updated_at": str(summary.get("created_at", "--")),
             "report_key": "eddypro_compare",
@@ -7372,9 +7386,9 @@ class StudioController(QObject):
                 + risk_summary
                 + [str(item) for item in attribution.get("notes", [])[:2]]
             )[:4]
-            or ["当前未发现显著 EddyPro 对标风险。"],
+            or ["当前未发现显著行业参考对标风险。"],
             "export_options": ["查看窗口差异表前 10 项", "检查 lag 偏差较大的窗口", "检查 flux 偏差较大的窗口"],
-            "file_info": {"状态": "已生成 EddyPro 对标结果", **{key: str(value) for key, value in compare.get("files", {}).items()}},
+            "file_info": {"状态": "已生成行业参考对标结果", **{key: str(value) for key, value in compare.get("files", {}).items()}},
             "versions": [
                 f"compare_id：{compare.get('compare_id', '--')}",
                 f"attribution_id：{attribution.get('attribution_id', '--')}",
@@ -8900,7 +8914,7 @@ class StudioController(QObject):
             {
                 "time": datetime.now().strftime("%H:%M:%S"),
                 "level": level,
-                "message": message,
+                "message": _ui_safe_text(message),
             }
         )
         self.logs_changed.emit()

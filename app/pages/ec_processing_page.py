@@ -500,7 +500,7 @@ class ECProcessingPage(QWidget):
         param_layout.addWidget(
             section_title(
                 "Crosswind Correction",
-                "EddyPro-style sonic-temperature correction before thermodynamic flux calculations.",
+                "Reference-aligned sonic-temperature correction before thermodynamic flux calculations.",
             )
         )
         form = QFormLayout()

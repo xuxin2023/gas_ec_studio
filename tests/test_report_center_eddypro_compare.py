@@ -6,13 +6,25 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from app.main_window import StudioMainWindow
 from app.pages.report_center_page import ReportCenterPage
 from app.studio import StudioController
 from app.widgets.context_inspector import ContextInspector
 from models.hf_models import FrameQuality, NormalizedHFFrame
+
+
+def _assert_no_forbidden_ui_text(widget) -> None:
+    visible_texts: list[str] = [label.text() for label in widget.findChildren(QLabel)]
+    table = getattr(widget, "preview_table", None)
+    if table is not None:
+        for row in range(table.rowCount()):
+            for col in range(table.columnCount()):
+                item = table.item(row, col)
+                if item is not None:
+                    visible_texts.append(item.text())
+    assert not any("EddyPro" in text for text in visible_texts)
 
 
 def _app() -> QApplication:
@@ -107,15 +119,16 @@ def test_report_center_empty_state_without_compare_result(monkeypatch, tmp_path:
         page = ReportCenterPage(controller)
         page.refresh()
 
-        assert page.preview_title_label.text() == "EddyPro 对标报告"
+        assert "EddyPro" not in page.preview_title_label.text()
+        _assert_no_forbidden_ui_text(page)
         assert page.preview_table.rowCount() >= 1
         found = False
         for row in range(page.preview_table.rowCount()):
             item = page.preview_table.item(row, 2)
-            if item and "当前还没有 EddyPro 对标结果" in item.text():
+            if item and "当前还没有" in item.text() and "EddyPro" not in item.text():
                 found = True
                 break
-        assert found, "Expected '当前还没有 EddyPro 对标结果' in table"
+        assert found, "Expected neutral empty compare message in table"
     finally:
         controller.shutdown()
 
@@ -139,7 +152,8 @@ def test_report_center_displays_real_compare_summary(monkeypatch, tmp_path: Path
         page = ReportCenterPage(controller)
         page.refresh()
 
-        assert page.preview_title_label.text() == "EddyPro 对标报告"
+        assert "EddyPro" not in page.preview_title_label.text()
+        _assert_no_forbidden_ui_text(page)
         assert page.preview_metric_values[0].text() != "0"
         assert page.preview_table.rowCount() > 5
         assert any(page.preview_table.item(row, 0).text() == "compare_id" for row in range(page.preview_table.rowCount()))
@@ -171,6 +185,7 @@ def test_context_inspector_returns_eddypro_compare_inspector(monkeypatch, tmp_pa
         assert "eddypro_compare_inspector" in context
         assert context["eddypro_compare_inspector"]["compare_id"]
         assert context["eddypro_compare_inspector"]["actions"]
+        _assert_no_forbidden_ui_text(inspector)
     finally:
         controller.shutdown()
 
@@ -217,7 +232,8 @@ def test_main_window_report_center_page_smoke_with_eddypro_compare(monkeypatch, 
         window._refresh_shell()
 
         assert window.stack.currentWidget() is window.report_center_page
-        assert controller.report_center_workspace["reports"]["eddypro_compare"]["title"] == "EddyPro 对标报告"
+        assert "EddyPro" not in window.report_center_page.preview_title_label.text()
+        _assert_no_forbidden_ui_text(window.report_center_page)
         window.close()
     finally:
         controller.shutdown()

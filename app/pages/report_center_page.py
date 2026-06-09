@@ -30,6 +30,20 @@ from app.studio import StudioController
 from app.theme import CardFrame, TOKENS, chip, section_title
 
 
+UI_REFERENCE_REPLACEMENTS = (
+    ("EddyPro", "行业参考"),
+    ("EDDYPRO", "行业参考"),
+    ("eddypro", "industry_reference"),
+)
+
+
+def _ui_safe_text(value: object) -> str:
+    text = str(value)
+    for old, new in UI_REFERENCE_REPLACEMENTS:
+        text = text.replace(old, new)
+    return text
+
+
 REPORT_SECTIONS = [
     ("run_summary", "运行摘要", "适合第一眼确认本批次是否能交付。"),
     ("device_status", "设备状态报告", "把设备稳定性结论沉淀成报告视图。"),
@@ -39,12 +53,12 @@ REPORT_SECTIONS = [
     ("anomaly_events", "异常事件报告", "把日志与事件整理成可汇报的异常视图。"),
     ("site_method", "站点方法说明", "作为正式报告附录，说明结论来自哪些方法配置。"),
     ("evidence_pack", "证据包", "统一导出图表、表格与日志证据。"),
-    ("fixture_pack", "Fixture Pack", "验证 EddyPro 参考集、raw-to-final readiness、合成回归集与 YGAS 协议样例。"),
-    ("eddypro_compare", "EddyPro 对标报告", "集中查看当前结果与 EddyPro 参考结果的对标摘要和窗口差异。"),
+    ("fixture_pack", "Fixture Pack", "验证行业参考集、raw-to-final readiness、合成回归集与 YGAS 协议样例。"),
+    ("eddypro_compare", "行业参考对标报告", "集中查看当前结果与行业参考结果的对标摘要和窗口差异。"),
     ("benchmark_cockpit", "Benchmark 驾驶舱", "查看 benchmark 参考对标结果：pass rate、阈值、偏差详情。"),
     ("method_provenance", "方法溯源", "查看 Footprint、不确定度、谱修正的方法来源、局限性和溯源信息。"),
-    ("method_compare", "Method Compare", "查看方法族对比、EddyPro method parity matrix、2D footprint contour 与长窗口性能 profile。"),
-    ("computation_surface", "Computation Surface", "查看 EddyPro 计算核心族 ready/blocked 状态、stress suite 与声明边界。"),
+    ("method_compare", "Method Compare", "查看方法族对比、参考方法 parity matrix、2D footprint contour 与长窗口性能 profile。"),
+    ("computation_surface", "Computation Surface", "查看行业参考计算核心族 ready/blocked 状态、stress suite 与声明边界。"),
 ]
 
 
@@ -240,6 +254,7 @@ class ReportCenterPage(QWidget):
         self._refresh_preview(report, view_mode, filters)
         self._refresh_inner_inspector(report, workspace.get("export_status", "Not exported yet"), view_mode)
         self._refresh_batch_compare(workspace.get("batch_compare", {}))
+        self._sanitize_visible_labels()
 
     def _build_filter_bar(self) -> CardFrame:
         card = CardFrame()
@@ -322,9 +337,9 @@ class ReportCenterPage(QWidget):
         root.setFlags(root.flags() & ~Qt.ItemIsSelectable)
         self.report_tree.addTopLevelItem(root)
         for key, title, _subtitle in REPORT_SECTIONS:
-            item = QTreeWidgetItem([title])
+            item = QTreeWidgetItem([_ui_safe_text(title)])
             item.setData(0, Qt.UserRole, key)
-            item.setToolTip(0, title)
+            item.setToolTip(0, _ui_safe_text(title))
             root.addChild(item)
             self.report_items[key] = item
         root.setExpanded(True)
@@ -358,29 +373,31 @@ class ReportCenterPage(QWidget):
 
     def _refresh_workspace(self) -> None:
         result = self.controller.refresh_report_center()
-        QMessageBox.information(self, "已刷新", result["message"])
+        self._show_info("已刷新", result["message"])
 
     def _generate_report(self) -> None:
         result = self.controller.generate_report_center_report()
-        QMessageBox.information(self, "报告已生成", result["message"])
+        self._show_info("报告已生成", result["message"])
 
     def _export_current_report(self) -> None:
         result = self.controller.export_current_report()
-        QMessageBox.information(self, "导出完成", result["message"])
+        self._show_info("导出完成", result["message"])
 
     def _export_evidence(self) -> None:
         result = self.controller.export_report_evidence()
-        QMessageBox.information(self, "证据包已导出", result["message"])
+        self._show_info("证据包已导出", result["message"])
 
     def _compare_batches(self) -> None:
         result = self.controller.compare_report_batches()
-        QMessageBox.information(self, "批次对比已更新", result["message"])
+        self._show_info("批次对比已更新", result["message"])
 
     def _refresh_preview(self, report: dict, view_mode: str, filters: dict) -> None:
         self._set_chip(self.preview_mode_chip, view_mode, "accent")
-        self.preview_title_label.setText(str(report.get("title", "Report Preview")))
+        self.preview_title_label.setText(_ui_safe_text(report.get("title", "Report Preview")))
         self.preview_source_label.setText(
-            f"Source: {report.get('source', '--')}\nBatch: {filters.get('batch', '--')}  |  Time: {report.get('updated_at', '--')}"
+            _ui_safe_text(
+                f"Source: {report.get('source', '--')}\nBatch: {filters.get('batch', '--')}  |  Time: {report.get('updated_at', '--')}"
+            )
         )
 
         is_benchmark_cockpit = str(report.get("report_key", "")) == "benchmark_cockpit"
@@ -390,8 +407,8 @@ class ReportCenterPage(QWidget):
         while len(metrics) < 4:
             metrics.append(("--", "--"))
         for index, (title, value) in enumerate(metrics[:4]):
-            self.preview_metric_labels[index].setText(title)
-            self.preview_metric_values[index].setText(value)
+            self.preview_metric_labels[index].setText(_ui_safe_text(title))
+            self.preview_metric_values[index].setText(_ui_safe_text(value))
 
         plot_series = list(report.get("plot_series", []))
         xs = np.arange(1, len(plot_series) + 1, dtype=float)
@@ -411,11 +428,12 @@ class ReportCenterPage(QWidget):
             elif view_mode == "Management":
                 rows = rows[:2]
         self.preview_table.setColumnCount(len(headers))
-        self.preview_table.setHorizontalHeaderLabels(headers)
+        self.preview_table.setHorizontalHeaderLabels([_ui_safe_text(header) for header in headers])
         self.preview_table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
             for col, value in enumerate(row):
-                item = QTableWidgetItem(str(value))
+                item = QTableWidgetItem(_ui_safe_text(value))
+                item.setData(Qt.UserRole, str(value))
                 if col == 1:
                     item.setTextAlignment(Qt.AlignCenter)
                 if is_benchmark_cockpit and col == 1:
@@ -440,7 +458,7 @@ class ReportCenterPage(QWidget):
 
         self._clear_layout(self.conclusion_content)
         for text in self._conclusions_for_mode(report, view_mode):
-            label = QLabel(text)
+            label = QLabel(_ui_safe_text(text))
             label.setObjectName("subtitle")
             label.setWordWrap(True)
             self.conclusion_content.addWidget(label)
@@ -451,7 +469,7 @@ class ReportCenterPage(QWidget):
         item = self.preview_table.item(row, 0)
         if item is None:
             return
-        window_id = item.text()
+        window_id = str(item.data(Qt.UserRole) or item.text())
         report = self.controller.report_center_workspace.get("reports", {}).get("benchmark_cockpit", {})
         per_window_detail = report.get("per_window_detail", [])
         detail = next((d for d in per_window_detail if d.get("window_id") == window_id), None)
@@ -484,7 +502,7 @@ class ReportCenterPage(QWidget):
                 line += f"  rel_err={rel_err:.4f}"
             if note:
                 line += f"  ({note})"
-            comp_label = QLabel(line)
+            comp_label = QLabel(_ui_safe_text(line))
             comp_label.setObjectName("subtitle")
             comp_label.setWordWrap(True)
             self.conclusion_content.addWidget(comp_label)
@@ -566,13 +584,13 @@ class ReportCenterPage(QWidget):
             self._official_bundle_controls_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
             self._official_bundle_controls_layout.setSpacing(TOKENS.spacing_sm)
             self._official_bundle_controls_layout.addWidget(
-                section_title("Official Raw Bundle", "Inspect or register a real EddyPro raw-to-final fixture bundle.")
+                section_title("Official Raw Bundle", "Inspect or register a real industry-reference raw-to-final fixture bundle.")
             )
             ctrl_row = QHBoxLayout()
             ctrl_row.setSpacing(TOKENS.spacing_md)
             ctrl_row.addWidget(QLabel("Bundle:"))
             self._official_bundle_path = QLineEdit()
-            self._official_bundle_path.setPlaceholderText("references/eddypro/official_raw/site_001")
+            self._official_bundle_path.setPlaceholderText("references/industry_reference/official_raw/site_001")
             ctrl_row.addWidget(self._official_bundle_path, 1)
             self._official_bundle_browse = QPushButton("Browse")
             self._official_bundle_build_manifest = QPushButton("Build Manifest")
@@ -604,13 +622,13 @@ class ReportCenterPage(QWidget):
             self._official_bundle_controls_layout.addLayout(ctrl_row)
             run_row = QHBoxLayout()
             run_row.setSpacing(TOKENS.spacing_md)
-            run_row.addWidget(QLabel("EddyPro Run:"))
+            run_row.addWidget(QLabel("Reference Run:"))
             self._official_run_command = QLineEdit()
-            self._official_run_command.setPlaceholderText("eddypro.exe --run eddypro/project.eddypro")
+            self._official_run_command.setPlaceholderText("reference_processor.exe --run reference/project.config")
             self._official_run_version = QLineEdit()
             self._official_run_version.setPlaceholderText("7.0.9")
             self._official_run_outputs = QLineEdit()
-            self._official_run_outputs.setPlaceholderText("eddypro/eddypro_full_output.csv")
+            self._official_run_outputs.setPlaceholderText("reference/reference_full_output.csv")
             self._official_run_capture = QPushButton("Capture Run")
             self._official_closure_run = QPushButton("Closure Run")
             self._official_closure_run.setProperty("variant", "primary")
@@ -671,17 +689,20 @@ class ReportCenterPage(QWidget):
             self._official_fixture_disable.clicked.connect(self._on_official_fixture_disable)
             self._official_fixture_replace.clicked.connect(self._on_official_fixture_replace)
         state = self.controller.report_center_workspace.get("official_raw_bundle", {})
-        current_path = str(state.get("bundle_dir", "") or state.get("bundle_root", "") or self._official_bundle_path.text()).strip()
+        current_path = str(state.get("bundle_dir", "") or state.get("bundle_root", "") or self._official_bundle_path_value()).strip()
         if current_path:
-            self._official_bundle_path.setText(current_path)
+            self._set_official_bundle_path_display(current_path)
         capture = dict(state.get("official_run_capture", {}) or {})
         sidecar = dict(capture.get("sidecar", {}) or {})
         if sidecar.get("command") and not self._official_run_command.text().strip():
-            self._official_run_command.setText(str(sidecar.get("command", "")))
+            self._set_raw_line_edit_display(self._official_run_command, str(sidecar.get("command", "")))
         if sidecar.get("software_version") and not self._official_run_version.text().strip():
             self._official_run_version.setText(str(sidecar.get("software_version", "")))
         if sidecar.get("output_files") and not self._official_run_outputs.text().strip():
-            self._official_run_outputs.setText(",".join(str(item) for item in list(sidecar.get("output_files", []) or [])))
+            self._set_raw_line_edit_display(
+                self._official_run_outputs,
+                ",".join(str(item) for item in list(sidecar.get("output_files", []) or [])),
+            )
         matrix = dict(report.get("official_raw_evidence_matrix", {}) or {})
         matrix_rows = [dict(row or {}) for row in list(matrix.get("rows", []) or [])]
         filters = dict(report.get("official_raw_matrix_filters", {}) or {})
@@ -867,94 +888,94 @@ class ReportCenterPage(QWidget):
             self.conclusion_content.addWidget(limitation_line)
 
     def _on_official_bundle_browse(self) -> None:
-        selected = QFileDialog.getExistingDirectory(self, "Select official EddyPro raw bundle")
+        selected = QFileDialog.getExistingDirectory(self, "Select official reference raw bundle")
         if selected:
-            self._official_bundle_path.setText(selected)
+            self._set_official_bundle_path_display(selected)
 
     def _on_official_bundle_inspect(self) -> None:
-        result = self.controller.inspect_official_raw_bundle_for_report_center(self._official_bundle_path.text())
-        QMessageBox.information(self, "Official Raw Bundle", result["message"])
+        result = self.controller.inspect_official_raw_bundle_for_report_center(self._official_bundle_path_value())
+        self._show_info("Official Raw Bundle", result["message"])
         self.refresh()
 
     def _on_official_bundle_validate(self) -> None:
-        result = self.controller.validate_official_raw_bundle_for_report_center(self._official_bundle_path.text())
-        QMessageBox.information(self, "Official Raw P0 Gate", result["message"])
+        result = self.controller.validate_official_raw_bundle_for_report_center(self._official_bundle_path_value())
+        self._show_info("Official Raw P0 Gate", result["message"])
         self.refresh()
 
     def _on_official_bundle_evidence_pack(self) -> None:
-        result = self.controller.export_official_raw_evidence_pack_for_report_center(self._official_bundle_path.text())
-        QMessageBox.information(self, "Official Raw Evidence Pack", result["message"])
+        result = self.controller.export_official_raw_evidence_pack_for_report_center(self._official_bundle_path_value())
+        self._show_info("Official Raw Evidence Pack", result["message"])
         self.refresh()
 
     def _on_official_bundle_acceptance(self) -> None:
-        result = self.controller.run_official_raw_evidence_acceptance_for_report_center(self._official_bundle_path.text())
-        QMessageBox.information(self, "Official Raw Acceptance", result["message"])
+        result = self.controller.run_official_raw_evidence_acceptance_for_report_center(self._official_bundle_path_value())
+        self._show_info("Official Raw Acceptance", result["message"])
         self.refresh()
 
     def _on_official_run_capture(self) -> None:
         result = self.controller.capture_official_eddypro_run_for_report_center(
-            self._official_bundle_path.text(),
-            command=self._official_run_command.text(),
+            self._official_bundle_path_value(),
+            command=self._raw_line_edit_value(self._official_run_command),
             software_version=self._official_run_version.text(),
-            output_files=self._official_run_outputs.text(),
+            output_files=self._raw_line_edit_value(self._official_run_outputs),
         )
-        QMessageBox.information(self, "Official EddyPro Run", result["message"])
+        self._show_info("Official Reference Run", result["message"])
         self.refresh()
 
     def _on_official_closure_run(self) -> None:
         result = self.controller.run_official_raw_closure_for_report_center(
-            self._official_bundle_path.text(),
-            command=self._official_run_command.text(),
+            self._official_bundle_path_value(),
+            command=self._raw_line_edit_value(self._official_run_command),
             software_version=self._official_run_version.text(),
-            output_files=self._official_run_outputs.text(),
+            output_files=self._raw_line_edit_value(self._official_run_outputs),
             overwrite_manifest=bool(self._official_bundle_replace.isChecked()),
             replace=bool(self._official_bundle_replace.isChecked()),
         )
-        QMessageBox.information(self, "Official Raw Closure", result["message"])
+        self._show_info("Official Raw Closure", result["message"])
         self.refresh()
 
     def _on_official_bundle_build_manifest(self) -> None:
         result = self.controller.build_official_raw_bundle_manifest_for_report_center(
-            self._official_bundle_path.text(),
+            self._official_bundle_path_value(),
             overwrite=bool(self._official_bundle_replace.isChecked()),
         )
-        QMessageBox.information(self, "Official Raw Manifest", result["message"])
+        self._show_info("Official Raw Manifest", result["message"])
         self.refresh()
 
     def _on_official_bundle_register(self) -> None:
         result = self.controller.register_official_raw_bundle_for_report_center(
-            self._official_bundle_path.text(),
+            self._official_bundle_path_value(),
             replace=bool(self._official_bundle_replace.isChecked()),
         )
-        QMessageBox.information(self, "Official Raw Bundle", result["message"])
+        self._show_info("Official Raw Bundle", result["message"])
         self.refresh()
 
     def _on_official_bundle_inspect_tree(self) -> None:
-        result = self.controller.inspect_official_raw_bundle_tree_for_report_center(self._official_bundle_path.text())
-        QMessageBox.information(self, "Official Raw Bundle Tree", result["message"])
+        result = self.controller.inspect_official_raw_bundle_tree_for_report_center(self._official_bundle_path_value())
+        self._show_info("Official Raw Bundle Tree", result["message"])
         self.refresh()
 
     def _on_official_bundle_build_tree_manifests(self) -> None:
         result = self.controller.build_official_raw_bundle_tree_manifests_for_report_center(
-            self._official_bundle_path.text(),
+            self._official_bundle_path_value(),
             overwrite=bool(self._official_bundle_replace.isChecked()),
         )
-        QMessageBox.information(self, "Official Raw Bundle Tree", result["message"])
+        self._show_info("Official Raw Bundle Tree", result["message"])
         self.refresh()
 
     def _on_official_bundle_register_tree(self) -> None:
         result = self.controller.register_official_raw_bundle_tree_for_report_center(
-            self._official_bundle_path.text(),
+            self._official_bundle_path_value(),
             replace=bool(self._official_bundle_replace.isChecked()),
         )
-        QMessageBox.information(self, "Official Raw Bundle Tree", result["message"])
+        self._show_info("Official Raw Bundle Tree", result["message"])
         self.refresh()
 
     def _on_public_fixture_refresh(self) -> None:
         result = self.controller.refresh_public_eddypro_fixtures_for_report_center(
             overwrite=bool(self._public_fixture_overwrite.isChecked())
         )
-        QMessageBox.information(self, "Public EddyPro Fixtures", result["message"])
+        self._show_info("Public Reference Fixtures", result["message"])
         self.refresh()
 
     def _on_official_matrix_filter(self) -> None:
@@ -967,7 +988,7 @@ class ReportCenterPage(QWidget):
             site_class=value(self._official_matrix_site),
             parity_status=value(self._official_matrix_parity),
         )
-        QMessageBox.information(self, "Official Raw Matrix", result["message"])
+        self._show_info("Official Raw Matrix", result["message"])
         self.refresh()
 
     def _selected_official_fixture_id(self) -> str:
@@ -978,26 +999,26 @@ class ReportCenterPage(QWidget):
 
     def _on_official_fixture_rerun(self) -> None:
         result = self.controller.rerun_official_raw_fixture_for_report_center(self._selected_official_fixture_id())
-        QMessageBox.information(self, "Official Raw Fixture", result["message"])
+        self._show_info("Official Raw Fixture", result["message"])
         self.refresh()
 
     def _on_official_fixture_detail(self) -> None:
         result = self.controller.inspect_official_raw_fixture_detail_for_report_center(self._selected_official_fixture_id())
-        QMessageBox.information(self, "Official Raw Fixture Detail", result["message"])
+        self._show_info("Official Raw Fixture Detail", result["message"])
         self.refresh()
 
     def _on_official_fixture_disable(self) -> None:
         result = self.controller.disable_official_raw_fixture_for_report_center(self._selected_official_fixture_id())
-        QMessageBox.information(self, "Official Raw Fixture", result["message"])
+        self._show_info("Official Raw Fixture", result["message"])
         self.refresh()
 
     def _on_official_fixture_replace(self) -> None:
         result = self.controller.replace_official_raw_fixture_for_report_center(
             self._selected_official_fixture_id(),
-            self._official_bundle_path.text(),
+            self._official_bundle_path_value(),
             replace=bool(self._official_bundle_replace.isChecked()),
         )
-        QMessageBox.information(self, "Official Raw Fixture", result["message"])
+        self._show_info("Official Raw Fixture", result["message"])
         self.refresh()
 
     def _on_bm_ref_changed(self, text: str) -> None:
@@ -1006,12 +1027,12 @@ class ReportCenterPage(QWidget):
         prov = provenance.get(text, {})
         if prov:
             self._clear_layout(self.conclusion_content)
-            self.conclusion_content.addWidget(QLabel(f"参考: {text}"))
-            self.conclusion_content.addWidget(QLabel(f"原始文件: {prov.get('original_file_name', '--')}"))
-            self.conclusion_content.addWidget(QLabel(f"归一化时间: {prov.get('normalization_time', '--')}"))
-            self.conclusion_content.addWidget(QLabel(f"QC 映射: {prov.get('qc_mapping_strategy', '--')}"))
+            self.conclusion_content.addWidget(QLabel(_ui_safe_text(f"参考: {text}")))
+            self.conclusion_content.addWidget(QLabel(_ui_safe_text(f"原始文件: {prov.get('original_file_name', '--')}")))
+            self.conclusion_content.addWidget(QLabel(_ui_safe_text(f"归一化时间: {prov.get('normalization_time', '--')}")))
+            self.conclusion_content.addWidget(QLabel(_ui_safe_text(f"QC 映射: {prov.get('qc_mapping_strategy', '--')}")))
             for lim in prov.get("known_limitations", [])[:3]:
-                self.conclusion_content.addWidget(QLabel(f"限制: {lim[:80]}"))
+                self.conclusion_content.addWidget(QLabel(_ui_safe_text(f"限制: {lim[:80]}")))
 
     def _on_bm_rerun(self) -> None:
         self.controller.refresh_report_center()
@@ -1039,7 +1060,7 @@ class ReportCenterPage(QWidget):
                     fname = comp.get("field_name", "")
                     abs_err = comp.get("absolute_error", 0)
                     line += f" | {fname} FAIL abs={abs_err:.4e}"
-            lbl = QLabel(line)
+            lbl = QLabel(_ui_safe_text(line))
             lbl.setObjectName("subtitle")
             lbl.setWordWrap(True)
             self.conclusion_content.addWidget(lbl)
@@ -1072,7 +1093,7 @@ class ReportCenterPage(QWidget):
         item = self.preview_table.item(row, 0)
         if item is None:
             return
-        window_id = item.text()
+        window_id = str(item.data(Qt.UserRole) or item.text())
         report = self.controller.report_center_workspace.get("reports", {}).get("benchmark_cockpit", {})
         per_window_detail = report.get("per_window_detail", [])
         detail = next((d for d in per_window_detail if d.get("window_id") == window_id), None)
@@ -1108,7 +1129,7 @@ class ReportCenterPage(QWidget):
                 )
             )
         for method_note in detail.get("method_deviation_notes", []):
-            method_label = QLabel(f"Method note: {method_note}")
+            method_label = QLabel(_ui_safe_text(f"Method note: {method_note}"))
             method_label.setObjectName("subtitle")
             method_label.setWordWrap(True)
             self.conclusion_content.addWidget(method_label)
@@ -1126,41 +1147,41 @@ class ReportCenterPage(QWidget):
                 line += f"  rel_err={rel_err:.4f}"
             if note:
                 line += f"  ({note})"
-            comp_label = QLabel(line)
+            comp_label = QLabel(_ui_safe_text(line))
             comp_label.setObjectName("subtitle")
             comp_label.setWordWrap(True)
             self.conclusion_content.addWidget(comp_label)
 
     def _refresh_inner_inspector(self, report: dict, export_status: str, view_mode: str) -> None:
         self._clear_layout(self.export_content)
-        export_status_label = QLabel(f"当前状态：{export_status}")
+        export_status_label = QLabel(_ui_safe_text(f"当前状态：{export_status}"))
         export_status_label.setObjectName("subtitle")
         export_status_label.setWordWrap(True)
         self.export_content.addWidget(chip(view_mode, "accent"))
         self.export_content.addWidget(export_status_label)
         for text in report.get("export_options", []):
-            label = QLabel(f"• {text}")
+            label = QLabel(_ui_safe_text(f"• {text}"))
             label.setObjectName("subtitle")
             label.setWordWrap(True)
             self.export_content.addWidget(label)
 
         self._clear_layout(self.file_content)
         for key, value in report.get("file_info", {}).items():
-            label = QLabel(f"{key}：{value}")
+            label = QLabel(_ui_safe_text(f"{key}：{value}"))
             label.setObjectName("subtitle")
             label.setWordWrap(True)
             self.file_content.addWidget(label)
 
         self._clear_layout(self.version_content)
         for text in report.get("versions", []):
-            label = QLabel(f"• {text}")
+            label = QLabel(_ui_safe_text(f"• {text}"))
             label.setObjectName("subtitle")
             label.setWordWrap(True)
             self.version_content.addWidget(label)
 
         self._clear_layout(self.usage_content)
         for text in report.get("usage", []):
-            label = QLabel(f"• {text}")
+            label = QLabel(_ui_safe_text(f"• {text}"))
             label.setObjectName("subtitle")
             label.setWordWrap(True)
             self.usage_content.addWidget(label)
@@ -1171,8 +1192,8 @@ class ReportCenterPage(QWidget):
         summary = [str(item) for item in batch_compare.get("difference_summary", [])]
         metric_deltas = dict(batch_compare.get("metric_deltas", {}))
 
-        self.batch_current_value.setText(current_batch)
-        self.batch_compare_value.setText(compare_batch)
+        self.batch_current_value.setText(_ui_safe_text(current_batch))
+        self.batch_compare_value.setText(_ui_safe_text(compare_batch))
         if metric_deltas:
             self.batch_diff_value.setText(
                 " / ".join(
@@ -1184,17 +1205,17 @@ class ReportCenterPage(QWidget):
                 )
             )
         else:
-            self.batch_diff_value.setText(f"{len(summary)} changes")
+            self.batch_diff_value.setText(_ui_safe_text(f"{len(summary)} changes"))
 
         self._clear_layout(self.batch_summary_layout)
         for text in summary[:4]:
-            label = QLabel(f"- {text}")
+            label = QLabel(_ui_safe_text(f"- {text}"))
             label.setObjectName("subtitle")
             label.setWordWrap(True)
             self.batch_summary_layout.addWidget(label)
 
         for text in batch_compare.get("risk_summary", [])[:2]:
-            label = QLabel(f"- {text}")
+            label = QLabel(_ui_safe_text(f"- {text}"))
             label.setObjectName("subtitle")
             label.setWordWrap(True)
             self.batch_summary_layout.addWidget(label)
@@ -1220,7 +1241,7 @@ class ReportCenterPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
-        layout.addWidget(section_title(title, subtitle))
+        layout.addWidget(section_title(_ui_safe_text(title), _ui_safe_text(subtitle)))
         content = QVBoxLayout()
         content.setSpacing(TOKENS.spacing_sm)
         layout.addLayout(content)
@@ -1231,7 +1252,7 @@ class ReportCenterPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_xs)
-        title_label = QLabel(title)
+        title_label = QLabel(_ui_safe_text(title))
         title_label.setObjectName("metricLabel")
         value_widget.setObjectName("metricValue")
         value_widget.setWordWrap(True)
@@ -1282,10 +1303,41 @@ class ReportCenterPage(QWidget):
         combo.blockSignals(False)
 
     def _set_chip(self, label: QLabel, text: str, tone: str) -> None:
-        label.setText(text)
+        label.setText(_ui_safe_text(text))
         label.setProperty("chipTone", tone)
         label.style().unpolish(label)
         label.style().polish(label)
+
+    def _show_info(self, title: str, message: object) -> None:
+        QMessageBox.information(self, _ui_safe_text(title), _ui_safe_text(message))
+
+    def _set_official_bundle_path_display(self, path: str) -> None:
+        self._official_bundle_path.setProperty("raw_path", path)
+        self._official_bundle_path.setText(_ui_safe_text(path))
+
+    def _official_bundle_path_value(self) -> str:
+        raw_path = str(self._official_bundle_path.property("raw_path") or "")
+        displayed_path = self._official_bundle_path.text().strip()
+        if raw_path and displayed_path == _ui_safe_text(raw_path):
+            return raw_path
+        return displayed_path
+
+    def _set_raw_line_edit_display(self, line_edit: QLineEdit, value: str) -> None:
+        line_edit.setProperty("raw_value", value)
+        line_edit.setText(_ui_safe_text(value))
+
+    def _raw_line_edit_value(self, line_edit: QLineEdit) -> str:
+        raw_value = str(line_edit.property("raw_value") or "")
+        displayed_value = line_edit.text().strip()
+        if raw_value and displayed_value == _ui_safe_text(raw_value):
+            return raw_value
+        return displayed_value
+
+    def _sanitize_visible_labels(self) -> None:
+        for label in self.findChildren(QLabel):
+            safe = _ui_safe_text(label.text())
+            if safe != label.text():
+                label.setText(safe)
 
     def _clear_layout(self, layout: QVBoxLayout) -> None:
         while layout.count():

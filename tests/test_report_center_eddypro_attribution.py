@@ -107,7 +107,7 @@ def test_report_center_empty_state_without_attribution_result(monkeypatch, tmp_p
         page = ReportCenterPage(controller)
         page.refresh()
 
-        assert page.preview_title_label.text() == "EddyPro 对标报告"
+        assert "EddyPro" not in page.preview_title_label.text()
         assert page.preview_table.rowCount() >= 1
         detail_text = " ".join(
             page.preview_table.item(row, 2).text() for row in range(page.preview_table.rowCount()) if page.preview_table.item(row, 2)
@@ -226,7 +226,7 @@ def test_main_window_report_center_page_smoke_with_attribution(monkeypatch, tmp_
         window._refresh_shell()
 
         assert window.stack.currentWidget() is window.report_center_page
-        assert controller.report_center_workspace["reports"]["eddypro_compare"]["title"] == "EddyPro 对标报告"
+        assert "EddyPro" not in window.report_center_page.preview_title_label.text()
         assert controller.report_center_workspace["eddypro_attribution"]["status"] == "ready"
         window.close()
     finally:

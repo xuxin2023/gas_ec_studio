@@ -484,11 +484,11 @@ def test_report_center_fixture_pack_surfaces_validated_eddypro_assets(monkeypatc
         assert report["public_eddypro_fixture_catalog"]["fixture_count"] == 6
         assert report["public_eddypro_fixture_acquisition"]["status"] == "pass"
         assert "Fixture Pack Artifact" in report["file_info"]
-        assert "Public EddyPro Fixture Catalog" in report["file_info"]
-        assert "Public EddyPro Fixture Acquisition" in report["file_info"]
+        assert "Public Reference Fixture Catalog" in report["file_info"]
+        assert "Public Reference Fixture Acquisition" in report["file_info"]
         assert Path(latest_files["fixture_pack_summary_artifact"]).exists()
-        assert Path(report["file_info"]["Public EddyPro Fixture Catalog"]).exists()
-        assert Path(report["file_info"]["Public EddyPro Fixture Acquisition"]).exists()
+        assert Path(report["file_info"]["Public Reference Fixture Catalog"]).exists()
+        assert Path(report["file_info"]["Public Reference Fixture Acquisition"]).exists()
         assert page.preview_title_label.text() == "Fixture Pack"
         assert page.preview_table.rowCount() >= 4
     finally:
