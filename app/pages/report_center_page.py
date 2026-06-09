@@ -41,12 +41,12 @@ REPORT_SECTIONS = [
     ("anomaly_events", "异常事件报告", "把日志与事件整理成可汇报的异常视图。"),
     ("site_method", "站点方法说明", "作为正式报告附录，说明结论来自哪些方法配置。"),
     ("evidence_pack", "证据包", "统一导出图表、表格与日志证据。"),
-    ("fixture_pack", "Fixture Pack", "验证行业参考集、raw-to-final readiness、合成回归集与 YGAS 协议样例。"),
+    ("fixture_pack", "验证包", "验证行业参考集、raw-to-final readiness、合成回归集与 YGAS 协议样例。"),
     ("eddypro_compare", "行业参考对标报告", "集中查看当前结果与行业参考结果的对标摘要和窗口差异。"),
     ("benchmark_cockpit", "Benchmark 驾驶舱", "查看 benchmark 参考对标结果：pass rate、阈值、偏差详情。"),
     ("method_provenance", "方法溯源", "查看 Footprint、不确定度、谱修正的方法来源、局限性和溯源信息。"),
-    ("method_compare", "Method Compare", "查看方法族对比、参考方法 parity matrix、2D footprint contour 与长窗口性能 profile。"),
-    ("computation_surface", "Computation Surface", "查看行业参考计算核心族 ready/blocked 状态、stress suite 与声明边界。"),
+    ("method_compare", "方法对比", "查看方法族对比、参考方法 parity matrix、2D footprint contour 与长窗口性能 profile。"),
+    ("computation_surface", "计算能力面板", "查看行业参考计算核心族 ready/blocked 状态、stress suite 与声明边界。"),
 ]
 
 
@@ -100,7 +100,7 @@ class ReportCenterPage(QWidget):
         center_scroll.setWidget(center_container)
         workbench.addWidget(center_scroll)
 
-        self.preview_header_card = CardFrame()
+        self.preview_header_card = CardFrame(role="cockpit")
         preview_header_layout = QVBoxLayout(self.preview_header_card)
         preview_header_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         preview_header_layout.setSpacing(TOKENS.spacing_sm)
@@ -124,7 +124,7 @@ class ReportCenterPage(QWidget):
         self.preview_metric_values: list[QLabel] = []
         self.preview_metric_labels: list[QLabel] = []
         for index in range(4):
-            card = CardFrame()
+            card = CardFrame(muted=True, role="tile")
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
             card_layout.setSpacing(TOKENS.spacing_xs)
@@ -139,7 +139,7 @@ class ReportCenterPage(QWidget):
             metrics_layout.addWidget(card, 0, index)
         center_layout.addWidget(self.preview_metrics_row)
 
-        self.preview_content_card = CardFrame()
+        self.preview_content_card = CardFrame(role="panel")
         content_layout = QVBoxLayout(self.preview_content_card)
         content_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         content_layout.setSpacing(TOKENS.spacing_md)
@@ -163,7 +163,7 @@ class ReportCenterPage(QWidget):
         content_layout.addWidget(self.preview_plot_note)
         center_layout.addWidget(self.preview_content_card)
 
-        self.conclusion_card = CardFrame(muted=True)
+        self.conclusion_card = CardFrame(muted=True, role="panel")
         conclusion_layout = QVBoxLayout(self.conclusion_card)
         conclusion_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         conclusion_layout.setSpacing(TOKENS.spacing_md)
@@ -180,13 +180,15 @@ class ReportCenterPage(QWidget):
         delivery_layout.setSpacing(TOKENS.spacing_md)
         delivery_layout.addWidget(
             section_title(
-                "Delivery Cockpit",
-                "Export status, report readiness, provenance, and batch drift stay visible while browsing reports.",
+                "交付驾驶舱",
+                "浏览报告时持续显示交付 Gate、导出状态、方法溯源和批次差异。",
             )
         )
 
         self.summary_row = self._build_summary_row()
         delivery_layout.addWidget(self.summary_row)
+        self.delivery_gate_card = self._build_delivery_gate_card()
+        delivery_layout.addWidget(self.delivery_gate_card)
 
         self.inner_inspector = QWidget()
         inspector_layout = QVBoxLayout(self.inner_inspector)
@@ -241,27 +243,29 @@ class ReportCenterPage(QWidget):
         summary = workspace["summary"]
 
         self._refresh_filter_options(workspace)
-        self._set_combo_text(self.project_combo, str(filters.get("project", self.controller.project_profile.name or "Current Project")))
+        self._set_combo_text(self.project_combo, str(filters.get("project", self.controller.project_profile.name or "当前项目")))
         self._set_combo_text(self.batch_combo, str(filters.get("batch", "")))
-        self._set_combo_text(self.view_mode_combo, str(filters.get("view_mode", "Engineering")))
+        self._set_combo_text(self.view_mode_combo, self._normalize_view_mode(str(filters.get("view_mode", "工程诊断"))))
 
         self.recent_status_value.setText(str(summary.get("recent_status", "--")))
         self.exportable_count_value.setText(str(summary.get("exportable_reports", "--")))
         self.attention_count_value.setText(str(summary.get("attention_count", "--")))
         self.last_generated_value.setText(str(summary.get("last_generated_at", "--")))
 
-        self._set_chip(self.summary_chips["recent_status"], "Run Ready", "success")
-        self._set_chip(self.summary_chips["exportable"], "Exportable", "accent")
+        self._set_chip(self.summary_chips["recent_status"], "运行就绪", "success")
+        self._set_chip(self.summary_chips["exportable"], "可导出", "accent")
         attention_tone = "warning" if int(summary.get("attention_count", 0)) > 0 else "success"
-        self._set_chip(self.summary_chips["attention"], "Review Needed" if attention_tone == "warning" else "Risk Controlled", attention_tone)
-        self._set_chip(self.summary_chips["generated"], "Updated", "accent")
+        self._set_chip(self.summary_chips["attention"], "需要复核" if attention_tone == "warning" else "风险受控", attention_tone)
+        self._set_chip(self.summary_chips["generated"], "已更新", "accent")
 
         selected_report = str(workspace.get("selected_report", "run_summary"))
         self._sync_tree(selected_report)
         report = workspace["reports"][selected_report]
-        view_mode = str(filters.get("view_mode", "Engineering"))
+        view_mode = self._normalize_view_mode(str(filters.get("view_mode", "工程诊断")))
         self._refresh_preview(report, view_mode, filters)
-        self._refresh_inner_inspector(report, workspace.get("export_status", "Not exported yet"), view_mode)
+        export_status = str(workspace.get("export_status", "尚未导出"))
+        self._refresh_inner_inspector(report, export_status, view_mode)
+        self._refresh_delivery_gate(workspace, report, export_status)
         self._refresh_batch_compare(workspace.get("batch_compare", {}))
         self._sanitize_visible_labels()
 
@@ -270,7 +274,7 @@ class ReportCenterPage(QWidget):
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
-        layout.addWidget(section_title("Report Filters", "Drive preview and export from the real project and run batches."))
+        layout.addWidget(section_title("报告筛选", "从真实项目与运行批次驱动预览、导出和交付检查。"))
         layout.addStretch(1)
 
         self.project_combo = QComboBox()
@@ -278,21 +282,21 @@ class ReportCenterPage(QWidget):
         self.batch_combo = QComboBox()
         self.batch_combo.setEditable(True)
         self.view_mode_combo = QComboBox()
-        self.view_mode_combo.addItems(["Operations", "Engineering", "Management"])
+        self.view_mode_combo.addItems(["操作汇总", "工程诊断", "管理汇报"])
 
-        layout.addWidget(QLabel("Project"))
+        layout.addWidget(QLabel("项目"))
         layout.addWidget(self.project_combo)
-        layout.addWidget(QLabel("Run Batch"))
+        layout.addWidget(QLabel("运行批次"))
         layout.addWidget(self.batch_combo)
-        layout.addWidget(QLabel("View"))
+        layout.addWidget(QLabel("视图"))
         layout.addWidget(self.view_mode_combo)
 
         buttons = [
-            ("Refresh", self._refresh_workspace, False),
-            ("Generate Report", self._generate_report, True),
-            ("Export Report", self._export_current_report, False),
-            ("Export Evidence", self._export_evidence, False),
-            ("Compare Batches", self._compare_batches, False),
+            ("刷新", self._refresh_workspace, False),
+            ("生成报告", self._generate_report, True),
+            ("导出报告", self._export_current_report, False),
+            ("导出证据包", self._export_evidence, False),
+            ("对比批次", self._compare_batches, False),
         ]
         for text, callback, primary in buttons:
             button = QPushButton(text)
@@ -325,7 +329,7 @@ class ReportCenterPage(QWidget):
             ("generated", "最近生成时间", self.last_generated_value),
         ]
         for index, (key, title, value) in enumerate(cards):
-            card = CardFrame()
+            card = CardFrame(muted=True, role="tile")
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
             card_layout.setSpacing(TOKENS.spacing_sm)
@@ -340,6 +344,80 @@ class ReportCenterPage(QWidget):
             card_layout.addWidget(tone_chip)
             layout.addWidget(card, index // 2, index % 2)
         return wrapper
+
+    def _build_delivery_gate_card(self) -> CardFrame:
+        card = CardFrame(role="cockpit")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_md)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.addWidget(section_title("交付门槛", "把交付前必须一致的状态压缩成一个检查矩阵。"))
+        header.addStretch(1)
+        self.delivery_gate_chip = chip("待生成", "warning")
+        header.addWidget(self.delivery_gate_chip)
+        layout.addLayout(header)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.delivery_gate_values: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
+        gate_items = [
+            ("report", "报告", "当前预览是否有真实内容"),
+            ("export", "导出", "是否可导出或已经导出"),
+            ("manifest", "清单", "交付清单是否落盘"),
+            ("network", "网络", "schema 与缺失字段"),
+            ("benchmark", "对标", "参考对标和失败字段"),
+            ("methods", "方法", "三族方法溯源闭合"),
+        ]
+        for index, (key, title, hint) in enumerate(gate_items):
+            grid.addWidget(self._delivery_gate_tile(key, title, hint), index // 2, index % 2)
+        layout.addLayout(grid)
+
+        next_card = CardFrame(muted=True, role="tile")
+        next_layout = QVBoxLayout(next_card)
+        next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        next_layout.setSpacing(TOKENS.spacing_xs)
+        next_title = QLabel("下一步")
+        next_title.setObjectName("metricLabel")
+        self.delivery_gate_next_value = QLabel("--")
+        self.delivery_gate_next_value.setObjectName("metricValue")
+        self.delivery_gate_next_value.setWordWrap(True)
+        self.delivery_gate_next_note = QLabel("--")
+        self.delivery_gate_next_note.setObjectName("subtitle")
+        self.delivery_gate_next_note.setWordWrap(True)
+        next_layout.addWidget(next_title)
+        next_layout.addWidget(self.delivery_gate_next_value)
+        next_layout.addWidget(self.delivery_gate_next_note)
+        layout.addWidget(next_card)
+        return card
+
+    def _delivery_gate_tile(self, key: str, title: str, hint: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        layout = QVBoxLayout(tile)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
+        top = QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        title_label = QLabel(_ui_safe_text(title))
+        title_label.setObjectName("metricLabel")
+        status_chip = chip("待检查", "warning")
+        top.addWidget(title_label)
+        top.addStretch(1)
+        top.addWidget(status_chip)
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setWordWrap(True)
+        note = QLabel(_ui_safe_text(hint))
+        note.setObjectName("subtitle")
+        note.setWordWrap(True)
+        layout.addLayout(top)
+        layout.addWidget(value)
+        layout.addWidget(note)
+        self.delivery_gate_values[key] = (value, note, status_chip)
+        return tile
 
     def _build_tree(self) -> None:
         root = QTreeWidgetItem(["报告中心目录"])
@@ -405,7 +483,7 @@ class ReportCenterPage(QWidget):
         self.preview_title_label.setText(_ui_safe_text(report.get("title", "Report Preview")))
         self.preview_source_label.setText(
             _ui_safe_text(
-                f"Source: {report.get('source', '--')}\nBatch: {filters.get('batch', '--')}  |  Time: {report.get('updated_at', '--')}"
+                f"来源：{report.get('source', '--')}\n批次：{filters.get('batch', '--')}  |  时间：{report.get('updated_at', '--')}"
             )
         )
 
@@ -424,7 +502,7 @@ class ReportCenterPage(QWidget):
         ys = np.array(plot_series, dtype=float) if plot_series else np.array([], dtype=float)
         self.preview_curve.setData(xs, ys)
         if is_benchmark_cockpit:
-            self.preview_plot_note.setText("Per-window pass/fail (1=pass, 0=fail)")
+            self.preview_plot_note.setText("逐窗口通过/失败（1=通过，0=失败）")
         else:
             self.preview_plot_note.setText(self._plot_note_for_mode(view_mode))
 
@@ -432,9 +510,9 @@ class ReportCenterPage(QWidget):
         rows = list(report.get("table_rows", []))
         is_eddypro_compare = str(report.get("report_key", "")) == "eddypro_compare"
         if not is_eddypro_compare and not is_benchmark_cockpit:
-            if view_mode == "Operations":
+            if view_mode == "操作汇总":
                 rows = rows[:3]
-            elif view_mode == "Management":
+            elif view_mode == "管理汇报":
                 rows = rows[:2]
         self.preview_table.setColumnCount(len(headers))
         self.preview_table.setHorizontalHeaderLabels([_ui_safe_text(header) for header in headers])
@@ -1161,6 +1239,221 @@ class ReportCenterPage(QWidget):
             comp_label.setWordWrap(True)
             self.conclusion_content.addWidget(comp_label)
 
+    def _refresh_delivery_gate(self, workspace: dict, report: dict, export_status: str) -> None:
+        reports = dict(workspace.get("reports", {}) or {})
+        summary = dict(workspace.get("summary", {}) or {})
+        file_values = self._delivery_file_values(reports)
+        benchmark_report = dict(reports.get("benchmark_cockpit", {}) or {})
+        method_report = dict(reports.get("method_provenance", {}) or {})
+
+        exportable_count = self._safe_int(summary.get("exportable_reports", 0))
+        report_ready = self._report_has_preview_payload(report) and exportable_count > 0
+        export_done = self._export_status_is_done(export_status)
+        manifest_path = self._first_file_value(file_values, ("manifest", "export_manifest"))
+        manifest_ready = bool(manifest_path) or "交付包已导出" in export_status
+
+        network = self._network_gate_summary(workspace, benchmark_report)
+        benchmark = self._benchmark_gate_summary(workspace, benchmark_report)
+        methods = self._method_gate_summary(method_report, file_values)
+
+        self._set_delivery_gate_tile(
+            "report",
+            "可预览" if report_ready else "待生成",
+            str(report.get("title", "当前报告")) if report_ready else "请先运行处理或生成报告。",
+            "success" if report_ready else "warning",
+        )
+        self._set_delivery_gate_tile(
+            "export",
+            "已导出" if export_done else ("可导出" if exportable_count > 0 else "待运行"),
+            f"状态：{export_status}",
+            "success" if export_done else ("accent" if exportable_count > 0 else "warning"),
+        )
+        self._set_delivery_gate_tile(
+            "manifest",
+            "已生成" if manifest_ready else "待导出",
+            manifest_path or "导出交付包后写入 manifest。",
+            "success" if manifest_ready else "warning",
+        )
+        self._set_delivery_gate_tile("network", network["value"], network["note"], network["tone"])
+        self._set_delivery_gate_tile("benchmark", benchmark["value"], benchmark["note"], benchmark["tone"])
+        self._set_delivery_gate_tile("methods", methods["value"], methods["note"], methods["tone"])
+
+        tones = [
+            "success" if report_ready else "warning",
+            "success" if export_done else ("accent" if exportable_count > 0 else "warning"),
+            "success" if manifest_ready else "warning",
+            network["tone"],
+            benchmark["tone"],
+            methods["tone"],
+        ]
+        success_count = sum(1 for tone in tones if tone == "success")
+        if success_count >= 5:
+            gate_text, gate_tone = "可交付", "success"
+        elif report_ready or exportable_count > 0:
+            gate_text, gate_tone = "待复核", "accent"
+        else:
+            gate_text, gate_tone = "待生成", "warning"
+        self._set_chip(self.delivery_gate_chip, gate_text, gate_tone)
+
+        next_action, next_note = self._delivery_next_action(
+            report_ready=report_ready,
+            exportable_count=exportable_count,
+            export_done=export_done,
+            manifest_ready=manifest_ready,
+            network_ready=network["tone"] == "success",
+            methods_ready=methods["tone"] == "success",
+            benchmark_ready=benchmark["tone"] == "success",
+        )
+        self.delivery_gate_next_value.setText(_ui_safe_text(next_action))
+        self.delivery_gate_next_note.setText(_ui_safe_text(next_note))
+
+    def _set_delivery_gate_tile(self, key: str, value: str, note: str, tone: str) -> None:
+        value_label, note_label, status_chip = self.delivery_gate_values[key]
+        value_label.setText(_ui_safe_text(value))
+        note_label.setText(_ui_safe_text(note))
+        status_text = {"success": "通过", "accent": "可用", "warning": "待复核"}.get(tone, "待复核")
+        self._set_chip(status_chip, status_text, tone)
+
+    def _delivery_next_action(
+        self,
+        *,
+        report_ready: bool,
+        exportable_count: int,
+        export_done: bool,
+        manifest_ready: bool,
+        network_ready: bool,
+        methods_ready: bool,
+        benchmark_ready: bool,
+    ) -> tuple[str, str]:
+        if exportable_count <= 0:
+            return "运行处理", "还没有可导出的真实运行结果。"
+        if not report_ready:
+            return "生成报告", "当前没有可预览报告，先运行处理或生成报告中心内容。"
+        if not export_done:
+            return "导出交付包", "报告已可用，下一步把 manifest、证据和网络校验写入交付目录。"
+        if not manifest_ready:
+            return "导出交付包", "当前导出状态存在，但尚未发现可追溯 manifest。"
+        if not network_ready:
+            return "补网络字段", "请检查 schema_target、validation_status 和 missing_fields。"
+        if not methods_ready:
+            return "检查方法溯源", "Footprint、不确定度、谱修正方法 rollup 还未闭合。"
+        if not benchmark_ready:
+            return "检查 Benchmark", "参考对标尚未激活或缺少通过率摘要。"
+        return "交付归档", "交付链路已闭合，可以归档或打包给审阅者。"
+
+    def _delivery_file_values(self, reports: dict) -> dict[str, str]:
+        values: dict[str, str] = {}
+        for payload in reports.values():
+            if not isinstance(payload, dict):
+                continue
+            for key, value in dict(payload.get("file_info", {}) or {}).items():
+                text = str(value or "").strip()
+                if text:
+                    values.setdefault(str(key), text)
+        return values
+
+    def _first_file_value(self, values: dict[str, str], keywords: tuple[str, ...]) -> str:
+        for key, value in values.items():
+            lower = key.lower()
+            if any(keyword in lower for keyword in keywords):
+                return value
+        return ""
+
+    def _report_has_preview_payload(self, report: dict) -> bool:
+        return bool(
+            report.get("title")
+            and (
+                report.get("metrics")
+                or report.get("table_rows")
+                or report.get("plot_series")
+                or report.get("conclusions")
+            )
+        )
+
+    def _network_gate_summary(self, workspace: dict, benchmark_report: dict) -> dict[str, str]:
+        network_cfg = dict(workspace.get("network_output", {}) or {})
+        schema_target = str(
+            self._table_value(benchmark_report, "network.schema_target")
+            or network_cfg.get("schema_target")
+            or "--"
+        )
+        validation_status = str(self._table_value(benchmark_report, "network.validation_status") or "待校验")
+        missing_text = str(self._table_value(benchmark_report, "network.missing_fields") or "待校验")
+        missing_ok = missing_text.strip().lower() in {"", "--", "无", "none", "[]", "0"}
+        status_lower = validation_status.strip().lower()
+        validated = any(token in status_lower for token in ("valid", "pass", "ok", "ready", "success", "通过"))
+        tone = "success" if validated and missing_ok else ("accent" if schema_target != "--" and missing_ok else "warning")
+        return {
+            "value": schema_target,
+            "note": f"校验：{validation_status}；缺失：{missing_text}",
+            "tone": tone,
+        }
+
+    def _benchmark_gate_summary(self, workspace: dict, benchmark_report: dict) -> dict[str, str]:
+        bm_cfg = dict(workspace.get("benchmark", {}) or {})
+        status = str(self._table_value(benchmark_report, "status") or bm_cfg.get("status") or "inactive")
+        reference_id = str(self._table_value(benchmark_report, "reference_id") or bm_cfg.get("reference_id") or "--")
+        pass_rate = str(self._table_value(benchmark_report, "pass_rate") or "--")
+        failed_fields = str(self._table_value(benchmark_report, "failed_fields") or "待运行")
+        status_lower = status.strip().lower()
+        active = status_lower not in {"", "--", "inactive", "no_rp_result", "not_requested"}
+        tone = "success" if active and pass_rate != "--" else ("accent" if reference_id != "--" else "warning")
+        return {
+            "value": reference_id if reference_id != "--" else status,
+            "note": f"状态：{status}；通过率：{pass_rate}；失败字段：{failed_fields}",
+            "tone": tone,
+        }
+
+    def _method_gate_summary(self, method_report: dict, file_values: dict[str, str]) -> dict[str, str]:
+        footprint = self._metric_value(method_report, "Footprint")
+        uncertainty = self._metric_value(method_report, "不确定度")
+        spectral = self._metric_value(method_report, "谱修正")
+        method_rollup = self._first_file_value(file_values, ("method rollup", "method_rollup", "方法"))
+        ready = bool(footprint and uncertainty and spectral)
+        value = "已汇总" if ready else "待生成"
+        methods = " / ".join(item for item in (footprint, uncertainty, spectral) if item) or "暂无方法摘要"
+        note = f"{methods}" + (f"；Artifact：{method_rollup}" if method_rollup else "")
+        return {"value": value, "note": note, "tone": "success" if ready else "warning"}
+
+    def _table_value(self, report: dict, key: str) -> str:
+        for row in list(report.get("table_rows", []) or []):
+            if len(row) >= 2 and str(row[0]) == key:
+                return str(row[1])
+        return ""
+
+    def _metric_value(self, report: dict, title: str) -> str:
+        for metric_title, value in list(report.get("metrics", []) or []):
+            if str(metric_title) == title:
+                text = str(value or "").strip()
+                return "" if text in {"--", "None"} else text
+        return ""
+
+    def _safe_int(self, value: object) -> int:
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return 0
+
+    def _normalize_view_mode(self, value: str) -> str:
+        mapping = {
+            "operations": "操作汇总",
+            "operation": "操作汇总",
+            "操作汇总": "操作汇总",
+            "engineering": "工程诊断",
+            "engineer": "工程诊断",
+            "工程诊断": "工程诊断",
+            "management": "管理汇报",
+            "manager": "管理汇报",
+            "管理汇报": "管理汇报",
+        }
+        return mapping.get(value.strip().lower(), mapping.get(value.strip(), "工程诊断"))
+
+    def _export_status_is_done(self, export_status: str) -> bool:
+        text = export_status.strip().lower()
+        if not text or text in {"not_exported", "not exported yet", "尚未导出"}:
+            return False
+        return not any(token in text for token in ("not_exported", "not exported", "尚未导出", "未导出"))
+
     def _refresh_inner_inspector(self, report: dict, export_status: str, view_mode: str) -> None:
         self._clear_layout(self.export_content)
         export_status_label = QLabel(_ui_safe_text(f"当前状态：{export_status}"))
@@ -1207,14 +1500,14 @@ class ReportCenterPage(QWidget):
             self.batch_diff_value.setText(
                 " / ".join(
                     [
-                        f"Valid {int(metric_deltas.get('valid_window_delta', 0.0)):+d}",
-                        f"Lag {metric_deltas.get('average_lag_delta', 0.0):+.2f}s",
+                        f"有效窗口 {int(metric_deltas.get('valid_window_delta', 0.0)):+d}",
+                        f"滞后 {metric_deltas.get('average_lag_delta', 0.0):+.2f}s",
                         f"QC {metric_deltas.get('good_ratio_delta', 0.0):+.1%}",
                     ]
                 )
             )
         else:
-            self.batch_diff_value.setText(_ui_safe_text(f"{len(summary)} changes"))
+            self.batch_diff_value.setText(_ui_safe_text(f"{len(summary)} 项变化"))
 
         self._clear_layout(self.batch_summary_layout)
         for text in summary[:4]:
@@ -1246,7 +1539,7 @@ class ReportCenterPage(QWidget):
         return base or ["当前报告暂无额外结论。"]
 
     def _inspector_card(self, title: str, subtitle: str) -> tuple[CardFrame, QVBoxLayout]:
-        card = CardFrame(muted=True)
+        card = CardFrame(muted=True, role="panel")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
@@ -1257,7 +1550,7 @@ class ReportCenterPage(QWidget):
         return card, content
 
     def _metric_card(self, title: str, value_widget: QLabel) -> CardFrame:
-        card = CardFrame()
+        card = CardFrame(muted=True, role="tile")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_xs)
@@ -1271,7 +1564,7 @@ class ReportCenterPage(QWidget):
 
     def _refresh_filter_options(self, workspace: dict) -> None:
         filters = workspace.get("filters", {})
-        project_name = str(filters.get("project") or self.controller.project_profile.name or "Current Project")
+        project_name = str(filters.get("project") or self.controller.project_profile.name or "当前项目")
         batch_lookup = workspace.get("batch_lookup", {})
         batch_labels = list(batch_lookup.keys())
         selected_batch = str(filters.get("batch", "")).strip()
