@@ -34,6 +34,14 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.inspector_stack.count() == 4
         assert page.inspector_stack.currentWidget() is page.export_card
         assert page.inspector_switches["export"].isChecked() is True
+        assert page.empty_state_card.property("cardRole") == "cockpit"
+        assert page.empty_state_card.isHidden() is False
+        assert page.empty_state_chip.text() == "待运行"
+        assert "尚未发现可导出的真实运行结果" in page.empty_state_gap_label.text()
+        assert page.empty_state_action_buttons["运行处理"].isEnabled() is True
+        assert page.empty_state_action_buttons["打开验证包"].isEnabled() is True
+        assert page.empty_state_action_buttons["生成报告"].isEnabled() is False
+        assert page.empty_state_action_buttons["导出"].isEnabled() is False
         assert set(page.delivery_gate_values) == {
             "report",
             "export",
@@ -139,6 +147,7 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_gate_values["methods"][0].text() == "已汇总"
         assert page.delivery_gate_next_value.text() == "交付归档"
         assert page.preview_table.rowCount() == 2
+        assert page.empty_state_card.isHidden() is True
     finally:
         page.deleteLater()
         controller.shutdown()

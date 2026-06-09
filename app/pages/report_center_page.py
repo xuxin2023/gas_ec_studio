@@ -174,6 +174,8 @@ class ReportCenterPage(QWidget):
         self.conclusion_content.setSpacing(TOKENS.spacing_sm)
         conclusion_layout.addLayout(self.conclusion_content)
         center_layout.addWidget(self.conclusion_card)
+        self.empty_state_card = self._build_empty_state_card()
+        center_layout.addWidget(self.empty_state_card)
         center_layout.addStretch(1)
 
         self.delivery_rail = CardFrame(muted=True, role="rail")
@@ -299,6 +301,7 @@ class ReportCenterPage(QWidget):
         export_status = str(workspace.get("export_status", "尚未导出"))
         self._refresh_inner_inspector(report, export_status, view_mode)
         self._refresh_delivery_gate(workspace, report, export_status)
+        self._refresh_empty_state(workspace, report, export_status)
         self._refresh_batch_compare(workspace.get("batch_compare", {}))
         self._sanitize_visible_labels()
 
@@ -377,6 +380,71 @@ class ReportCenterPage(QWidget):
             card_layout.addWidget(tone_chip)
             layout.addWidget(card, index // 2, index % 2)
         return wrapper
+
+    def _build_empty_state_card(self) -> CardFrame:
+        card = CardFrame(muted=True, role="cockpit")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
+        layout.setSpacing(TOKENS.spacing_md)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.addWidget(section_title("启动路线", "还没有真实运行结果时，直接从这里闭合采集、报告、导出和验证包。"))
+        header.addStretch(1)
+        self.empty_state_chip = chip("待运行", "warning")
+        header.addWidget(self.empty_state_chip)
+        layout.addLayout(header)
+
+        self.empty_state_gap_label = QLabel("--")
+        self.empty_state_gap_label.setObjectName("subtitle")
+        self.empty_state_gap_label.setWordWrap(True)
+        layout.addWidget(self.empty_state_gap_label)
+
+        route_grid = QGridLayout()
+        route_grid.setContentsMargins(0, 0, 0, 0)
+        route_grid.setHorizontalSpacing(TOKENS.spacing_md)
+        route_grid.setVerticalSpacing(TOKENS.spacing_md)
+        actions = [
+            ("1", "运行 EC 处理", "从当前高频缓存生成真实窗口和 RP 结果。", "运行处理", self._run_ec_processing_from_report_center),
+            ("2", "生成报告", "把最新运行结果同步到报告中心和右侧交付门槛。", "生成报告", self._generate_report),
+            ("3", "导出交付包", "写出报告、manifest、网络校验和证据文件。", "导出", self._export_current_report),
+            ("4", "检查验证包", "打开验证包页，注册或审计行业参考 raw-to-final 证据。", "打开验证包", self._open_fixture_pack_report),
+        ]
+        self.empty_state_action_buttons: dict[str, QPushButton] = {}
+        for index, (number, title, note, button_text, callback) in enumerate(actions):
+            route_grid.addWidget(
+                self._empty_state_action_tile(number, title, note, button_text, callback),
+                index // 2,
+                index % 2,
+            )
+        layout.addLayout(route_grid)
+        return card
+
+    def _empty_state_action_tile(
+        self,
+        number: str,
+        title: str,
+        note: str,
+        button_text: str,
+        callback,
+    ) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        tile_layout.setSpacing(TOKENS.spacing_sm)
+        label = QLabel(_ui_safe_text(f"{number}. {title}"))
+        label.setObjectName("metricValue")
+        label.setWordWrap(True)
+        note_label = QLabel(_ui_safe_text(note))
+        note_label.setObjectName("subtitle")
+        note_label.setWordWrap(True)
+        button = QPushButton(_ui_safe_text(button_text))
+        button.clicked.connect(callback)
+        self.empty_state_action_buttons[button_text] = button
+        tile_layout.addWidget(label)
+        tile_layout.addWidget(note_label)
+        tile_layout.addWidget(button)
+        return tile
 
     def _build_delivery_gate_card(self) -> CardFrame:
         card = CardFrame(role="cockpit")
@@ -495,6 +563,11 @@ class ReportCenterPage(QWidget):
         result = self.controller.refresh_report_center()
         self._show_info("已刷新", result["message"])
 
+    def _run_ec_processing_from_report_center(self) -> None:
+        result = self.controller.run_ec_processing()
+        self._show_info("EC 处理", result.get("message", result))
+        self.refresh()
+
     def _generate_report(self) -> None:
         result = self.controller.generate_report_center_report()
         self._show_info("报告已生成", result["message"])
@@ -510,6 +583,9 @@ class ReportCenterPage(QWidget):
     def _compare_batches(self) -> None:
         result = self.controller.compare_report_batches()
         self._show_info("批次对比已更新", result["message"])
+
+    def _open_fixture_pack_report(self) -> None:
+        self.controller.set_report_nav_section("fixture_pack")
 
     def _refresh_preview(self, report: dict, view_mode: str, filters: dict) -> None:
         self._set_chip(self.preview_mode_chip, view_mode, "accent")
@@ -1492,6 +1568,30 @@ class ReportCenterPage(QWidget):
         if not text or text in {"not_exported", "not exported yet", "尚未导出"}:
             return False
         return not any(token in text for token in ("not_exported", "not exported", "尚未导出", "未导出"))
+
+    def _refresh_empty_state(self, workspace: dict, report: dict, export_status: str) -> None:
+        summary = dict(workspace.get("summary", {}) or {})
+        filters = dict(workspace.get("filters", {}) or {})
+        exportable_count = self._safe_int(summary.get("exportable_reports", 0))
+        has_real_result = exportable_count > 0
+        self.empty_state_card.setVisible(not has_real_result)
+        self._set_chip(self.empty_state_chip, "已生成" if has_real_result else "待运行", "success" if has_real_result else "warning")
+
+        selected_title = str(report.get("title", "当前报告") or "当前报告")
+        batch_label = str(filters.get("batch", "") or "--")
+        if has_real_result:
+            gap_text = f"已发现 {exportable_count} 个可导出报告；当前批次：{batch_label}；导出状态：{export_status}。"
+        else:
+            gap_text = (
+                f"当前页面：{selected_title}；尚未发现可导出的真实运行结果。"
+                "建议先运行 EC 处理；生成真实窗口后，报告与导出动作会自动启用。"
+            )
+        self.empty_state_gap_label.setText(_ui_safe_text(gap_text))
+
+        for key in ("生成报告", "导出"):
+            button = self.empty_state_action_buttons.get(key)
+            if button is not None:
+                button.setEnabled(has_real_result)
 
     def _show_inspector_section(self, section: str) -> None:
         card = self.inspector_sections.get(section)
