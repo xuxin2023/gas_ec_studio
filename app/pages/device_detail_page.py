@@ -41,7 +41,7 @@ class DeviceDetailPage(QWidget):
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
 
-        self.header_card = CardFrame()
+        self.header_card = CardFrame(role="command")
         header_layout = QHBoxLayout(self.header_card)
         header_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         header_layout.setSpacing(TOKENS.spacing_md)
@@ -76,7 +76,7 @@ class DeviceDetailPage(QWidget):
         header_layout.addWidget(self.engineer_btn)
         layout.addWidget(self.header_card)
 
-        self.summary_card = CardFrame()
+        self.summary_card = CardFrame(role="cockpit")
         self.summary_layout = QHBoxLayout(self.summary_card)
         self.summary_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         self.summary_layout.setSpacing(TOKENS.spacing_md)
@@ -90,7 +90,7 @@ class DeviceDetailPage(QWidget):
             ("last_frame", "最近有效帧"),
             ("data_state", "数据状态"),
         ):
-            card = CardFrame(muted=True)
+            card = CardFrame(muted=True, role="tile")
             inner = QVBoxLayout(card)
             inner.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
             label = QLabel(title)
@@ -104,8 +104,12 @@ class DeviceDetailPage(QWidget):
             self.summary_layout.addWidget(card, 1)
         layout.addWidget(self.summary_card)
 
+        body = QHBoxLayout()
+        body.setSpacing(TOKENS.spacing_md)
+        layout.addLayout(body, 1)
+
         self.tabs = QTabWidget()
-        layout.addWidget(self.tabs, 1)
+        body.addWidget(self.tabs, 1)
 
         self.overview_tab = QWidget()
         self.config_tab = QWidget()
@@ -115,6 +119,11 @@ class DeviceDetailPage(QWidget):
         self.tabs.addTab(self.config_tab, "配置")
         self.tabs.addTab(self.coeff_tab, "系数")
         self.tabs.addTab(self.diagnostic_tab, "诊断")
+
+        self.device_ops_rail = self._build_device_ops_rail()
+        self.device_ops_rail.setMinimumWidth(300)
+        self.device_ops_rail.setMaximumWidth(360)
+        body.addWidget(self.device_ops_rail, 0)
 
         self._build_overview_tab()
         self._build_config_tab()
@@ -135,6 +144,7 @@ class DeviceDetailPage(QWidget):
         if entry is None:
             self.page_title.setText("单设备详情")
             self.page_subtitle.setText("请先在设备中心选择一台设备。")
+            self._refresh_device_ops_rail(None, None)
             return
 
         snapshot = self.controller.device_detail_snapshot(entry.config.uid)
@@ -220,6 +230,147 @@ class DeviceDetailPage(QWidget):
         self.raw_frame_group.setVisible(engineer)
         self.transaction_group.setVisible(engineer)
         self.parsed_result_title.setText("解析结果" if engineer else "业务摘要")
+        self._refresh_device_ops_rail(entry, snapshot)
+
+    def _build_device_ops_rail(self) -> CardFrame:
+        card = CardFrame(muted=True, role="rail")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_md)
+        layout.addWidget(section_title("设备作战台", "单台分析仪的链路、遥测、配置来源和下一步动作保持常驻。"))
+        self.device_ops_chip = chip("待选择", "warning")
+        layout.addWidget(self.device_ops_chip)
+        self.device_ops_values: dict[str, tuple[QLabel, QLabel]] = {}
+        for key, title in (
+            ("link", "链路"),
+            ("telemetry", "遥测"),
+            ("primary", "主分析仪"),
+            ("trace", "微量气体"),
+            ("diagnostics", "诊断"),
+        ):
+            layout.addWidget(self._device_ops_tile(key, title))
+
+        next_card = CardFrame(muted=True, role="tile")
+        next_layout = QVBoxLayout(next_card)
+        next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        next_layout.setSpacing(TOKENS.spacing_xs)
+        label = QLabel("下一步")
+        label.setObjectName("metricLabel")
+        self.device_ops_next_value = QLabel("--")
+        self.device_ops_next_value.setObjectName("metricValue")
+        self.device_ops_next_value.setWordWrap(True)
+        self.device_ops_next_note = QLabel("--")
+        self.device_ops_next_note.setObjectName("subtitle")
+        self.device_ops_next_note.setWordWrap(True)
+        next_layout.addWidget(label)
+        next_layout.addWidget(self.device_ops_next_value)
+        next_layout.addWidget(self.device_ops_next_note)
+        layout.addWidget(next_card)
+        layout.addStretch(1)
+        return card
+
+    def _device_ops_tile(self, key: str, title: str) -> CardFrame:
+        card = CardFrame(muted=True, role="tile")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
+        label = QLabel(title)
+        label.setObjectName("metricLabel")
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setWordWrap(True)
+        note = QLabel("--")
+        note.setObjectName("subtitle")
+        note.setWordWrap(True)
+        layout.addWidget(label)
+        layout.addWidget(value)
+        layout.addWidget(note)
+        self.device_ops_values[key] = (value, note)
+        return card
+
+    def _refresh_device_ops_rail(self, entry, snapshot: dict | None) -> None:
+        if not hasattr(self, "device_ops_values"):
+            return
+        if entry is None or snapshot is None:
+            self._set_device_ops_chip("待选择", "warning")
+            for value, note in self.device_ops_values.values():
+                value.setText("--")
+                note.setText("请先从设备中心选择一台设备。")
+            self.device_ops_next_value.setText("选择设备")
+            self.device_ops_next_note.setText("回到设备中心选择目标，再进入配置、采集或诊断。")
+            return
+
+        runtime = entry.runtime
+        latest_numeric = snapshot.get("latest_numeric")
+        latest_frame = snapshot.get("latest_frame")
+        primary_cfg = dict(snapshot.get("primary_analyzer_config", {}) or {})
+        trace_cfg = dict(snapshot.get("trace_gas_config", {}) or {})
+        profile = dict(snapshot.get("gas_analyzer_profile", {}) or {})
+        transaction_count = len(snapshot.get("transactions", []) or [])
+        suggestion_count = len(snapshot.get("suggestions", []) or [])
+        raw_frame_count = self.raw_frame_list.count() if hasattr(self, "raw_frame_list") else 0
+
+        if runtime.connected and latest_numeric is not None:
+            chip_text, tone = "可采集", "success"
+        elif runtime.connected:
+            chip_text, tone = "等数据", "accent"
+        else:
+            chip_text, tone = "待连接", "warning"
+        self._set_device_ops_chip(chip_text, tone)
+
+        self.device_ops_values["link"][0].setText("在线" if runtime.connected else "离线")
+        self.device_ops_values["link"][1].setText(
+            f"{entry.config.port} · ID {entry.config.device_id} · MODE{runtime.mode} · {entry.config.baudrate} bps"
+        )
+
+        self.device_ops_values["telemetry"][0].setText(f"{runtime.ftd_hz} Hz")
+        last_frame_text = runtime.last_frame_time.strftime("%H:%M:%S") if runtime.last_frame_time else "暂无有效帧"
+        signal_text = "有数值帧" if latest_numeric is not None else "等待数值帧"
+        self.device_ops_values["telemetry"][1].setText(
+            f"{last_frame_text} · {signal_text} · raw={raw_frame_count}"
+        )
+
+        primary_enabled = "enabled" if primary_cfg.get("enabled", True) else "disabled"
+        primary_profile = str(primary_cfg.get("profile_id") or profile.get("profile_id") or entry.config.analyzer_profile)
+        primary_calibration = str(primary_cfg.get("calibration_profile_id") or "--")
+        self.device_ops_values["primary"][0].setText(primary_profile)
+        self.device_ops_values["primary"][1].setText(f"{primary_enabled} · calibration={primary_calibration}")
+
+        trace_enabled = "enabled" if trace_cfg.get("enabled", False) else "disabled"
+        trace_gas = str(trace_cfg.get("gas") or "ch4").upper()
+        trace_profile = str(trace_cfg.get("coefficient_profile_id") or "--")
+        self.device_ops_values["trace"][0].setText(f"{trace_gas} {trace_enabled}")
+        self.device_ops_values["trace"][1].setText(f"profile={trace_profile}")
+
+        frame_status = "parsed" if latest_frame and getattr(latest_frame, "parsed", None) else "raw-only" if latest_frame else "no-frame"
+        self.device_ops_values["diagnostics"][0].setText(frame_status)
+        self.device_ops_values["diagnostics"][1].setText(
+            f"transactions={transaction_count} · suggestions={suggestion_count} · view={self.controller.view_mode}"
+        )
+
+        if not runtime.connected:
+            next_value = "连接设备"
+            next_note = "先建立链路，再读取一帧确认协议和数值字段。"
+        elif latest_numeric is None:
+            next_value = "读取一帧"
+            next_note = "设备在线但还没有数值帧，建议先做单帧读取或进入实时采集。"
+        elif primary_enabled != "enabled":
+            next_value = "启用主分析仪"
+            next_note = "主 CO2/H2O 诊断未启用时，后续通量质量门控会缺少设备级依据。"
+        elif trace_enabled == "enabled":
+            next_value = "进入实时采集"
+            next_note = "主分析仪与微量气体路径已显式配置，可查看实时趋势并继续批处理。"
+        else:
+            next_value = "复核配置"
+            next_note = "基础采集已就绪，可按需要补微量气体或进入实时采集。"
+        self.device_ops_next_value.setText(next_value)
+        self.device_ops_next_note.setText(next_note)
+
+    def _set_device_ops_chip(self, text: str, tone: str) -> None:
+        self.device_ops_chip.setText(text)
+        self.device_ops_chip.setProperty("chipTone", tone)
+        self.device_ops_chip.style().unpolish(self.device_ops_chip)
+        self.device_ops_chip.style().polish(self.device_ops_chip)
 
     def _build_overview_tab(self) -> None:
         layout = QVBoxLayout(self.overview_tab)
@@ -242,7 +393,7 @@ class DeviceDetailPage(QWidget):
         metric_row = QHBoxLayout()
         self.overview_metrics: dict[str, QLabel] = {}
         for key, title in (("co2", "CO2"), ("h2o", "H2O"), ("pressure", "压力")):
-            card = CardFrame(muted=True)
+            card = CardFrame(muted=True, role="tile")
             inner = QVBoxLayout(card)
             inner.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
             label = QLabel(title)
@@ -255,21 +406,24 @@ class DeviceDetailPage(QWidget):
             metric_row.addWidget(card, 1)
         layout.addLayout(metric_row)
 
-        advice_card = CardFrame()
+        advice_card = CardFrame(role="panel")
         advice_layout = QVBoxLayout(advice_card)
         advice_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         advice_layout.setSpacing(TOKENS.spacing_md)
         advice_layout.addWidget(section_title("建议操作", "优先使用业务语义提示现场人员下一步该做什么。"))
         self.suggestion_list = QListWidget()
+        self.suggestion_list.setMaximumHeight(220)
         advice_layout.addWidget(self.suggestion_list)
+        advice_card.setMaximumHeight(340)
         layout.addWidget(advice_card)
+        layout.addStretch(1)
 
     def _build_config_tab(self) -> None:
         layout = QVBoxLayout(self.config_tab)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
 
-        config_card = CardFrame()
+        config_card = CardFrame(role="command")
         card_layout = QVBoxLayout(config_card)
         card_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         card_layout.setSpacing(TOKENS.spacing_md)
@@ -540,7 +694,7 @@ class DeviceDetailPage(QWidget):
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
 
-        coeff_card = CardFrame()
+        coeff_card = CardFrame(role="panel")
         coeff_layout = QVBoxLayout(coeff_card)
         coeff_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         coeff_layout.setSpacing(TOKENS.spacing_md)
@@ -577,7 +731,7 @@ class DeviceDetailPage(QWidget):
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
 
-        self.raw_frame_group = CardFrame()
+        self.raw_frame_group = CardFrame(role="panel")
         raw_layout = QVBoxLayout(self.raw_frame_group)
         raw_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         raw_layout.setSpacing(TOKENS.spacing_md)
@@ -596,7 +750,7 @@ class DeviceDetailPage(QWidget):
         self.raw_frame_text.setReadOnly(True)
         raw_layout.addWidget(self.raw_frame_text)
 
-        self.transaction_group = CardFrame(muted=True)
+        self.transaction_group = CardFrame(muted=True, role="rail")
         tx_layout = QVBoxLayout(self.transaction_group)
         tx_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         tx_layout.setSpacing(TOKENS.spacing_md)
