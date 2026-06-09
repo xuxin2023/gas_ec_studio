@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.studio import StudioController
-from app.theme import CardFrame, TOKENS, section_title
+from app.theme import CardFrame, PLOT_SERIES_COLORS, TOKENS, configure_plot_theme, section_title
 
 
 class RealtimePage(QWidget):
@@ -190,13 +190,13 @@ class RealtimePage(QWidget):
         self._configure_plot(self.co2_plot, "CO2 (ppm)")
         self._configure_plot(self.h2o_plot, "H2O (mmol)")
         self._configure_plot(self.pressure_plot, "Pressure (kPa)", show_bottom=True)
-        self.co2_curve = self.co2_plot.plot(pen=pg.mkPen("#2563eb", width=2.0))
-        self.h2o_curve = self.h2o_plot.plot(pen=pg.mkPen("#0f766e", width=2.0))
-        self.pressure_curve = self.pressure_plot.plot(pen=pg.mkPen("#475569", width=2.0))
+        self.co2_curve = self.co2_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.1))
+        self.h2o_curve = self.h2o_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["secondary"], width=2.1))
+        self.pressure_curve = self.pressure_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["slate"], width=2.0))
 
         self.crosshair_lines = {}
         for key, plot in (("co2", self.co2_plot), ("h2o", self.h2o_plot), ("pressure", self.pressure_plot)):
-            line = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen("#94a3b8", width=1))
+            line = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen(PLOT_SERIES_COLORS["muted"], width=1))
             plot.addItem(line, ignoreBounds=True)
             self.crosshair_lines[key] = line
 
@@ -239,19 +239,9 @@ class RealtimePage(QWidget):
         return card
 
     def _configure_plot(self, plot: pg.PlotItem, label: str, *, show_bottom: bool = False) -> None:
-        plot.showGrid(x=True, y=True, alpha=0.15)
-        plot.setLabel("left", label)
-        if show_bottom:
-            plot.setLabel("bottom", "时间 (秒)")
-        else:
-            plot.hideAxis("bottom")
-        plot.getAxis("left").setTextPen("#607086")
-        plot.getAxis("left").setPen("#cfd9e6")
-        plot.getAxis("bottom").setTextPen("#607086")
-        plot.getAxis("bottom").setPen("#cfd9e6")
+        configure_plot_theme(plot, left_label=label, bottom_label="时间 (秒)", show_bottom=show_bottom)
         plot.setDownsampling(mode="peak")
         plot.setClipToView(True)
-        plot.getViewBox().setMouseEnabled(x=True, y=True)
 
     def _refresh_device_selector(self) -> None:
         current_uid = self.controller.selected_device_uid

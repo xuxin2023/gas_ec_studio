@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QLabel, QVBoxLayout, QWidget
@@ -46,6 +47,16 @@ class DesignTokens:
 
 
 TOKENS = DesignTokens()
+
+PLOT_SERIES_COLORS = {
+    "primary": TOKENS.color_accent,
+    "secondary": "#3c8f6f",
+    "muted": "#8fa2b2",
+    "warning": TOKENS.color_copper,
+    "danger": TOKENS.color_error,
+    "violet": "#6b5aa8",
+    "slate": "#475569",
+}
 
 
 def build_stylesheet() -> str:
@@ -391,6 +402,42 @@ def apply_app_theme(app: QWidget) -> None:
     palette.setColor(QPalette.Text, QColor(TOKENS.color_text))
     palette.setColor(QPalette.ButtonText, QColor(TOKENS.color_text))
     app.setPalette(palette)
+
+
+def configure_plot_theme(
+    plot: Any,
+    *,
+    left_label: str = "",
+    bottom_label: str = "",
+    show_bottom: bool = True,
+    grid_alpha: float = 0.13,
+) -> None:
+    """Apply the desktop cockpit plot language to pyqtgraph plot widgets/items."""
+    if hasattr(plot, "setBackground"):
+        plot.setBackground("transparent")
+    if hasattr(plot, "showGrid"):
+        plot.showGrid(x=True, y=True, alpha=grid_alpha)
+    if left_label and hasattr(plot, "setLabel"):
+        plot.setLabel("left", left_label)
+    if show_bottom and bottom_label and hasattr(plot, "setLabel"):
+        plot.setLabel("bottom", bottom_label)
+    elif not show_bottom and hasattr(plot, "hideAxis"):
+        plot.hideAxis("bottom")
+
+    for axis_name in ("left", "bottom"):
+        if not hasattr(plot, "getAxis"):
+            continue
+        axis = plot.getAxis(axis_name)
+        axis.setTextPen(TOKENS.color_text_muted)
+        axis.setPen(TOKENS.color_border)
+        axis.setStyle(tickTextOffset=8, autoExpandTextSpace=True)
+
+    if hasattr(plot, "setMenuEnabled"):
+        plot.setMenuEnabled(False)
+    if hasattr(plot, "getViewBox"):
+        view_box = plot.getViewBox()
+        view_box.setDefaultPadding(0.04)
+        view_box.setMouseEnabled(x=True, y=True)
 
 
 class CardFrame(QFrame):

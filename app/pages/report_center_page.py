@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.studio import StudioController
-from app.theme import CardFrame, TOKENS, chip, section_title
+from app.theme import CardFrame, PLOT_SERIES_COLORS, TOKENS, chip, configure_plot_theme, section_title
 from app.ui_text import ui_safe_text as _ui_safe_text
 
 
@@ -143,11 +143,8 @@ class ReportCenterPage(QWidget):
         content_layout.setSpacing(TOKENS.spacing_md)
         content_layout.addWidget(section_title("图表或表格预览", "让结果预览像报告，而不是文件清单。"))
         self.preview_plot = pg.PlotWidget()
-        self.preview_plot.setBackground("transparent")
-        self.preview_plot.showGrid(x=True, y=True, alpha=0.15)
-        self.preview_plot.setLabel("left", "指标")
-        self.preview_plot.setLabel("bottom", "序列")
-        self.preview_curve = self.preview_plot.plot(pen=pg.mkPen("#2b6cbf", width=2.2))
+        configure_plot_theme(self.preview_plot, left_label="指标", bottom_label="序列")
+        self.preview_curve = self.preview_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.2))
         content_layout.addWidget(self.preview_plot, 1)
         self.preview_table = QTableWidget(0, 3)
         self.preview_table.setEditTriggers(QAbstractItemView.NoEditTriggers)

@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.studio import StudioController
-from app.theme import CardFrame, TOKENS, chip, section_title
+from app.theme import CardFrame, PLOT_SERIES_COLORS, TOKENS, chip, configure_plot_theme, section_title
 from models.spectral_models import WindowSpectralResult
 
 
@@ -381,7 +381,7 @@ class SpectralQCPage(QWidget):
 
         plot_card = self._plot_card("lag 的 covariance 曲线", "峰值是否单峰、是否偏离预期，决定 lag 是否可信。")
         self.lag_plot = self._create_plot("归一化协方差", "时滞 (s)")
-        self.lag_curve = self.lag_plot.plot(pen=pg.mkPen("#2563eb", width=2.2))
+        self.lag_curve = self.lag_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.2))
         plot_card.layout().addWidget(self.lag_plot, 1)
         self.lag_plot_note = QLabel("--")
         self.lag_plot_note.setObjectName("subtitle")
@@ -417,8 +417,10 @@ class SpectralQCPage(QWidget):
 
         plot_card = self._plot_card("功率谱图", "高频端滚降过早时，通常会直接推高修正因子。")
         self.power_plot = self._create_plot("归一化谱能量", "频率 (Hz)")
-        self.power_curve = self.power_plot.plot(pen=pg.mkPen("#0f766e", width=2.2))
-        self.power_ref_curve = self.power_plot.plot(pen=pg.mkPen("#94a3b8", width=1.6, style=Qt.PenStyle.DashLine))
+        self.power_curve = self.power_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["secondary"], width=2.2))
+        self.power_ref_curve = self.power_plot.plot(
+            pen=pg.mkPen(PLOT_SERIES_COLORS["muted"], width=1.6, style=Qt.PenStyle.DashLine)
+        )
         plot_card.layout().addWidget(self.power_plot, 1)
         self.power_plot_note = QLabel("--")
         self.power_plot_note.setObjectName("subtitle")
@@ -451,7 +453,7 @@ class SpectralQCPage(QWidget):
 
         plot_card = self._plot_card("互谱图", "主能量带是否对齐，是判断窗口是否可信的关键证据。")
         self.cross_plot = self._create_plot("协谱幅值", "频率 (Hz)")
-        self.cross_curve = self.cross_plot.plot(pen=pg.mkPen("#b7791f", width=2.0))
+        self.cross_curve = self.cross_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["warning"], width=2.0))
         plot_card.layout().addWidget(self.cross_plot, 1)
         self.cross_plot_note = QLabel("--")
         self.cross_plot_note.setObjectName("subtitle")
@@ -484,7 +486,7 @@ class SpectralQCPage(QWidget):
 
         plot_card = self._plot_card("Ogive 图", "如果平台迟迟不出现，就要警惕窗口非平稳或低频未闭合。")
         self.ogive_plot = self._create_plot("累计归一化通量", "频率 (Hz)")
-        self.ogive_curve = self.ogive_plot.plot(pen=pg.mkPen("#2b6cbf", width=2.0))
+        self.ogive_curve = self.ogive_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.0))
         plot_card.layout().addWidget(self.ogive_plot, 1)
         self.ogive_plot_note = QLabel("--")
         self.ogive_plot_note.setObjectName("subtitle")
@@ -523,7 +525,7 @@ class SpectralQCPage(QWidget):
 
         plot_card = self._plot_card("传递函数", "传递函数越早下降，后续修正因子越有可能被抬高。")
         self.transfer_plot = self._create_plot("保真度", "频率 (Hz)")
-        self.transfer_curve = self.transfer_plot.plot(pen=pg.mkPen("#9333ea", width=2.0))
+        self.transfer_curve = self.transfer_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["violet"], width=2.0))
         plot_card.layout().addWidget(self.transfer_plot, 1)
         self.transfer_plot_note = QLabel("--")
         self.transfer_plot_note.setObjectName("subtitle")
@@ -579,8 +581,8 @@ class SpectralQCPage(QWidget):
         metric_row.addWidget(self._metric_card("修正后均值", self.correction_after_value), 1)
         compare_card.layout().addLayout(metric_row)
         self.correction_plot = self._create_plot("通量", "窗口序号")
-        self.correction_before_curve = self.correction_plot.plot(pen=pg.mkPen("#94a3b8", width=1.7))
-        self.correction_after_curve = self.correction_plot.plot(pen=pg.mkPen("#0f766e", width=2.2))
+        self.correction_before_curve = self.correction_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["muted"], width=1.7))
+        self.correction_after_curve = self.correction_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["secondary"], width=2.2))
         compare_card.layout().addWidget(self.correction_plot, 1)
         self.correction_plot_note = QLabel("--")
         self.correction_plot_note.setObjectName("subtitle")
@@ -1199,10 +1201,7 @@ class SpectralQCPage(QWidget):
 
     def _create_plot(self, y_label: str, x_label: str) -> pg.PlotWidget:
         plot = pg.PlotWidget()
-        plot.setBackground("transparent")
-        plot.showGrid(x=True, y=True, alpha=0.15)
-        plot.setLabel("left", y_label)
-        plot.setLabel("bottom", x_label)
+        configure_plot_theme(plot, left_label=y_label, bottom_label=x_label)
         return plot
 
     def _double_spin(self, low: float, high: float, decimals: int, *, suffix: str = "") -> QDoubleSpinBox:
@@ -1234,11 +1233,11 @@ class SpectralQCPage(QWidget):
 
     def _grade_brush(self, grade: str):
         mapping = {
-            "A": pg.mkBrush("#2f855a"),
-            "B": pg.mkBrush("#b7791f"),
-            "C": pg.mkBrush("#c53030"),
+            "A": pg.mkBrush(PLOT_SERIES_COLORS["secondary"]),
+            "B": pg.mkBrush(PLOT_SERIES_COLORS["warning"]),
+            "C": pg.mkBrush(PLOT_SERIES_COLORS["danger"]),
         }
-        return mapping.get(grade, pg.mkBrush("#2b6cbf"))
+        return mapping.get(grade, pg.mkBrush(PLOT_SERIES_COLORS["primary"]))
 
     def _set_chip(self, label: QLabel, text: str, tone: str) -> None:
         label.setText(text)
