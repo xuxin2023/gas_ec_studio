@@ -1998,7 +1998,7 @@ class TestBenchmarkCockpitDataMapping:
             qc_only=False,
         )
         payload = controller._benchmark_cockpit_payload(spectral_result)
-        assert payload["title"] == "Benchmark 驾驶舱"
+        assert payload["title"] == "基准驾驶舱"
         assert "metrics" in payload
         assert "table_rows" in payload
         assert "conclusions" in payload
@@ -2042,7 +2042,7 @@ class TestBenchmarkCockpitDataMapping:
             qc_only=False,
         )
         payload = controller._benchmark_cockpit_payload(spectral_result)
-        assert payload["title"] == "Benchmark 驾驶舱"
+        assert payload["title"] == "基准驾驶舱"
         metrics_dict = {m[0]: m[1] for m in payload["metrics"]}
         assert metrics_dict["参考"] == "eddypro_v7_synthetic_001"
         table_keys = [row[0] for row in payload["table_rows"]]

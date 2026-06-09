@@ -43,7 +43,7 @@ REPORT_SECTIONS = [
     ("evidence_pack", "证据包", "统一导出图表、表格与日志证据。"),
     ("fixture_pack", "验证包", "验证行业参考集、raw-to-final readiness、合成回归集与 YGAS 协议样例。"),
     ("eddypro_compare", "行业参考对标报告", "集中查看当前结果与行业参考结果的对标摘要和窗口差异。"),
-    ("benchmark_cockpit", "Benchmark 驾驶舱", "查看 benchmark 参考对标结果：pass rate、阈值、偏差详情。"),
+    ("benchmark_cockpit", "基准驾驶舱", "查看参考对标结果：通过率、阈值、偏差详情。"),
     ("method_provenance", "方法溯源", "查看 Footprint、不确定度、谱修正的方法来源、局限性和溯源信息。"),
     ("method_compare", "方法对比", "查看方法族对比、参考方法 parity matrix、2D footprint contour 与长窗口性能 profile。"),
     ("computation_surface", "计算能力面板", "查看行业参考计算核心族 ready/blocked 状态、stress suite 与声明边界。"),
@@ -600,7 +600,7 @@ class ReportCenterPage(QWidget):
             self._benchmark_controls_layout = QVBoxLayout(self._benchmark_controls_card)
             self._benchmark_controls_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
             self._benchmark_controls_layout.setSpacing(TOKENS.spacing_sm)
-            self._benchmark_controls_layout.addWidget(section_title("Benchmark 操作", "选择参考、调整阈值、刷新结果"))
+            self._benchmark_controls_layout.addWidget(section_title("基准操作", "选择参考、调整阈值、刷新结果"))
             ctrl_row = QHBoxLayout()
             ctrl_row.setSpacing(TOKENS.spacing_md)
             ctrl_row.addWidget(QLabel("Reference:"))
@@ -666,33 +666,33 @@ class ReportCenterPage(QWidget):
 
     def _build_official_raw_bundle_controls(self, report: dict) -> None:
         if not hasattr(self, "_official_bundle_controls_card"):
-            self._official_bundle_controls_card = CardFrame(muted=True)
+            self._official_bundle_controls_card = CardFrame(muted=True, role="panel")
             self._official_bundle_controls_layout = QVBoxLayout(self._official_bundle_controls_card)
             self._official_bundle_controls_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
             self._official_bundle_controls_layout.setSpacing(TOKENS.spacing_sm)
             self._official_bundle_controls_layout.addWidget(
-                section_title("Official Raw Bundle", "Inspect or register a real industry-reference raw-to-final fixture bundle.")
+                section_title("行业参考原始包", "检查、归档或注册真实 raw-to-final 参考验证包。")
             )
             ctrl_row = QHBoxLayout()
             ctrl_row.setSpacing(TOKENS.spacing_md)
-            ctrl_row.addWidget(QLabel("Bundle:"))
+            ctrl_row.addWidget(QLabel("验证包："))
             self._official_bundle_path = QLineEdit()
             self._official_bundle_path.setPlaceholderText("references/reference/official_raw/site_001")
             ctrl_row.addWidget(self._official_bundle_path, 1)
-            self._official_bundle_browse = QPushButton("Browse")
-            self._official_bundle_build_manifest = QPushButton("Build Manifest")
-            self._official_bundle_inspect = QPushButton("Inspect")
-            self._official_bundle_validate = QPushButton("Validate P0")
-            self._official_bundle_evidence_pack = QPushButton("Evidence Pack")
-            self._official_bundle_acceptance = QPushButton("Run Acceptance")
-            self._official_bundle_register = QPushButton("Register")
+            self._official_bundle_browse = QPushButton("浏览")
+            self._official_bundle_build_manifest = QPushButton("生成清单")
+            self._official_bundle_inspect = QPushButton("检查")
+            self._official_bundle_validate = QPushButton("验证 P0")
+            self._official_bundle_evidence_pack = QPushButton("证据包")
+            self._official_bundle_acceptance = QPushButton("运行验收")
+            self._official_bundle_register = QPushButton("注册")
             self._official_bundle_register.setProperty("variant", "primary")
-            self._official_bundle_build_tree_manifests = QPushButton("Build Tree Manifests")
-            self._official_bundle_inspect_tree = QPushButton("Inspect Tree")
-            self._official_bundle_register_tree = QPushButton("Register Tree")
-            self._public_fixture_refresh = QPushButton("Refresh Public Fixtures")
-            self._public_fixture_overwrite = QCheckBox("Overwrite Public")
-            self._official_bundle_replace = QCheckBox("Replace")
+            self._official_bundle_build_tree_manifests = QPushButton("生成目录清单")
+            self._official_bundle_inspect_tree = QPushButton("检查目录")
+            self._official_bundle_register_tree = QPushButton("注册目录")
+            self._public_fixture_refresh = QPushButton("刷新公开参考")
+            self._public_fixture_overwrite = QCheckBox("覆盖公开缓存")
+            self._official_bundle_replace = QCheckBox("替换现有")
             ctrl_row.addWidget(self._official_bundle_browse)
             ctrl_row.addWidget(self._official_bundle_build_manifest)
             ctrl_row.addWidget(self._official_bundle_inspect)
@@ -709,43 +709,43 @@ class ReportCenterPage(QWidget):
             self._official_bundle_controls_layout.addLayout(ctrl_row)
             run_row = QHBoxLayout()
             run_row.setSpacing(TOKENS.spacing_md)
-            run_row.addWidget(QLabel("Reference Run:"))
+            run_row.addWidget(QLabel("参考运行："))
             self._official_run_command = QLineEdit()
             self._official_run_command.setPlaceholderText("reference_processor.exe --run reference/project.config")
             self._official_run_version = QLineEdit()
             self._official_run_version.setPlaceholderText("7.0.9")
             self._official_run_outputs = QLineEdit()
             self._official_run_outputs.setPlaceholderText("reference/reference_full_output.csv")
-            self._official_run_capture = QPushButton("Capture Run")
-            self._official_closure_run = QPushButton("Closure Run")
+            self._official_run_capture = QPushButton("记录运行")
+            self._official_closure_run = QPushButton("闭环运行")
             self._official_closure_run.setProperty("variant", "primary")
             run_row.addWidget(self._official_run_command, 2)
-            run_row.addWidget(QLabel("Version"))
+            run_row.addWidget(QLabel("版本"))
             run_row.addWidget(self._official_run_version)
-            run_row.addWidget(QLabel("Outputs"))
+            run_row.addWidget(QLabel("输出"))
             run_row.addWidget(self._official_run_outputs)
             run_row.addWidget(self._official_run_capture)
             run_row.addWidget(self._official_closure_run)
             self._official_bundle_controls_layout.addLayout(run_row)
             filter_row = QHBoxLayout()
             filter_row.setSpacing(TOKENS.spacing_md)
-            filter_row.addWidget(QLabel("Matrix:"))
+            filter_row.addWidget(QLabel("矩阵："))
             self._official_matrix_format = QComboBox()
             self._official_matrix_site = QComboBox()
             self._official_matrix_parity = QComboBox()
             self._official_matrix_fixture = QComboBox()
-            self._official_matrix_apply = QPushButton("Apply Filter")
-            self._official_fixture_detail = QPushButton("Detail")
-            self._official_fixture_rerun = QPushButton("Rerun Fixture")
-            self._official_fixture_disable = QPushButton("Disable Fixture")
-            self._official_fixture_replace = QPushButton("Replace Fixture")
-            filter_row.addWidget(QLabel("Format"))
+            self._official_matrix_apply = QPushButton("应用筛选")
+            self._official_fixture_detail = QPushButton("详情")
+            self._official_fixture_rerun = QPushButton("重跑验证包")
+            self._official_fixture_disable = QPushButton("停用验证包")
+            self._official_fixture_replace = QPushButton("替换验证包")
+            filter_row.addWidget(QLabel("格式"))
             filter_row.addWidget(self._official_matrix_format)
-            filter_row.addWidget(QLabel("Site"))
+            filter_row.addWidget(QLabel("站点"))
             filter_row.addWidget(self._official_matrix_site)
-            filter_row.addWidget(QLabel("Parity"))
+            filter_row.addWidget(QLabel("对标"))
             filter_row.addWidget(self._official_matrix_parity)
-            filter_row.addWidget(QLabel("Fixture"))
+            filter_row.addWidget(QLabel("验证包"))
             filter_row.addWidget(self._official_matrix_fixture, 1)
             filter_row.addWidget(self._official_matrix_apply)
             filter_row.addWidget(self._official_fixture_detail)
@@ -796,18 +796,18 @@ class ReportCenterPage(QWidget):
         selected_fixture = str(report.get("official_raw_selected_fixture_id", "") or "")
         self._replace_combo_items(
             self._official_matrix_format,
-            ["All"] + sorted({str(row.get("raw_format", "")) for row in matrix_rows if row.get("raw_format")}),
-            keep_text=str(filters.get("raw_format", "") or "All"),
+            ["全部"] + sorted({str(row.get("raw_format", "")) for row in matrix_rows if row.get("raw_format")}),
+            keep_text=str(filters.get("raw_format", "") or "全部"),
         )
         self._replace_combo_items(
             self._official_matrix_site,
-            ["All"] + sorted({str(row.get("site_class", "")) for row in matrix_rows if row.get("site_class")}),
-            keep_text=str(filters.get("site_class", "") or "All"),
+            ["全部"] + sorted({str(row.get("site_class", "")) for row in matrix_rows if row.get("site_class")}),
+            keep_text=str(filters.get("site_class", "") or "全部"),
         )
         self._replace_combo_items(
             self._official_matrix_parity,
-            ["All"] + sorted({str(row.get("parity_status", "") or row.get("status", "")) for row in matrix_rows if row.get("parity_status") or row.get("status")}),
-            keep_text=str(filters.get("parity_status", "") or "All"),
+            ["全部"] + sorted({str(row.get("parity_status", "") or row.get("status", "")) for row in matrix_rows if row.get("parity_status") or row.get("status")}),
+            keep_text=str(filters.get("parity_status", "") or "全部"),
         )
         fixture_ids = [str(row.get("fixture_id", "")) for row in matrix_rows if row.get("fixture_id")]
         self._replace_combo_items(
@@ -816,7 +816,7 @@ class ReportCenterPage(QWidget):
             keep_text=selected_fixture or (fixture_ids[0] if fixture_ids else ""),
         )
         public_state = dict(self.controller.report_center_workspace.get("public_eddypro_fixtures", {}) or {})
-        status_parts = [str(state.get("message", "No official raw bundle has been inspected yet."))]
+        status_parts = [str(state.get("message", "尚未检查行业参考原始包。"))]
         if public_state.get("message"):
             status_parts.append(str(public_state.get("message")))
         self._official_bundle_status.setText(" | ".join(status_parts))
@@ -834,14 +834,14 @@ class ReportCenterPage(QWidget):
         if not detail:
             selected = str(report.get("official_raw_selected_fixture_id", "") or "").strip()
             if selected:
-                hint = QLabel(f"Selected fixture: {selected}. Click Detail to generate the single-fixture audit artifact.")
+                hint = QLabel(f"已选择验证包：{selected}。点击“详情”生成单验证包审计 artifact。")
                 hint.setObjectName("subtitle")
                 hint.setWordWrap(True)
                 self.conclusion_content.addWidget(hint)
             return
 
         fixture_id = str(detail.get("fixture_id", "") or "--")
-        header = QLabel(f"Official Raw Fixture Detail: {fixture_id}")
+        header = QLabel(f"行业参考验证包详情：{fixture_id}")
         header.setObjectName("metricValue")
         header.setWordWrap(True)
         self.conclusion_content.addWidget(header)
@@ -975,28 +975,28 @@ class ReportCenterPage(QWidget):
             self.conclusion_content.addWidget(limitation_line)
 
     def _on_official_bundle_browse(self) -> None:
-        selected = QFileDialog.getExistingDirectory(self, "Select official reference raw bundle")
+        selected = QFileDialog.getExistingDirectory(self, "选择行业参考原始包")
         if selected:
             self._set_official_bundle_path_display(selected)
 
     def _on_official_bundle_inspect(self) -> None:
         result = self.controller.inspect_official_raw_bundle_for_report_center(self._official_bundle_path_value())
-        self._show_info("Official Raw Bundle", result["message"])
+        self._show_info("行业参考原始包", result["message"])
         self.refresh()
 
     def _on_official_bundle_validate(self) -> None:
         result = self.controller.validate_official_raw_bundle_for_report_center(self._official_bundle_path_value())
-        self._show_info("Official Raw P0 Gate", result["message"])
+        self._show_info("行业参考 P0 Gate", result["message"])
         self.refresh()
 
     def _on_official_bundle_evidence_pack(self) -> None:
         result = self.controller.export_official_raw_evidence_pack_for_report_center(self._official_bundle_path_value())
-        self._show_info("Official Raw Evidence Pack", result["message"])
+        self._show_info("行业参考证据包", result["message"])
         self.refresh()
 
     def _on_official_bundle_acceptance(self) -> None:
         result = self.controller.run_official_raw_evidence_acceptance_for_report_center(self._official_bundle_path_value())
-        self._show_info("Official Raw Acceptance", result["message"])
+        self._show_info("行业参考验收", result["message"])
         self.refresh()
 
     def _on_official_run_capture(self) -> None:
@@ -1006,7 +1006,7 @@ class ReportCenterPage(QWidget):
             software_version=self._official_run_version.text(),
             output_files=self._raw_line_edit_value(self._official_run_outputs),
         )
-        self._show_info("Official Reference Run", result["message"])
+        self._show_info("行业参考运行", result["message"])
         self.refresh()
 
     def _on_official_closure_run(self) -> None:
@@ -1018,7 +1018,7 @@ class ReportCenterPage(QWidget):
             overwrite_manifest=bool(self._official_bundle_replace.isChecked()),
             replace=bool(self._official_bundle_replace.isChecked()),
         )
-        self._show_info("Official Raw Closure", result["message"])
+        self._show_info("行业参考闭环", result["message"])
         self.refresh()
 
     def _on_official_bundle_build_manifest(self) -> None:
@@ -1026,7 +1026,7 @@ class ReportCenterPage(QWidget):
             self._official_bundle_path_value(),
             overwrite=bool(self._official_bundle_replace.isChecked()),
         )
-        self._show_info("Official Raw Manifest", result["message"])
+        self._show_info("行业参考清单", result["message"])
         self.refresh()
 
     def _on_official_bundle_register(self) -> None:
@@ -1034,12 +1034,12 @@ class ReportCenterPage(QWidget):
             self._official_bundle_path_value(),
             replace=bool(self._official_bundle_replace.isChecked()),
         )
-        self._show_info("Official Raw Bundle", result["message"])
+        self._show_info("行业参考原始包", result["message"])
         self.refresh()
 
     def _on_official_bundle_inspect_tree(self) -> None:
         result = self.controller.inspect_official_raw_bundle_tree_for_report_center(self._official_bundle_path_value())
-        self._show_info("Official Raw Bundle Tree", result["message"])
+        self._show_info("行业参考目录", result["message"])
         self.refresh()
 
     def _on_official_bundle_build_tree_manifests(self) -> None:
@@ -1047,7 +1047,7 @@ class ReportCenterPage(QWidget):
             self._official_bundle_path_value(),
             overwrite=bool(self._official_bundle_replace.isChecked()),
         )
-        self._show_info("Official Raw Bundle Tree", result["message"])
+        self._show_info("行业参考目录", result["message"])
         self.refresh()
 
     def _on_official_bundle_register_tree(self) -> None:
@@ -1055,27 +1055,27 @@ class ReportCenterPage(QWidget):
             self._official_bundle_path_value(),
             replace=bool(self._official_bundle_replace.isChecked()),
         )
-        self._show_info("Official Raw Bundle Tree", result["message"])
+        self._show_info("行业参考目录", result["message"])
         self.refresh()
 
     def _on_public_fixture_refresh(self) -> None:
         result = self.controller.refresh_public_eddypro_fixtures_for_report_center(
             overwrite=bool(self._public_fixture_overwrite.isChecked())
         )
-        self._show_info("Public Reference Fixtures", result["message"])
+        self._show_info("公开参考验证包", result["message"])
         self.refresh()
 
     def _on_official_matrix_filter(self) -> None:
         def value(combo: QComboBox) -> str:
             text = combo.currentText().strip()
-            return "" if text == "All" else text
+            return "" if text in {"All", "全部"} else text
 
         result = self.controller.set_official_raw_matrix_filters_for_report_center(
             raw_format=value(self._official_matrix_format),
             site_class=value(self._official_matrix_site),
             parity_status=value(self._official_matrix_parity),
         )
-        self._show_info("Official Raw Matrix", result["message"])
+        self._show_info("行业参考矩阵", result["message"])
         self.refresh()
 
     def _selected_official_fixture_id(self) -> str:
@@ -1086,17 +1086,17 @@ class ReportCenterPage(QWidget):
 
     def _on_official_fixture_rerun(self) -> None:
         result = self.controller.rerun_official_raw_fixture_for_report_center(self._selected_official_fixture_id())
-        self._show_info("Official Raw Fixture", result["message"])
+        self._show_info("行业参考验证包", result["message"])
         self.refresh()
 
     def _on_official_fixture_detail(self) -> None:
         result = self.controller.inspect_official_raw_fixture_detail_for_report_center(self._selected_official_fixture_id())
-        self._show_info("Official Raw Fixture Detail", result["message"])
+        self._show_info("行业参考验证包详情", result["message"])
         self.refresh()
 
     def _on_official_fixture_disable(self) -> None:
         result = self.controller.disable_official_raw_fixture_for_report_center(self._selected_official_fixture_id())
-        self._show_info("Official Raw Fixture", result["message"])
+        self._show_info("行业参考验证包", result["message"])
         self.refresh()
 
     def _on_official_fixture_replace(self) -> None:
@@ -1105,7 +1105,7 @@ class ReportCenterPage(QWidget):
             self._official_bundle_path_value(),
             replace=bool(self._official_bundle_replace.isChecked()),
         )
-        self._show_info("Official Raw Fixture", result["message"])
+        self._show_info("行业参考验证包", result["message"])
         self.refresh()
 
     def _on_bm_ref_changed(self, text: str) -> None:
@@ -1338,7 +1338,7 @@ class ReportCenterPage(QWidget):
         if not methods_ready:
             return "检查方法溯源", "Footprint、不确定度、谱修正方法 rollup 还未闭合。"
         if not benchmark_ready:
-            return "检查 Benchmark", "参考对标尚未激活或缺少通过率摘要。"
+            return "检查基准对标", "参考对标尚未激活或缺少通过率摘要。"
         return "交付归档", "交付链路已闭合，可以归档或打包给审阅者。"
 
     def _delivery_file_values(self, reports: dict) -> dict[str, str]:

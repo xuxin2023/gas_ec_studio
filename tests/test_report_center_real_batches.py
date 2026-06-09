@@ -393,7 +393,7 @@ def test_report_center_method_compare_surfaces_artifacts(monkeypatch, tmp_path) 
 
         report = controller.report_center_workspace["reports"]["method_compare"]
         rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
-        assert report["title"] == "Method Compare"
+        assert report["title"] == "方法对比"
         assert "footprint" in rows_text
         assert "uncertainty" in rows_text
         assert "spectral_correction" in rows_text
@@ -401,10 +401,10 @@ def test_report_center_method_compare_surfaces_artifacts(monkeypatch, tmp_path) 
         assert "parity:rotation" in rows_text
         assert "processing_settings" in rows_text
         assert "missing_from_reference_metadata" in rows_text
-        assert "Method Compare Artifact" in report["file_info"]
-        assert "Method Parity Matrix" in report["file_info"]
-        assert "Footprint 2D Contour" in report["file_info"]
-        assert "Performance Profile" in report["file_info"]
+        assert "方法对比 Artifact" in report["file_info"]
+        assert "方法对标矩阵" in report["file_info"]
+        assert "Footprint 2D 等值线" in report["file_info"]
+        assert "性能剖面" in report["file_info"]
         latest_files = controller.current_spectral_run().artifacts["result_exports"]["latest"]["files"]
         assert Path(latest_files["method_parity_matrix_artifact"]).exists()
         assert Path(latest_files["footprint_2d_contour_svg"]).exists()
@@ -483,13 +483,13 @@ def test_report_center_fixture_pack_surfaces_validated_eddypro_assets(monkeypatc
         assert report["public_eddypro_fixture_catalog"]["status"] == "pass"
         assert report["public_eddypro_fixture_catalog"]["fixture_count"] == 6
         assert report["public_eddypro_fixture_acquisition"]["status"] == "pass"
-        assert "Fixture Pack Artifact" in report["file_info"]
-        assert "Public Reference Fixture Catalog" in report["file_info"]
-        assert "Public Reference Fixture Acquisition" in report["file_info"]
+        assert "验证包摘要 Artifact" in report["file_info"]
+        assert "公开参考目录" in report["file_info"]
+        assert "公开参考获取" in report["file_info"]
         assert Path(latest_files["fixture_pack_summary_artifact"]).exists()
-        assert Path(report["file_info"]["Public Reference Fixture Catalog"]).exists()
-        assert Path(report["file_info"]["Public Reference Fixture Acquisition"]).exists()
-        assert page.preview_title_label.text() == "Fixture Pack"
+        assert Path(report["file_info"]["公开参考目录"]).exists()
+        assert Path(report["file_info"]["公开参考获取"]).exists()
+        assert page.preview_title_label.text() == "验证包"
         assert page.preview_table.rowCount() >= 4
     finally:
         controller.shutdown()
@@ -962,7 +962,7 @@ def test_report_center_replaces_official_raw_fixture_and_refreshes_detail(monkey
 
         assert "matrix:site_002_official" in matrix_text
         assert "replacement_grassland_bundle" in matrix_text
-        assert "Official Raw Fixture Detail: site_002_official" in conclusion_text
+        assert "行业参考验证包详情：site_002_official" in conclusion_text
         assert "replacement_grassland_bundle" in conclusion_text
         assert "file_check=ok" in conclusion_text
 

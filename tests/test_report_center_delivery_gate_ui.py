@@ -85,7 +85,7 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
             },
             "benchmark_cockpit": {
                 "report_key": "benchmark_cockpit",
-                "title": "Benchmark 驾驶舱",
+                "title": "基准驾驶舱",
                 "source": "ref-001",
                 "updated_at": "2026-06-09 10:00",
                 "metrics": [],
@@ -99,7 +99,7 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
                     ("network.validation_status", "valid", "网络校验状态"),
                     ("network.missing_fields", "无", "网络缺失字段"),
                 ],
-                "file_info": {"Network Validation": str(tmp_path / "network_validation_summary.json")},
+                "file_info": {"网络校验": str(tmp_path / "network_validation_summary.json")},
             },
             "method_provenance": {
                 "report_key": "method_provenance",
@@ -113,7 +113,7 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
                 ],
                 "table_headers": ["方法族", "方法名", "溯源"],
                 "table_rows": [],
-                "file_info": {"Method Rollup": str(tmp_path / "method_rollup.json")},
+                "file_info": {"方法汇总": str(tmp_path / "method_rollup.json")},
             },
         }
 

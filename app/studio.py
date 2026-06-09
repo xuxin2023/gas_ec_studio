@@ -4783,11 +4783,11 @@ class StudioController(QObject):
                 ("anomaly_events", "异常事件报告"),
                 ("site_method", "站点方法说明"),
                 ("evidence_pack", "证据包"),
-                ("fixture_pack", "Fixture Pack"),
-                ("benchmark_cockpit", "Benchmark 驾驶舱"),
+                ("fixture_pack", "验证包"),
+                ("benchmark_cockpit", "基准驾驶舱"),
                 ("method_provenance", "方法溯源"),
-                ("method_compare", "Method Compare"),
-                ("computation_surface", "Computation Surface"),
+                ("method_compare", "方法对比"),
+                ("computation_surface", "计算能力面板"),
             )
         }
 
@@ -5107,17 +5107,17 @@ class StudioController(QObject):
             "export_options": ["导出当前报告"],
             "file_info": {
                 **file_info_for("method_provenance"),
-                **({"Method Rollup Artifact": str(result_export_files.get("method_rollup_artifact"))} if result_export_files.get("method_rollup_artifact") else {}),
+                **({"方法汇总 Artifact": str(result_export_files.get("method_rollup_artifact"))} if result_export_files.get("method_rollup_artifact") else {}),
                 **({"Footprint 2D Artifact": str(result_export_files.get("footprint_2d_artifact"))} if result_export_files.get("footprint_2d_artifact") else {}),
-                **({"Method Compare Artifact": str(result_export_files.get("method_compare_artifact"))} if result_export_files.get("method_compare_artifact") else {}),
-                **({"Runtime Watchdog Artifact": str(result_export_files.get("runtime_watchdog_artifact"))} if result_export_files.get("runtime_watchdog_artifact") else {}),
-                **({"Runtime Service Artifact": str(result_export_files.get("runtime_service_artifact"))} if result_export_files.get("runtime_service_artifact") else {}),
-                **({"Daemon Telemetry Artifact": str(result_export_files.get("daemon_telemetry_artifact"))} if result_export_files.get("daemon_telemetry_artifact") else {}),
-                **({"Supervisor Integration Artifact": str(result_export_files.get("supervisor_integration_artifact"))} if result_export_files.get("supervisor_integration_artifact") else {}),
-                **({"Installable Runtime Artifact": str(result_export_files.get("installable_runtime_artifact"))} if result_export_files.get("installable_runtime_artifact") else {}),
-                **({"Runtime Deployment Artifact": str(result_export_files.get("runtime_deployment_artifact"))} if result_export_files.get("runtime_deployment_artifact") else {}),
-                **({"Runtime Deployment Feedback Artifact": str(result_export_files.get("runtime_deployment_feedback_artifact"))} if result_export_files.get("runtime_deployment_feedback_artifact") else {}),
-                **({"Clock Sync Artifact": str(result_export_files.get("clock_sync_artifact"))} if result_export_files.get("clock_sync_artifact") else {}),
+                **({"方法对比 Artifact": str(result_export_files.get("method_compare_artifact"))} if result_export_files.get("method_compare_artifact") else {}),
+                **({"运行守护 Artifact": str(result_export_files.get("runtime_watchdog_artifact"))} if result_export_files.get("runtime_watchdog_artifact") else {}),
+                **({"运行服务 Artifact": str(result_export_files.get("runtime_service_artifact"))} if result_export_files.get("runtime_service_artifact") else {}),
+                **({"守护遥测 Artifact": str(result_export_files.get("daemon_telemetry_artifact"))} if result_export_files.get("daemon_telemetry_artifact") else {}),
+                **({"Supervisor 集成 Artifact": str(result_export_files.get("supervisor_integration_artifact"))} if result_export_files.get("supervisor_integration_artifact") else {}),
+                **({"可安装运行时 Artifact": str(result_export_files.get("installable_runtime_artifact"))} if result_export_files.get("installable_runtime_artifact") else {}),
+                **({"运行部署 Artifact": str(result_export_files.get("runtime_deployment_artifact"))} if result_export_files.get("runtime_deployment_artifact") else {}),
+                **({"部署反馈 Artifact": str(result_export_files.get("runtime_deployment_feedback_artifact"))} if result_export_files.get("runtime_deployment_feedback_artifact") else {}),
+                **({"时钟同步 Artifact": str(result_export_files.get("clock_sync_artifact"))} if result_export_files.get("clock_sync_artifact") else {}),
                 **({"Flux Correction Ledger": str(result_export_files.get("flux_correction_ledger_artifact"))} if result_export_files.get("flux_correction_ledger_artifact") else {}),
                 **({"Primary Analyzer": str(result_export_files.get("primary_analyzer_artifact"))} if result_export_files.get("primary_analyzer_artifact") else {}),
             },
@@ -5264,28 +5264,28 @@ class StudioController(QObject):
         metadata_coverage = dict(method_parity_payload.get("metadata_coverage", {}) if isinstance(method_parity_payload, dict) else {})
         method_compare_files = {
             **file_info_for("method_compare"),
-            **({"Method Compare Artifact": str(result_export_files.get("method_compare_artifact"))} if result_export_files.get("method_compare_artifact") else {}),
-            **({"Method Parity Matrix": str(result_export_files.get("method_parity_matrix_artifact"))} if result_export_files.get("method_parity_matrix_artifact") else {}),
+            **({"方法对比 Artifact": str(result_export_files.get("method_compare_artifact"))} if result_export_files.get("method_compare_artifact") else {}),
+            **({"方法对标矩阵": str(result_export_files.get("method_parity_matrix_artifact"))} if result_export_files.get("method_parity_matrix_artifact") else {}),
             **({"Method Parity CSV": str(result_export_files.get("method_parity_matrix_csv"))} if result_export_files.get("method_parity_matrix_csv") else {}),
-            **({"Footprint 2D Contour": str(result_export_files.get("footprint_2d_contour_svg"))} if result_export_files.get("footprint_2d_contour_svg") else {}),
+            **({"Footprint 2D 等值线": str(result_export_files.get("footprint_2d_contour_svg"))} if result_export_files.get("footprint_2d_contour_svg") else {}),
             **({"Footprint 2D Grid CSV": str(result_export_files.get("footprint_2d_grid_csv"))} if result_export_files.get("footprint_2d_grid_csv") else {}),
             **({"Footprint GeoJSON": str(result_export_files.get("footprint_geojson_artifact"))} if result_export_files.get("footprint_geojson_artifact") else {}),
             **({"Footprint GeoTIFF": str(result_export_files.get("footprint_geotiff_artifact"))} if result_export_files.get("footprint_geotiff_artifact") else {}),
             **({"Footprint Land Cover": str(result_export_files.get("footprint_land_cover_overlay_artifact"))} if result_export_files.get("footprint_land_cover_overlay_artifact") else {}),
             **({"Footprint GIS Validation": str(result_export_files.get("footprint_gis_validation_artifact"))} if result_export_files.get("footprint_gis_validation_artifact") else {}),
-            **({"Performance Profile": str(result_export_files.get("performance_profile_artifact"))} if result_export_files.get("performance_profile_artifact") else {}),
-            **({"Runtime Watchdog": str(result_export_files.get("runtime_watchdog_artifact"))} if result_export_files.get("runtime_watchdog_artifact") else {}),
-            **({"Runtime Service": str(result_export_files.get("runtime_service_artifact"))} if result_export_files.get("runtime_service_artifact") else {}),
-            **({"Daemon Telemetry": str(result_export_files.get("daemon_telemetry_artifact"))} if result_export_files.get("daemon_telemetry_artifact") else {}),
-            **({"Supervisor Integration": str(result_export_files.get("supervisor_integration_artifact"))} if result_export_files.get("supervisor_integration_artifact") else {}),
-            **({"Installable Runtime": str(result_export_files.get("installable_runtime_artifact"))} if result_export_files.get("installable_runtime_artifact") else {}),
-            **({"Runtime Deployment": str(result_export_files.get("runtime_deployment_artifact"))} if result_export_files.get("runtime_deployment_artifact") else {}),
-            **({"Runtime Deployment Feedback": str(result_export_files.get("runtime_deployment_feedback_artifact"))} if result_export_files.get("runtime_deployment_feedback_artifact") else {}),
+            **({"性能剖面": str(result_export_files.get("performance_profile_artifact"))} if result_export_files.get("performance_profile_artifact") else {}),
+            **({"运行守护": str(result_export_files.get("runtime_watchdog_artifact"))} if result_export_files.get("runtime_watchdog_artifact") else {}),
+            **({"运行服务": str(result_export_files.get("runtime_service_artifact"))} if result_export_files.get("runtime_service_artifact") else {}),
+            **({"守护遥测": str(result_export_files.get("daemon_telemetry_artifact"))} if result_export_files.get("daemon_telemetry_artifact") else {}),
+            **({"Supervisor 集成": str(result_export_files.get("supervisor_integration_artifact"))} if result_export_files.get("supervisor_integration_artifact") else {}),
+            **({"可安装运行时": str(result_export_files.get("installable_runtime_artifact"))} if result_export_files.get("installable_runtime_artifact") else {}),
+            **({"运行部署": str(result_export_files.get("runtime_deployment_artifact"))} if result_export_files.get("runtime_deployment_artifact") else {}),
+            **({"部署反馈": str(result_export_files.get("runtime_deployment_feedback_artifact"))} if result_export_files.get("runtime_deployment_feedback_artifact") else {}),
             **({"Flux Correction Ledger": str(result_export_files.get("flux_correction_ledger_artifact"))} if result_export_files.get("flux_correction_ledger_artifact") else {}),
             **({"Primary Analyzer": str(result_export_files.get("primary_analyzer_artifact"))} if result_export_files.get("primary_analyzer_artifact") else {}),
         }
         reports["method_compare"] = {
-            "title": "Method Compare",
+            "title": "方法对比",
             "source": f"Method parity / footprint contour / performance profile / {batch_label}",
             "updated_at": updated_at,
             "metrics": [
@@ -5436,7 +5436,7 @@ class StudioController(QObject):
             )
         return {
             "report_key": "computation_surface",
-            "title": "Computation Surface",
+            "title": "计算能力面板",
             "source": f"Industry-reference computation stress suite / {batch_label}",
             "updated_at": updated_at,
             "metrics": [
@@ -5720,8 +5720,8 @@ class StudioController(QObject):
                 "official_website_real_data_strategy",
                 "program_first",
                 (
-                    "Official website raw-data acquisition is not on the critical path now; "
-                    "program/UI completion uses bundled, synthetic, and source-derived parity fixtures while real paired bundles remain an explicit future evidence gate."
+                    "官网真实原始数据获取当前不在关键路径；"
+                    "程序/UI 继续使用内置、合成和源码派生对标验证包，真实配对数据保留为明确的后续证据门槛。"
                 ),
             ),
             (
@@ -6191,33 +6191,33 @@ class StudioController(QObject):
 
         fixture_file_info = {
             **file_info_for("fixture_pack"),
-            **({"Fixture Pack Artifact": str(result_export_files.get("fixture_pack_summary_artifact"))} if result_export_files.get("fixture_pack_summary_artifact") else {}),
-            **({"Official Raw Fixture Manifest": str(result_export_files.get("official_raw_fixture_manifest_artifact"))} if result_export_files.get("official_raw_fixture_manifest_artifact") else {}),
-            **({"Reference Coverage Audit": str(result_export_files.get("eddypro_coverage_audit_artifact"))} if result_export_files.get("eddypro_coverage_audit_artifact") else {}),
-            **({"Reference Partial Capability Closure": str(result_export_files.get("eddypro_partial_capability_closure_artifact"))} if result_export_files.get("eddypro_partial_capability_closure_artifact") else {}),
-            **({"Public EC Acquisition Closure": str(result_export_files.get("public_ec_acquisition_closure_artifact"))} if result_export_files.get("public_ec_acquisition_closure_artifact") else {}),
-            **({"Public Reference Fixture Catalog": str(result_export_files.get("public_eddypro_fixture_catalog_artifact"))} if result_export_files.get("public_eddypro_fixture_catalog_artifact") else {}),
-            "Active Fixture Pack": str(active_pack_path),
-            "Fixture Pack Workspace Root": str(active_pack_root),
-            "Official Raw Manifest Build": str(official_bundle_state.get("manifest_build_artifact", "")),
-            "Official Bundle Inspection": str(official_bundle_state.get("inspection_artifact", "")),
-            "Official Reference Run Capture": str(official_bundle_state.get("official_run_capture_artifact", "")),
-            "Official Reference Run Sidecar": str(official_bundle_state.get("official_eddypro_run_sidecar", "")),
-            "Official Raw Closure Run": str(official_bundle_state.get("closure_run_artifact", "")),
-            "Registered Fixture Pack": str(official_bundle_state.get("registered_pack_path", "")),
-            "Official Raw Parity": str(official_bundle_state.get("parity_artifact", "")),
-            "Official Raw Discovery": str(official_bundle_state.get("discovery_artifact", "")),
-            "Official Raw Repair Plan": str(official_bundle_state.get("repair_plan_artifact", "")),
-            "Official Raw Batch Registration": str(official_bundle_state.get("batch_registration_artifact", "")),
-            "Official Raw Batch Parity": str(official_bundle_state.get("batch_parity_artifact", "")),
-            "Official Raw Fixture Detail": str(official_bundle_state.get("selected_fixture_detail_artifact", "")),
-            "Official Raw Evidence Pack": str(official_bundle_state.get("evidence_pack_artifact", "")),
-            "Public Reference Fixture Catalog Runtime": str(public_fixture_state.get("catalog_artifact", "")),
-            "Public Reference Fixture Acquisition": str(public_fixture_state.get("acquisition_artifact", "")),
-            "Public EC Acquisition Closure Runtime": str(public_fixture_state.get("public_ec_acquisition_closure_artifact", "")),
+            **({"验证包摘要 Artifact": str(result_export_files.get("fixture_pack_summary_artifact"))} if result_export_files.get("fixture_pack_summary_artifact") else {}),
+            **({"行业参考原始清单": str(result_export_files.get("official_raw_fixture_manifest_artifact"))} if result_export_files.get("official_raw_fixture_manifest_artifact") else {}),
+            **({"参考覆盖审计": str(result_export_files.get("eddypro_coverage_audit_artifact"))} if result_export_files.get("eddypro_coverage_audit_artifact") else {}),
+            **({"参考能力闭环": str(result_export_files.get("eddypro_partial_capability_closure_artifact"))} if result_export_files.get("eddypro_partial_capability_closure_artifact") else {}),
+            **({"公开 EC 获取闭环": str(result_export_files.get("public_ec_acquisition_closure_artifact"))} if result_export_files.get("public_ec_acquisition_closure_artifact") else {}),
+            **({"公开参考目录": str(result_export_files.get("public_eddypro_fixture_catalog_artifact"))} if result_export_files.get("public_eddypro_fixture_catalog_artifact") else {}),
+            "当前验证包": str(active_pack_path),
+            "验证包工作目录": str(active_pack_root),
+            "行业参考清单构建": str(official_bundle_state.get("manifest_build_artifact", "")),
+            "行业参考检查": str(official_bundle_state.get("inspection_artifact", "")),
+            "行业参考运行记录": str(official_bundle_state.get("official_run_capture_artifact", "")),
+            "行业参考运行 Sidecar": str(official_bundle_state.get("official_eddypro_run_sidecar", "")),
+            "行业参考闭环运行": str(official_bundle_state.get("closure_run_artifact", "")),
+            "已注册验证包": str(official_bundle_state.get("registered_pack_path", "")),
+            "行业参考对标": str(official_bundle_state.get("parity_artifact", "")),
+            "行业参考发现": str(official_bundle_state.get("discovery_artifact", "")),
+            "行业参考修复计划": str(official_bundle_state.get("repair_plan_artifact", "")),
+            "行业参考批量注册": str(official_bundle_state.get("batch_registration_artifact", "")),
+            "行业参考批量对标": str(official_bundle_state.get("batch_parity_artifact", "")),
+            "行业参考验证包详情": str(official_bundle_state.get("selected_fixture_detail_artifact", "")),
+            "行业参考证据包": str(official_bundle_state.get("evidence_pack_artifact", "")),
+            "公开参考目录运行态": str(public_fixture_state.get("catalog_artifact", "")),
+            "公开参考获取": str(public_fixture_state.get("acquisition_artifact", "")),
+            "公开 EC 获取闭环运行态": str(public_fixture_state.get("public_ec_acquisition_closure_artifact", "")),
         }
         return {
-            "title": "Fixture Pack",
+            "title": "验证包",
             "source": f"{active_pack_path} / {batch_label}",
             "updated_at": updated_at,
             "report_key": "fixture_pack",
@@ -6238,8 +6238,8 @@ class StudioController(QObject):
             "table_headers": ["artifact", "status / value", "detail"],
             "table_rows": rows,
             "conclusions": [
-                "Fixture Pack report is generated from the same validated registry used by headless manifests and result exports.",
-                "Official website raw data is intentionally non-blocking in this round; program and UI completion continue on validated bundled/source-derived evidence.",
+                "验证包报告来自与 headless manifest 和结果导出一致的校验注册表。",
+                "官网真实原始数据在本阶段不阻塞；程序和 UI 继续基于已验证的内置/源码派生证据闭合。",
                 str(eddypro_coverage_audit.get("truthfulness_note", "")),
                 str(official_raw_manifest.get("truthfulness_note", "")),
                 str(summary.get("truthfulness_note", "")) or "Coverage gaps remain explicit until matching real fixtures are added.",
@@ -6429,10 +6429,10 @@ class StudioController(QObject):
         return {
             "current_batch": self._batch_label(active) if active is not None else "",
             "compare_batch": self._batch_label(compare) if compare is not None else "",
-            "difference_summary": ["No previous batch is available for comparison yet."],
+            "difference_summary": ["暂无上一批次可用于对比。"],
             "metric_deltas": {},
             "changed_windows": [],
-            "risk_summary": ["Generate at least two real batches before comparing them."],
+            "risk_summary": ["至少生成两个真实批次后再执行对比。"],
         }
 
     def _collect_spectral_rows(self) -> list[NormalizedHFFrame]:
@@ -7113,11 +7113,11 @@ class StudioController(QObject):
             "anomaly_events": "异常事件报告",
             "site_method": "站点方法说明",
             "evidence_pack": "证据包",
-            "fixture_pack": "Fixture Pack",
+            "fixture_pack": "验证包",
             "eddypro_compare": "行业参考对标报告",
             "method_provenance": "方法溯源",
-            "method_compare": "Method Compare",
-            "computation_surface": "Computation Surface",
+            "method_compare": "方法对比",
+            "computation_surface": "计算能力面板",
         }
         return {
             key: {
@@ -7417,7 +7417,7 @@ class StudioController(QObject):
             empty_rows.extend(official_raw_rows)
             return {
                 "report_key": "benchmark_cockpit",
-                "title": "Benchmark 驾驶舱",
+                "title": "基准驾驶舱",
                 "source": "无 RP 运行结果",
                 "updated_at": "--",
                 "metrics": [("状态", "无数据"), ("参考", "--"), ("通过率", "--"), ("最大偏差", "--")],
@@ -7428,8 +7428,8 @@ class StudioController(QObject):
                 "export_options": ["导出 benchmark summary artifact", "导出 cross-software parity artifact", "导出 reference provenance artifact"],
                 "file_info": {
                     "状态": "无数据",
-                    "Official Raw Fixture": str(official_raw_parity.get("fixture_id", "")),
-                    "Official Raw Parity": str(official_raw_parity.get("artifact", "")),
+                    "行业参考验证包": str(official_raw_parity.get("fixture_id", "")),
+                    "行业参考对标": str(official_raw_parity.get("artifact", "")),
                 },
                 "versions": [],
                 "usage": ["请先运行 EC 处理。"],
@@ -7586,7 +7586,7 @@ class StudioController(QObject):
             ))
         return {
             "report_key": "benchmark_cockpit",
-            "title": "Benchmark 驾驶舱",
+            "title": "基准驾驶舱",
             "source": bm_target or "无对标目标",
             "updated_at": run_result.created_at.strftime("%Y-%m-%d %H:%M") if run_result.created_at else "--",
             "metrics": [
@@ -7599,10 +7599,10 @@ class StudioController(QObject):
             "table_headers": ["项目", "数值", "说明"],
             "table_rows": table_rows,
             "conclusions": [
-                f"Benchmark 对标通过率：{pass_rate:.1%}",
+                f"基准对标通过率：{pass_rate:.1%}",
                 f"最大绝对偏差：{max_abs_error:.4e}",
                 f"失败字段：{' / '.join(failed_fields) if failed_fields else '无'}",
-            ] if bm_status == "active" else ["Benchmark 未激活，请在配置中设置 benchmark.status=active"],
+            ] if bm_status == "active" else ["基准对标未激活，请在配置中设置 benchmark.status=active"],
             "export_options": [
                 "导出 benchmark summary artifact",
                 "导出 cross-software parity artifact",
@@ -7668,7 +7668,7 @@ class StudioController(QObject):
             empty_rows.extend(official_raw_rows)
             return {
                 "report_key": "benchmark_cockpit",
-                "title": "Benchmark 驾驶舱",
+                "title": "基准驾驶舱",
                 "source": "无 RP 运行结果",
                 "updated_at": "--",
                 "metrics": [("状态", "无数据"), ("参考", "--"), ("通过率", "--"), ("最大偏差", "--")],
@@ -7683,8 +7683,8 @@ class StudioController(QObject):
                 ],
                 "file_info": {
                     "状态": "无数据",
-                    "Official Raw Fixture": str(official_raw_parity.get("fixture_id", "")),
-                    "Official Raw Parity": str(official_raw_parity.get("artifact", "")),
+                    "行业参考验证包": str(official_raw_parity.get("fixture_id", "")),
+                    "行业参考对标": str(official_raw_parity.get("artifact", "")),
                 },
                 "versions": [],
                 "usage": ["请先运行 EC 处理。"],
@@ -8025,30 +8025,30 @@ class StudioController(QObject):
             "Install runtime": installable_runtime_summary.get("status", "--") if installable_runtime_summary else "--",
             "Runtime deployment": runtime_deployment_summary.get("status", "--") if runtime_deployment_summary else "--",
             "Runtime deployment feedback": runtime_deployment_feedback_summary.get("status", "--") if runtime_deployment_feedback_summary else "--",
-            "Official Raw Fixture": str(official_raw_parity.get("fixture_id", "")),
-            "Official Raw Parity": str(official_raw_parity.get("artifact", "")),
+            "行业参考验证包": str(official_raw_parity.get("fixture_id", "")),
+            "行业参考对标": str(official_raw_parity.get("artifact", "")),
         }
         for key, label in (
-            ("benchmark_summary_artifact", "Benchmark Summary"),
-            ("method_rollup_artifact", "Method Rollup"),
-            ("parity_artifact", "Parity Artifact"),
-            ("reference_provenance_artifact", "Provenance Artifact"),
-            ("network_validation_summary", "Network Validation"),
-            ("runtime_watchdog_artifact", "Runtime Watchdog"),
-            ("runtime_service_artifact", "Runtime Service"),
-            ("daemon_telemetry_artifact", "Daemon Telemetry"),
-            ("supervisor_integration_artifact", "Supervisor Integration"),
-            ("installable_runtime_artifact", "Installable Runtime"),
-            ("runtime_deployment_artifact", "Runtime Deployment"),
-            ("runtime_deployment_feedback_artifact", "Runtime Deployment Feedback"),
-            ("clock_sync_artifact", "Clock Sync Artifact"),
+            ("benchmark_summary_artifact", "基准摘要"),
+            ("method_rollup_artifact", "方法汇总"),
+            ("parity_artifact", "对标 Artifact"),
+            ("reference_provenance_artifact", "参考溯源"),
+            ("network_validation_summary", "网络校验"),
+            ("runtime_watchdog_artifact", "运行守护"),
+            ("runtime_service_artifact", "运行服务"),
+            ("daemon_telemetry_artifact", "守护遥测"),
+            ("supervisor_integration_artifact", "Supervisor 集成"),
+            ("installable_runtime_artifact", "可安装运行时"),
+            ("runtime_deployment_artifact", "运行部署"),
+            ("runtime_deployment_feedback_artifact", "部署反馈"),
+            ("clock_sync_artifact", "时钟同步"),
         ):
             if export_files.get(key):
                 file_info[label] = str(export_files[key])
 
         return {
             "report_key": "benchmark_cockpit",
-            "title": "Benchmark 驾驶舱",
+            "title": "基准驾驶舱",
             "source": bm_target or "无对标目标",
             "updated_at": run_result.created_at.strftime("%Y-%m-%d %H:%M") if run_result.created_at else "--",
             "metrics": [
@@ -8061,11 +8061,11 @@ class StudioController(QObject):
             "table_headers": ["项目", "数值", "说明"],
             "table_rows": table_rows,
             "conclusions": [
-                f"Benchmark 对标通过率：{pass_rate:.1%}",
+                f"基准对标通过率：{pass_rate:.1%}",
                 f"最大绝对偏差：{max_abs_error:.4e}",
                 f"失败字段：{' / '.join(failed_fields) if failed_fields else '无'}",
                 f"网络校验：{network_summary.get('schema_target', '--') or '--'} / {network_summary.get('validation_status', '--') or '--'}",
-            ] if bm_status == "active" else ["Benchmark 未激活，请先选择 reference 并触发 rerun。"],
+            ] if bm_status == "active" else ["基准对标未激活，请先选择 reference 并触发 rerun。"],
             "export_options": [
                 "导出 benchmark summary artifact",
                 "导出 cross-software parity artifact",
