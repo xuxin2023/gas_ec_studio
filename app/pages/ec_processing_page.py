@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QTextEdit,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -467,6 +468,96 @@ class ECProcessingPage(QWidget):
             button.setProperty("variant", "primary" if lens_key == active_lens else "")
             button.style().unpolish(button)
             button.style().polish(button)
+
+    def _show_method_family(self, family: str) -> None:
+        if not hasattr(self, "method_family_sections"):
+            return
+        card = self.method_family_sections.get(family)
+        if card is None:
+            return
+        self.method_family_stack.setCurrentWidget(card)
+        for key, button in self.method_family_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == family)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _set_method_gate_chip(self, text: str, tone: str) -> None:
+        if not hasattr(self, "method_family_gate_chip"):
+            return
+        self.method_family_gate_chip.setText(text)
+        self.method_family_gate_chip.setProperty("chipTone", tone)
+        self.method_family_gate_chip.style().unpolish(self.method_family_gate_chip)
+        self.method_family_gate_chip.style().polish(self.method_family_gate_chip)
+
+    def _compact_method_form(self, fields: list[tuple[str, QWidget]]) -> QGridLayout:
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(TOKENS.spacing_md)
+        grid.setVerticalSpacing(TOKENS.spacing_sm)
+        for index, (label_text, widget) in enumerate(fields):
+            row = index // 2
+            column = (index % 2) * 2
+            label = QLabel(label_text)
+            label.setObjectName("subtitle")
+            grid.addWidget(label, row, column)
+            grid.addWidget(widget, row, column + 1)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
+        return grid
+
+    def _refresh_method_control_summary(self) -> None:
+        if not hasattr(self, "method_snapshot_label"):
+            return
+        footprint_enabled = self._current_combo_text("footprint_enable_combo", "enabled")
+        footprint_method = self._current_combo_text("footprint_method_combo", "kljun")
+        uncertainty_method = self._current_combo_text("uncertainty_mode_combo", "mann_lenschow")
+        spectral_enabled = self._current_combo_text("spectral_enable_combo", "enabled")
+        spectral_method = self._current_combo_text("spectral_method_combo", "massman")
+        cospectrum = self._current_combo_text("spectral_cospectrum_combo", "fcc_auto")
+        compare = self._current_combo_text("method_compare_combo", "disabled")
+
+        issues: list[str] = []
+        z_m = self.footprint_zm_spin.value()
+        canopy = self.footprint_canopy_spin.value()
+        z0 = self.footprint_z0_spin.value()
+        if footprint_enabled == "enabled":
+            if z_m <= canopy:
+                issues.append("z_m > canopy_height_m should be reviewed for above-canopy footprint runs.")
+            if z0 >= z_m:
+                issues.append("z0 must stay below z_m for footprint scaling.")
+            if self.footprint_grid_combo.currentText().strip() == "enabled" and (
+                self.footprint_grid_x_spin.value() < 16 or self.footprint_grid_y_spin.value() < 15
+            ):
+                issues.append("2D footprint grid is very coarse; use at least 16x15 for delivery review.")
+
+        confidence = self.uncertainty_confidence_spin.value()
+        if confidence < 0.80:
+            issues.append("confidence_level below 0.80 is allowed but should be justified in the run notes.")
+
+        if spectral_enabled == "enabled":
+            if self.spectral_response_spin.value() > 2.0:
+                issues.append("response_time_s is high; spectral attenuation may dominate the correction.")
+            if spectral_method == "fratini" and cospectrum != "fcc_auto":
+                issues.append("Fratini should use fcc_auto measured_cospectrum when FCC output is available.")
+
+        if compare == "enabled" and self.method_compare_threshold_spin.value() > 1.0:
+            issues.append("method_compare deviation_threshold above 1.0 weakens parity review.")
+
+        snapshot = (
+            f"footprint={footprint_method}({footprint_enabled}, z_m={z_m:.2f}, canopy={canopy:.2f}) | "
+            f"uncertainty={uncertainty_method}(confidence={confidence:.2f}) | "
+            f"spectral={spectral_method}({spectral_enabled}, cospectrum={cospectrum}) | "
+            f"compare={compare}(threshold={self.method_compare_threshold_spin.value():.2f})"
+        )
+        self.method_snapshot_label.setText(snapshot)
+        if issues:
+            self._set_method_gate_chip("Review", "warning")
+            self.method_validation_label.setText(" | ".join(issues[:4]))
+        else:
+            self._set_method_gate_chip("Ready", "success")
+            self.method_validation_label.setText("Ranges ok; UI snapshot keys match pipeline config names.")
 
     def _refresh_output_coverage_panel(self) -> None:
         if not self.coverage_values:
@@ -1030,12 +1121,54 @@ class ECProcessingPage(QWidget):
         param_layout.setSpacing(TOKENS.spacing_md)
         param_layout.addWidget(section_title("方法控制", "三族方法配置共用一页，保证 UI、config snapshot 和 pipeline 参数名一致。"))
 
-        footprint_card = CardFrame(muted=True)
-        footprint_layout = QVBoxLayout(footprint_card)
+        self.method_family_card = CardFrame(muted=True, role="cockpit")
+        method_shell_layout = QVBoxLayout(self.method_family_card)
+        method_shell_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        method_shell_layout.setSpacing(TOKENS.spacing_sm)
+        method_header = QHBoxLayout()
+        method_header.setSpacing(TOKENS.spacing_sm)
+        method_header.addWidget(section_title("Method console", "Switch between method families, review the live config snapshot, then run the RP pipeline."))
+        method_header.addStretch(1)
+        self.method_family_gate_chip = chip("Review", "warning")
+        method_header.addWidget(self.method_family_gate_chip)
+        method_shell_layout.addLayout(method_header)
+
+        method_switch_row = QHBoxLayout()
+        method_switch_row.setContentsMargins(0, 0, 0, 0)
+        method_switch_row.setSpacing(TOKENS.spacing_xs)
+        self.method_family_buttons: dict[str, QToolButton] = {}
+        for family, text in (
+            ("footprint", "Footprint"),
+            ("uncertainty", "Uncertainty"),
+            ("spectral", "Spectral"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, key=family: self._show_method_family(key))
+            self.method_family_buttons[family] = button
+            method_switch_row.addWidget(button)
+        method_switch_row.addStretch(1)
+        method_shell_layout.addLayout(method_switch_row)
+
+        self.method_family_stack = QStackedWidget()
+        method_shell_layout.addWidget(self.method_family_stack)
+        self.method_snapshot_label = QLabel("--")
+        self.method_snapshot_label.setObjectName("subtitle")
+        self.method_snapshot_label.setWordWrap(True)
+        self.method_validation_label = QLabel("--")
+        self.method_validation_label.setObjectName("subtitle")
+        self.method_validation_label.setWordWrap(True)
+        method_shell_layout.addWidget(self.method_snapshot_label)
+        method_shell_layout.addWidget(self.method_validation_label)
+        param_layout.addWidget(self.method_family_card)
+
+        self.footprint_card = CardFrame(muted=True, role="console")
+        footprint_layout = QVBoxLayout(self.footprint_card)
         footprint_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         footprint_layout.setSpacing(TOKENS.spacing_sm)
         footprint_layout.addWidget(section_title("Footprint", "推荐：kljun / z_m=3.0 / canopy_height_m=5.0"))
-        footprint_form = QFormLayout()
         self.footprint_enable_combo = QComboBox()
         self.footprint_enable_combo.addItems(["enabled", "disabled"])
         self.footprint_method_combo = QComboBox()
@@ -1050,48 +1183,56 @@ class ECProcessingPage(QWidget):
         self.footprint_grid_x_spin.setRange(8, 96)
         self.footprint_grid_y_spin = QSpinBox()
         self.footprint_grid_y_spin.setRange(7, 81)
-        footprint_form.addRow("开关", self.footprint_enable_combo)
-        footprint_form.addRow("method", self.footprint_method_combo)
-        footprint_form.addRow("z_m", self.footprint_zm_spin)
-        footprint_form.addRow("canopy_height_m", self.footprint_canopy_spin)
-        footprint_form.addRow("z0", self.footprint_z0_spin)
-        footprint_form.addRow("ol", self.footprint_ol_spin)
-        footprint_form.addRow("grid_2d", self.footprint_grid_combo)
-        footprint_form.addRow("grid_x_bins", self.footprint_grid_x_spin)
-        footprint_form.addRow("grid_y_bins", self.footprint_grid_y_spin)
-        footprint_layout.addLayout(footprint_form)
+        footprint_layout.addLayout(
+            self._compact_method_form(
+                [
+                    ("enabled", self.footprint_enable_combo),
+                    ("method", self.footprint_method_combo),
+                    ("z_m", self.footprint_zm_spin),
+                    ("canopy_height_m", self.footprint_canopy_spin),
+                    ("z0", self.footprint_z0_spin),
+                    ("ol", self.footprint_ol_spin),
+                    ("grid_2d", self.footprint_grid_combo),
+                    ("grid_x_bins", self.footprint_grid_x_spin),
+                    ("grid_y_bins", self.footprint_grid_y_spin),
+                ]
+            )
+        )
         self.footprint_summary_label = QLabel("--")
         self.footprint_summary_label.setObjectName("subtitle")
         self.footprint_summary_label.setWordWrap(True)
         footprint_layout.addWidget(self.footprint_summary_label)
-        param_layout.addWidget(footprint_card)
+        self.method_family_stack.addWidget(self.footprint_card)
 
-        uncertainty_card = CardFrame(muted=True)
-        uncertainty_layout = QVBoxLayout(uncertainty_card)
+        self.uncertainty_card = CardFrame(muted=True, role="console")
+        uncertainty_layout = QVBoxLayout(self.uncertainty_card)
         uncertainty_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         uncertainty_layout.setSpacing(TOKENS.spacing_sm)
         uncertainty_layout.addWidget(section_title("Uncertainty", "推荐：mann_lenschow / integral_timescale_s=5.0 / confidence_level=0.95"))
-        uncertainty_form = QFormLayout()
         self.uncertainty_mode_combo = QComboBox()
         self.uncertainty_mode_combo.addItems(["mann_lenschow", "finkelstein_sims", "composite_empirical"])
         self.uncertainty_timescale_spin = self._double_spin(0.5, 120.0, 1, suffix=" s")
         self.uncertainty_confidence_spin = self._double_spin(0.50, 0.99, 2)
-        uncertainty_form.addRow("method", self.uncertainty_mode_combo)
-        uncertainty_form.addRow("integral_timescale_s", self.uncertainty_timescale_spin)
-        uncertainty_form.addRow("confidence_level", self.uncertainty_confidence_spin)
-        uncertainty_layout.addLayout(uncertainty_form)
+        uncertainty_layout.addLayout(
+            self._compact_method_form(
+                [
+                    ("method", self.uncertainty_mode_combo),
+                    ("integral_timescale_s", self.uncertainty_timescale_spin),
+                    ("confidence_level", self.uncertainty_confidence_spin),
+                ]
+            )
+        )
         self.uncertainty_summary_label = QLabel("--")
         self.uncertainty_summary_label.setObjectName("subtitle")
         self.uncertainty_summary_label.setWordWrap(True)
         uncertainty_layout.addWidget(self.uncertainty_summary_label)
-        param_layout.addWidget(uncertainty_card)
+        self.method_family_stack.addWidget(self.uncertainty_card)
 
-        spectral_card = CardFrame(muted=True)
-        spectral_layout = QVBoxLayout(spectral_card)
+        self.spectral_card = CardFrame(muted=True, role="console")
+        spectral_layout = QVBoxLayout(self.spectral_card)
         spectral_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         spectral_layout.setSpacing(TOKENS.spacing_sm)
         spectral_layout.addWidget(section_title("Spectral Correction", "推荐：massman；Fratini 默认自动尝试 FCC measured cospectrum"))
-        spectral_form = QFormLayout()
         self.spectral_enable_combo = QComboBox()
         self.spectral_enable_combo.addItems(["enabled", "disabled"])
         self.spectral_method_combo = QComboBox()
@@ -1103,27 +1244,37 @@ class ECProcessingPage(QWidget):
         self.spectral_ol_spin = self._double_spin(-2000.0, 2000.0, 1, suffix=" m")
         self.spectral_cospectrum_combo = QComboBox()
         self.spectral_cospectrum_combo.addItems(["fcc_auto", "local_only"])
-        spectral_form.addRow("开关", self.spectral_enable_combo)
-        spectral_form.addRow("method", self.spectral_method_combo)
-        spectral_form.addRow("path_length_m", self.spectral_path_spin)
-        spectral_form.addRow("sensor_sep_m", self.spectral_sep_spin)
-        spectral_form.addRow("response_time_s", self.spectral_response_spin)
-        spectral_form.addRow("z_m", self.spectral_zm_spin)
-        spectral_form.addRow("ol", self.spectral_ol_spin)
-        spectral_form.addRow("measured_cospectrum", self.spectral_cospectrum_combo)
-        spectral_layout.addLayout(spectral_form)
+        spectral_layout.addLayout(
+            self._compact_method_form(
+                [
+                    ("enabled", self.spectral_enable_combo),
+                    ("method", self.spectral_method_combo),
+                    ("path_length_m", self.spectral_path_spin),
+                    ("sensor_sep_m", self.spectral_sep_spin),
+                    ("response_time_s", self.spectral_response_spin),
+                    ("z_m", self.spectral_zm_spin),
+                    ("ol", self.spectral_ol_spin),
+                    ("measured_cospectrum", self.spectral_cospectrum_combo),
+                ]
+            )
+        )
         self.spectral_summary_label = QLabel("--")
         self.spectral_summary_label.setObjectName("subtitle")
         self.spectral_summary_label.setWordWrap(True)
         spectral_layout.addWidget(self.spectral_summary_label)
-        param_layout.addWidget(spectral_card)
+        self.method_family_stack.addWidget(self.spectral_card)
+        self.method_family_sections = {
+            "footprint": self.footprint_card,
+            "uncertainty": self.uncertainty_card,
+            "spectral": self.spectral_card,
+        }
+        self._show_method_family("footprint")
 
         primary_card = CardFrame(muted=True)
         primary_layout = QVBoxLayout(primary_card)
         primary_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         primary_layout.setSpacing(TOKENS.spacing_sm)
         primary_layout.addWidget(section_title("Primary Analyzer QC", "Profile-aware CO2/H2O analyzer provenance and diagnostic thresholds."))
-        primary_form = QFormLayout()
         self.primary_analyzer_enable_combo = QComboBox()
         self.primary_analyzer_enable_combo.addItems(["enabled", "disabled"])
         self.primary_analyzer_profile_combo = QComboBox()
@@ -1143,17 +1294,22 @@ class ECProcessingPage(QWidget):
         self.primary_source_file_edit.setPlaceholderText("source calibration or normalized diagnostic file")
         self.primary_normalization_command_edit = QLineEdit()
         self.primary_normalization_command_edit.setPlaceholderText("gas_ec_studio normalize-licor --input ...")
-        primary_form.addRow("enabled", self.primary_analyzer_enable_combo)
-        primary_form.addRow("profile_id", self.primary_analyzer_profile_combo)
-        primary_form.addRow("signal_warning", self.primary_signal_warning_spin)
-        primary_form.addRow("signal_fail", self.primary_signal_fail_spin)
-        primary_form.addRow("status_ok", self.primary_require_status_combo)
-        primary_form.addRow("cell_thermodynamics", self.primary_cell_thermo_combo)
-        primary_form.addRow("allowed_diag_words", self.primary_allowed_diag_words_edit)
-        primary_form.addRow("calibration_profile_id", self.primary_calibration_profile_edit)
-        primary_form.addRow("source_file", self.primary_source_file_edit)
-        primary_form.addRow("normalization_command", self.primary_normalization_command_edit)
-        primary_layout.addLayout(primary_form)
+        primary_layout.addLayout(
+            self._compact_method_form(
+                [
+                    ("enabled", self.primary_analyzer_enable_combo),
+                    ("profile_id", self.primary_analyzer_profile_combo),
+                    ("signal_warning", self.primary_signal_warning_spin),
+                    ("signal_fail", self.primary_signal_fail_spin),
+                    ("status_ok", self.primary_require_status_combo),
+                    ("cell_thermodynamics", self.primary_cell_thermo_combo),
+                    ("allowed_diag_words", self.primary_allowed_diag_words_edit),
+                    ("calibration_profile_id", self.primary_calibration_profile_edit),
+                    ("source_file", self.primary_source_file_edit),
+                    ("normalization_command", self.primary_normalization_command_edit),
+                ]
+            )
+        )
         self.primary_analyzer_summary_label = QLabel("--")
         self.primary_analyzer_summary_label.setObjectName("subtitle")
         self.primary_analyzer_summary_label.setWordWrap(True)
@@ -1165,13 +1321,17 @@ class ECProcessingPage(QWidget):
         compare_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         compare_layout.setSpacing(TOKENS.spacing_sm)
         compare_layout.addWidget(section_title("Method Compare", "Run method families side-by-side without changing selected processing outputs"))
-        compare_form = QFormLayout()
         self.method_compare_combo = QComboBox()
         self.method_compare_combo.addItems(["enabled", "disabled"])
         self.method_compare_threshold_spin = self._double_spin(0.01, 2.0, 2)
-        compare_form.addRow("enabled", self.method_compare_combo)
-        compare_form.addRow("deviation_threshold", self.method_compare_threshold_spin)
-        compare_layout.addLayout(compare_form)
+        compare_layout.addLayout(
+            self._compact_method_form(
+                [
+                    ("enabled", self.method_compare_combo),
+                    ("deviation_threshold", self.method_compare_threshold_spin),
+                ]
+            )
+        )
         param_layout.addWidget(compare_card)
 
         row.addWidget(param_card, 3)
@@ -1977,6 +2137,7 @@ class ECProcessingPage(QWidget):
                 ]
             )
         )
+        self._refresh_method_control_summary()
         if current is None:
             values = ("--", "--", "--")
             note = "暂无真实 RP 结果，运行处理后显示 primary flux uncertainty band 和 Fratini/FCC 路径。"
