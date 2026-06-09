@@ -125,6 +125,11 @@ def build_stylesheet() -> str:
         border: 1px solid #d7e4eb;
         border-radius: {TOKENS.radius_md}px;
     }}
+    QFrame#cardMuted[cardRole="rail"] {{
+        background: rgba(255, 255, 255, 0.58);
+        border: 1px solid #d7e5ec;
+        border-radius: {TOKENS.radius_lg}px;
+    }}
     QLabel#pageTitle {{
         font-family: {TOKENS.font_family_display};
         font-size: {TOKENS.font_xl}px;

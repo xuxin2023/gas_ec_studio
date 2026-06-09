@@ -60,7 +60,9 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
 
         assert "尚未生成真实 RP 结果" in page.run_summary_label.text()
         assert page.run_bar.property("cardRole") == "command"
+        assert page.desktop_rail.property("cardRole") == "rail"
         assert page.cockpit_card.property("cardRole") == "cockpit"
+        assert page.readiness_card.property("cardRole") == "panel"
         assert page.step_tree.objectName() == "workflowTree"
         assert "kljun" in page.cockpit_method_value.text()
         assert page.cockpit_result_value.text() == "尚未运行"
@@ -68,6 +70,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.window_readiness_value.text() == "36,000"
         assert "massman" in page.method_readiness_note.text()
         assert page.delivery_readiness_value.text() == "FLUXNET"
+        assert page.window_plan_curve.xData is not None and len(page.window_plan_curve.xData) == 4
         assert page.lag_curve.xData is None or len(page.lag_curve.xData) == 0
         assert page.density_before_curve.xData is None or len(page.density_before_curve.xData) == 0
     finally:
@@ -108,6 +111,8 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.window_readiness_value.text() != "36,000"
         assert "window=" in page.window_readiness_note.text()
         assert page.delivery_readiness_value.text() == "FLUXNET"
+        assert page.window_plan_curve.xData is not None and len(page.window_plan_curve.xData) > 0
+        assert "真实窗口" in page.window_plan_note.text()
     finally:
         controller.shutdown()
 

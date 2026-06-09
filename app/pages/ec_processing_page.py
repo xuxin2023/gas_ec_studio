@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QSplitter,
     QStackedWidget,
     QTextEdit,
     QTreeWidget,
@@ -65,12 +66,10 @@ class ECProcessingPage(QWidget):
 
         self.run_bar = self._build_run_bar()
         layout.addWidget(self.run_bar)
-        self.cockpit_card = self._build_processing_cockpit()
-        layout.addWidget(self.cockpit_card)
 
-        body = QHBoxLayout()
-        body.setSpacing(TOKENS.spacing_md)
-        layout.addLayout(body, 1)
+        body = QSplitter(Qt.Horizontal)
+        body.setChildrenCollapsible(False)
+        layout.addWidget(body, 1)
 
         self.tree_card = CardFrame(muted=True)
         tree_layout = QVBoxLayout(self.tree_card)
@@ -85,10 +84,14 @@ class ECProcessingPage(QWidget):
         tree_layout.addWidget(self.step_tree, 1)
         self.tree_card.setMinimumWidth(260)
         self.tree_card.setMaximumWidth(320)
-        body.addWidget(self.tree_card, 0)
+        body.addWidget(self.tree_card)
 
         self.content_stack = QStackedWidget()
-        body.addWidget(self.content_stack, 1)
+        body.addWidget(self.content_stack)
+
+        self.desktop_rail = self._build_desktop_rail()
+        body.addWidget(self.desktop_rail)
+        body.setSizes([260, 840, 340])
 
         self._build_tree()
         self._build_pages()
@@ -275,33 +278,66 @@ class ECProcessingPage(QWidget):
             layout.addWidget(button)
         return card
 
+    def _build_desktop_rail(self) -> CardFrame:
+        rail = CardFrame(muted=True, role="rail")
+        rail.setMinimumWidth(300)
+        rail.setMaximumWidth(380)
+        layout = QVBoxLayout(rail)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_md)
+        layout.addWidget(section_title("EC Workbench", "固定显示当前运行闭合状态，不再藏在长页面底部。"))
+        self.cockpit_card = self._build_processing_cockpit()
+        layout.addWidget(self.cockpit_card)
+        self.readiness_card = self._build_readiness_panel()
+        layout.addWidget(self.readiness_card)
+        layout.addStretch(1)
+        return rail
+
     def _build_processing_cockpit(self) -> CardFrame:
         card = CardFrame(role="cockpit")
-        layout = QGridLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        layout.setHorizontalSpacing(TOKENS.spacing_md)
-        layout.setVerticalSpacing(TOKENS.spacing_sm)
-        layout.addWidget(
-            section_title(
-                "处理 Cockpit",
-                "把方法栈、运行结果、不确定度、benchmark 和交付出口固定在顶部，便于桌面端快速扫视。",
-            ),
-            0,
-            0,
-            1,
-            4,
-        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
+        header = QHBoxLayout()
+        header.setSpacing(TOKENS.spacing_sm)
+        header.addWidget(section_title("处理 Cockpit", "当前 RP 运行、方法和交付状态。"))
+        header.addStretch(1)
         self.cockpit_status_chip = chip("等待运行", "warning")
-        layout.addWidget(self.cockpit_status_chip, 0, 4)
+        header.addWidget(self.cockpit_status_chip)
+        layout.addLayout(header)
 
-        self.cockpit_method_value, self.cockpit_method_note = self._build_cockpit_tile(layout, 1, 0, "方法栈")
-        self.cockpit_result_value, self.cockpit_result_note = self._build_cockpit_tile(layout, 1, 1, "主通量")
-        self.cockpit_uncertainty_value, self.cockpit_uncertainty_note = self._build_cockpit_tile(layout, 1, 2, "不确定度")
-        self.cockpit_benchmark_value, self.cockpit_benchmark_note = self._build_cockpit_tile(layout, 1, 3, "Benchmark")
-        self.cockpit_delivery_value, self.cockpit_delivery_note = self._build_cockpit_tile(layout, 1, 4, "交付出口")
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.cockpit_method_value, self.cockpit_method_note = self._build_cockpit_tile(grid, 0, 0, "方法栈")
+        self.cockpit_result_value, self.cockpit_result_note = self._build_cockpit_tile(grid, 1, 0, "主通量")
+        self.cockpit_uncertainty_value, self.cockpit_uncertainty_note = self._build_cockpit_tile(grid, 2, 0, "不确定度")
+        self.cockpit_benchmark_value, self.cockpit_benchmark_note = self._build_cockpit_tile(grid, 3, 0, "Benchmark")
+        self.cockpit_delivery_value, self.cockpit_delivery_note = self._build_cockpit_tile(grid, 4, 0, "交付出口")
+        layout.addLayout(grid)
         return card
 
-    def _build_cockpit_tile(self, layout: QGridLayout, row: int, column: int, title: str) -> tuple[QLabel, QLabel]:
+    def _build_readiness_panel(self) -> CardFrame:
+        card = CardFrame(role="panel")
+        layout = QGridLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        layout.setVerticalSpacing(TOKENS.spacing_sm)
+        layout.addWidget(section_title("运行闭合度", "采样规模、方法族和出口状态。"), 0, 0)
+        self.window_readiness_value, self.window_readiness_note = self._build_cockpit_tile(layout, 1, 0, "窗口规模")
+        self.method_readiness_value, self.method_readiness_note = self._build_cockpit_tile(layout, 2, 0, "方法闭合")
+        self.delivery_readiness_value, self.delivery_readiness_note = self._build_cockpit_tile(layout, 3, 0, "交付闭合")
+        return card
+
+    def _build_cockpit_tile(
+        self,
+        layout: QGridLayout,
+        row: int,
+        column: int,
+        title: str,
+        *,
+        column_span: int = 1,
+    ) -> tuple[QLabel, QLabel]:
         tile = CardFrame(muted=True, role="tile")
         tile_layout = QVBoxLayout(tile)
         tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
@@ -317,7 +353,7 @@ class ECProcessingPage(QWidget):
         tile_layout.addWidget(title_label)
         tile_layout.addWidget(value_label)
         tile_layout.addWidget(note_label)
-        layout.addWidget(tile, row, column)
+        layout.addWidget(tile, row, column, 1, column_span)
         return value_label, note_label
 
     def _build_tree(self) -> None:
@@ -386,22 +422,25 @@ class ECProcessingPage(QWidget):
         preview_layout.addWidget(self.window_preview_note)
         row.addWidget(preview_card, 2)
 
-        readiness_card = CardFrame(role="panel")
-        readiness_layout = QGridLayout(readiness_card)
-        readiness_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        readiness_layout.setHorizontalSpacing(TOKENS.spacing_md)
-        readiness_layout.setVerticalSpacing(TOKENS.spacing_sm)
-        readiness_layout.addWidget(
-            section_title("运行闭合度", "把采样规模、方法族和交付出口放到同一行，减少首屏空白和来回跳转。"),
-            0,
-            0,
-            1,
-            3,
+        timeline_card = CardFrame(muted=True)
+        timeline_layout = QVBoxLayout(timeline_card)
+        timeline_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        timeline_layout.setSpacing(TOKENS.spacing_sm)
+        timeline_layout.addWidget(section_title("窗口时间轴", "桌面端用图形先确认窗口规模和批次结构，再进入细节步骤。"))
+        self.window_plan_plot = pg.PlotWidget()
+        configure_plot_theme(self.window_plan_plot, left_label="samples", bottom_label="window")
+        self.window_plan_curve = self.window_plan_plot.plot(
+            pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.0),
+            symbol="o",
+            symbolBrush=PLOT_SERIES_COLORS["primary"],
+            symbolPen=pg.mkPen("#ffffff", width=1),
         )
-        self.window_readiness_value, self.window_readiness_note = self._build_cockpit_tile(readiness_layout, 1, 0, "窗口规模")
-        self.method_readiness_value, self.method_readiness_note = self._build_cockpit_tile(readiness_layout, 1, 1, "方法闭合")
-        self.delivery_readiness_value, self.delivery_readiness_note = self._build_cockpit_tile(readiness_layout, 1, 2, "交付闭合")
-        layout.addWidget(readiness_card)
+        timeline_layout.addWidget(self.window_plan_plot, 1)
+        self.window_plan_note = QLabel("--")
+        self.window_plan_note.setObjectName("subtitle")
+        self.window_plan_note.setWordWrap(True)
+        timeline_layout.addWidget(self.window_plan_note)
+        layout.addWidget(timeline_card)
 
     def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
@@ -1494,10 +1533,25 @@ class ECProcessingPage(QWidget):
             samples = self.window_minutes_spin.value() * self.window_sample_hz_spin.value() * 60
             self.window_samples_label.setText(f"{samples:,} 点 / 窗口")
             self.window_preview_note.setText("暂无真实 RP 结果，运行处理后显示窗口切分与连续性摘要。")
+            xs = np.arange(1, 5, dtype=float)
+            ys = np.full_like(xs, float(samples), dtype=float)
+            self.window_plan_curve.setData(xs, ys)
+            self.window_plan_note.setText("预览 4 个待处理窗口；运行后会显示真实窗口样本量和连续性。")
             self._refresh_readiness_panel()
             return
         self.window_samples_label.setText(f"{current.sample_count:,} 点 / 当前窗口")
         self.window_preview_note.setText(str(section.get("real_summary", "窗口摘要不可用。")))
+        windows = self.controller.ec_processing_workspace.get("windows", [])
+        if windows:
+            xs = np.arange(1, len(windows) + 1, dtype=float)
+            ys = np.array([float(window.get("sample_count", current.sample_count) or 0.0) for window in windows], dtype=float)
+        else:
+            xs = np.array([1.0], dtype=float)
+            ys = np.array([float(current.sample_count)], dtype=float)
+        self.window_plan_curve.setData(xs, ys)
+        self.window_plan_note.setText(
+            f"真实窗口 {len(xs)} 个；当前窗口 {current.window_id}，缺测率 {current.missing_ratio * 100:.1f}%。"
+        )
         self._refresh_readiness_panel()
 
     def _refresh_cleaning_preview(self, *_args) -> None:

@@ -16,6 +16,7 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#card[cardRole="command"]' in stylesheet
     assert 'QFrame#card[cardRole="cockpit"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"]' in stylesheet
+    assert 'QFrame#cardMuted[cardRole="rail"]' in stylesheet
     assert 'QPushButton[navButton="true"]' in stylesheet
     assert 'QToolButton[viewSwitch="true"]' in stylesheet
     assert "QTreeWidget#workflowTree" in stylesheet
