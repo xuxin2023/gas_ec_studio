@@ -45,9 +45,11 @@ class StudioMainWindow(QMainWindow):
         root.addWidget(self.header)
 
         vertical = QSplitter(Qt.Vertical)
+        vertical.setObjectName("shellVerticalSplitter")
         root.addWidget(vertical, 1)
 
         top_widget = QWidget()
+        top_widget.setObjectName("mainDeck")
         top_layout = QHBoxLayout(top_widget)
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(TOKENS.spacing_md)
@@ -58,9 +60,11 @@ class StudioMainWindow(QMainWindow):
         top_layout.addWidget(self.navigation)
 
         inner_splitter = QSplitter(Qt.Horizontal)
+        inner_splitter.setObjectName("shellInnerSplitter")
         top_layout.addWidget(inner_splitter, 1)
 
         self.stack = QStackedWidget()
+        self.stack.setObjectName("workspaceStack")
         self.device_center_page = DeviceCenterPage(controller)
         self.device_detail_page = DeviceDetailPage(controller)
         self.realtime_page = RealtimePage(controller)
@@ -133,6 +137,21 @@ class StudioMainWindow(QMainWindow):
         self.header_status.setWordWrap(True)
         layout.addWidget(self.header_status)
 
+        telemetry = QHBoxLayout()
+        telemetry.setSpacing(TOKENS.spacing_sm)
+        self.header_online_tile = self._header_tile("在线", "--")
+        self.header_sampling_tile = self._header_tile("采集", "--")
+        self.header_alarm_tile = self._header_tile("异常", "--")
+        self.header_view_tile = self._header_tile("视图", "--")
+        for tile in (
+            self.header_online_tile,
+            self.header_sampling_tile,
+            self.header_alarm_tile,
+            self.header_view_tile,
+        ):
+            telemetry.addWidget(tile)
+        layout.addLayout(telemetry)
+
         group = QButtonGroup(card)
         self.operator_btn = QToolButton()
         self.operator_btn.setText("操作员视图")
@@ -150,6 +169,19 @@ class StudioMainWindow(QMainWindow):
         layout.addWidget(self.operator_btn)
         layout.addWidget(self.engineer_btn)
         return card
+
+    def _header_tile(self, label: str, value: str) -> QLabel:
+        tile = QLabel(f"{label}\n{value}")
+        tile.setProperty("shellTile", True)
+        tile.setAlignment(Qt.AlignCenter)
+        tile.setMinimumWidth(78)
+        return tile
+
+    def _set_header_tile(self, tile: QLabel, label: str, value: str, tone: str = "neutral") -> None:
+        tile.setText(f"{label}\n{value}")
+        tile.setProperty("shellTone", tone)
+        tile.style().unpolish(tile)
+        tile.style().polish(tile)
 
     def _set_page(self, page_key: str) -> None:
         mapping = {
@@ -175,12 +207,19 @@ class StudioMainWindow(QMainWindow):
 
     def _refresh_shell(self) -> None:
         summary = self.controller.status_summary()
+        view_label = "操作员" if self.controller.view_mode == "operator" else "工程师"
         self.header_status.setText(
             f"在线 {summary['online_devices']} / {summary['total_devices']} 台 · "
             f"异常 {summary['abnormal_devices']} 台 · "
             f"采集中 {summary['sampling_devices']} 台 · "
             f"最近告警：{summary['recent_alarm']}"
         )
+        alarm_tone = "success" if summary["abnormal_devices"] == 0 else "danger"
+        sampling_tone = "success" if summary["sampling_devices"] > 0 else "warning"
+        self._set_header_tile(self.header_online_tile, "在线", f"{summary['online_devices']}/{summary['total_devices']}", "success")
+        self._set_header_tile(self.header_sampling_tile, "采集", str(summary["sampling_devices"]), sampling_tone)
+        self._set_header_tile(self.header_alarm_tile, "异常", str(summary["abnormal_devices"]), alarm_tone)
+        self._set_header_tile(self.header_view_tile, "视图", view_label, "accent")
         self.operator_btn.setChecked(self.controller.view_mode == "operator")
         self.engineer_btn.setChecked(self.controller.view_mode == "engineer")
         self.inspector.refresh(self.controller.context_snapshot())

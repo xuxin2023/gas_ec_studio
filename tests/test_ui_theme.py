@@ -17,6 +17,8 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#card[cardRole="cockpit"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="rail"]' in stylesheet
+    assert 'QFrame#cardMuted[cardRole="console"]' in stylesheet
+    assert 'QLabel[shellTile="true"]' in stylesheet
     assert 'QPushButton[navButton="true"]' in stylesheet
     assert 'QToolButton[viewSwitch="true"]' in stylesheet
     assert "QTreeWidget#workflowTree" in stylesheet
@@ -116,6 +118,11 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.centralWidget().objectName() == "appShell"
     assert window.header.property("cardRole") == "hero"
     assert window.header_status.property("heroStatus") is True
+    assert window.navigation.property("cardRole") == "rail"
+    assert window.inspector.property("cardRole") == "rail"
+    assert window.log_panel.property("cardRole") == "console"
+    assert window.header_online_tile.property("shellTile") is True
+    assert window.header_alarm_tile.property("shellTone") in {"success", "danger"}
     assert window.operator_btn.property("viewSwitch") is True
     assert window.engineer_btn.property("viewSwitch") is True
     assert all(button.property("navButton") is True for button in window.navigation._buttons.values())

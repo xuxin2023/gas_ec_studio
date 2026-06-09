@@ -17,7 +17,7 @@ from app.theme import CardFrame, TOKENS
 
 class LogPanel(CardFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(muted=True, parent=parent)
+        super().__init__(muted=True, role="console", parent=parent)
         self._expanded = True
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setMinimumHeight(180)

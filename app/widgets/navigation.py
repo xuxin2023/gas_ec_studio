@@ -10,7 +10,7 @@ class NavigationRail(CardFrame):
     page_changed = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(muted=True, parent=parent)
+        super().__init__(muted=True, role="rail", parent=parent)
         self.setMinimumWidth(220)
         self.setMaximumWidth(260)
         layout = QVBoxLayout(self)

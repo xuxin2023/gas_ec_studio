@@ -94,8 +94,9 @@ def build_stylesheet() -> str:
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 0,
             stop: 0 #ffffff,
-            stop: 0.54 #f5fbfd,
-            stop: 1 #edf8f4
+            stop: 0.34 #f8fcfd,
+            stop: 0.72 #edf8f4,
+            stop: 1 #e7f3ef
         );
         border: 1px solid #bfd8df;
     }}
@@ -126,8 +127,23 @@ def build_stylesheet() -> str:
         border-radius: {TOKENS.radius_md}px;
     }}
     QFrame#cardMuted[cardRole="rail"] {{
-        background: rgba(255, 255, 255, 0.58);
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 rgba(255, 255, 255, 0.76),
+            stop: 0.58 rgba(248, 252, 255, 0.64),
+            stop: 1 rgba(232, 243, 247, 0.58)
+        );
         border: 1px solid #d7e5ec;
+        border-radius: {TOKENS.radius_lg}px;
+    }}
+    QFrame#cardMuted[cardRole="console"] {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #f8fbfd,
+            stop: 0.55 #eef6f9,
+            stop: 1 #e8f1f4
+        );
+        border: 1px solid #c6d9e4;
         border-radius: {TOKENS.radius_lg}px;
     }}
     QLabel#pageTitle {{
@@ -161,9 +177,39 @@ def build_stylesheet() -> str:
         min-width: 340px;
         padding: 10px 14px;
         border-radius: {TOKENS.radius_md}px;
-        background: rgba(255, 255, 255, 0.68);
+        background: rgba(255, 255, 255, 0.76);
         border: 1px solid #d2e4eb;
         color: {TOKENS.color_text_muted};
+    }}
+    QLabel[shellTile="true"] {{
+        min-width: 78px;
+        padding: 8px 10px;
+        border-radius: {TOKENS.radius_md}px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid #d2e4eb;
+        color: {TOKENS.color_text};
+        font-weight: 800;
+        line-height: 1.25;
+    }}
+    QLabel[shellTile="true"][shellTone="accent"] {{
+        background: {TOKENS.color_accent_soft};
+        border-color: #a7ccd5;
+        color: {TOKENS.color_accent};
+    }}
+    QLabel[shellTile="true"][shellTone="success"] {{
+        background: #e8f7ee;
+        border-color: #b7dcc9;
+        color: {TOKENS.color_success};
+    }}
+    QLabel[shellTile="true"][shellTone="warning"] {{
+        background: #fff5df;
+        border-color: #ead1a5;
+        color: {TOKENS.color_warning};
+    }}
+    QLabel[shellTile="true"][shellTone="danger"] {{
+        background: #fdeaea;
+        border-color: #efc1c1;
+        color: {TOKENS.color_error};
     }}
     QLabel#chip {{
         border-radius: {TOKENS.radius_sm}px;
@@ -268,9 +314,15 @@ def build_stylesheet() -> str:
     }}
     QPlainTextEdit {{
         font-family: {TOKENS.font_family_mono};
-        background: #0f2232;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #102535,
+            stop: 0.72 #0e1d2a,
+            stop: 1 #132b35
+        );
         color: #d9f7ee;
-        border-color: #294458;
+        border-color: #2d4d60;
+        border-radius: {TOKENS.radius_md}px;
     }}
     QComboBox::drop-down {{
         width: 28px;
