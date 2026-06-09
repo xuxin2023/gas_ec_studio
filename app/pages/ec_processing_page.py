@@ -65,6 +65,8 @@ class ECProcessingPage(QWidget):
 
         self.run_bar = self._build_run_bar()
         layout.addWidget(self.run_bar)
+        self.cockpit_card = self._build_processing_cockpit()
+        layout.addWidget(self.cockpit_card)
 
         body = QHBoxLayout()
         body.setSpacing(TOKENS.spacing_md)
@@ -76,6 +78,7 @@ class ECProcessingPage(QWidget):
         tree_layout.setSpacing(TOKENS.spacing_md)
         tree_layout.addWidget(section_title("处理树", "按步骤理解配置与结果，中间结果始终和参数同屏出现。"))
         self.step_tree = QTreeWidget()
+        self.step_tree.setObjectName("workflowTree")
         self.step_tree.setHeaderHidden(True)
         self.step_tree.setIndentation(10)
         self.step_tree.itemSelectionChanged.connect(self._on_step_changed)
@@ -213,6 +216,7 @@ class ECProcessingPage(QWidget):
         self._set_combo_text(self.full_output_mode_combo, str(steps["output"].get("full_output_mode", "only_available")))
 
         self._refresh_run_bar()
+        self._refresh_processing_cockpit()
         self._refresh_window_preview()
         self._refresh_cleaning_preview()
         self._refresh_screening_preview()
@@ -230,7 +234,7 @@ class ECProcessingPage(QWidget):
         self._sync_step_from_controller()
 
     def _build_run_bar(self) -> CardFrame:
-        card = CardFrame()
+        card = CardFrame(role="command")
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
@@ -270,6 +274,51 @@ class ECProcessingPage(QWidget):
         for button in (run_button, precheck_button, save_template_button, restore_button):
             layout.addWidget(button)
         return card
+
+    def _build_processing_cockpit(self) -> CardFrame:
+        card = CardFrame(role="cockpit")
+        layout = QGridLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        layout.setHorizontalSpacing(TOKENS.spacing_md)
+        layout.setVerticalSpacing(TOKENS.spacing_sm)
+        layout.addWidget(
+            section_title(
+                "处理 Cockpit",
+                "把方法栈、运行结果、不确定度、benchmark 和交付出口固定在顶部，便于桌面端快速扫视。",
+            ),
+            0,
+            0,
+            1,
+            4,
+        )
+        self.cockpit_status_chip = chip("等待运行", "warning")
+        layout.addWidget(self.cockpit_status_chip, 0, 4)
+
+        self.cockpit_method_value, self.cockpit_method_note = self._build_cockpit_tile(layout, 1, 0, "方法栈")
+        self.cockpit_result_value, self.cockpit_result_note = self._build_cockpit_tile(layout, 1, 1, "主通量")
+        self.cockpit_uncertainty_value, self.cockpit_uncertainty_note = self._build_cockpit_tile(layout, 1, 2, "不确定度")
+        self.cockpit_benchmark_value, self.cockpit_benchmark_note = self._build_cockpit_tile(layout, 1, 3, "Benchmark")
+        self.cockpit_delivery_value, self.cockpit_delivery_note = self._build_cockpit_tile(layout, 1, 4, "交付出口")
+        return card
+
+    def _build_cockpit_tile(self, layout: QGridLayout, row: int, column: int, title: str) -> tuple[QLabel, QLabel]:
+        tile = CardFrame(muted=True, role="tile")
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        tile_layout.setSpacing(TOKENS.spacing_xs)
+        title_label = QLabel(title)
+        title_label.setObjectName("metricLabel")
+        value_label = QLabel("--")
+        value_label.setObjectName("metricValue")
+        value_label.setWordWrap(True)
+        note_label = QLabel("--")
+        note_label.setObjectName("subtitle")
+        note_label.setWordWrap(True)
+        tile_layout.addWidget(title_label)
+        tile_layout.addWidget(value_label)
+        tile_layout.addWidget(note_label)
+        layout.addWidget(tile, row, column)
+        return value_label, note_label
 
     def _build_tree(self) -> None:
         root = QTreeWidgetItem(["处理流程"])
@@ -336,6 +385,23 @@ class ECProcessingPage(QWidget):
         self.window_preview_note.setWordWrap(True)
         preview_layout.addWidget(self.window_preview_note)
         row.addWidget(preview_card, 2)
+
+        readiness_card = CardFrame(role="panel")
+        readiness_layout = QGridLayout(readiness_card)
+        readiness_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        readiness_layout.setHorizontalSpacing(TOKENS.spacing_md)
+        readiness_layout.setVerticalSpacing(TOKENS.spacing_sm)
+        readiness_layout.addWidget(
+            section_title("运行闭合度", "把采样规模、方法族和交付出口放到同一行，减少首屏空白和来回跳转。"),
+            0,
+            0,
+            1,
+            3,
+        )
+        self.window_readiness_value, self.window_readiness_note = self._build_cockpit_tile(readiness_layout, 1, 0, "窗口规模")
+        self.method_readiness_value, self.method_readiness_note = self._build_cockpit_tile(readiness_layout, 1, 1, "方法闭合")
+        self.delivery_readiness_value, self.delivery_readiness_note = self._build_cockpit_tile(readiness_layout, 1, 2, "交付闭合")
+        layout.addWidget(readiness_card)
 
     def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
@@ -1279,6 +1345,148 @@ class ECProcessingPage(QWidget):
         self.run_status_chip.style().polish(self.run_status_chip)
         self.run_summary_label.setText(str(summary.get("message", "尚未生成真实 RP 结果。")))
 
+    def _refresh_processing_cockpit(self, *_args) -> None:
+        if not hasattr(self, "cockpit_method_value"):
+            return
+        workspace = self.controller.ec_processing_workspace
+        summary = dict(workspace.get("summary", {}) or {})
+        status = str(summary.get("status", "empty") or "empty")
+        status_tone = "success" if status == "ok" else ("warning" if status == "empty" else "danger")
+        self._set_cockpit_chip(f"RP {status}", status_tone)
+
+        footprint_method = self._current_combo_text("footprint_method_combo", "kljun")
+        uncertainty_method = self._current_combo_text("uncertainty_mode_combo", "mann_lenschow")
+        spectral_method = self._current_combo_text("spectral_method_combo", "massman")
+        method_compare = self._current_combo_text("method_compare_combo", "disabled")
+        cospectrum = self._current_combo_text("spectral_cospectrum_combo", "fcc_auto")
+        self.cockpit_method_value.setText(f"{footprint_method} / {uncertainty_method} / {spectral_method}")
+        self.cockpit_method_note.setText(
+            f"footprint={self._current_combo_text('footprint_enable_combo', 'enabled')}，"
+            f"spectral={self._current_combo_text('spectral_enable_combo', 'enabled')}，"
+            f"cospectrum={cospectrum}，compare={method_compare}"
+        )
+
+        run = self.controller.current_rp_run()
+        current = self._current_window()
+        diagnostics = dict(current.diagnostics or {}) if current is not None else {}
+        if current is None:
+            self.cockpit_result_value.setText("尚未运行")
+            self.cockpit_result_note.setText(str(summary.get("message", "运行处理后显示 primary_flux 与 QC。")))
+            self.cockpit_uncertainty_value.setText("待生成")
+            self.cockpit_uncertainty_note.setText("运行后显示 random error、relative uncertainty 和 confidence band。")
+        else:
+            self.cockpit_result_value.setText(self._format_metric(current.primary_flux, digits=4))
+            self.cockpit_result_note.setText(
+                f"window={current.window_id}，source={current.primary_flux_source or '--'}，"
+                f"QC={current.qc_grade}，windows={summary.get('valid_window_count', 0)}/{summary.get('window_count', 0)}"
+            )
+            band = diagnostics.get("primary_flux_uncertainty_band")
+            random_error = diagnostics.get("primary_flux_random_error")
+            relative = diagnostics.get("primary_flux_relative_uncertainty")
+            ci_lower = diagnostics.get("primary_flux_ci_lower")
+            ci_upper = diagnostics.get("primary_flux_ci_upper")
+            self.cockpit_uncertainty_value.setText(f"±{self._format_metric(band, digits=4)}")
+            self.cockpit_uncertainty_note.setText(
+                f"random={self._format_metric(random_error, digits=4)}，"
+                f"relative={self._format_percent(relative)}，"
+                f"CI=[{self._format_metric(ci_lower, digits=4)}, {self._format_metric(ci_upper, digits=4)}]"
+            )
+
+        run_summary = dict(run.summary if run is not None else {})
+        benchmark_state = dict(self.controller.report_center_workspace.get("benchmark", {}) or {})
+        benchmark_status = str(
+            run_summary.get("benchmark_status")
+            or diagnostics.get("benchmark_status")
+            or benchmark_state.get("status")
+            or "inactive"
+        )
+        deviation = dict(
+            run_summary.get("benchmark_deviation_summary")
+            or diagnostics.get("benchmark_deviation_summary")
+            or {}
+        )
+        pass_rate = run_summary.get("pass_rate", deviation.get("pass_rate"))
+        failed_fields = run_summary.get("failed_fields", deviation.get("failed_fields", []))
+        if isinstance(failed_fields, str):
+            failed_fields = [failed_fields]
+        benchmark_value = self._format_percent(pass_rate) if isinstance(pass_rate, (int, float)) else benchmark_status
+        self.cockpit_benchmark_value.setText(benchmark_value)
+        self.cockpit_benchmark_note.setText(
+            f"status={benchmark_status}，ref={run_summary.get('benchmark_reference_id') or benchmark_state.get('reference_id') or '--'}，"
+            f"failed={len(failed_fields or [])}"
+        )
+
+        network = dict(self.controller.report_center_workspace.get("network_output", {}) or {})
+        export_status = str(self.controller.report_center_workspace.get("export_status", "not_exported") or "not_exported")
+        schema_target = diagnostics.get("schema_target") or network.get("schema_target", "FLUXNET")
+        validation_status = diagnostics.get("validation_status", diagnostics.get("network_validation_status", "--"))
+        missing_fields = diagnostics.get("missing_fields", diagnostics.get("network_missing_fields", []))
+        if isinstance(missing_fields, str):
+            missing_fields = [missing_fields]
+        self.cockpit_delivery_value.setText(str(schema_target))
+        self.cockpit_delivery_note.setText(
+            f"validation={validation_status}，missing={len(missing_fields or [])}，export={export_status[:48]}"
+        )
+
+    def _set_cockpit_chip(self, text: str, tone: str) -> None:
+        self.cockpit_status_chip.setText(text)
+        self.cockpit_status_chip.setProperty("chipTone", tone)
+        self.cockpit_status_chip.style().unpolish(self.cockpit_status_chip)
+        self.cockpit_status_chip.style().polish(self.cockpit_status_chip)
+
+    def _current_combo_text(self, attr_name: str, default: str) -> str:
+        combo = getattr(self, attr_name, None)
+        if combo is None:
+            return default
+        text = combo.currentText().strip()
+        return text or default
+
+    def _format_metric(self, value: object, *, digits: int = 3) -> str:
+        if not isinstance(value, (int, float)):
+            return "--"
+        return f"{float(value):.{digits}g}"
+
+    def _format_percent(self, value: object) -> str:
+        if not isinstance(value, (int, float)):
+            return "--"
+        numeric = float(value)
+        if abs(numeric) <= 1.0:
+            numeric *= 100.0
+        return f"{numeric:.1f}%"
+
+    def _refresh_readiness_panel(self) -> None:
+        if not hasattr(self, "window_readiness_value"):
+            return
+        current = self._current_window()
+        if current is None:
+            samples = self.window_minutes_spin.value() * self.window_sample_hz_spin.value() * 60
+            self.window_readiness_value.setText(f"{samples:,}")
+            self.window_readiness_note.setText(
+                f"{self.window_minutes_spin.value()} min × {self.window_sample_hz_spin.value()} Hz，等待 RP 运行验证。"
+            )
+        else:
+            self.window_readiness_value.setText(f"{current.sample_count:,}")
+            self.window_readiness_note.setText(
+                f"window={current.window_id}，lag={current.lag_seconds:.3f}s，missing={current.missing_ratio * 100:.1f}%"
+            )
+
+        footprint_method = self._current_combo_text("footprint_method_combo", "kljun")
+        uncertainty_method = self._current_combo_text("uncertainty_mode_combo", "mann_lenschow")
+        spectral_method = self._current_combo_text("spectral_method_combo", "massman")
+        self.method_readiness_value.setText(f"{footprint_method} / {uncertainty_method}")
+        self.method_readiness_note.setText(
+            f"spectral={spectral_method}，cospectrum={self._current_combo_text('spectral_cospectrum_combo', 'fcc_auto')}，"
+            f"compare={self._current_combo_text('method_compare_combo', 'disabled')}"
+        )
+
+        diagnostics = dict(current.diagnostics or {}) if current is not None else {}
+        network = dict(self.controller.report_center_workspace.get("network_output", {}) or {})
+        schema_target = diagnostics.get("schema_target") or network.get("schema_target", "FLUXNET")
+        export_status = str(self.controller.report_center_workspace.get("export_status", "not_exported") or "not_exported")
+        validation_status = diagnostics.get("validation_status", diagnostics.get("network_validation_status", "--"))
+        self.delivery_readiness_value.setText(str(schema_target))
+        self.delivery_readiness_note.setText(f"validation={validation_status}，export={export_status[:56]}")
+
     def _refresh_window_preview(self, *_args) -> None:
         section = self._section_workspace("window_sampling")
         current = self._current_window()
@@ -1286,9 +1494,11 @@ class ECProcessingPage(QWidget):
             samples = self.window_minutes_spin.value() * self.window_sample_hz_spin.value() * 60
             self.window_samples_label.setText(f"{samples:,} 点 / 窗口")
             self.window_preview_note.setText("暂无真实 RP 结果，运行处理后显示窗口切分与连续性摘要。")
+            self._refresh_readiness_panel()
             return
         self.window_samples_label.setText(f"{current.sample_count:,} 点 / 当前窗口")
         self.window_preview_note.setText(str(section.get("real_summary", "窗口摘要不可用。")))
+        self._refresh_readiness_panel()
 
     def _refresh_cleaning_preview(self, *_args) -> None:
         section = self._section_workspace("data_cleaning")
@@ -1529,6 +1739,8 @@ class ECProcessingPage(QWidget):
         self.uncertainty_sensor_label.setText(values[1])
         self.uncertainty_processing_label.setText(values[2])
         self.uncertainty_preview_note.setText(note)
+        self._refresh_processing_cockpit()
+        self._refresh_readiness_panel()
 
     def _refresh_primary_analyzer_preview(self, *_args) -> None:
         profile_id = str(self.primary_analyzer_profile_combo.currentData() or "ygas_irga")
@@ -1581,6 +1793,8 @@ class ECProcessingPage(QWidget):
         fields = [field.strip() for field in text.split(",") if field.strip()]
         if current is None:
             self.output_preview_label.setText("暂无真实 RP 结果。")
+            self._refresh_processing_cockpit()
+            self._refresh_readiness_panel()
             return
         summary = workspace.get("summary", {})
         field_text = "、".join(fields[:6]) if fields else "未设置输出字段"
@@ -1591,6 +1805,8 @@ class ECProcessingPage(QWidget):
             f"uncertainty_band={diagnostics.get('primary_flux_uncertainty_band', '--')}，"
             f"schema_target={diagnostics.get('schema_target', '--')}。"
         )
+        self._refresh_processing_cockpit()
+        self._refresh_readiness_panel()
 
     def _section_workspace(self, key: str) -> dict:
         return dict(self.controller.ec_processing_workspace.get("sections", {}).get(key, {}))

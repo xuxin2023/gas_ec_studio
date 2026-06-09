@@ -102,6 +102,29 @@ def build_stylesheet() -> str:
     QFrame#card[cardRole="panel"] {{
         background: {TOKENS.color_surface_warm};
     }}
+    QFrame#card[cardRole="command"] {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #ffffff,
+            stop: 0.62 #f7fbfd,
+            stop: 1 #e7f5f2
+        );
+        border: 1px solid #bfd8df;
+    }}
+    QFrame#card[cardRole="cockpit"] {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #fffdf8,
+            stop: 0.55 #ffffff,
+            stop: 1 #eff8f4
+        );
+        border: 1px solid #d4e2d8;
+    }}
+    QFrame#cardMuted[cardRole="tile"] {{
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid #d7e4eb;
+        border-radius: {TOKENS.radius_md}px;
+    }}
     QLabel#pageTitle {{
         font-family: {TOKENS.font_family_display};
         font-size: {TOKENS.font_xl}px;
@@ -307,6 +330,27 @@ def build_stylesheet() -> str:
     QListWidget::item:selected, QTreeWidget::item:selected {{
         background: {TOKENS.color_accent_soft};
         color: {TOKENS.color_text};
+    }}
+    QTreeWidget#workflowTree {{
+        background: rgba(255, 255, 255, 0.62);
+        border: 1px solid #d9e6ee;
+        border-radius: {TOKENS.radius_md}px;
+        padding: 6px;
+    }}
+    QTreeWidget#workflowTree::item {{
+        min-height: 30px;
+        margin: 2px 0;
+        padding: 7px 10px;
+        border-radius: {TOKENS.radius_sm}px;
+    }}
+    QTreeWidget#workflowTree::item:selected {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 {TOKENS.color_accent_soft},
+            stop: 1 #ffffff
+        );
+        color: {TOKENS.color_accent};
+        font-weight: 800;
     }}
     QTabWidget::pane {{
         border: 1px solid {TOKENS.color_border};

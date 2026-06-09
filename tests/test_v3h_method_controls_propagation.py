@@ -120,6 +120,14 @@ def test_ec_processing_page_method_controls_roundtrip_to_snapshot(monkeypatch, t
         page.method_compare_combo.setCurrentText("enabled")
         page.method_compare_threshold_spin.setValue(0.30)
 
+        assert "kormann_meixner" in page.cockpit_method_value.text()
+        assert "finkelstein_sims" in page.cockpit_method_value.text()
+        assert "fratini" in page.cockpit_method_value.text()
+        assert "cospectrum=fcc_auto" in page.cockpit_method_note.text()
+        assert "compare=enabled" in page.cockpit_method_note.text()
+        assert "kormann_meixner" in page.method_readiness_value.text()
+        assert "fratini" in page.method_readiness_note.text()
+
         payload = page._collect_payload()
         assert payload["steps"]["footprint"]["method"] == "kormann_meixner"
         assert payload["steps"]["footprint"]["z_m"] == 4.2

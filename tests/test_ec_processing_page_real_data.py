@@ -59,6 +59,15 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         page.refresh()
 
         assert "尚未生成真实 RP 结果" in page.run_summary_label.text()
+        assert page.run_bar.property("cardRole") == "command"
+        assert page.cockpit_card.property("cardRole") == "cockpit"
+        assert page.step_tree.objectName() == "workflowTree"
+        assert "kljun" in page.cockpit_method_value.text()
+        assert page.cockpit_result_value.text() == "尚未运行"
+        assert page.cockpit_delivery_value.text() == "FLUXNET"
+        assert page.window_readiness_value.text() == "36,000"
+        assert "massman" in page.method_readiness_note.text()
+        assert page.delivery_readiness_value.text() == "FLUXNET"
         assert page.lag_curve.xData is None or len(page.lag_curve.xData) == 0
         assert page.density_before_curve.xData is None or len(page.density_before_curve.xData) == 0
     finally:
@@ -92,6 +101,13 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert "u*=" in page.turbulence_preview_label.text()
         assert page.uncertainty_sampling_label.text() != "真实 RP 未提供"
         assert page.full_output_mode_combo.currentText() == "only_available"
+        assert page.cockpit_result_value.text() != "尚未运行"
+        assert page.cockpit_uncertainty_value.text().startswith("±")
+        assert page.cockpit_delivery_value.text() == "FLUXNET"
+        assert "windows=" in page.cockpit_result_note.text()
+        assert page.window_readiness_value.text() != "36,000"
+        assert "window=" in page.window_readiness_note.text()
+        assert page.delivery_readiness_value.text() == "FLUXNET"
     finally:
         controller.shutdown()
 
