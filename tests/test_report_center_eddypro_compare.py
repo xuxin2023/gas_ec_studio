@@ -138,6 +138,11 @@ def test_report_center_empty_state_without_compare_result(monkeypatch, tmp_path:
         page = ReportCenterPage(controller)
         page.refresh()
 
+        assert page.filter_bar.property("cardRole") == "command"
+        assert page.tree_card.property("cardRole") == "rail"
+        assert page.delivery_rail.property("cardRole") == "rail"
+        assert page.batch_card.property("cardRole") == "panel"
+        assert page.report_tree.objectName() == "workflowTree"
         assert "EddyPro" not in page.preview_title_label.text()
         _assert_no_forbidden_ui_text(page)
         assert page.preview_table.rowCount() >= 1

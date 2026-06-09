@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
@@ -68,35 +69,36 @@ class ReportCenterPage(QWidget):
         self.filter_bar = self._build_filter_bar()
         layout.addWidget(self.filter_bar)
 
-        self.summary_row = self._build_summary_row()
-        layout.addWidget(self.summary_row)
+        workbench = QSplitter(Qt.Horizontal)
+        workbench.setChildrenCollapsible(False)
+        workbench.setObjectName("reportWorkbench")
+        layout.addWidget(workbench, 1)
 
-        body = QHBoxLayout()
-        body.setSpacing(TOKENS.spacing_md)
-        layout.addLayout(body, 1)
-
-        self.tree_card = CardFrame(muted=True)
+        self.tree_card = CardFrame(muted=True, role="rail")
         tree_layout = QVBoxLayout(self.tree_card)
         tree_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         tree_layout.setSpacing(TOKENS.spacing_md)
         tree_layout.addWidget(section_title("报告目录", "按使用场景组织目录，让预览更像真正的报告中心。"))
         self.report_tree = QTreeWidget()
+        self.report_tree.setObjectName("workflowTree")
         self.report_tree.setHeaderHidden(True)
         self.report_tree.setIndentation(10)
         self.report_tree.itemSelectionChanged.connect(self._on_report_changed)
         tree_layout.addWidget(self.report_tree, 1)
-        self.tree_card.setMinimumWidth(250)
-        self.tree_card.setMaximumWidth(320)
-        body.addWidget(self.tree_card, 0)
+        self.tree_card.setMinimumWidth(240)
+        self.tree_card.setMaximumWidth(310)
+        workbench.addWidget(self.tree_card)
 
         center_scroll = QScrollArea()
         center_scroll.setWidgetResizable(True)
+        center_scroll.setMinimumWidth(620)
         center_container = QWidget()
         center_layout = QVBoxLayout(center_container)
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(TOKENS.spacing_md)
+        center_layout.setAlignment(Qt.AlignTop)
         center_scroll.setWidget(center_container)
-        body.addWidget(center_scroll, 1)
+        workbench.addWidget(center_scroll)
 
         self.preview_header_card = CardFrame()
         preview_header_layout = QVBoxLayout(self.preview_header_card)
@@ -141,12 +143,16 @@ class ReportCenterPage(QWidget):
         content_layout = QVBoxLayout(self.preview_content_card)
         content_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         content_layout.setSpacing(TOKENS.spacing_md)
+        content_layout.setAlignment(Qt.AlignTop)
         content_layout.addWidget(section_title("图表或表格预览", "让结果预览像报告，而不是文件清单。"))
         self.preview_plot = pg.PlotWidget()
+        self.preview_plot.setMinimumHeight(260)
+        self.preview_plot.setMaximumHeight(360)
         configure_plot_theme(self.preview_plot, left_label="指标", bottom_label="序列")
         self.preview_curve = self.preview_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.2))
-        content_layout.addWidget(self.preview_plot, 1)
+        content_layout.addWidget(self.preview_plot)
         self.preview_table = QTableWidget(0, 3)
+        self.preview_table.setMaximumHeight(180)
         self.preview_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.preview_table.verticalHeader().setVisible(False)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -155,7 +161,7 @@ class ReportCenterPage(QWidget):
         self.preview_plot_note.setObjectName("subtitle")
         self.preview_plot_note.setWordWrap(True)
         content_layout.addWidget(self.preview_plot_note)
-        center_layout.addWidget(self.preview_content_card, 1)
+        center_layout.addWidget(self.preview_content_card)
 
         self.conclusion_card = CardFrame(muted=True)
         conclusion_layout = QVBoxLayout(self.conclusion_card)
@@ -166,14 +172,26 @@ class ReportCenterPage(QWidget):
         self.conclusion_content.setSpacing(TOKENS.spacing_sm)
         conclusion_layout.addLayout(self.conclusion_content)
         center_layout.addWidget(self.conclusion_card)
+        center_layout.addStretch(1)
+
+        self.delivery_rail = CardFrame(muted=True, role="rail")
+        delivery_layout = QVBoxLayout(self.delivery_rail)
+        delivery_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        delivery_layout.setSpacing(TOKENS.spacing_md)
+        delivery_layout.addWidget(
+            section_title(
+                "Delivery Cockpit",
+                "Export status, report readiness, provenance, and batch drift stay visible while browsing reports.",
+            )
+        )
+
+        self.summary_row = self._build_summary_row()
+        delivery_layout.addWidget(self.summary_row)
 
         self.inner_inspector = QWidget()
         inspector_layout = QVBoxLayout(self.inner_inspector)
         inspector_layout.setContentsMargins(0, 0, 0, 0)
         inspector_layout.setSpacing(TOKENS.spacing_md)
-        self.inner_inspector.setMinimumWidth(320)
-        self.inner_inspector.setMaximumWidth(360)
-        body.addWidget(self.inner_inspector, 0)
 
         self.export_card, self.export_content = self._inspector_card("导出选项", "把当前报告的导出方式和出口统一放在这里。")
         self.file_card, self.file_content = self._inspector_card("文件信息", "不只显示路径，还要说明状态和用途。")
@@ -181,26 +199,33 @@ class ReportCenterPage(QWidget):
         self.usage_card, self.usage_content = self._inspector_card("使用建议", "按操作员、工程师、管理汇报三个场景给出建议。")
         for card in (self.export_card, self.file_card, self.version_card, self.usage_card):
             inspector_layout.addWidget(card)
-        inspector_layout.addStretch(1)
+        delivery_layout.addWidget(self.inner_inspector)
 
-        self.batch_card = CardFrame()
+        self.batch_card = CardFrame(muted=True, role="panel")
         batch_layout = QVBoxLayout(self.batch_card)
         batch_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         batch_layout.setSpacing(TOKENS.spacing_md)
         batch_layout.addWidget(section_title("批次对比", "统一展示当前批次、对比批次和差异摘要。"))
-        batch_row = QHBoxLayout()
-        batch_row.setSpacing(TOKENS.spacing_md)
+        batch_grid = QGridLayout()
+        batch_grid.setContentsMargins(0, 0, 0, 0)
+        batch_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        batch_grid.setVerticalSpacing(TOKENS.spacing_sm)
         self.batch_current_value = QLabel("--")
         self.batch_compare_value = QLabel("--")
         self.batch_diff_value = QLabel("--")
-        batch_row.addWidget(self._metric_card("当前批次", self.batch_current_value), 1)
-        batch_row.addWidget(self._metric_card("对比批次", self.batch_compare_value), 1)
-        batch_row.addWidget(self._metric_card("差异摘要", self.batch_diff_value), 1)
-        batch_layout.addLayout(batch_row)
+        batch_grid.addWidget(self._metric_card("当前批次", self.batch_current_value), 0, 0)
+        batch_grid.addWidget(self._metric_card("对比批次", self.batch_compare_value), 1, 0)
+        batch_grid.addWidget(self._metric_card("差异摘要", self.batch_diff_value), 2, 0)
+        batch_layout.addLayout(batch_grid)
         self.batch_summary_layout = QVBoxLayout()
         self.batch_summary_layout.setSpacing(TOKENS.spacing_sm)
         batch_layout.addLayout(self.batch_summary_layout)
-        layout.addWidget(self.batch_card)
+        delivery_layout.addWidget(self.batch_card)
+        delivery_layout.addStretch(1)
+        self.delivery_rail.setMinimumWidth(330)
+        self.delivery_rail.setMaximumWidth(420)
+        workbench.addWidget(self.delivery_rail)
+        workbench.setSizes([260, 840, 380])
 
         self._build_tree()
 
@@ -241,7 +266,7 @@ class ReportCenterPage(QWidget):
         self._sanitize_visible_labels()
 
     def _build_filter_bar(self) -> CardFrame:
-        card = CardFrame()
+        card = CardFrame(role="command")
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
@@ -313,7 +338,7 @@ class ReportCenterPage(QWidget):
             tone_chip = chip("就绪", "accent" if index != 2 else "warning")
             self.summary_chips[key] = tone_chip
             card_layout.addWidget(tone_chip)
-            layout.addWidget(card, 0, index)
+            layout.addWidget(card, index // 2, index % 2)
         return wrapper
 
     def _build_tree(self) -> None:
