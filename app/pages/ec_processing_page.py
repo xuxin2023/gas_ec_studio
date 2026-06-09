@@ -46,6 +46,13 @@ EC_STEPS = [
     ("output", "输出", "控制最终字段、诊断摘要和结果去向。"),
 ]
 
+WORKFLOW_LENSES = [
+    ("project", "项目与元数据", "原始格式、分析仪元数据、清洗和统计筛选入口。", ["window_sampling", "data_cleaning", "screening"]),
+    ("core", "核心通量链", "时滞、旋转、去趋势、协方差和密度修正。", ["lag", "rotation", "detrend", "covariance", "density_correction"]),
+    ("advanced", "高级方法族", "横风、稳态、湍流、足迹、不确定度和谱修正。", ["crosswind_correction", "steadiness", "turbulence", "uncertainty"]),
+    ("delivery", "输出与交付", "完整输出、诊断摘要、对标和网络格式闭合。", ["output"]),
+]
+
 
 class ECProcessingPage(QWidget):
     def __init__(self, controller: StudioController, parent: QWidget | None = None) -> None:
@@ -53,6 +60,9 @@ class ECProcessingPage(QWidget):
         self.controller = controller
         self.step_indexes: dict[str, int] = {}
         self.step_items: dict[str, QTreeWidgetItem] = {}
+        self.workflow_lens_buttons: dict[str, QPushButton] = {}
+        self.workflow_lens_notes: dict[str, QLabel] = {}
+        self.coverage_values: dict[str, QLabel] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -71,7 +81,7 @@ class ECProcessingPage(QWidget):
         body.setChildrenCollapsible(False)
         layout.addWidget(body, 1)
 
-        self.tree_card = CardFrame(muted=True)
+        self.tree_card = CardFrame(muted=True, role="rail")
         tree_layout = QVBoxLayout(self.tree_card)
         tree_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         tree_layout.setSpacing(TOKENS.spacing_md)
@@ -234,6 +244,7 @@ class ECProcessingPage(QWidget):
         self._refresh_uncertainty_preview()
         self._refresh_primary_analyzer_preview()
         self._refresh_output_preview()
+        self._refresh_output_coverage_panel()
         self._sync_step_from_controller()
 
     def _build_run_bar(self) -> CardFrame:
@@ -286,12 +297,60 @@ class ECProcessingPage(QWidget):
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
         layout.addWidget(section_title("EC Workbench", "固定显示当前运行闭合状态，不再藏在长页面底部。"))
+        self.workflow_lens_card = self._build_workflow_lens_panel()
+        layout.addWidget(self.workflow_lens_card)
         self.cockpit_card = self._build_processing_cockpit()
         layout.addWidget(self.cockpit_card)
         self.readiness_card = self._build_readiness_panel()
         layout.addWidget(self.readiness_card)
+        self.output_coverage_card = self._build_output_coverage_panel()
+        layout.addWidget(self.output_coverage_card)
         layout.addStretch(1)
         return rail
+
+    def _build_workflow_lens_panel(self) -> CardFrame:
+        card = CardFrame(role="panel")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
+        layout.addWidget(section_title("工作流分层", "把项目、核心计算、高级方法和交付输出压缩成可跳转的四段导航。"))
+
+        for lens_key, title, subtitle, steps in WORKFLOW_LENSES:
+            button = QPushButton(title)
+            button.setToolTip(" / ".join(dict((key, label) for key, label, _sub in EC_STEPS).get(step, step) for step in steps))
+            button.clicked.connect(lambda _checked=False, key=lens_key: self._select_workflow_lens(key))
+            note = QLabel(subtitle)
+            note.setObjectName("subtitle")
+            note.setWordWrap(True)
+            self.workflow_lens_buttons[lens_key] = button
+            self.workflow_lens_notes[lens_key] = note
+            layout.addWidget(button)
+            layout.addWidget(note)
+        return card
+
+    def _build_output_coverage_panel(self) -> CardFrame:
+        card = CardFrame(role="panel")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
+        layout.addWidget(section_title("输出覆盖", "持续显示 metadata、统计检验、方法族、不确定度和网络交付字段是否闭合。"))
+        for key, title in (
+            ("metadata", "元数据"),
+            ("processing", "处理选项"),
+            ("statistics", "统计检验"),
+            ("spectral", "谱修正"),
+            ("methods", "方法族"),
+            ("network", "网络交付"),
+        ):
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value_label = QLabel("--")
+            value_label.setObjectName("subtitle")
+            value_label.setWordWrap(True)
+            self.coverage_values[key] = value_label
+            layout.addWidget(title_label)
+            layout.addWidget(value_label)
+        return card
 
     def _build_processing_cockpit(self) -> CardFrame:
         card = CardFrame(role="cockpit")
@@ -355,6 +414,80 @@ class ECProcessingPage(QWidget):
         tile_layout.addWidget(note_label)
         layout.addWidget(tile, row, column, 1, column_span)
         return value_label, note_label
+
+    def _select_workflow_lens(self, lens_key: str) -> None:
+        steps = next((items for key, _title, _subtitle, items in WORKFLOW_LENSES if key == lens_key), [])
+        if not steps:
+            return
+        target_step = steps[0]
+        item = self.step_items.get(target_step)
+        if item is not None:
+            self.step_tree.setCurrentItem(item)
+        else:
+            self.controller.set_ec_nav_step(target_step)
+            self._sync_step_from_controller()
+        self._refresh_workflow_lens()
+
+    def _refresh_workflow_lens(self) -> None:
+        if not self.workflow_lens_buttons:
+            return
+        active_step = self.controller.ec_nav_step
+        active_lens = ""
+        for lens_key, _title, _subtitle, steps in WORKFLOW_LENSES:
+            if active_step in steps:
+                active_lens = lens_key
+                break
+        for lens_key, button in self.workflow_lens_buttons.items():
+            button.setProperty("variant", "primary" if lens_key == active_lens else "")
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _refresh_output_coverage_panel(self) -> None:
+        if not self.coverage_values:
+            return
+        current = self._current_window()
+        diagnostics = dict(current.diagnostics or {}) if current is not None else {}
+        network = dict(self.controller.report_center_workspace.get("network_output", {}) or {})
+
+        primary_profile = self.primary_analyzer_profile_combo.currentData() if hasattr(self, "primary_analyzer_profile_combo") else None
+        if not primary_profile and hasattr(self, "primary_analyzer_profile_combo"):
+            primary_profile = self.primary_analyzer_profile_combo.currentText().strip()
+        calibration = self.primary_calibration_profile_edit.text().strip() if hasattr(self, "primary_calibration_profile_edit") else ""
+        self.coverage_values["metadata"].setText(
+            f"profile={primary_profile or '--'}，calibration={calibration or 'not set'}"
+        )
+
+        rotation = self._current_combo_text("rotation_mode_combo", "--")
+        detrend = self._current_combo_text("detrend_mode_combo", "--")
+        density = self._current_combo_text("density_correction_combo", "--")
+        self.coverage_values["processing"].setText(f"rotation={rotation}，detrend={detrend}，density={density}")
+
+        self.coverage_values["statistics"].setText(
+            f"skew≤{self.screening_skewness_spin.value():.1f}，"
+            f"kurt≤{self.screening_kurtosis_spin.value():.1f}，"
+            f"dropout≥{self.screening_dropout_min_run_spin.value()}"
+        )
+
+        spectral_method = self._current_combo_text("spectral_method_combo", "massman")
+        cospectrum = self._current_combo_text("spectral_cospectrum_combo", "fcc_auto")
+        spectral_status = diagnostics.get("spectral_correction_measured_cospectrum_source", cospectrum)
+        self.coverage_values["spectral"].setText(f"method={spectral_method}，cospectrum={spectral_status}")
+
+        footprint_method = self._current_combo_text("footprint_method_combo", "kljun")
+        uncertainty_method = self._current_combo_text("uncertainty_mode_combo", "mann_lenschow")
+        compare = self._current_combo_text("method_compare_combo", "disabled")
+        self.coverage_values["methods"].setText(
+            f"footprint={footprint_method}，uncertainty={uncertainty_method}，compare={compare}"
+        )
+
+        schema_target = diagnostics.get("schema_target") or network.get("schema_target", "FLUXNET")
+        validation_status = diagnostics.get("validation_status", diagnostics.get("network_validation_status", "--"))
+        missing_fields = diagnostics.get("missing_fields", diagnostics.get("network_missing_fields", []))
+        if isinstance(missing_fields, str):
+            missing_fields = [missing_fields]
+        self.coverage_values["network"].setText(
+            f"schema={schema_target}，validation={validation_status}，missing={len(missing_fields or [])}"
+        )
 
     def _build_tree(self) -> None:
         root = QTreeWidgetItem(["处理流程"])
@@ -1107,6 +1240,7 @@ class ECProcessingPage(QWidget):
             self.step_tree.setCurrentItem(item)
             self.step_tree.blockSignals(False)
         self.content_stack.setCurrentIndex(self.step_indexes[key])
+        self._refresh_workflow_lens()
 
     def _collect_payload(self) -> dict:
         return {
@@ -1383,6 +1517,7 @@ class ECProcessingPage(QWidget):
         self.run_status_chip.style().unpolish(self.run_status_chip)
         self.run_status_chip.style().polish(self.run_status_chip)
         self.run_summary_label.setText(str(summary.get("message", "尚未生成真实 RP 结果。")))
+        self._refresh_workflow_lens()
 
     def _refresh_processing_cockpit(self, *_args) -> None:
         if not hasattr(self, "cockpit_method_value"):
@@ -1525,6 +1660,7 @@ class ECProcessingPage(QWidget):
         validation_status = diagnostics.get("validation_status", diagnostics.get("network_validation_status", "--"))
         self.delivery_readiness_value.setText(str(schema_target))
         self.delivery_readiness_note.setText(f"validation={validation_status}，export={export_status[:56]}")
+        self._refresh_output_coverage_panel()
 
     def _refresh_window_preview(self, *_args) -> None:
         section = self._section_workspace("window_sampling")

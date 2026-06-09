@@ -60,10 +60,19 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
 
         assert "尚未生成真实 RP 结果" in page.run_summary_label.text()
         assert page.run_bar.property("cardRole") == "command"
+        assert page.tree_card.property("cardRole") == "rail"
         assert page.desktop_rail.property("cardRole") == "rail"
         assert page.cockpit_card.property("cardRole") == "cockpit"
         assert page.readiness_card.property("cardRole") == "panel"
+        assert page.workflow_lens_card.property("cardRole") == "panel"
+        assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.step_tree.objectName() == "workflowTree"
+        assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
+        assert "schema=FLUXNET" in page.coverage_values["network"].text()
+        assert "footprint=kljun" in page.coverage_values["methods"].text()
+        page.workflow_lens_buttons["advanced"].click()
+        assert controller.ec_nav_step == "crosswind_correction"
+        assert page.workflow_lens_buttons["advanced"].property("variant") == "primary"
         assert "kljun" in page.cockpit_method_value.text()
         assert page.cockpit_result_value.text() == "尚未运行"
         assert page.cockpit_delivery_value.text() == "FLUXNET"
