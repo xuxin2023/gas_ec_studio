@@ -35,6 +35,7 @@ class StudioMainWindow(QMainWindow):
         self.resize(1760, 1020)
 
         central = QWidget()
+        central.setObjectName("appShell")
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
         root.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -110,7 +111,7 @@ class StudioMainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _build_header(self) -> CardFrame:
-        card = CardFrame()
+        card = CardFrame(role="hero")
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
@@ -128,17 +129,20 @@ class StudioMainWindow(QMainWindow):
 
         self.header_status = QLabel()
         self.header_status.setObjectName("subtitle")
+        self.header_status.setProperty("heroStatus", True)
         self.header_status.setWordWrap(True)
         layout.addWidget(self.header_status)
 
         group = QButtonGroup(card)
         self.operator_btn = QToolButton()
         self.operator_btn.setText("操作员视图")
+        self.operator_btn.setProperty("viewSwitch", True)
         self.operator_btn.setCheckable(True)
         self.operator_btn.setChecked(True)
         self.operator_btn.clicked.connect(lambda: self.controller.set_view_mode("operator"))
         self.engineer_btn = QToolButton()
         self.engineer_btn.setText("工程师视图")
+        self.engineer_btn.setProperty("viewSwitch", True)
         self.engineer_btn.setCheckable(True)
         self.engineer_btn.clicked.connect(lambda: self.controller.set_view_mode("engineer"))
         group.addButton(self.operator_btn)

@@ -8,6 +8,9 @@ from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QLabel, QVBoxLa
 
 @dataclass(frozen=True, slots=True)
 class DesignTokens:
+    font_family_ui: str = "'Microsoft YaHei UI', 'Aptos', 'Segoe UI', sans-serif"
+    font_family_display: str = "'Microsoft YaHei UI', 'Aptos Display', 'Bahnschrift', sans-serif"
+    font_family_mono: str = "'Cascadia Mono', 'JetBrains Mono', 'Consolas', monospace"
     spacing_xs: int = 6
     spacing_sm: int = 10
     spacing_md: int = 16
@@ -21,19 +24,25 @@ class DesignTokens:
     font_md: int = 14
     font_lg: int = 18
     font_xl: int = 26
-    color_bg: str = "#f4f7fb"
+    color_bg: str = "#eef4f8"
+    color_bg_deep: str = "#dbe8ef"
     color_surface: str = "#ffffff"
     color_surface_soft: str = "#f8fbff"
-    color_border: str = "#d9e2ee"
-    color_text: str = "#162234"
-    color_text_muted: str = "#607086"
-    color_accent: str = "#2b6cbf"
-    color_accent_soft: str = "#e8f1fc"
-    color_success: str = "#2f855a"
-    color_warning: str = "#b7791f"
-    color_error: str = "#c53030"
-    color_chip_neutral: str = "#e9eff6"
-    color_chip_text: str = "#334155"
+    color_surface_warm: str = "#fffdf8"
+    color_border: str = "#ccdae6"
+    color_border_strong: str = "#9bb2c5"
+    color_text: str = "#102232"
+    color_text_muted: str = "#587083"
+    color_accent: str = "#0f6c81"
+    color_accent_hover: str = "#0b5c6f"
+    color_accent_soft: str = "#dff3f7"
+    color_success: str = "#19784c"
+    color_warning: str = "#a86612"
+    color_error: str = "#ba2f2b"
+    color_copper: str = "#b66b1d"
+    color_chip_neutral: str = "#e4edf3"
+    color_chip_text: str = "#25384a"
+    shadow_soft: str = "rgba(15, 35, 52, 0.11)"
 
 
 TOKENS = DesignTokens()
@@ -42,15 +51,23 @@ TOKENS = DesignTokens()
 def build_stylesheet() -> str:
     return f"""
     * {{
-        font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+        font-family: {TOKENS.font_family_ui};
         color: {TOKENS.color_text};
         font-size: {TOKENS.font_sm}px;
     }}
     QWidget {{
-        background: {TOKENS.color_bg};
+        background: transparent;
     }}
     QMainWindow {{
         background: {TOKENS.color_bg};
+    }}
+    QWidget#appShell {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f7fbfd,
+            stop: 0.42 {TOKENS.color_bg},
+            stop: 1 {TOKENS.color_bg_deep}
+        );
     }}
     QFrame#card {{
         background: {TOKENS.color_surface};
@@ -62,12 +79,26 @@ def build_stylesheet() -> str:
         border: 1px solid {TOKENS.color_border};
         border-radius: {TOKENS.radius_md}px;
     }}
+    QFrame#card[cardRole="hero"] {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #ffffff,
+            stop: 0.54 #f5fbfd,
+            stop: 1 #edf8f4
+        );
+        border: 1px solid #bfd8df;
+    }}
+    QFrame#card[cardRole="panel"] {{
+        background: {TOKENS.color_surface_warm};
+    }}
     QLabel#pageTitle {{
+        font-family: {TOKENS.font_family_display};
         font-size: {TOKENS.font_xl}px;
-        font-weight: 700;
+        font-weight: 800;
         color: {TOKENS.color_text};
     }}
     QLabel#sectionTitle {{
+        font-family: {TOKENS.font_family_display};
         font-size: {TOKENS.font_lg}px;
         font-weight: 700;
         color: {TOKENS.color_text};
@@ -78,13 +109,22 @@ def build_stylesheet() -> str:
     }}
     QLabel#metricValue {{
         font-size: 22px;
-        font-weight: 700;
+        font-weight: 800;
         color: {TOKENS.color_text};
     }}
     QLabel#metricLabel {{
         color: {TOKENS.color_text_muted};
         font-size: {TOKENS.font_xs}px;
         letter-spacing: 0.5px;
+        font-weight: 700;
+    }}
+    QLabel[heroStatus="true"] {{
+        min-width: 340px;
+        padding: 10px 14px;
+        border-radius: {TOKENS.radius_md}px;
+        background: rgba(255, 255, 255, 0.68);
+        border: 1px solid #d2e4eb;
+        color: {TOKENS.color_text_muted};
     }}
     QLabel#chip {{
         border-radius: {TOKENS.radius_sm}px;
@@ -120,13 +160,25 @@ def build_stylesheet() -> str:
         font-weight: 600;
     }}
     QPushButton:hover {{
-        border-color: #b7c8dc;
+        border-color: {TOKENS.color_border_strong};
         background: #fcfdff;
+    }}
+    QPushButton:pressed {{
+        background: #eef5f8;
+    }}
+    QPushButton:disabled {{
+        color: #98a8b6;
+        background: #eef3f6;
+        border-color: #dde7ee;
     }}
     QPushButton[variant="primary"] {{
         background: {TOKENS.color_accent};
         color: white;
         border: 1px solid {TOKENS.color_accent};
+    }}
+    QPushButton[variant="primary"]:hover {{
+        background: {TOKENS.color_accent_hover};
+        border-color: {TOKENS.color_accent_hover};
     }}
     QPushButton[variant="danger"] {{
         background: #fff5f5;
@@ -136,6 +188,30 @@ def build_stylesheet() -> str:
     QPushButton[variant="ghost"] {{
         background: transparent;
     }}
+    QPushButton[navButton="true"] {{
+        min-height: 58px;
+        padding: 8px 12px;
+        text-align: left;
+        border-radius: {TOKENS.radius_md}px;
+        background: transparent;
+        border: 1px solid transparent;
+        color: {TOKENS.color_text_muted};
+        font-weight: 700;
+    }}
+    QPushButton[navButton="true"]:hover {{
+        background: rgba(255, 255, 255, 0.72);
+        border-color: #d2e3ea;
+        color: {TOKENS.color_text};
+    }}
+    QPushButton[navButton="true"]:checked {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 {TOKENS.color_accent_soft},
+            stop: 1 #ffffff
+        );
+        border: 1px solid #a7ccd5;
+        color: {TOKENS.color_accent};
+    }}
     QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {{
         min-height: 38px;
         border-radius: {TOKENS.radius_sm}px;
@@ -144,8 +220,43 @@ def build_stylesheet() -> str:
         padding: 6px 10px;
         selection-background-color: {TOKENS.color_accent};
     }}
+    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus, QPlainTextEdit:focus {{
+        border: 1px solid {TOKENS.color_accent};
+        background: #ffffff;
+    }}
     QTextEdit, QPlainTextEdit {{
         min-height: 100px;
+    }}
+    QPlainTextEdit {{
+        font-family: {TOKENS.font_family_mono};
+        background: #0f2232;
+        color: #d9f7ee;
+        border-color: #294458;
+    }}
+    QComboBox::drop-down {{
+        width: 28px;
+        border: none;
+    }}
+    QSpinBox::up-button, QDoubleSpinBox::up-button {{
+        subcontrol-origin: border;
+        subcontrol-position: top right;
+        width: 24px;
+        border-left: 1px solid {TOKENS.color_border};
+        border-bottom: 1px solid {TOKENS.color_border};
+        border-top-right-radius: {TOKENS.radius_sm}px;
+        background: #f4f9fb;
+    }}
+    QSpinBox::down-button, QDoubleSpinBox::down-button {{
+        subcontrol-origin: border;
+        subcontrol-position: bottom right;
+        width: 24px;
+        border-left: 1px solid {TOKENS.color_border};
+        border-bottom-right-radius: {TOKENS.radius_sm}px;
+        background: #f4f9fb;
+    }}
+    QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+    QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
+        background: {TOKENS.color_accent_soft};
     }}
     QToolButton {{
         min-height: 34px;
@@ -158,13 +269,24 @@ def build_stylesheet() -> str:
     QToolButton:checked {{
         background: {TOKENS.color_accent_soft};
         color: {TOKENS.color_accent};
-        border-color: #bfd3f0;
+        border-color: #a7ccd5;
+    }}
+    QToolButton[viewSwitch="true"] {{
+        min-width: 88px;
+        border-radius: 17px;
     }}
     QListWidget, QTableWidget, QTreeWidget {{
         background: white;
         border: 1px solid {TOKENS.color_border};
         border-radius: {TOKENS.radius_md}px;
         gridline-color: {TOKENS.color_border};
+    }}
+    QTableWidget::item {{
+        padding: 7px 8px;
+    }}
+    QTableWidget::item:selected {{
+        background: {TOKENS.color_accent_soft};
+        color: {TOKENS.color_text};
     }}
     QListWidget::item, QTreeWidget::item {{
         padding: 8px 10px;
@@ -201,15 +323,60 @@ def build_stylesheet() -> str:
         background: transparent;
     }}
     QHeaderView::section {{
-        background: #f7fafe;
+        background: #f3f8fb;
         border: none;
         border-bottom: 1px solid {TOKENS.color_border};
         padding: 8px;
         font-weight: 700;
     }}
+    QGroupBox {{
+        border: 1px solid {TOKENS.color_border};
+        border-radius: {TOKENS.radius_md}px;
+        margin-top: 14px;
+        padding: 16px 12px 12px 12px;
+        background: rgba(255, 255, 255, 0.58);
+        font-weight: 700;
+    }}
+    QGroupBox::title {{
+        subcontrol-origin: margin;
+        left: 12px;
+        padding: 0 6px;
+        color: {TOKENS.color_text_muted};
+    }}
     QScrollArea {{
         border: none;
         background: transparent;
+    }}
+    QScrollBar:vertical {{
+        width: 10px;
+        background: transparent;
+        margin: 2px;
+    }}
+    QScrollBar::handle:vertical {{
+        background: #b5c8d7;
+        border-radius: 5px;
+        min-height: 36px;
+    }}
+    QScrollBar::handle:vertical:hover {{
+        background: #8faabd;
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+        height: 0;
+        width: 0;
+    }}
+    QScrollBar:horizontal {{
+        height: 10px;
+        background: transparent;
+        margin: 2px;
+    }}
+    QScrollBar::handle:horizontal {{
+        background: #b5c8d7;
+        border-radius: 5px;
+        min-width: 36px;
+    }}
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+        height: 0;
+        width: 0;
     }}
     """
 
@@ -227,13 +394,14 @@ def apply_app_theme(app: QWidget) -> None:
 
 
 class CardFrame(QFrame):
-    def __init__(self, *, muted: bool = False, parent: QWidget | None = None) -> None:
+    def __init__(self, *, muted: bool = False, role: str = "default", parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("cardMuted" if muted else "card")
+        self.setProperty("cardRole", role)
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(28)
-        shadow.setOffset(0, 10)
-        shadow.setColor(QColor(17, 34, 68, 20))
+        shadow.setBlurRadius(34 if role == "hero" else 26)
+        shadow.setOffset(0, 12 if role == "hero" else 8)
+        shadow.setColor(QColor(15, 35, 52, 32 if role == "hero" else 20))
         self.setGraphicsEffect(shadow)
 
 

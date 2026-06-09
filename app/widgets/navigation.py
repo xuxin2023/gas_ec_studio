@@ -38,6 +38,7 @@ class NavigationRail(CardFrame):
         ]
         for index, (key, title, subtitle) in enumerate(pages):
             button = QPushButton(f"{title}\n{subtitle}")
+            button.setProperty("navButton", True)
             button.setCheckable(True)
             button.setMinimumHeight(58)
             button.clicked.connect(lambda checked, page_key=key: self._emit_page(page_key, checked))
