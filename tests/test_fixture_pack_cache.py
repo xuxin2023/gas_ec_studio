@@ -115,3 +115,33 @@ def test_result_exporter_fixture_pack_cache_tracks_hit_and_file_signature(monkey
 
     assert third["cache"]["status"] == "miss"
     assert calls["summary"] == 2
+
+
+def test_result_exporter_eddypro_artifact_cache_reuses_until_pack_signature_changes(tmp_path: Path) -> None:
+    calls: Counter[str] = Counter()
+    pack_path = tmp_path / "fixture_pack.json"
+    pack_path.write_text('{"assets": []}', encoding="utf-8")
+    exporter = ResultExporter(tmp_path)
+
+    def build_artifact() -> dict:
+        calls["stress_suite"] += 1
+        return {"artifact_type": "unit_artifact_v1", "call_count": calls["stress_suite"]}
+
+    first_key = exporter._fixture_pack_cache_key(pack_path, tmp_path)
+    first, first_cache = exporter._cached_eddypro_export_artifact("stress_suite", first_key, build_artifact)
+    second, second_cache = exporter._cached_eddypro_export_artifact("stress_suite", first_key, build_artifact)
+
+    assert first["call_count"] == 1
+    assert second["call_count"] == 1
+    assert first_cache["status"] == "miss"
+    assert second_cache["status"] == "hit"
+    assert second_cache["hit_count"] == 1
+    assert calls["stress_suite"] == 1
+
+    pack_path.write_text('{"assets": [], "changed": true}', encoding="utf-8")
+    changed_key = exporter._fixture_pack_cache_key(pack_path, tmp_path)
+    third, third_cache = exporter._cached_eddypro_export_artifact("stress_suite", changed_key, build_artifact)
+
+    assert third["call_count"] == 2
+    assert third_cache["status"] == "miss"
+    assert calls["stress_suite"] == 2

@@ -11,7 +11,7 @@ from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from core.acquisition.runtime_install import (
     build_installable_runtime_profile,
@@ -376,6 +376,7 @@ class ResultExporter:
         self.exports_root = self.runtime_root / "exports" / "results"
         self.exports_root.mkdir(parents=True, exist_ok=True)
         self._fixture_pack_cache: dict[tuple[str, str, int, int], dict[str, Any]] = {}
+        self._eddypro_artifact_cache: dict[tuple[str, str, int, int, str], dict[str, Any]] = {}
 
     def _fixture_pack_cache_key(
         self,
@@ -445,6 +446,36 @@ class ResultExporter:
         }
         self._fixture_pack_cache[key] = entry
         return deepcopy(entry)
+
+    def _cached_eddypro_export_artifact(
+        self,
+        artifact_name: str,
+        cache_key: tuple[str, str, int, int],
+        builder: Callable[[], dict[str, Any]],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        key = (*cache_key, artifact_name)
+        if key in self._eddypro_artifact_cache:
+            entry = self._eddypro_artifact_cache[key]
+            entry["hit_count"] = int(entry.get("hit_count", 0) or 0) + 1
+            entry["last_hit_at"] = datetime.now().isoformat()
+            cache = dict(entry.get("cache", {}) or {})
+            cache["status"] = "hit"
+            cache["hit_count"] = int(entry.get("hit_count", 0) or 0)
+            cache["last_hit_at"] = str(entry.get("last_hit_at", ""))
+            return deepcopy(dict(entry.get("payload", {}) or {})), cache
+        payload = dict(builder() or {})
+        cache = {
+            "artifact": artifact_name,
+            "status": "miss",
+            "pack_path": cache_key[0],
+            "workspace_root": cache_key[1],
+            "mtime_ns": cache_key[2],
+            "size_bytes": cache_key[3],
+            "created_at": datetime.now().isoformat(),
+            "hit_count": 0,
+        }
+        self._eddypro_artifact_cache[key] = {"payload": payload, "cache": cache, "hit_count": 0}
+        return deepcopy(payload), deepcopy(cache)
 
     def export_minimal_bundle(
         self,
@@ -662,6 +693,17 @@ class ResultExporter:
         )
         fixture_pack_summary = dict(fixture_pack_artifacts.get("summary", {}) or {})
         fixture_pack_cache_summary = dict(fixture_pack_artifacts.get("cache", {}) or {})
+        eddypro_export_cache_key = self._fixture_pack_cache_key(fixture_pack_path or None, fixture_pack_workspace_root or None)
+        eddypro_export_cache_summary: dict[str, Any] = {
+            "artifact_type": "eddypro_export_cache_summary_v1",
+            "status": "active",
+            "fixture_pack_cache": fixture_pack_cache_summary,
+            "artifacts": {},
+        }
+
+        def record_eddypro_export_cache(artifact_name: str, cache: dict[str, Any]) -> None:
+            eddypro_export_cache_summary.setdefault("artifacts", {})[artifact_name] = dict(cache or {})
+
         fixture_pack_summary_path = export_root / "fixture_pack_summary.json"
         self._write_json(fixture_pack_summary_path, fixture_pack_summary)
         public_eddypro_fixture_catalog = dict(fixture_pack_artifacts.get("public_catalog", {}) or {})
@@ -777,52 +819,139 @@ class ResultExporter:
             official_raw_official_run_normalization = manifest_official_run_normalization or evidence_official_run_normalization
         official_raw_evidence_pack_path = export_root / "official_raw_evidence_pack.json"
         self._write_json(official_raw_evidence_pack_path, official_raw_evidence_pack)
-        eddypro_source_inventory = build_eddypro_source_inventory()
+        eddypro_source_inventory, cache_info = self._cached_eddypro_export_artifact(
+            "eddypro_source_inventory",
+            eddypro_export_cache_key,
+            lambda: build_eddypro_source_inventory(),
+        )
+        record_eddypro_export_cache("eddypro_source_inventory", cache_info)
         eddypro_source_inventory_path = export_root / "eddypro_source_inventory.json"
         self._write_json(eddypro_source_inventory_path, eddypro_source_inventory)
         coverage_official_raw_evidence_pack = (
             official_raw_evidence_pack if official_raw_acceptance_gate_status == "pass" else None
         )
-        eddypro_coverage_audit = build_eddypro_coverage_audit(
-            fixture_pack_path=fixture_pack_path or None,
-            workspace_root=fixture_pack_workspace_root or None,
-            fixture_summary=fixture_pack_summary,
-            official_raw_manifest=official_raw_fixture_manifest,
-            official_raw_evidence_pack=coverage_official_raw_evidence_pack,
-            source_inventory=eddypro_source_inventory,
-        )
+        dynamic_official_evidence = bool(official_raw_evidence_pack_source)
+        if dynamic_official_evidence:
+            eddypro_coverage_audit = build_eddypro_coverage_audit(
+                fixture_pack_path=fixture_pack_path or None,
+                workspace_root=fixture_pack_workspace_root or None,
+                fixture_summary=fixture_pack_summary,
+                official_raw_manifest=official_raw_fixture_manifest,
+                official_raw_evidence_pack=coverage_official_raw_evidence_pack,
+                source_inventory=eddypro_source_inventory,
+            )
+            record_eddypro_export_cache(
+                "eddypro_coverage_audit",
+                {
+                    "artifact": "eddypro_coverage_audit",
+                    "status": "uncached_dynamic_input",
+                    "reason": "official_raw_evidence_pack_artifact",
+                    "source_artifact": official_raw_evidence_pack_source,
+                    "created_at": datetime.now().isoformat(),
+                },
+            )
+        else:
+            eddypro_coverage_audit, cache_info = self._cached_eddypro_export_artifact(
+                "eddypro_coverage_audit",
+                eddypro_export_cache_key,
+                lambda: build_eddypro_coverage_audit(
+                    fixture_pack_path=fixture_pack_path or None,
+                    workspace_root=fixture_pack_workspace_root or None,
+                    fixture_summary=fixture_pack_summary,
+                    official_raw_manifest=official_raw_fixture_manifest,
+                    official_raw_evidence_pack=coverage_official_raw_evidence_pack,
+                    source_inventory=eddypro_source_inventory,
+                ),
+            )
+            record_eddypro_export_cache("eddypro_coverage_audit", cache_info)
         eddypro_closure_gate = dict(eddypro_coverage_audit.get("closure_gate", {}) or {})
         eddypro_closure_plan = dict(eddypro_coverage_audit.get("closure_plan", {}) or {})
         eddypro_surrogate_evidence_closure = dict(eddypro_coverage_audit.get("surrogate_evidence_closure", {}) or {})
         eddypro_coverage_audit_path = export_root / "eddypro_coverage_audit.json"
         self._write_json(eddypro_coverage_audit_path, eddypro_coverage_audit)
-        eddypro_computation_stress_suite = build_eddypro_computation_stress_suite(
-            workspace_root=fixture_pack_workspace_root or None,
+        eddypro_computation_stress_suite, cache_info = self._cached_eddypro_export_artifact(
+            "eddypro_computation_stress_suite",
+            eddypro_export_cache_key,
+            lambda: build_eddypro_computation_stress_suite(
+                workspace_root=fixture_pack_workspace_root or None,
+            ),
         )
+        record_eddypro_export_cache("eddypro_computation_stress_suite", cache_info)
         eddypro_computation_surface = dict(eddypro_computation_stress_suite.get("computation_surface", {}) or {})
         eddypro_computation_stress_suite_path = export_root / "eddypro_computation_stress_suite.json"
         self._write_json(eddypro_computation_stress_suite_path, eddypro_computation_stress_suite)
-        eddypro_computation_scope_audit = build_eddypro_computation_scope_audit(
-            workspace_root=fixture_pack_workspace_root or None,
-            coverage_audit=eddypro_coverage_audit,
-            computation_stress_suite=eddypro_computation_stress_suite,
-        )
+        if dynamic_official_evidence:
+            eddypro_computation_scope_audit = build_eddypro_computation_scope_audit(
+                workspace_root=fixture_pack_workspace_root or None,
+                coverage_audit=eddypro_coverage_audit,
+                computation_stress_suite=eddypro_computation_stress_suite,
+            )
+            record_eddypro_export_cache(
+                "eddypro_computation_scope_audit",
+                {
+                    "artifact": "eddypro_computation_scope_audit",
+                    "status": "uncached_dynamic_input",
+                    "reason": "coverage_audit_uses_official_raw_evidence_pack",
+                    "source_artifact": official_raw_evidence_pack_source,
+                    "created_at": datetime.now().isoformat(),
+                },
+            )
+        else:
+            eddypro_computation_scope_audit, cache_info = self._cached_eddypro_export_artifact(
+                "eddypro_computation_scope_audit",
+                eddypro_export_cache_key,
+                lambda: build_eddypro_computation_scope_audit(
+                    workspace_root=fixture_pack_workspace_root or None,
+                    coverage_audit=eddypro_coverage_audit,
+                    computation_stress_suite=eddypro_computation_stress_suite,
+                ),
+            )
+            record_eddypro_export_cache("eddypro_computation_scope_audit", cache_info)
         eddypro_computation_scope_audit_path = export_root / "eddypro_computation_scope_audit.json"
         self._write_json(eddypro_computation_scope_audit_path, eddypro_computation_scope_audit)
         eddypro_surrogate_evidence_closure_path = export_root / "eddypro_surrogate_evidence_closure.json"
         self._write_json(eddypro_surrogate_evidence_closure_path, eddypro_surrogate_evidence_closure)
-        eddypro_release_gate = build_eddypro_release_gate(
-            fixture_pack_path=fixture_pack_path or None,
-            workspace_root=fixture_pack_workspace_root or None,
-            official_raw_evidence_pack=official_raw_evidence_pack,
-            fixture_summary=fixture_pack_summary,
-            official_raw_manifest=official_raw_fixture_manifest,
-            source_inventory=eddypro_source_inventory,
-            coverage_audit=eddypro_coverage_audit,
-            computation_scope_audit=eddypro_computation_scope_audit,
-            computation_stress_suite=eddypro_computation_stress_suite,
-            run_acceptance=False,
-        )
+        if dynamic_official_evidence:
+            eddypro_release_gate = build_eddypro_release_gate(
+                fixture_pack_path=fixture_pack_path or None,
+                workspace_root=fixture_pack_workspace_root or None,
+                official_raw_evidence_pack=official_raw_evidence_pack,
+                fixture_summary=fixture_pack_summary,
+                official_raw_manifest=official_raw_fixture_manifest,
+                source_inventory=eddypro_source_inventory,
+                coverage_audit=eddypro_coverage_audit,
+                computation_scope_audit=eddypro_computation_scope_audit,
+                computation_stress_suite=eddypro_computation_stress_suite,
+                run_acceptance=False,
+            )
+            record_eddypro_export_cache(
+                "eddypro_release_gate",
+                {
+                    "artifact": "eddypro_release_gate",
+                    "status": "uncached_dynamic_input",
+                    "reason": "official_raw_evidence_pack_artifact",
+                    "source_artifact": official_raw_evidence_pack_source,
+                    "created_at": datetime.now().isoformat(),
+                },
+            )
+        else:
+            eddypro_release_gate, cache_info = self._cached_eddypro_export_artifact(
+                "eddypro_release_gate",
+                eddypro_export_cache_key,
+                lambda: build_eddypro_release_gate(
+                    fixture_pack_path=fixture_pack_path or None,
+                    workspace_root=fixture_pack_workspace_root or None,
+                    official_raw_evidence_pack=official_raw_evidence_pack,
+                    fixture_summary=fixture_pack_summary,
+                    official_raw_manifest=official_raw_fixture_manifest,
+                    source_inventory=eddypro_source_inventory,
+                    coverage_audit=eddypro_coverage_audit,
+                    computation_scope_audit=eddypro_computation_scope_audit,
+                    computation_stress_suite=eddypro_computation_stress_suite,
+                    run_acceptance=False,
+                ),
+            )
+            record_eddypro_export_cache("eddypro_release_gate", cache_info)
         eddypro_release_gate.setdefault("artifacts", {}).update(
             {
                 "official_raw_evidence_pack": str(official_raw_evidence_pack_path),
@@ -870,17 +999,76 @@ class ResultExporter:
         public_ec_acquisition_closure = dict(
             external_artifact_payloads.get("public_ec_acquisition_closure_artifact", {}) or {}
         )
+        public_ec_dynamic_inputs: dict[str, Any] = {}
         if not public_ec_acquisition_closure:
-            public_ec_acquisition_closure = build_public_ec_acquisition_closure(
-                discovery_probe_path=external_artifact_files.get("public_ec_discovery_probe_artifact") or None,
-                smoke_plan_path=external_artifact_files.get("public_raw_importer_smoke_plan_artifact") or None,
-                workspace_root=fixture_pack_workspace_root or None,
-                neon_download_path=external_artifact_files.get("neon_hdf5_download_artifact") or None,
-                neon_validation_package_path=external_artifact_files.get("neon_hdf5_validation_package_artifact") or None,
-                public_raw_sample_validation_package_path=external_artifact_files.get(
-                    "public_raw_sample_validation_package_artifact"
+            public_ec_dynamic_inputs = {
+                key: value
+                for key, value in {
+                    "public_ec_discovery_probe_artifact": external_artifact_files.get("public_ec_discovery_probe_artifact"),
+                    "public_raw_importer_smoke_plan_artifact": external_artifact_files.get(
+                        "public_raw_importer_smoke_plan_artifact"
+                    ),
+                    "neon_hdf5_download_artifact": external_artifact_files.get("neon_hdf5_download_artifact"),
+                    "neon_hdf5_validation_package_artifact": external_artifact_files.get(
+                        "neon_hdf5_validation_package_artifact"
+                    ),
+                    "public_raw_sample_validation_package_artifact": external_artifact_files.get(
+                        "public_raw_sample_validation_package_artifact"
+                    ),
+                }.items()
+                if value
+            }
+            if public_ec_dynamic_inputs:
+                public_ec_acquisition_closure = build_public_ec_acquisition_closure(
+                    discovery_probe_path=external_artifact_files.get("public_ec_discovery_probe_artifact") or None,
+                    smoke_plan_path=external_artifact_files.get("public_raw_importer_smoke_plan_artifact") or None,
+                    workspace_root=fixture_pack_workspace_root or None,
+                    neon_download_path=external_artifact_files.get("neon_hdf5_download_artifact") or None,
+                    neon_validation_package_path=external_artifact_files.get("neon_hdf5_validation_package_artifact") or None,
+                    public_raw_sample_validation_package_path=external_artifact_files.get(
+                        "public_raw_sample_validation_package_artifact"
+                    )
+                    or None,
                 )
-                or None,
+                record_eddypro_export_cache(
+                    "public_ec_acquisition_closure",
+                    {
+                        "artifact": "public_ec_acquisition_closure",
+                        "status": "uncached_dynamic_input",
+                        "reason": "external_public_ec_artifacts",
+                        "inputs": public_ec_dynamic_inputs,
+                        "created_at": datetime.now().isoformat(),
+                    },
+                )
+            else:
+                public_ec_acquisition_closure, cache_info = self._cached_eddypro_export_artifact(
+                    "public_ec_acquisition_closure",
+                    eddypro_export_cache_key,
+                    lambda: build_public_ec_acquisition_closure(
+                        discovery_probe_path=None,
+                        smoke_plan_path=None,
+                        workspace_root=fixture_pack_workspace_root or None,
+                        neon_download_path=None,
+                        neon_validation_package_path=None,
+                        public_raw_sample_validation_package_path=None,
+                    ),
+                )
+                record_eddypro_export_cache("public_ec_acquisition_closure", cache_info)
+        else:
+            public_ec_dynamic_inputs = {
+                "public_ec_acquisition_closure_artifact": external_artifact_files.get(
+                    "public_ec_acquisition_closure_artifact",
+                    "",
+                )
+            }
+            record_eddypro_export_cache(
+                "public_ec_acquisition_closure",
+                {
+                    "artifact": "public_ec_acquisition_closure",
+                    "status": "provided_external_artifact",
+                    "source_artifact": external_artifact_files.get("public_ec_acquisition_closure_artifact", ""),
+                    "created_at": datetime.now().isoformat(),
+                },
             )
         public_ec_acquisition_closure_path = export_root / "public_ec_acquisition_closure.json"
         self._write_json(public_ec_acquisition_closure_path, public_ec_acquisition_closure)
@@ -889,11 +1077,44 @@ class ResultExporter:
             external_artifact_payloads.get("public_ec_acquisition_runbook_artifact", {}) or {}
         )
         if not public_ec_acquisition_runbook:
-            public_ec_acquisition_runbook = build_public_ec_acquisition_runbook(
-                acquisition_closure=public_ec_acquisition_closure,
-                discovery_probe_path=external_artifact_files.get("public_ec_discovery_probe_artifact") or None,
-                smoke_plan_path=external_artifact_files.get("public_raw_importer_smoke_plan_artifact") or None,
-                workspace_root=fixture_pack_workspace_root or None,
+            if public_ec_dynamic_inputs:
+                public_ec_acquisition_runbook = build_public_ec_acquisition_runbook(
+                    acquisition_closure=public_ec_acquisition_closure,
+                    discovery_probe_path=external_artifact_files.get("public_ec_discovery_probe_artifact") or None,
+                    smoke_plan_path=external_artifact_files.get("public_raw_importer_smoke_plan_artifact") or None,
+                    workspace_root=fixture_pack_workspace_root or None,
+                )
+                record_eddypro_export_cache(
+                    "public_ec_acquisition_runbook",
+                    {
+                        "artifact": "public_ec_acquisition_runbook",
+                        "status": "uncached_dynamic_input",
+                        "reason": "external_public_ec_artifacts",
+                        "inputs": public_ec_dynamic_inputs,
+                        "created_at": datetime.now().isoformat(),
+                    },
+                )
+            else:
+                public_ec_acquisition_runbook, cache_info = self._cached_eddypro_export_artifact(
+                    "public_ec_acquisition_runbook",
+                    eddypro_export_cache_key,
+                    lambda: build_public_ec_acquisition_runbook(
+                        acquisition_closure=public_ec_acquisition_closure,
+                        discovery_probe_path=None,
+                        smoke_plan_path=None,
+                        workspace_root=fixture_pack_workspace_root or None,
+                    ),
+                )
+                record_eddypro_export_cache("public_ec_acquisition_runbook", cache_info)
+        else:
+            record_eddypro_export_cache(
+                "public_ec_acquisition_runbook",
+                {
+                    "artifact": "public_ec_acquisition_runbook",
+                    "status": "provided_external_artifact",
+                    "source_artifact": external_artifact_files.get("public_ec_acquisition_runbook_artifact", ""),
+                    "created_at": datetime.now().isoformat(),
+                },
             )
         public_ec_acquisition_runbook_path = export_root / "public_ec_acquisition_runbook.json"
         self._write_json(public_ec_acquisition_runbook_path, public_ec_acquisition_runbook)
@@ -919,15 +1140,46 @@ class ResultExporter:
             external_artifact_files["neon_hdf5_fixture_profile_artifact"] = str(neon_hdf5_fixture_profile_path)
         public_ec_acquisition_summary = dict(public_ec_acquisition_closure.get("summary", {}) or {})
         public_ec_acquisition_claim_boundary = dict(public_ec_acquisition_closure.get("claim_boundary", {}) or {})
-        eddypro_partial_capability_closure = build_eddypro_partial_capability_closure(
-            workspace_root=fixture_pack_workspace_root or None,
-            coverage_audit=eddypro_coverage_audit,
-            release_gate=eddypro_release_gate,
-            neon_validation_package=neon_hdf5_validation_package or None,
-            public_raw_sample_validation_package=public_raw_sample_validation_package or None,
+        dynamic_partial_closure_inputs = dynamic_official_evidence or bool(neon_hdf5_validation_package) or bool(
+            public_raw_sample_validation_package
         )
+        if dynamic_partial_closure_inputs:
+            eddypro_partial_capability_closure = build_eddypro_partial_capability_closure(
+                workspace_root=fixture_pack_workspace_root or None,
+                coverage_audit=eddypro_coverage_audit,
+                release_gate=eddypro_release_gate,
+                neon_validation_package=neon_hdf5_validation_package or None,
+                public_raw_sample_validation_package=public_raw_sample_validation_package or None,
+            )
+            record_eddypro_export_cache(
+                "eddypro_partial_capability_closure",
+                {
+                    "artifact": "eddypro_partial_capability_closure",
+                    "status": "uncached_dynamic_input",
+                    "reason": "official_or_public_raw_validation_artifacts",
+                    "official_raw_evidence_pack_artifact": official_raw_evidence_pack_source,
+                    "has_neon_hdf5_validation_package": bool(neon_hdf5_validation_package),
+                    "has_public_raw_sample_validation_package": bool(public_raw_sample_validation_package),
+                    "created_at": datetime.now().isoformat(),
+                },
+            )
+        else:
+            eddypro_partial_capability_closure, cache_info = self._cached_eddypro_export_artifact(
+                "eddypro_partial_capability_closure",
+                eddypro_export_cache_key,
+                lambda: build_eddypro_partial_capability_closure(
+                    workspace_root=fixture_pack_workspace_root or None,
+                    coverage_audit=eddypro_coverage_audit,
+                    release_gate=eddypro_release_gate,
+                    neon_validation_package=None,
+                    public_raw_sample_validation_package=None,
+                ),
+            )
+            record_eddypro_export_cache("eddypro_partial_capability_closure", cache_info)
         eddypro_partial_capability_closure_path = export_root / "eddypro_partial_capability_closure.json"
         self._write_json(eddypro_partial_capability_closure_path, eddypro_partial_capability_closure)
+        eddypro_export_cache_path = export_root / "eddypro_export_cache.json"
+        self._write_json(eddypro_export_cache_path, eddypro_export_cache_summary)
 
         exported_files = [
             "rp_results.csv",
@@ -1032,6 +1284,7 @@ class ResultExporter:
         exported_files.append(eddypro_surrogate_evidence_closure_path.name)
         exported_files.append(eddypro_release_gate_path.name)
         exported_files.append(eddypro_partial_capability_closure_path.name)
+        exported_files.append(eddypro_export_cache_path.name)
         exported_files.append(public_ec_acquisition_closure_path.name)
         exported_files.append(public_ec_acquisition_runbook_path.name)
         if neon_hdf5_fixture_profile_path is not None:
@@ -1106,6 +1359,8 @@ class ResultExporter:
                 "fixture_pack_summary": fixture_pack_summary,
                 "fixture_pack_summary_artifact": str(fixture_pack_summary_path),
                 "fixture_pack_cache": fixture_pack_cache_summary,
+                "eddypro_export_cache": eddypro_export_cache_summary,
+                "eddypro_export_cache_artifact": str(eddypro_export_cache_path),
                 "public_eddypro_fixture_catalog": public_eddypro_fixture_catalog,
                 "public_eddypro_fixture_catalog_artifact": str(public_eddypro_fixture_catalog_path),
                 "public_eddypro_fixture_catalog_status": str(public_eddypro_fixture_catalog.get("status", "")),
@@ -1310,6 +1565,8 @@ class ResultExporter:
             "fixture_pack_summary": fixture_pack_summary,
             "fixture_pack_summary_artifact": str(fixture_pack_summary_path),
             "fixture_pack_cache": fixture_pack_cache_summary,
+            "eddypro_export_cache": eddypro_export_cache_summary,
+            "eddypro_export_cache_artifact": str(eddypro_export_cache_path),
             "public_eddypro_fixture_catalog": public_eddypro_fixture_catalog,
             "public_eddypro_fixture_catalog_artifact": str(public_eddypro_fixture_catalog_path),
             "public_eddypro_fixture_catalog_status": str(public_eddypro_fixture_catalog.get("status", "")),
@@ -1961,6 +2218,7 @@ class ResultExporter:
         files["eddypro_surrogate_evidence_closure_artifact"] = str(eddypro_surrogate_evidence_closure_path)
         files["eddypro_release_gate_artifact"] = str(eddypro_release_gate_path)
         files["eddypro_partial_capability_closure_artifact"] = str(eddypro_partial_capability_closure_path)
+        files["eddypro_export_cache_artifact"] = str(eddypro_export_cache_path)
         files["public_ec_acquisition_closure_artifact"] = str(public_ec_acquisition_closure_path)
         files["public_ec_acquisition_runbook_artifact"] = str(public_ec_acquisition_runbook_path)
         if synthetic_parity_path is not None:
