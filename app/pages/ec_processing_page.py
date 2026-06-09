@@ -333,23 +333,49 @@ class ECProcessingPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_sm)
-        layout.addWidget(section_title("输出覆盖", "持续显示 metadata、统计检验、方法族、不确定度和网络交付字段是否闭合。"))
-        for key, title in (
+        header = QHBoxLayout()
+        header.setSpacing(TOKENS.spacing_sm)
+        header.addWidget(section_title("输出覆盖", "把交付链压缩成检查矩阵，不再让字段状态拖成一条长清单。"))
+        header.addStretch(1)
+        self.coverage_gate_chip = chip("待运行", "warning")
+        header.addWidget(self.coverage_gate_chip)
+        layout.addLayout(header)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        grid.setVerticalSpacing(TOKENS.spacing_sm)
+        for index, (key, title) in enumerate((
             ("metadata", "元数据"),
             ("processing", "处理选项"),
             ("statistics", "统计检验"),
             ("spectral", "谱修正"),
             ("methods", "方法族"),
             ("network", "网络交付"),
-        ):
+        )):
+            tile = CardFrame(muted=True, role="tile")
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+            tile_layout.setSpacing(TOKENS.spacing_xs)
             title_label = QLabel(title)
             title_label.setObjectName("metricLabel")
             value_label = QLabel("--")
             value_label.setObjectName("subtitle")
             value_label.setWordWrap(True)
             self.coverage_values[key] = value_label
-            layout.addWidget(title_label)
-            layout.addWidget(value_label)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label)
+            grid.addWidget(tile, index // 2, index % 2)
+        layout.addLayout(grid)
+
+        self.coverage_next_value = QLabel("--")
+        self.coverage_next_value.setObjectName("metricValue")
+        self.coverage_next_value.setWordWrap(True)
+        self.coverage_next_note = QLabel("--")
+        self.coverage_next_note.setObjectName("subtitle")
+        self.coverage_next_note.setWordWrap(True)
+        layout.addWidget(self.coverage_next_value)
+        layout.addWidget(self.coverage_next_note)
         return card
 
     def _build_processing_cockpit(self) -> CardFrame:
@@ -456,22 +482,30 @@ class ECProcessingPage(QWidget):
         self.coverage_values["metadata"].setText(
             f"profile={primary_profile or '--'}，calibration={calibration or 'not set'}"
         )
+        metadata_ready = bool(primary_profile)
 
         rotation = self._current_combo_text("rotation_mode_combo", "--")
         detrend = self._current_combo_text("detrend_mode_combo", "--")
         density = self._current_combo_text("density_correction_combo", "--")
         self.coverage_values["processing"].setText(f"rotation={rotation}，detrend={detrend}，density={density}")
+        processing_ready = all(value and value != "--" for value in (rotation, detrend, density))
 
         self.coverage_values["statistics"].setText(
             f"skew≤{self.screening_skewness_spin.value():.1f}，"
             f"kurt≤{self.screening_kurtosis_spin.value():.1f}，"
             f"dropout≥{self.screening_dropout_min_run_spin.value()}"
         )
+        statistics_ready = (
+            self.screening_skewness_spin.value() > 0
+            and self.screening_kurtosis_spin.value() > 0
+            and self.screening_dropout_min_run_spin.value() > 0
+        )
 
         spectral_method = self._current_combo_text("spectral_method_combo", "massman")
         cospectrum = self._current_combo_text("spectral_cospectrum_combo", "fcc_auto")
         spectral_status = diagnostics.get("spectral_correction_measured_cospectrum_source", cospectrum)
         self.coverage_values["spectral"].setText(f"method={spectral_method}，cospectrum={spectral_status}")
+        spectral_ready = self._current_combo_text("spectral_enable_combo", "enabled") == "enabled"
 
         footprint_method = self._current_combo_text("footprint_method_combo", "kljun")
         uncertainty_method = self._current_combo_text("uncertainty_mode_combo", "mann_lenschow")
@@ -479,6 +513,7 @@ class ECProcessingPage(QWidget):
         self.coverage_values["methods"].setText(
             f"footprint={footprint_method}，uncertainty={uncertainty_method}，compare={compare}"
         )
+        methods_ready = bool(footprint_method and uncertainty_method and spectral_method)
 
         schema_target = diagnostics.get("schema_target") or network.get("schema_target", "FLUXNET")
         validation_status = diagnostics.get("validation_status", diagnostics.get("network_validation_status", "--"))
@@ -488,6 +523,41 @@ class ECProcessingPage(QWidget):
         self.coverage_values["network"].setText(
             f"schema={schema_target}，validation={validation_status}，missing={len(missing_fields or [])}"
         )
+        network_ready = bool(schema_target) and len(missing_fields or []) == 0
+
+        ready_count = sum(
+            1
+            for ready in (
+                metadata_ready,
+                processing_ready,
+                statistics_ready,
+                spectral_ready,
+                methods_ready,
+                network_ready,
+            )
+            if ready
+        )
+        if current is not None and ready_count == 6:
+            gate_text, gate_tone = "可交付", "success"
+            next_value = "导出结果"
+            next_note = "RP 结果、方法族和网络字段均已闭合，可进入报告中心或交付包导出。"
+        elif current is None and ready_count == 6:
+            gate_text, gate_tone = "可运行", "accent"
+            next_value = "运行处理"
+            next_note = "配置已基本闭合，建议先运行 RP 处理生成窗口结果和交付校验。"
+        else:
+            gate_text, gate_tone = "待补齐", "warning"
+            next_value = "补齐配置"
+            next_note = f"当前闭合 {ready_count}/6；优先检查分析仪 profile、方法族和网络交付字段。"
+        self._set_coverage_gate_chip(gate_text, gate_tone)
+        self.coverage_next_value.setText(next_value)
+        self.coverage_next_note.setText(next_note)
+
+    def _set_coverage_gate_chip(self, text: str, tone: str) -> None:
+        self.coverage_gate_chip.setText(text)
+        self.coverage_gate_chip.setProperty("chipTone", tone)
+        self.coverage_gate_chip.style().unpolish(self.coverage_gate_chip)
+        self.coverage_gate_chip.style().polish(self.coverage_gate_chip)
 
     def _build_tree(self) -> None:
         root = QTreeWidgetItem(["处理流程"])
