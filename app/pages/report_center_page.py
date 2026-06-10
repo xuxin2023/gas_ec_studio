@@ -596,9 +596,11 @@ class ReportCenterPage(QWidget):
 
     def _build_empty_state_card(self) -> CardFrame:
         card = CardFrame(muted=True, role="cockpit")
+        card.setProperty("deckRole", "launchActionDeck")
+        card.setMaximumHeight(228)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
@@ -611,12 +613,29 @@ class ReportCenterPage(QWidget):
         self.empty_state_gap_label = QLabel("--")
         self.empty_state_gap_label.setObjectName("subtitle")
         self.empty_state_gap_label.setWordWrap(True)
+        self.empty_state_gap_label.setMaximumHeight(46)
         layout.addWidget(self.empty_state_gap_label)
+
+        self.empty_state_next_card = CardFrame(muted=True, role="console")
+        self.empty_state_next_card.setProperty("deckRole", "launchNextActionHero")
+        self.empty_state_next_card.setMaximumHeight(58)
+        next_layout = QVBoxLayout(self.empty_state_next_card)
+        next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        next_layout.setSpacing(TOKENS.spacing_xs)
+        self.empty_state_next_value = QLabel("先运行处理")
+        self.empty_state_next_value.setObjectName("metricValue")
+        self.empty_state_next_value.setProperty("compactMetric", True)
+        self.empty_state_next_note = QLabel("从当前高频缓存生成窗口、RP 结果和后续可导出报告。")
+        self.empty_state_next_note.setObjectName("subtitle")
+        self.empty_state_next_note.setWordWrap(True)
+        next_layout.addWidget(self.empty_state_next_value)
+        next_layout.addWidget(self.empty_state_next_note)
+        layout.addWidget(self.empty_state_next_card)
 
         route_grid = QGridLayout()
         route_grid.setContentsMargins(0, 0, 0, 0)
-        route_grid.setHorizontalSpacing(TOKENS.spacing_md)
-        route_grid.setVerticalSpacing(TOKENS.spacing_md)
+        route_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        route_grid.setVerticalSpacing(TOKENS.spacing_sm)
         actions = [
             ("1", "运行 EC 处理", "从当前高频缓存生成真实窗口和 RP 结果。", "运行处理", self._run_ec_processing_from_report_center),
             ("2", "生成报告", "把最新运行结果同步到报告中心和右侧交付门槛。", "生成报告", self._generate_report),
@@ -627,8 +646,8 @@ class ReportCenterPage(QWidget):
         for index, (number, title, note, button_text, callback) in enumerate(actions):
             route_grid.addWidget(
                 self._empty_state_action_tile(number, title, note, button_text, callback),
-                index // 2,
-                index % 2,
+                0,
+                index,
             )
         layout.addLayout(route_grid)
         return card
@@ -642,20 +661,22 @@ class ReportCenterPage(QWidget):
         callback,
     ) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("routeAction", True)
+        tile.setMinimumHeight(56)
+        tile.setMaximumHeight(66)
         tile_layout = QVBoxLayout(tile)
-        tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        tile_layout.setSpacing(TOKENS.spacing_sm)
+        tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        tile_layout.setSpacing(1)
         label = QLabel(_ui_safe_text(f"{number}. {title}"))
-        label.setObjectName("metricValue")
+        label.setObjectName("metricLabel")
         label.setWordWrap(True)
-        note_label = QLabel(_ui_safe_text(note))
-        note_label.setObjectName("subtitle")
-        note_label.setWordWrap(True)
+        label.setToolTip(_ui_safe_text(note))
         button = QPushButton(_ui_safe_text(button_text))
+        button.setMaximumHeight(24)
+        button.setToolTip(_ui_safe_text(note))
         button.clicked.connect(callback)
         self.empty_state_action_buttons[button_text] = button
         tile_layout.addWidget(label)
-        tile_layout.addWidget(note_label)
         tile_layout.addWidget(button)
         return tile
 

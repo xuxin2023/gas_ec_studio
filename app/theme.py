@@ -204,6 +204,11 @@ def build_stylesheet() -> str:
         background: #fff8e8;
         border-color: #ead1a5;
     }}
+    QFrame#cardMuted[cardRole="tile"][routeAction="true"] {{
+        background: rgba(255, 255, 255, 0.92);
+        border-color: #c8dce5;
+        border-radius: {TOKENS.radius_md}px;
+    }}
     QFrame#cardMuted[cardRole="rail"] {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,

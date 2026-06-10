@@ -72,9 +72,22 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.inspector_stack.currentWidget() is page.export_card
         assert page.inspector_switches["export"].isChecked() is True
         assert page.empty_state_card.property("cardRole") == "cockpit"
+        assert page.empty_state_card.property("deckRole") == "launchActionDeck"
+        assert page.empty_state_card.maximumHeight() == 228
         assert page.empty_state_card.isHidden() is False
         assert page.empty_state_chip.text() == "待运行"
+        assert page.empty_state_next_card.property("cardRole") == "console"
+        assert page.empty_state_next_card.property("deckRole") == "launchNextActionHero"
+        assert page.empty_state_next_value.property("compactMetric") is True
+        assert page.empty_state_next_value.text() == "先运行处理"
         assert "尚未发现可导出的真实运行结果" in page.empty_state_gap_label.text()
+        route_tiles = [
+            tile
+            for tile in page.empty_state_card.findChildren(type(page.empty_state_card))
+            if tile.property("routeAction") is True
+        ]
+        assert len(route_tiles) == 4
+        assert all(tile.maximumHeight() == 66 for tile in route_tiles)
         assert page.empty_state_action_buttons["运行处理"].isEnabled() is True
         assert page.empty_state_action_buttons["打开验证包"].isEnabled() is True
         assert page.empty_state_action_buttons["生成报告"].isEnabled() is False

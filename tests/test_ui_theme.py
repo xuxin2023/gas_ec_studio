@@ -22,6 +22,7 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[cardRole="rail"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="console"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"][commandTone="success"]' in stylesheet
+    assert 'QFrame#cardMuted[cardRole="tile"][routeAction="true"]' in stylesheet
     assert 'QLabel[shellTile="true"]' in stylesheet
     assert 'QWidget[shellClosureStrip="true"]' in stylesheet
     assert 'QLabel[closureStage="true"]' in stylesheet
