@@ -186,6 +186,21 @@ def build_stylesheet() -> str:
         border: 1px solid #d3e1e8;
         border-radius: {TOKENS.radius_md}px;
     }}
+    QFrame#cardMuted[cardRole="tile"][expertTone="success"],
+    QFrame#cardMuted[cardRole="tile"][gateTone="success"] {{
+        background: #f1fbf5;
+        border-color: #b7dcc9;
+    }}
+    QFrame#cardMuted[cardRole="tile"][expertTone="accent"],
+    QFrame#cardMuted[cardRole="tile"][gateTone="accent"] {{
+        background: #eef9fb;
+        border-color: #a7ccd5;
+    }}
+    QFrame#cardMuted[cardRole="tile"][expertTone="warning"],
+    QFrame#cardMuted[cardRole="tile"][gateTone="warning"] {{
+        background: #fff8e8;
+        border-color: #ead1a5;
+    }}
     QFrame#cardMuted[cardRole="rail"] {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,

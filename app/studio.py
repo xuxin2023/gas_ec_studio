@@ -5054,6 +5054,7 @@ class StudioController(QObject):
         }
 
         reports["method_provenance"] = {
+            "report_key": "method_provenance",
             "title": "方法溯源",
             "source": f"Footprint / 不确定度 / 谱修正方法溯源 / {batch_label}",
             "updated_at": updated_at,
@@ -5285,6 +5286,7 @@ class StudioController(QObject):
             **({"Primary Analyzer": str(result_export_files.get("primary_analyzer_artifact"))} if result_export_files.get("primary_analyzer_artifact") else {}),
         }
         reports["method_compare"] = {
+            "report_key": "method_compare",
             "title": "方法对比",
             "source": f"Method parity / footprint contour / performance profile / {batch_label}",
             "updated_at": updated_at,

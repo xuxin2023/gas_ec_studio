@@ -344,12 +344,16 @@ def test_report_center_method_provenance_reflects_rp_method_rollups(monkeypatch,
 
         report = controller.report_center_workspace["reports"]["method_provenance"]
         rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
+        assert report["report_key"] == "method_provenance"
         assert "kljun" in rows_text.lower()
         assert "mann" in rows_text.lower()
         assert "massman" in rows_text.lower()
         assert "peak=" in rows_text.lower()
         assert "relative=" in rows_text.lower()
         assert "factor=" in rows_text.lower()
+        assert page.expert_review_card.isHidden() is False
+        assert page.expert_review_card.property("deckRole") == "expertReviewStrip"
+        assert page.expert_review_values[0].text() == "3/3"
         assert page.preview_table.rowCount() >= 3
     finally:
         controller.shutdown()
@@ -393,6 +397,7 @@ def test_report_center_method_compare_surfaces_artifacts(monkeypatch, tmp_path) 
 
         report = controller.report_center_workspace["reports"]["method_compare"]
         rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
+        assert report["report_key"] == "method_compare"
         assert report["title"] == "方法对比"
         assert "footprint" in rows_text
         assert "uncertainty" in rows_text
@@ -409,6 +414,11 @@ def test_report_center_method_compare_surfaces_artifacts(monkeypatch, tmp_path) 
         assert Path(latest_files["method_parity_matrix_artifact"]).exists()
         assert Path(latest_files["footprint_2d_contour_svg"]).exists()
         assert Path(latest_files["performance_profile_artifact"]).exists()
+        assert "report=method_compare" in page.preview_delivery_trail_note.text()
+        assert page.expert_review_card.isHidden() is False
+        assert page.expert_review_values[0].text() == "3"
+        assert page.preview_plot.maximumHeight() == 190
+        assert page.preview_table.maximumHeight() == 132
         assert page.preview_table.rowCount() >= 3
     finally:
         controller.shutdown()
@@ -444,6 +454,9 @@ def test_report_center_computation_surface_uses_stress_suite_artifact(monkeypatc
         assert "Computation Stress Suite" in report["file_info"]
         assert Path(latest_files["eddypro_computation_scope_audit_artifact"]).exists()
         assert "computation_surface" in page.report_items
+        assert page.expert_review_card.isHidden() is False
+        assert page.expert_review_values[0].text() == "ready"
+        assert page.preview_plot.maximumHeight() == 190
         assert page.preview_table.rowCount() >= 7
     finally:
         controller.shutdown()

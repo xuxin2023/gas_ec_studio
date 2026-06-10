@@ -181,6 +181,54 @@ class ReportCenterPage(QWidget):
         trail_layout.addWidget(self.preview_delivery_trail_note)
         preview_deck_layout.addWidget(self.preview_delivery_trail_card)
 
+        self.expert_review_card = CardFrame(muted=True, role="console")
+        self.expert_review_card.setProperty("deckRole", "expertReviewStrip")
+        self.expert_review_card.setMaximumHeight(132)
+        expert_layout = QVBoxLayout(self.expert_review_card)
+        expert_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        expert_layout.setSpacing(TOKENS.spacing_sm)
+        expert_header = QHBoxLayout()
+        expert_header.setContentsMargins(0, 0, 0, 0)
+        expert_header.addWidget(section_title("专家审阅摘要", "把方法、artifact、性能和声明边界压成一行审计卡。"))
+        expert_header.addStretch(1)
+        self.expert_review_chip = chip("审阅", "accent")
+        expert_header.addWidget(self.expert_review_chip)
+        expert_layout.addLayout(expert_header)
+        expert_grid = QGridLayout()
+        expert_grid.setContentsMargins(0, 0, 0, 0)
+        expert_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        expert_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.expert_review_tiles: list[CardFrame] = []
+        self.expert_review_labels: list[QLabel] = []
+        self.expert_review_values: list[QLabel] = []
+        self.expert_review_notes: list[QLabel] = []
+        for index in range(4):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setMaximumHeight(66)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(1)
+            label = QLabel("--")
+            label.setObjectName("metricLabel")
+            value = QLabel("--")
+            value.setObjectName("metricValue")
+            value.setProperty("compactMetric", True)
+            value.setWordWrap(False)
+            note = QLabel("--")
+            note.setObjectName("subtitle")
+            note.setWordWrap(False)
+            tile_layout.addWidget(label)
+            tile_layout.addWidget(value)
+            tile_layout.addWidget(note)
+            self.expert_review_tiles.append(tile)
+            self.expert_review_labels.append(label)
+            self.expert_review_values.append(value)
+            self.expert_review_notes.append(note)
+            expert_grid.addWidget(tile, 0, index)
+        expert_layout.addLayout(expert_grid)
+        self.expert_review_card.setVisible(False)
+        preview_deck_layout.addWidget(self.expert_review_card)
+
         self.preview_content_card = CardFrame(role="panel")
         self.preview_content_card.setProperty("deckRole", "compactPreviewPane")
         content_layout = QVBoxLayout(self.preview_content_card)
@@ -761,6 +809,7 @@ class ReportCenterPage(QWidget):
         )
         self.preview_delivery_trail_note.setToolTip(_ui_safe_text(raw_source))
 
+        is_expert_review = report_key in {"method_provenance", "method_compare", "computation_surface"}
         is_benchmark_cockpit = str(report.get("report_key", "")) == "benchmark_cockpit"
         is_fixture_pack = str(report.get("report_key", "")) == "fixture_pack"
 
@@ -776,8 +825,12 @@ class ReportCenterPage(QWidget):
         ys = np.array(plot_series, dtype=float) if plot_series else np.array([], dtype=float)
         self.preview_curve.setData(xs, ys)
         compact_plot = len(plot_series) <= 1
-        self.preview_plot.setMinimumHeight(170 if compact_plot else 210)
-        self.preview_plot.setMaximumHeight(220 if compact_plot else 280)
+        if is_expert_review:
+            self.preview_plot.setMinimumHeight(145)
+            self.preview_plot.setMaximumHeight(190)
+        else:
+            self.preview_plot.setMinimumHeight(170 if compact_plot else 210)
+            self.preview_plot.setMaximumHeight(220 if compact_plot else 280)
         if is_benchmark_cockpit:
             self.preview_plot_note.setText("逐窗口通过/失败（1=通过，0=失败）")
         else:
@@ -794,6 +847,7 @@ class ReportCenterPage(QWidget):
         self.preview_table.setColumnCount(len(headers))
         self.preview_table.setHorizontalHeaderLabels([_ui_safe_text(header) for header in headers])
         self.preview_table.setRowCount(len(rows))
+        self.preview_table.setMaximumHeight(132 if is_expert_review else 150)
         for row_index, row in enumerate(rows):
             for col, value in enumerate(row):
                 item = QTableWidgetItem(_ui_safe_text(value))
@@ -828,6 +882,69 @@ class ReportCenterPage(QWidget):
             self.conclusion_content.addWidget(label)
         if is_fixture_pack:
             self._append_official_raw_fixture_detail(report)
+        self._refresh_expert_review_card(report)
+
+    def _refresh_expert_review_card(self, report: dict) -> None:
+        report_key = str(report.get("report_key", "") or "")
+        items = self._expert_review_items(report_key, report)
+        self.expert_review_card.setVisible(bool(items))
+        if not items:
+            return
+        tone = "success" if report_key == "computation_surface" else "accent"
+        self._set_chip(self.expert_review_chip, "可审阅" if tone == "success" else "审阅", tone)
+        for index, tile in enumerate(self.expert_review_tiles):
+            visible = index < len(items)
+            tile.setVisible(visible)
+            if not visible:
+                continue
+            title, value, note, item_tone = items[index]
+            self.expert_review_labels[index].setText(_ui_safe_text(title))
+            self.expert_review_values[index].setText(_ui_safe_text(value))
+            self.expert_review_notes[index].setText(_ui_safe_text(note))
+            tooltip = _ui_safe_text(f"{title}: {value}\n{note}")
+            self.expert_review_values[index].setToolTip(tooltip)
+            self.expert_review_notes[index].setToolTip(tooltip)
+            tile.setProperty("expertTone", item_tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
+    def _expert_review_items(self, report_key: str, report: dict) -> list[tuple[str, str, str, str]]:
+        if report_key not in {"method_provenance", "method_compare", "computation_surface"}:
+            return []
+        metrics = {str(key): str(value) for key, value in list(report.get("metrics", []) or [])}
+        file_info = dict(report.get("file_info", {}) or {})
+        rows = list(report.get("table_rows", []) or [])
+        if report_key == "method_compare":
+            artifact_count = sum(1 for value in file_info.values() if str(value or "").strip())
+            return [
+                ("方法族", metrics.get("families", "--"), f"status={metrics.get('status', '--')}", "accent"),
+                ("参考字段", metrics.get("reference_fields", "--"), "来自方法对标矩阵", "accent"),
+                ("性能剖面", metrics.get("profiled_windows", "--"), f"runtime={metrics.get('runtime_ms', '--')} ms", "success"),
+                ("Artifacts", str(artifact_count), "compare / parity / contour", "success" if artifact_count else "warning"),
+            ]
+        if report_key == "computation_surface":
+            status = metrics.get("surface_status", "--")
+            failed_cases = metrics.get("failed_cases", "--")
+            scope_ready = any("Scope Audit" in str(key) or "范围" in str(key) for key in file_info)
+            return [
+                ("计算面", status, "stress suite backed", "success" if status == "ready" else "warning"),
+                ("方法族", metrics.get("ready_families", "--"), "required families ready", "success"),
+                ("压力套件", metrics.get("stress_pass_rate", "--"), f"failed={failed_cases}", "success" if failed_cases == "0" else "warning"),
+                ("声明边界", "已审计" if scope_ready else "待导出", "claim boundary artifact", "success" if scope_ready else "warning"),
+            ]
+        method_names = {
+            str(row[0]): str(row[1])
+            for row in rows
+            if isinstance(row, (tuple, list)) and len(row) >= 2
+        }
+        core_count = sum(1 for key in ("Footprint", "不确定度", "谱修正") if method_names.get(key))
+        artifact_count = sum(1 for value in file_info.values() if str(value or "").strip())
+        return [
+            ("核心方法", f"{core_count}/3", "Footprint / 不确定度 / 谱修正", "success" if core_count == 3 else "warning"),
+            ("Footprint", method_names.get("Footprint", "--"), method_names.get("Footprint 2D", "2D grid"), "accent"),
+            ("谱修正", method_names.get("谱修正", "--"), method_names.get("FCC cospectrum", "FCC path"), "accent"),
+            ("Artifacts", str(artifact_count), "method rollup and provenance", "success" if artifact_count else "warning"),
+        ]
 
     def _on_benchmark_cell_clicked(self, row: int, col: int) -> None:
         item = self.preview_table.item(row, 0)
