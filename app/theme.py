@@ -187,17 +187,20 @@ def build_stylesheet() -> str:
         border-radius: {TOKENS.radius_md}px;
     }}
     QFrame#cardMuted[cardRole="tile"][expertTone="success"],
-    QFrame#cardMuted[cardRole="tile"][gateTone="success"] {{
+    QFrame#cardMuted[cardRole="tile"][gateTone="success"],
+    QFrame#cardMuted[cardRole="tile"][commandTone="success"] {{
         background: #f1fbf5;
         border-color: #b7dcc9;
     }}
     QFrame#cardMuted[cardRole="tile"][expertTone="accent"],
-    QFrame#cardMuted[cardRole="tile"][gateTone="accent"] {{
+    QFrame#cardMuted[cardRole="tile"][gateTone="accent"],
+    QFrame#cardMuted[cardRole="tile"][commandTone="accent"] {{
         background: #eef9fb;
         border-color: #a7ccd5;
     }}
     QFrame#cardMuted[cardRole="tile"][expertTone="warning"],
-    QFrame#cardMuted[cardRole="tile"][gateTone="warning"] {{
+    QFrame#cardMuted[cardRole="tile"][gateTone="warning"],
+    QFrame#cardMuted[cardRole="tile"][commandTone="warning"] {{
         background: #fff8e8;
         border-color: #ead1a5;
     }}

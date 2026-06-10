@@ -70,6 +70,8 @@ class ReportCenterPage(QWidget):
 
         self.filter_bar = self._build_filter_bar()
         layout.addWidget(self.filter_bar)
+        self.report_command_deck = self._build_report_command_deck()
+        layout.addWidget(self.report_command_deck)
 
         workbench = QSplitter(Qt.Horizontal)
         workbench.setChildrenCollapsible(False)
@@ -443,6 +445,7 @@ class ReportCenterPage(QWidget):
         export_status = str(workspace.get("export_status", "尚未导出"))
         self._refresh_inner_inspector(report, export_status, view_mode)
         self._refresh_delivery_gate(workspace, report, export_status)
+        self._refresh_report_command_deck(workspace, report, export_status)
         self._refresh_empty_state(workspace, report, export_status)
         self._refresh_batch_compare(workspace.get("batch_compare", {}))
         self._sanitize_visible_labels()
@@ -487,6 +490,74 @@ class ReportCenterPage(QWidget):
         self.batch_combo.currentTextChanged.connect(self._on_batch_changed)
         self.view_mode_combo.currentTextChanged.connect(self._on_view_mode_changed)
         return card
+
+    def _build_report_command_deck(self) -> CardFrame:
+        card = CardFrame(role="cockpit")
+        card.setProperty("deckRole", "reportCommandDeck")
+        card.setMaximumHeight(124)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_md)
+
+        intro = QVBoxLayout()
+        intro.setSpacing(TOKENS.spacing_xs)
+        intro.addWidget(section_title("交付总控", "报告、门槛、网络、对标、方法和导出状态固定在首屏。"))
+        self.report_command_chip = chip("待生成", "warning")
+        intro.addWidget(self.report_command_chip)
+        layout.addLayout(intro)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        grid.setVerticalSpacing(TOKENS.spacing_xs)
+        self.report_command_tiles: dict[str, CardFrame] = {}
+        self.report_command_values: dict[str, QLabel] = {}
+        self.report_command_notes: dict[str, QLabel] = {}
+        self.report_command_chips: dict[str, QLabel] = {}
+        items = [
+            ("report", "报告"),
+            ("gate", "门槛"),
+            ("network", "网络"),
+            ("benchmark", "对标"),
+            ("methods", "方法"),
+            ("export", "导出"),
+        ]
+        for index, (key, title) in enumerate(items):
+            grid.addWidget(self._report_command_tile(key, title), index // 3, index % 3)
+        layout.addLayout(grid, 1)
+        return card
+
+    def _report_command_tile(self, key: str, title: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("commandKey", key)
+        tile.setMinimumHeight(48)
+        tile.setMaximumHeight(58)
+        layout = QVBoxLayout(tile)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setSpacing(1)
+        top = QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(_ui_safe_text(title))
+        label.setObjectName("metricLabel")
+        status_chip = chip("待检查", "warning")
+        top.addWidget(label)
+        top.addStretch(1)
+        top.addWidget(status_chip)
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setProperty("compactMetric", True)
+        value.setWordWrap(False)
+        note = QLabel("--")
+        note.setObjectName("subtitle")
+        note.setWordWrap(False)
+        layout.addLayout(top)
+        layout.addWidget(value)
+        layout.addWidget(note)
+        self.report_command_tiles[key] = tile
+        self.report_command_values[key] = value
+        self.report_command_notes[key] = note
+        self.report_command_chips[key] = status_chip
+        return tile
 
     def _build_summary_row(self) -> QWidget:
         wrapper = QWidget()
@@ -1907,6 +1978,75 @@ class ReportCenterPage(QWidget):
             next_action=next_action,
             next_note=next_note,
         )
+
+    def _refresh_report_command_deck(self, workspace: dict, report: dict, export_status: str) -> None:
+        reports = dict(workspace.get("reports", {}) or {})
+        summary = dict(workspace.get("summary", {}) or {})
+        file_values = self._delivery_file_values(reports)
+        benchmark_report = dict(reports.get("benchmark_cockpit", {}) or {})
+        method_report = dict(reports.get("method_provenance", {}) or {})
+        network = self._network_gate_summary(workspace, benchmark_report)
+        benchmark = self._benchmark_gate_summary(workspace, benchmark_report)
+        methods = self._method_gate_summary(method_report, file_values)
+        exportable_count = self._safe_int(summary.get("exportable_reports", 0))
+        report_ready = self._report_has_preview_payload(report) and exportable_count > 0
+        export_done = self._export_status_is_done(export_status)
+
+        gate_text = str(self.delivery_gate_chip.text() or "待生成")
+        gate_tone = str(self.delivery_gate_chip.property("chipTone") or "warning")
+        report_title = str(report.get("title", "当前报告") or "当前报告")
+        selected_report = str(workspace.get("selected_report", "--") or "--")
+
+        self._set_report_command_tile(
+            "report",
+            f"{exportable_count} 个" if exportable_count > 0 else "待生成",
+            report_title,
+            "success" if report_ready else "warning",
+        )
+        self._set_report_command_tile("gate", gate_text, self.delivery_gate_next_value.text(), gate_tone)
+        self._set_report_command_tile("network", network["value"], network["note"], network["tone"])
+        self._set_report_command_tile("benchmark", benchmark["value"], benchmark["note"], benchmark["tone"])
+        self._set_report_command_tile("methods", methods["value"], methods["note"], methods["tone"])
+        self._set_report_command_tile(
+            "export",
+            "已导出" if export_done else ("可导出" if exportable_count > 0 else "待运行"),
+            f"report={selected_report} | {export_status}",
+            "success" if export_done else ("accent" if exportable_count > 0 else "warning"),
+        )
+
+        tones = [
+            "success" if report_ready else "warning",
+            gate_tone,
+            network["tone"],
+            benchmark["tone"],
+            methods["tone"],
+            "success" if export_done else ("accent" if exportable_count > 0 else "warning"),
+        ]
+        success_count = sum(1 for tone in tones if tone == "success")
+        if success_count >= 5:
+            deck_text, deck_tone = "可交付", "success"
+        elif exportable_count > 0 or report_ready:
+            deck_text, deck_tone = "待复核", "accent"
+        else:
+            deck_text, deck_tone = "待生成", "warning"
+        self._set_chip(self.report_command_chip, f"{deck_text} · {success_count}/6", deck_tone)
+        self.report_command_deck.setProperty("commandStatus", deck_tone)
+        self.report_command_deck.style().unpolish(self.report_command_deck)
+        self.report_command_deck.style().polish(self.report_command_deck)
+
+    def _set_report_command_tile(self, key: str, value: str, note: str, tone: str) -> None:
+        value_label = self.report_command_values[key]
+        note_label = self.report_command_notes[key]
+        tile = self.report_command_tiles[key]
+        value_label.setText(_ui_safe_text(value))
+        note_label.setText(_ui_safe_text(note))
+        value_label.setToolTip(_ui_safe_text(note))
+        note_label.setToolTip(_ui_safe_text(note))
+        status_text = {"success": "通过", "accent": "可用", "warning": "待复核"}.get(tone, "待复核")
+        self._set_chip(self.report_command_chips[key], status_text, tone)
+        tile.setProperty("commandTone", tone)
+        tile.style().unpolish(tile)
+        tile.style().polish(tile)
 
     def _set_delivery_gate_tile(self, key: str, value: str, note: str, tone: str) -> None:
         value_label, note_label, status_chip = self.delivery_gate_values[key]
