@@ -542,6 +542,7 @@ class ReportCenterPage(QWidget):
 
     def _build_delivery_gate_card(self) -> CardFrame:
         card = CardFrame(role="cockpit")
+        card.setProperty("deckRole", "deliveryGateMatrix")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
@@ -554,11 +555,39 @@ class ReportCenterPage(QWidget):
         header.addWidget(self.delivery_gate_chip)
         layout.addLayout(header)
 
+        self.delivery_gate_hero_card = CardFrame(muted=True, role="console")
+        self.delivery_gate_hero_card.setProperty("deckRole", "deliveryReadinessHero")
+        self.delivery_gate_hero_card.setMinimumHeight(98)
+        self.delivery_gate_hero_card.setMaximumHeight(132)
+        hero_layout = QVBoxLayout(self.delivery_gate_hero_card)
+        hero_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        hero_layout.setSpacing(TOKENS.spacing_xs)
+        hero_top = QHBoxLayout()
+        hero_top.setContentsMargins(0, 0, 0, 0)
+        self.delivery_gate_ready_label = QLabel("交付状态")
+        self.delivery_gate_ready_label.setObjectName("metricLabel")
+        hero_top.addWidget(self.delivery_gate_ready_label)
+        hero_top.addStretch(1)
+        self.delivery_gate_progress_badge = chip("--", "warning")
+        self.delivery_gate_progress_badge.setAlignment(Qt.AlignCenter)
+        hero_top.addWidget(self.delivery_gate_progress_badge)
+        hero_layout.addLayout(hero_top)
+        self.delivery_gate_ready_value = QLabel("--")
+        self.delivery_gate_ready_value.setObjectName("metricValue")
+        self.delivery_gate_ready_value.setWordWrap(True)
+        self.delivery_gate_ready_note = QLabel("--")
+        self.delivery_gate_ready_note.setObjectName("subtitle")
+        self.delivery_gate_ready_note.setWordWrap(True)
+        hero_layout.addWidget(self.delivery_gate_ready_value)
+        hero_layout.addWidget(self.delivery_gate_ready_note)
+        layout.addWidget(self.delivery_gate_hero_card)
+
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(TOKENS.spacing_sm)
         grid.setVerticalSpacing(TOKENS.spacing_sm)
         self.delivery_gate_values: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
+        self.delivery_gate_tiles: dict[str, CardFrame] = {}
         gate_items = [
             ("report", "报告", "当前预览是否有真实内容"),
             ("export", "导出", "是否可导出或已经导出"),
@@ -572,6 +601,7 @@ class ReportCenterPage(QWidget):
         layout.addLayout(grid)
 
         next_card = CardFrame(muted=True, role="tile")
+        next_card.setMaximumHeight(96)
         next_layout = QVBoxLayout(next_card)
         next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         next_layout.setSpacing(TOKENS.spacing_xs)
@@ -592,6 +622,9 @@ class ReportCenterPage(QWidget):
 
     def _delivery_gate_tile(self, key: str, title: str, hint: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("gateKey", key)
+        tile.setMinimumHeight(58)
+        tile.setMaximumHeight(68)
         layout = QVBoxLayout(tile)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_xs)
@@ -606,14 +639,17 @@ class ReportCenterPage(QWidget):
         value = QLabel("--")
         value.setObjectName("metricValue")
         value.setProperty("compactMetric", True)
-        value.setWordWrap(True)
+        value.setWordWrap(False)
         note = QLabel(_ui_safe_text(hint))
         note.setObjectName("subtitle")
         note.setWordWrap(True)
+        note.setMaximumHeight(36)
+        note.setVisible(False)
         layout.addLayout(top)
         layout.addWidget(value)
         layout.addWidget(note)
         self.delivery_gate_values[key] = (value, note, status_chip)
+        self.delivery_gate_tiles[key] = tile
         return tile
 
     def _build_tree(self) -> None:
@@ -1535,6 +1571,12 @@ class ReportCenterPage(QWidget):
         else:
             gate_text, gate_tone = "待生成", "warning"
         self._set_chip(self.delivery_gate_chip, gate_text, gate_tone)
+        self.delivery_gate_card.setProperty(
+            "gateStatus",
+            "ready" if gate_tone == "success" else ("review" if gate_tone == "accent" else "blocked"),
+        )
+        self.delivery_gate_card.style().unpolish(self.delivery_gate_card)
+        self.delivery_gate_card.style().polish(self.delivery_gate_card)
 
         next_action, next_note = self._delivery_next_action(
             report_ready=report_ready,
@@ -1547,13 +1589,47 @@ class ReportCenterPage(QWidget):
         )
         self.delivery_gate_next_value.setText(_ui_safe_text(next_action))
         self.delivery_gate_next_note.setText(_ui_safe_text(next_note))
+        self._refresh_delivery_gate_hero(
+            gate_text=gate_text,
+            gate_tone=gate_tone,
+            success_count=success_count,
+            next_action=next_action,
+            next_note=next_note,
+        )
 
     def _set_delivery_gate_tile(self, key: str, value: str, note: str, tone: str) -> None:
         value_label, note_label, status_chip = self.delivery_gate_values[key]
         value_label.setText(_ui_safe_text(value))
         note_label.setText(_ui_safe_text(note))
+        value_label.setToolTip(_ui_safe_text(note))
+        note_label.setToolTip(_ui_safe_text(note))
         status_text = {"success": "通过", "accent": "可用", "warning": "待复核"}.get(tone, "待复核")
         self._set_chip(status_chip, status_text, tone)
+        tile = self.delivery_gate_tiles.get(key)
+        if tile is not None:
+            tile.setProperty("gateTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
+    def _refresh_delivery_gate_hero(
+        self,
+        *,
+        gate_text: str,
+        gate_tone: str,
+        success_count: int,
+        next_action: str,
+        next_note: str,
+    ) -> None:
+        self.delivery_gate_ready_value.setText(_ui_safe_text(gate_text))
+        self._set_chip(self.delivery_gate_progress_badge, f"{success_count}/6 闭合", gate_tone)
+        if gate_tone == "success":
+            note = f"六项交付检查已闭合；下一步：{next_action}。"
+        elif gate_tone == "accent":
+            note = f"核心结果已可查看，但仍需复核；下一步：{next_action}。{next_note}"
+        else:
+            note = f"尚未形成完整交付链；下一步：{next_action}。{next_note}"
+        self.delivery_gate_ready_note.setText(_ui_safe_text(note))
+        self.delivery_gate_ready_note.setToolTip(_ui_safe_text(next_note))
 
     def _delivery_next_action(
         self,

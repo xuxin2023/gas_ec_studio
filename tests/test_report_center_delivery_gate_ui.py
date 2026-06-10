@@ -32,7 +32,14 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_focus_buttons["gate"].isChecked() is True
         assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
         assert page.delivery_gate_card.property("cardRole") == "cockpit"
+        assert page.delivery_gate_card.property("deckRole") == "deliveryGateMatrix"
+        assert page.delivery_gate_hero_card.property("cardRole") == "console"
+        assert page.delivery_gate_hero_card.property("deckRole") == "deliveryReadinessHero"
+        assert page.delivery_gate_progress_badge.objectName() == "chip"
+        assert page.delivery_gate_progress_badge.property("chipTone") in {"warning", "accent", "success"}
+        assert all(tile.maximumHeight() == 68 for tile in page.delivery_gate_tiles.values())
         assert page.delivery_gate_values["report"][0].property("compactMetric") is True
+        assert page.delivery_gate_values["report"][1].isHidden() is True
         assert page.delivery_gate_next_value.property("compactMetric") is True
         assert page.preview_header_card.property("cardRole") == "cockpit"
         assert page.preview_deck_card.property("cardRole") == "rail"
@@ -167,8 +174,14 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
 
         assert page.view_mode_combo.currentText() == "管理汇报"
         assert page.delivery_gate_chip.text() == "可交付"
+        assert page.delivery_gate_card.property("gateStatus") == "ready"
+        assert page.delivery_gate_ready_value.text() == "可交付"
+        assert page.delivery_gate_progress_badge.text().startswith("6/6")
+        assert page.delivery_gate_progress_badge.property("chipTone") == "success"
+        assert "交付归档" in page.delivery_gate_ready_note.text()
         assert page.delivery_gate_values["network"][0].text() == "FLUXNET"
         assert "缺失：无" in page.delivery_gate_values["network"][1].text()
+        assert page.delivery_gate_tiles["network"].property("gateTone") == "success"
         assert page.delivery_gate_values["benchmark"][0].text() == "ref-001"
         assert page.delivery_gate_values["methods"][0].text() == "已汇总"
         assert page.delivery_gate_next_value.text() == "交付归档"
