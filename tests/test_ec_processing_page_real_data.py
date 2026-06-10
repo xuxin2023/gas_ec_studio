@@ -69,6 +69,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.method_family_card.property("cardRole") == "cockpit"
         assert page.method_family_stack.count() == 3
         assert page.method_family_buttons["footprint"].isChecked() is True
+        assert page.cockpit_method_value.property("compactMetric") is True
         assert page.step_tree.objectName() == "workflowTree"
         assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
         assert "schema=FLUXNET" in page.coverage_values["network"].text()

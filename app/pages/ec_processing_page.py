@@ -395,11 +395,13 @@ class ECProcessingPage(QWidget):
         grid = QGridLayout()
         grid.setHorizontalSpacing(TOKENS.spacing_sm)
         grid.setVerticalSpacing(TOKENS.spacing_sm)
-        self.cockpit_method_value, self.cockpit_method_note = self._build_cockpit_tile(grid, 0, 0, "方法栈")
+        self.cockpit_method_value, self.cockpit_method_note = self._build_cockpit_tile(grid, 0, 0, "方法栈", column_span=2)
         self.cockpit_result_value, self.cockpit_result_note = self._build_cockpit_tile(grid, 1, 0, "主通量")
-        self.cockpit_uncertainty_value, self.cockpit_uncertainty_note = self._build_cockpit_tile(grid, 2, 0, "不确定度")
-        self.cockpit_benchmark_value, self.cockpit_benchmark_note = self._build_cockpit_tile(grid, 3, 0, "Benchmark")
-        self.cockpit_delivery_value, self.cockpit_delivery_note = self._build_cockpit_tile(grid, 4, 0, "交付出口")
+        self.cockpit_uncertainty_value, self.cockpit_uncertainty_note = self._build_cockpit_tile(grid, 1, 1, "不确定度")
+        self.cockpit_benchmark_value, self.cockpit_benchmark_note = self._build_cockpit_tile(grid, 2, 0, "Benchmark")
+        self.cockpit_delivery_value, self.cockpit_delivery_note = self._build_cockpit_tile(grid, 2, 1, "交付出口")
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
         layout.addLayout(grid)
         return card
 
@@ -432,6 +434,7 @@ class ECProcessingPage(QWidget):
         title_label.setObjectName("metricLabel")
         value_label = QLabel("--")
         value_label.setObjectName("metricValue")
+        value_label.setProperty("compactMetric", True)
         value_label.setWordWrap(True)
         note_label = QLabel("--")
         note_label.setObjectName("subtitle")
@@ -1763,7 +1766,7 @@ class ECProcessingPage(QWidget):
         spectral_method = self._current_combo_text("spectral_method_combo", "massman")
         method_compare = self._current_combo_text("method_compare_combo", "disabled")
         cospectrum = self._current_combo_text("spectral_cospectrum_combo", "fcc_auto")
-        self.cockpit_method_value.setText(f"{footprint_method} / {uncertainty_method} / {spectral_method}")
+        self.cockpit_method_value.setText(f"{footprint_method} / {uncertainty_method}")
         self.cockpit_method_note.setText(
             f"footprint={self._current_combo_text('footprint_enable_combo', 'enabled')}，"
             f"spectral={self._current_combo_text('spectral_enable_combo', 'enabled')}，"

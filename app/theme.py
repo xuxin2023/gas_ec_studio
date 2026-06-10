@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QLabel, QVBoxLayout, QWidget
 
 
@@ -47,6 +48,43 @@ class DesignTokens:
 
 
 TOKENS = DesignTokens()
+_FONT_REGISTRATION_DONE = False
+_REGISTERED_FONT_FAMILIES: tuple[str, ...] = ()
+
+
+def _register_desktop_fonts() -> tuple[str, ...]:
+    global _FONT_REGISTRATION_DONE, _REGISTERED_FONT_FAMILIES
+    if _FONT_REGISTRATION_DONE:
+        return _REGISTERED_FONT_FAMILIES
+
+    font_paths = (
+        Path(r"C:\Windows\Fonts\msyh.ttc"),
+        Path(r"C:\Windows\Fonts\msyhbd.ttc"),
+        Path(r"C:\Windows\Fonts\simhei.ttf"),
+        Path(r"C:\Windows\Fonts\simsun.ttc"),
+        Path(r"C:\Windows\Fonts\segoeui.ttf"),
+        Path(r"C:\Windows\Fonts\bahnschrift.ttf"),
+        Path(r"C:\Windows\Fonts\consola.ttf"),
+    )
+    families: list[str] = []
+    for path in font_paths:
+        if not path.exists():
+            continue
+        font_id = QFontDatabase.addApplicationFont(str(path))
+        if font_id < 0:
+            continue
+        families.extend(QFontDatabase.applicationFontFamilies(font_id))
+    _FONT_REGISTRATION_DONE = True
+    _REGISTERED_FONT_FAMILIES = tuple(dict.fromkeys(families))
+    return _REGISTERED_FONT_FAMILIES
+
+
+def preferred_ui_font_family() -> str:
+    families = set(_register_desktop_fonts()) | set(QFontDatabase.families())
+    for family in ("Microsoft YaHei UI", "Microsoft YaHei", "SimHei", "SimSun", "Segoe UI"):
+        if family in families:
+            return family
+    return "Segoe UI"
 
 PLOT_SERIES_COLORS = {
     "primary": TOKENS.color_accent,
@@ -166,6 +204,11 @@ def build_stylesheet() -> str:
         font-size: 22px;
         font-weight: 800;
         color: {TOKENS.color_text};
+    }}
+    QLabel#metricValue[compactMetric="true"] {{
+        font-size: 14px;
+        font-weight: 700;
+        padding: 1px 0;
     }}
     QLabel#metricLabel {{
         color: {TOKENS.color_text_muted};
@@ -494,8 +537,9 @@ def build_stylesheet() -> str:
 
 
 def apply_app_theme(app: QWidget) -> None:
+    font_family = preferred_ui_font_family()
     app.setStyleSheet(build_stylesheet())
-    font = QFont("Microsoft YaHei UI", TOKENS.font_sm)
+    font = QFont(font_family, TOKENS.font_sm)
     app.setFont(font)
     palette = QPalette()
     palette.setColor(QPalette.Window, QColor(TOKENS.color_bg))

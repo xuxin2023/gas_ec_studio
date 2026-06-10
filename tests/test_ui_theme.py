@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QApplication
 
 from app.main_window import StudioMainWindow
 from app.studio import StudioController
-from app.theme import CardFrame, TOKENS, apply_app_theme, build_stylesheet, configure_plot_theme
+from app.theme import CardFrame, TOKENS, apply_app_theme, build_stylesheet, configure_plot_theme, preferred_ui_font_family
 
 
 def test_stylesheet_contains_instrument_cockpit_contract() -> None:
@@ -25,6 +26,18 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert "QPlainTextEdit" in stylesheet
     assert "EddyPro" not in stylesheet
     assert "eddypro" not in stylesheet
+
+
+def test_apply_app_theme_registers_desktop_font_family() -> None:
+    app = QApplication.instance() or QApplication([])
+
+    apply_app_theme(app)
+
+    family = preferred_ui_font_family()
+    assert family
+    assert app.font().family() == family
+    if QFontDatabase.families():
+        assert family in QFontDatabase.families()
 
 
 def test_card_frame_exposes_role_for_stylesheet() -> None:
