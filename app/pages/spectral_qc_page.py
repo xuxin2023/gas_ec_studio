@@ -62,6 +62,8 @@ class SpectralQCPage(QWidget):
 
         self.run_bar = self._build_run_bar()
         layout.addWidget(self.run_bar)
+        self.evidence_deck = self._build_evidence_deck()
+        layout.addWidget(self.evidence_deck)
 
         body = QHBoxLayout()
         body.setSpacing(TOKENS.spacing_md)
@@ -143,6 +145,7 @@ class SpectralQCPage(QWidget):
         self._set_combo_text(self.detail_anomaly_filter_combo, str(detail.get("anomaly_filter", "全部异常")))
 
         self._refresh_summary_cards()
+        self._refresh_evidence_deck()
         self._refresh_overview()
         self._refresh_lag_plot()
         self._refresh_power_plot()
@@ -177,8 +180,8 @@ class SpectralQCPage(QWidget):
 
     def _build_run_bar(self) -> CardFrame:
         card = CardFrame(role="command")
-        card.setMinimumHeight(190)
-        card.setMaximumHeight(220)
+        card.setMinimumHeight(188)
+        card.setMaximumHeight(212)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
@@ -249,6 +252,76 @@ class SpectralQCPage(QWidget):
         deck.addWidget(self.summary_row, 3)
         layout.addLayout(deck)
         return card
+
+    def _build_evidence_deck(self) -> CardFrame:
+        card = CardFrame(role="cockpit")
+        card.setProperty("deckRole", "spectralEvidenceDeck")
+        card.setMaximumHeight(96)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_md)
+
+        intro = QVBoxLayout()
+        intro.setSpacing(TOKENS.spacing_xs)
+        intro.addWidget(section_title("谱证据总控", "把运行、窗口、修正、QC 和导出状态固定到首屏。"))
+        self.evidence_deck_chip = chip("待运行", "warning")
+        intro.addWidget(self.evidence_deck_chip)
+        layout.addLayout(intro)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        grid.setVerticalSpacing(TOKENS.spacing_xs)
+        self.evidence_tiles: dict[str, CardFrame] = {}
+        self.evidence_values: dict[str, QLabel] = {}
+        self.evidence_notes: dict[str, QLabel] = {}
+        self.evidence_chips: dict[str, QLabel] = {}
+        for index, (key, title) in enumerate(
+            (
+                ("run", "运行"),
+                ("window", "窗口"),
+                ("correction", "修正"),
+                ("qc", "QC"),
+                ("export", "导出"),
+            )
+        ):
+            grid.addWidget(self._evidence_tile(key, title), 0, index)
+        layout.addLayout(grid, 1)
+        return card
+
+    def _evidence_tile(self, key: str, title: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("evidenceKey", key)
+        tile.setMinimumHeight(54)
+        tile.setMaximumHeight(66)
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        tile_layout.setSpacing(1)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(TOKENS.spacing_xs)
+        label = QLabel(title)
+        label.setObjectName("metricLabel")
+        status_chip = chip("待检查", "warning")
+        status_chip.setMaximumHeight(20)
+        header.addWidget(label)
+        header.addStretch(1)
+        header.addWidget(status_chip)
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setProperty("compactMetric", True)
+        value.setWordWrap(False)
+        note = QLabel("--")
+        note.setObjectName("subtitle")
+        note.setWordWrap(False)
+        tile_layout.addLayout(header)
+        tile_layout.addWidget(value)
+        tile_layout.addWidget(note)
+        self.evidence_tiles[key] = tile
+        self.evidence_values[key] = value
+        self.evidence_notes[key] = note
+        self.evidence_chips[key] = status_chip
+        return tile
 
     def _build_summary_row(self) -> QWidget:
         wrapper = QWidget()
@@ -920,6 +993,88 @@ class SpectralQCPage(QWidget):
         self._set_chip(self.summary_chips["good_windows"], "可直接汇报", "accent")
         self._set_chip(self.summary_chips["attention_windows"], "建议复核", "warning")
 
+    def _refresh_evidence_deck(self) -> None:
+        workspace = self.controller.spectral_qc_workspace
+        run = dict(workspace.get("run", {}) or {})
+        summary = dict(workspace.get("summary", {}) or {})
+        sections = dict(workspace.get("sections", {}) or {})
+        windows = list(workspace.get("windows", []) or [])
+        current = self._selected_window()
+
+        result_status = str(run.get("last_result_status", "") or "").lower()
+        has_windows = bool(windows)
+        run_tone = "success" if has_windows and result_status not in {"failed", "error", "blocked"} else "warning"
+        if result_status in {"failed", "error", "blocked"}:
+            run_tone = "danger"
+        run_value = "已分析" if has_windows else "待运行"
+        run_note = str(run.get("last_run_mode") or "尚未生成谱分析结果")
+        self._set_evidence_tile("run", run_value, run_note, run_tone)
+
+        grade = str(current.get("qc_grade", "--") or "--")
+        window_value = str(current.get("label") or current.get("window_id") or "未选择")
+        window_tone = self._grade_tone(grade) if current else "warning"
+        window_note = f"QC {grade}；{current.get('reason', '暂无异常') if current else '暂无窗口'}"
+        self._set_evidence_tile("window", window_value, window_note, window_tone)
+
+        correction = dict(sections.get("correction_factor", {}) or {})
+        transfer = dict(sections.get("transfer_function", {}) or {})
+        risk_text = str(summary.get("high_freq_loss_risk", "--") or "--")
+        risk_tone = "danger" if "高" in risk_text else ("warning" if "中" in risk_text or risk_text in {"--", ""} else "success")
+        if has_windows:
+            correction_value = self._compact_text(str(correction.get("mode") or transfer.get("model") or "--"), 18)
+            correction_note = f"risk={risk_text}；model={transfer.get('model', '--')}"
+        else:
+            correction_value = "待运行"
+            correction_note = "运行后显示修正模型和高频损失风险"
+        self._set_evidence_tile("correction", correction_value, correction_note, risk_tone)
+
+        good_windows = self._safe_int(summary.get("qc_good_windows", 0))
+        attention_windows = self._safe_int(summary.get("attention_windows", 0))
+        qc_rule = str(dict(sections.get("qc_overview", {}) or {}).get("grade_rule", "--"))
+        qc_tone = "success" if good_windows > 0 and attention_windows == 0 else ("warning" if attention_windows >= 0 else "accent")
+        self._set_evidence_tile("qc", f"{good_windows}/{attention_windows}", qc_rule, qc_tone)
+
+        export_status = self._export_status_display(str(run.get("export_status", "尚未导出证据包") or ""))
+        export_done = self._export_status_is_done(export_status)
+        export_value = "已导出" if export_done else "待导出"
+        self._set_evidence_tile("export", export_value, export_status, "success" if export_done else "warning")
+
+        tones = [
+            run_tone,
+            window_tone,
+            risk_tone,
+            qc_tone,
+            "success" if export_done else "warning",
+        ]
+        success_count = sum(1 for tone in tones if tone == "success")
+        if success_count >= 4:
+            deck_text, deck_tone = "证据闭合", "success"
+        elif has_windows:
+            deck_text, deck_tone = "待复核", "accent"
+        else:
+            deck_text, deck_tone = "待运行", "warning"
+        self._set_chip(self.evidence_deck_chip, f"{deck_text} · {success_count}/5", deck_tone)
+        self.evidence_deck.setProperty("evidenceStatus", deck_tone)
+        self.evidence_deck.style().unpolish(self.evidence_deck)
+        self.evidence_deck.style().polish(self.evidence_deck)
+
+    def _set_evidence_tile(self, key: str, value: str, note: str, tone: str) -> None:
+        value_label = self.evidence_values[key]
+        note_label = self.evidence_notes[key]
+        tile = self.evidence_tiles[key]
+        display_value = self._compact_text(value, 18)
+        display_note = self._compact_text(note, 28)
+        value_label.setText(display_value)
+        note_label.setText(display_note)
+        tooltip = f"{value}\n{note}"
+        value_label.setToolTip(tooltip)
+        note_label.setToolTip(tooltip)
+        status_text = {"success": "通过", "accent": "可用", "warning": "待复核", "danger": "风险"}.get(tone, "待复核")
+        self._set_chip(self.evidence_chips[key], status_text, tone)
+        tile.setProperty("evidenceTone", tone)
+        tile.style().unpolish(tile)
+        tile.style().polish(tile)
+
     def _refresh_overview(self) -> None:
         windows = self.controller.spectral_qc_workspace.get("windows", [])
         current = self._selected_window()
@@ -1195,7 +1350,9 @@ class SpectralQCPage(QWidget):
 
     def _refresh_footer(self) -> None:
         row = self._selected_window()
-        export_status = self.controller.spectral_qc_workspace.get("run", {}).get("export_status", "尚未导出证据包")
+        export_status = self._export_status_display(
+            str(self.controller.spectral_qc_workspace.get("run", {}).get("export_status", "尚未导出证据包"))
+        )
         self.footer_window_label.setText(f"当前窗口：{row.get('label', '未选择')}")
         self._set_chip(self.footer_grade_chip, f"QC：{row.get('qc_grade', '--')}", self._grade_tone(row.get("qc_grade", "B")))
         self.footer_reason_label.setText(f"最近异常原因：{row.get('reason', '暂无异常')}")
@@ -1242,6 +1399,30 @@ class SpectralQCPage(QWidget):
             else:
                 pairs.append(f"{key}={value}")
         return "；".join(pairs[:4])
+
+    def _compact_text(self, value: object, max_chars: int) -> str:
+        text = str(value or "--").strip() or "--"
+        if len(text) <= max_chars:
+            return text
+        return f"{text[: max_chars - 3]}..."
+
+    def _export_status_is_done(self, export_status: str) -> bool:
+        text = export_status.strip().lower()
+        if not text or text in {"not_exported", "not exported yet", "尚未导出", "尚未导出证据包"}:
+            return False
+        return not any(token in text for token in ("not_exported", "not exported", "尚未导出", "未导出"))
+
+    def _export_status_display(self, export_status: str) -> str:
+        text = export_status.strip()
+        if not text or text.lower() in {"not_exported", "not exported yet"}:
+            return "尚未导出证据包"
+        return text
+
+    def _safe_int(self, value: object) -> int:
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return 0
 
     def _plot_card(self, title: str, subtitle: str) -> CardFrame:
         card = CardFrame(muted=True)

@@ -60,6 +60,15 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert page.run_bar.property("cardRole") == "command"
         assert page.spectral_source_panel.property("cardRole") == "tile"
         assert page.spectral_action_panel.property("cardRole") == "tile"
+        assert page.evidence_deck.property("cardRole") == "cockpit"
+        assert page.evidence_deck.property("deckRole") == "spectralEvidenceDeck"
+        assert page.evidence_deck.maximumHeight() == 96
+        assert page.evidence_deck_chip.text().startswith("待运行")
+        assert set(page.evidence_tiles) == {"run", "window", "correction", "qc", "export"}
+        assert all(tile.property("cardRole") == "tile" for tile in page.evidence_tiles.values())
+        assert all(value.property("compactMetric") is True for value in page.evidence_values.values())
+        assert page.evidence_values["run"].text() == "待运行"
+        assert page.evidence_values["export"].text() == "待导出"
         assert page.summary_row.objectName() == "spectralSummaryDeck"
         assert page.summary_row.property("deckRole") == "spectralCockpitKpis"
         assert page.summary_row.parentWidget() is page.run_bar
@@ -104,6 +113,10 @@ def test_spectral_qc_page_refreshes_with_real_result(monkeypatch, tmp_path) -> N
         page.refresh()
 
         assert page.window_table.rowCount() > 0
+        assert page.evidence_values["run"].text() == "已分析"
+        assert page.evidence_values["window"].text() != "未选择"
+        assert page.evidence_values["qc"].text() != "0/0"
+        assert page.evidence_tiles["run"].property("evidenceTone") == "success"
         assert page.lag_curve.xData is not None and len(page.lag_curve.xData) > 0
         assert page.power_curve.xData is not None and len(page.power_curve.xData) > 0
         assert page.cross_curve.xData is not None and len(page.cross_curve.xData) > 0

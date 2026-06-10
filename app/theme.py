@@ -188,21 +188,28 @@ def build_stylesheet() -> str:
     }}
     QFrame#cardMuted[cardRole="tile"][expertTone="success"],
     QFrame#cardMuted[cardRole="tile"][gateTone="success"],
-    QFrame#cardMuted[cardRole="tile"][commandTone="success"] {{
+    QFrame#cardMuted[cardRole="tile"][commandTone="success"],
+    QFrame#cardMuted[cardRole="tile"][evidenceTone="success"] {{
         background: #f1fbf5;
         border-color: #b7dcc9;
     }}
     QFrame#cardMuted[cardRole="tile"][expertTone="accent"],
     QFrame#cardMuted[cardRole="tile"][gateTone="accent"],
-    QFrame#cardMuted[cardRole="tile"][commandTone="accent"] {{
+    QFrame#cardMuted[cardRole="tile"][commandTone="accent"],
+    QFrame#cardMuted[cardRole="tile"][evidenceTone="accent"] {{
         background: #eef9fb;
         border-color: #a7ccd5;
     }}
     QFrame#cardMuted[cardRole="tile"][expertTone="warning"],
     QFrame#cardMuted[cardRole="tile"][gateTone="warning"],
-    QFrame#cardMuted[cardRole="tile"][commandTone="warning"] {{
+    QFrame#cardMuted[cardRole="tile"][commandTone="warning"],
+    QFrame#cardMuted[cardRole="tile"][evidenceTone="warning"] {{
         background: #fff8e8;
         border-color: #ead1a5;
+    }}
+    QFrame#cardMuted[cardRole="tile"][evidenceTone="danger"] {{
+        background: #fdeaea;
+        border-color: #efc1c1;
     }}
     QFrame#cardMuted[cardRole="tile"][routeAction="true"] {{
         background: rgba(255, 255, 255, 0.92);
