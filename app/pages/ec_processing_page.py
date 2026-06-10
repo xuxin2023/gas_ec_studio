@@ -298,13 +298,27 @@ class ECProcessingPage(QWidget):
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
         layout.addWidget(section_title("EC 工作台", "固定显示当前运行闭合状态，不再藏在长页面底部。"))
+
+        self.desktop_rail_scroll = QScrollArea()
+        self.desktop_rail_scroll.setObjectName("railScroll")
+        self.desktop_rail_scroll.setWidgetResizable(True)
+        self.desktop_rail_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.desktop_rail_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        rail_body = QWidget()
+        self.desktop_rail_body = rail_body
+        body_layout = QVBoxLayout(rail_body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(TOKENS.spacing_md)
+
         self.workflow_lens_card = self._build_workflow_lens_panel()
-        layout.addWidget(self.workflow_lens_card)
+        body_layout.addWidget(self.workflow_lens_card)
         self.cockpit_card = self._build_processing_cockpit()
-        layout.addWidget(self.cockpit_card)
+        body_layout.addWidget(self.cockpit_card)
         self.rail_focus_card = self._build_rail_focus_panel()
-        layout.addWidget(self.rail_focus_card)
-        layout.addStretch(1)
+        body_layout.addWidget(self.rail_focus_card)
+        body_layout.addStretch(1)
+        self.desktop_rail_scroll.setWidget(rail_body)
+        layout.addWidget(self.desktop_rail_scroll, 1)
         return rail
 
     def _build_workflow_lens_panel(self) -> CardFrame:

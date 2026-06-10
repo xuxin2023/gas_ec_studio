@@ -63,6 +63,10 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.run_bar.property("cardRole") == "command"
         assert page.tree_card.property("cardRole") == "rail"
         assert page.desktop_rail.property("cardRole") == "rail"
+        assert page.desktop_rail_scroll.objectName() == "railScroll"
+        assert page.desktop_rail_scroll.widgetResizable() is True
+        assert page.desktop_rail_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+        assert page.desktop_rail_scroll.widget() is page.desktop_rail_body
         assert page.cockpit_card.property("cardRole") == "cockpit"
         assert page.rail_focus_card.property("cardRole") == "panel"
         assert page.rail_focus_stack.count() == 2
