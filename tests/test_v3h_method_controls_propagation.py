@@ -117,6 +117,10 @@ def test_ec_processing_page_method_controls_roundtrip_to_snapshot(monkeypatch, t
         page.primary_calibration_profile_edit.setText("li7200_tower_zero_span_2026")
         page.primary_source_file_edit.setText("D:/fixtures/li7200_tower_zero_span_2026.json")
         page.primary_normalization_command_edit.setText("gas_ec_studio normalize-licor --profile li7200_tower_zero_span_2026")
+        assert page.method_support_stack.currentWidget() is page.primary_analyzer_card
+        page._show_method_support("compare")
+        assert page.method_support_stack.currentWidget() is page.method_compare_card
+        assert page.method_support_buttons["compare"].isChecked() is True
         page.method_compare_combo.setCurrentText("enabled")
         page.method_compare_threshold_spin.setValue(0.30)
 

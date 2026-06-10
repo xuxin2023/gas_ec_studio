@@ -536,6 +536,20 @@ class ECProcessingPage(QWidget):
             button.style().unpolish(button)
             button.style().polish(button)
 
+    def _show_method_support(self, support: str) -> None:
+        if not hasattr(self, "method_support_sections"):
+            return
+        card = self.method_support_sections.get(support)
+        if card is None:
+            return
+        self.method_support_stack.setCurrentWidget(card)
+        for key, button in self.method_support_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == support)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
     def _set_method_gate_chip(self, text: str, tone: str) -> None:
         if not hasattr(self, "method_family_gate_chip"):
             return
@@ -1323,10 +1337,36 @@ class ECProcessingPage(QWidget):
         }
         self._show_method_family("footprint")
 
-        primary_card = CardFrame(muted=True)
-        primary_layout = QVBoxLayout(primary_card)
+        self.method_support_card = CardFrame(muted=True, role="panel")
+        support_layout = QVBoxLayout(self.method_support_card)
+        support_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        support_layout.setSpacing(TOKENS.spacing_sm)
+        support_layout.addWidget(section_title("方法配套", "把分析仪 QC 和方法对比收进同一个辅助面板，主方法区保持轻量。"))
+        support_switch_row = QHBoxLayout()
+        support_switch_row.setContentsMargins(0, 0, 0, 0)
+        support_switch_row.setSpacing(TOKENS.spacing_xs)
+        self.method_support_buttons: dict[str, QToolButton] = {}
+        for key, text in (
+            ("primary", "分析仪 QC"),
+            ("compare", "方法对比"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, support=key: self._show_method_support(support))
+            self.method_support_buttons[key] = button
+            support_switch_row.addWidget(button)
+        support_switch_row.addStretch(1)
+        support_layout.addLayout(support_switch_row)
+        self.method_support_stack = QStackedWidget()
+        support_layout.addWidget(self.method_support_stack)
+
+        self.primary_analyzer_card = CardFrame(muted=True, role="console")
+        primary_layout = QVBoxLayout(self.primary_analyzer_card)
         primary_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         primary_layout.setSpacing(TOKENS.spacing_sm)
+        primary_layout.setAlignment(Qt.AlignTop)
         primary_layout.addWidget(section_title("Primary Analyzer QC", "Profile-aware CO2/H2O analyzer provenance and diagnostic thresholds."))
         self.primary_analyzer_enable_combo = QComboBox()
         self.primary_analyzer_enable_combo.addItems(["enabled", "disabled"])
@@ -1367,12 +1407,13 @@ class ECProcessingPage(QWidget):
         self.primary_analyzer_summary_label.setObjectName("subtitle")
         self.primary_analyzer_summary_label.setWordWrap(True)
         primary_layout.addWidget(self.primary_analyzer_summary_label)
-        param_layout.addWidget(primary_card)
+        self.method_support_stack.addWidget(self.primary_analyzer_card)
 
-        compare_card = CardFrame(muted=True)
-        compare_layout = QVBoxLayout(compare_card)
+        self.method_compare_card = CardFrame(muted=True, role="console")
+        compare_layout = QVBoxLayout(self.method_compare_card)
         compare_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         compare_layout.setSpacing(TOKENS.spacing_sm)
+        compare_layout.setAlignment(Qt.AlignTop)
         compare_layout.addWidget(section_title("Method Compare", "Run method families side-by-side without changing selected processing outputs"))
         self.method_compare_combo = QComboBox()
         self.method_compare_combo.addItems(["enabled", "disabled"])
@@ -1385,7 +1426,13 @@ class ECProcessingPage(QWidget):
                 ]
             )
         )
-        param_layout.addWidget(compare_card)
+        self.method_support_stack.addWidget(self.method_compare_card)
+        self.method_support_sections = {
+            "primary": self.primary_analyzer_card,
+            "compare": self.method_compare_card,
+        }
+        self._show_method_support("primary")
+        param_layout.addWidget(self.method_support_card)
 
         row.addWidget(param_card, 3)
 

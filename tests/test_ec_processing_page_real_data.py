@@ -71,6 +71,10 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.workflow_lens_card.property("cardRole") == "panel"
         assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.method_family_card.property("cardRole") == "cockpit"
+        assert page.method_support_card.property("cardRole") == "panel"
+        assert page.method_support_stack.count() == 2
+        assert page.method_support_stack.currentWidget() is page.primary_analyzer_card
+        assert page.method_support_buttons["primary"].isChecked() is True
         assert page.method_family_stack.count() == 3
         assert page.method_family_buttons["footprint"].isChecked() is True
         assert page.cockpit_method_value.property("compactMetric") is True
@@ -84,6 +88,9 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         page._show_method_family("spectral")
         assert page.method_family_stack.currentWidget() is page.spectral_card
         assert page.method_family_buttons["spectral"].isChecked() is True
+        page._show_method_support("compare")
+        assert page.method_support_stack.currentWidget() is page.method_compare_card
+        assert page.method_support_buttons["compare"].isChecked() is True
         page._show_rail_focus("coverage")
         assert page.rail_focus_stack.currentWidget() is page.output_coverage_card
         assert page.rail_focus_buttons["coverage"].isChecked() is True
