@@ -89,6 +89,9 @@ class DeviceCenterPage(QWidget):
         self.operator_mission_card = self._build_operator_mission_card()
         self.layout.addWidget(self.operator_mission_card)
 
+        self.operator_evidence_card = self._build_operator_evidence_card()
+        self.layout.addWidget(self.operator_evidence_card)
+
         self.activity_card = CardFrame(muted=True, role="rail")
         activity_layout = QHBoxLayout(self.activity_card)
         activity_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
@@ -137,8 +140,10 @@ class DeviceCenterPage(QWidget):
         self._refresh_field_readiness(summary, selected)
         self._rebuild_device_cards()
         self._refresh_operator_mission(summary, selected)
+        self._refresh_operator_evidence(summary, selected)
         self._refresh_recent_activity()
         self.operator_mission_card.setVisible(self.controller.view_mode != "engineer")
+        self.operator_evidence_card.setVisible(self.controller.view_mode != "engineer")
         self.activity_card.setVisible(self.controller.view_mode == "engineer")
 
     def _status_metric_card(self, title: str) -> CardFrame:
@@ -400,6 +405,114 @@ class DeviceCenterPage(QWidget):
         export_status = str(report_workspace.get("export_status", "not_exported") or "not_exported")
         delivery_value.setText("已导出" if export_status in {"exported", "ready"} else "待交付")
         delivery_note.setText(f"export={export_status}，处理完成后进入报告中心生成交付包。")
+
+    def _build_operator_evidence_card(self) -> CardFrame:
+        card = CardFrame(role="panel")
+        card.setProperty("deckRole", "deviceOperatorEvidenceMatrix")
+        card.setMinimumHeight(214)
+        card.setMaximumHeight(262)
+        layout = QGridLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        layout.setHorizontalSpacing(TOKENS.spacing_md)
+        layout.setVerticalSpacing(TOKENS.spacing_sm)
+        layout.addWidget(
+            section_title(
+                "现场运行证据矩阵",
+                "把最新帧、协议事务、现场事件、缓冲规模、处理闭合和交付状态放到同一屏，避免首页下半屏空白。",
+            ),
+            0,
+            0,
+            1,
+            3,
+        )
+
+        self.operator_evidence_tiles: dict[str, tuple[QLabel, QLabel]] = {}
+        tiles = (
+            ("latest_frame", "最新有效帧"),
+            ("protocol_tx", "协议事务"),
+            ("site_event", "现场事件"),
+            ("runtime_buffer", "缓冲规模"),
+            ("processing_gate", "处理闭合"),
+            ("delivery_gate", "交付出口"),
+        )
+        for index, (key, title) in enumerate(tiles):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("evidenceStage", key)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+            tile_layout.setSpacing(TOKENS.spacing_xs)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value = QLabel("--")
+            value.setObjectName("metricValue")
+            value.setProperty("compactMetric", True)
+            value.setWordWrap(True)
+            note = QLabel("--")
+            note.setObjectName("subtitle")
+            note.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value)
+            tile_layout.addWidget(note)
+            self.operator_evidence_tiles[key] = (value, note)
+            layout.addWidget(tile, 1 + index // 3, index % 3)
+        return card
+
+    def _refresh_operator_evidence(self, summary: dict, selected) -> None:
+        device_uid = selected.config.uid if selected is not None else None
+        latest_frame_value, latest_frame_note = self.operator_evidence_tiles["latest_frame"]
+        protocol_value, protocol_note = self.operator_evidence_tiles["protocol_tx"]
+        event_value, event_note = self.operator_evidence_tiles["site_event"]
+        buffer_value, buffer_note = self.operator_evidence_tiles["runtime_buffer"]
+        processing_value, processing_note = self.operator_evidence_tiles["processing_gate"]
+        delivery_value, delivery_note = self.operator_evidence_tiles["delivery_gate"]
+
+        runtime = selected.runtime if selected is not None else None
+        if runtime is not None and runtime.last_frame_time is not None:
+            latest_frame_value.setText(runtime.last_frame_time.strftime("%H:%M:%S"))
+            latest_frame_note.setText(
+                f"quality={runtime.last_frame_quality.value}，message={runtime.last_message}"
+            )
+        else:
+            latest_frame_value.setText("暂无")
+            latest_frame_note.setText("等待设备连接并产生有效高频帧。")
+
+        transactions = self.controller.recent_transactions(device_uid=device_uid, limit=6)
+        latest_tx = transactions[0] if transactions else None
+        protocol_value.setText(f"{len(transactions)} 条")
+        protocol_note.setText(
+            f"{latest_tx.label} · {latest_tx.response_summary or latest_tx.status.value}"
+            if latest_tx
+            else "暂无最近协议事务。"
+        )
+
+        events = self.controller.recent_events(device_uid=device_uid, limit=6)
+        latest_event = events[0] if events else None
+        event_value.setText(f"{len(events)} 条")
+        event_note.setText(
+            f"{latest_event.severity} · {latest_event.title}"
+            if latest_event
+            else str(summary.get("recent_alarm", "暂无需要处理的告警。"))
+        )
+
+        buffer_rows = self.controller.realtime_rows(device_uid=device_uid, seconds=300.0)
+        buffer_value.setText(f"{len(buffer_rows)} 帧")
+        buffer_note.setText("最近 5 分钟实时缓冲，用于进入采集页或 RP 预处理。")
+
+        processing_summary = dict(self.controller.ec_processing_workspace.get("summary", {}) or {})
+        processing_status = str(processing_summary.get("status", "empty") or "empty")
+        processing_value.setText(processing_status)
+        processing_note.setText(
+            f"windows={processing_summary.get('valid_window_count', 0)}/{processing_summary.get('window_count', 0)}，"
+            f"target={processing_summary.get('target', 'runtime_buffer')}"
+        )
+
+        report_workspace = dict(self.controller.report_center_workspace or {})
+        export_status = str(report_workspace.get("export_status", "not_exported") or "not_exported")
+        delivery_value.setText(export_status)
+        delivery_note.setText(
+            f"view={report_workspace.get('view_mode', 'engineering')}，"
+            f"latest={report_workspace.get('updated_at', '--')}"
+        )
 
     def _compact_setup_grid(self, fields: list[tuple[str, QWidget]]) -> QGridLayout:
         grid = QGridLayout()

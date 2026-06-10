@@ -38,12 +38,27 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert page.operator_mission_card.isVisibleTo(page) is True
         assert page.operator_mission_tiles["device"][0].property("compactMetric") is True
         assert page.operator_mission_tiles["processing"][1].text().startswith("status=")
+        assert page.operator_evidence_card.property("cardRole") == "panel"
+        assert page.operator_evidence_card.property("deckRole") == "deviceOperatorEvidenceMatrix"
+        assert set(page.operator_evidence_tiles) == {
+            "latest_frame",
+            "protocol_tx",
+            "site_event",
+            "runtime_buffer",
+            "processing_gate",
+            "delivery_gate",
+        }
+        assert page.operator_evidence_card.isVisibleTo(page) is True
+        assert page.operator_evidence_tiles["runtime_buffer"][0].property("compactMetric") is True
+        assert "帧" in page.operator_evidence_tiles["runtime_buffer"][0].text()
+        assert page.operator_evidence_tiles["processing_gate"][1].text().startswith("windows=")
         assert page.activity_card.property("cardRole") == "rail"
         assert set(page.readiness_values) == {"fleet", "target", "protocol", "next"}
         assert page.readiness_values["fleet"][0].text() in {"可采", "待检查"}
         assert page.readiness_values["next"][0].text() in {"连接设备", "进入采集", "处理异常", "选择设备"}
         controller.set_view_mode("engineer")
         assert page.operator_mission_card.isVisibleTo(page) is False
+        assert page.operator_evidence_card.isVisibleTo(page) is False
         assert page.activity_card.isVisibleTo(page) is True
     finally:
         page.deleteLater()
