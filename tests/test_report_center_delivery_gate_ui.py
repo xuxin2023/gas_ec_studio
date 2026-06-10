@@ -35,7 +35,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_values["report"][0].property("compactMetric") is True
         assert page.delivery_gate_next_value.property("compactMetric") is True
         assert page.preview_header_card.property("cardRole") == "cockpit"
+        assert page.preview_deck_card.property("cardRole") == "rail"
         assert page.preview_content_card.property("cardRole") == "panel"
+        assert len(page.preview_metric_cards) == 4
+        assert all(card.property("cardRole") == "tile" for card in page.preview_metric_cards)
         assert page.inner_inspector.property("cardRole") == "panel"
         assert page.inspector_stack.count() == 4
         assert page.inspector_stack.currentWidget() is page.export_card

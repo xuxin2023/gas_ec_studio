@@ -118,6 +118,17 @@ class ReportCenterPage(QWidget):
         preview_header_layout.addWidget(self.preview_source_label)
         center_layout.addWidget(self.preview_header_card)
 
+        self.preview_deck_card = CardFrame(muted=True, role="rail")
+        preview_deck_layout = QVBoxLayout(self.preview_deck_card)
+        preview_deck_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        preview_deck_layout.setSpacing(TOKENS.spacing_md)
+        preview_deck_layout.addWidget(
+            section_title(
+                "Report preview deck",
+                "KPI, plot, and supporting table stay together so the center pane reads like a delivery cockpit.",
+            )
+        )
+
         self.preview_metrics_row = QWidget()
         metrics_layout = QGridLayout(self.preview_metrics_row)
         metrics_layout.setContentsMargins(0, 0, 0, 0)
@@ -125,6 +136,7 @@ class ReportCenterPage(QWidget):
         metrics_layout.setVerticalSpacing(TOKENS.spacing_md)
         self.preview_metric_values: list[QLabel] = []
         self.preview_metric_labels: list[QLabel] = []
+        self.preview_metric_cards: list[CardFrame] = []
         for index in range(4):
             card = CardFrame(muted=True, role="tile")
             card_layout = QVBoxLayout(card)
@@ -138,8 +150,9 @@ class ReportCenterPage(QWidget):
             card_layout.addWidget(value)
             self.preview_metric_labels.append(title)
             self.preview_metric_values.append(value)
+            self.preview_metric_cards.append(card)
             metrics_layout.addWidget(card, 0, index)
-        center_layout.addWidget(self.preview_metrics_row)
+        preview_deck_layout.addWidget(self.preview_metrics_row)
 
         self.preview_content_card = CardFrame(role="panel")
         content_layout = QVBoxLayout(self.preview_content_card)
@@ -163,7 +176,8 @@ class ReportCenterPage(QWidget):
         self.preview_plot_note.setObjectName("subtitle")
         self.preview_plot_note.setWordWrap(True)
         content_layout.addWidget(self.preview_plot_note)
-        center_layout.addWidget(self.preview_content_card)
+        preview_deck_layout.addWidget(self.preview_content_card)
+        center_layout.addWidget(self.preview_deck_card)
 
         self.conclusion_card = CardFrame(muted=True, role="panel")
         conclusion_layout = QVBoxLayout(self.conclusion_card)
