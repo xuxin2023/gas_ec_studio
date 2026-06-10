@@ -179,6 +179,23 @@ class ReportCenterPage(QWidget):
         preview_deck_layout.addWidget(self.preview_content_card)
         center_layout.addWidget(self.preview_deck_card)
 
+        self.closure_deck_card = CardFrame(muted=True, role="rail")
+        closure_deck_layout = QVBoxLayout(self.closure_deck_card)
+        closure_deck_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        closure_deck_layout.setSpacing(TOKENS.spacing_md)
+        closure_header = QHBoxLayout()
+        closure_header.setContentsMargins(0, 0, 0, 0)
+        closure_header.addWidget(
+            section_title(
+                "Closure deck",
+                "Conclusion text and the startup route live together so the report center always shows the next closure move.",
+            )
+        )
+        closure_header.addStretch(1)
+        self.closure_deck_chip = chip("Next action", "warning")
+        closure_header.addWidget(self.closure_deck_chip)
+        closure_deck_layout.addLayout(closure_header)
+
         self.conclusion_card = CardFrame(muted=True, role="panel")
         conclusion_layout = QVBoxLayout(self.conclusion_card)
         conclusion_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -187,9 +204,10 @@ class ReportCenterPage(QWidget):
         self.conclusion_content = QVBoxLayout()
         self.conclusion_content.setSpacing(TOKENS.spacing_sm)
         conclusion_layout.addLayout(self.conclusion_content)
-        center_layout.addWidget(self.conclusion_card)
+        closure_deck_layout.addWidget(self.conclusion_card)
         self.empty_state_card = self._build_empty_state_card()
-        center_layout.addWidget(self.empty_state_card)
+        closure_deck_layout.addWidget(self.empty_state_card)
+        center_layout.addWidget(self.closure_deck_card)
         center_layout.addStretch(1)
 
         self.delivery_rail = CardFrame(muted=True, role="rail")
@@ -1626,6 +1644,12 @@ class ReportCenterPage(QWidget):
         has_real_result = exportable_count > 0
         self.empty_state_card.setVisible(not has_real_result)
         self._set_chip(self.empty_state_chip, "已生成" if has_real_result else "待运行", "success" if has_real_result else "warning")
+        if hasattr(self, "closure_deck_chip"):
+            self._set_chip(
+                self.closure_deck_chip,
+                "Ready" if has_real_result else "Next action",
+                "success" if has_real_result else "warning",
+            )
 
         selected_title = str(report.get("title", "当前报告") or "当前报告")
         batch_label = str(filters.get("batch", "") or "--")

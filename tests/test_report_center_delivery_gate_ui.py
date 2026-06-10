@@ -39,6 +39,8 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_content_card.property("cardRole") == "panel"
         assert len(page.preview_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.preview_metric_cards)
+        assert page.closure_deck_card.property("cardRole") == "rail"
+        assert page.closure_deck_chip.text() == "Next action"
         assert page.inner_inspector.property("cardRole") == "panel"
         assert page.inspector_stack.count() == 4
         assert page.inspector_stack.currentWidget() is page.export_card
@@ -161,6 +163,7 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_gate_values["benchmark"][0].text() == "ref-001"
         assert page.delivery_gate_values["methods"][0].text() == "已汇总"
         assert page.delivery_gate_next_value.text() == "交付归档"
+        assert page.closure_deck_chip.text() == "Ready"
         assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
         assert page.preview_table.rowCount() == 2
         assert page.empty_state_card.isHidden() is True
