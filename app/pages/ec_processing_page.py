@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QSplitter,
     QStackedWidget,
@@ -102,7 +103,7 @@ class ECProcessingPage(QWidget):
 
         self.desktop_rail = self._build_desktop_rail()
         body.addWidget(self.desktop_rail)
-        body.setSizes([260, 840, 340])
+        body.setSizes([250, 770, 420])
 
         self._build_tree()
         self._build_pages()
@@ -292,8 +293,8 @@ class ECProcessingPage(QWidget):
 
     def _build_desktop_rail(self) -> CardFrame:
         rail = CardFrame(muted=True, role="rail")
-        rail.setMinimumWidth(300)
-        rail.setMaximumWidth(380)
+        rail.setMinimumWidth(360)
+        rail.setMaximumWidth(460)
         layout = QVBoxLayout(rail)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
@@ -323,22 +324,46 @@ class ECProcessingPage(QWidget):
 
     def _build_workflow_lens_panel(self) -> CardFrame:
         card = CardFrame(role="panel")
+        card.setProperty("deckRole", "workflowLensCompact")
+        card.setMaximumHeight(190)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_sm)
         layout.addWidget(section_title("工作流分层", "把项目、核心计算、高级方法和交付输出压缩成可跳转的四段导航。"))
 
-        for lens_key, title, subtitle, steps in WORKFLOW_LENSES:
-            button = QPushButton(title)
-            button.setToolTip(" / ".join(dict((key, label) for key, label, _sub in EC_STEPS).get(step, step) for step in steps))
+        lens_grid = QGridLayout()
+        lens_grid.setContentsMargins(0, 0, 0, 0)
+        lens_grid.setHorizontalSpacing(TOKENS.spacing_xs)
+        lens_grid.setVerticalSpacing(TOKENS.spacing_xs)
+        compact_titles = {
+            "project": "项目",
+            "core": "核心",
+            "advanced": "高级",
+            "delivery": "交付",
+        }
+        for index, (lens_key, title, subtitle, steps) in enumerate(WORKFLOW_LENSES):
+            button = QPushButton(compact_titles.get(lens_key, title))
+            button.setCheckable(True)
+            button.setMinimumHeight(38)
+            button.setMaximumHeight(42)
+            button.setMinimumWidth(0)
+            button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            step_hint = " / ".join(dict((key, label) for key, label, _sub in EC_STEPS).get(step, step) for step in steps)
+            button.setToolTip(f"{title}: {step_hint}")
             button.clicked.connect(lambda _checked=False, key=lens_key: self._select_workflow_lens(key))
             note = QLabel(subtitle)
             note.setObjectName("subtitle")
             note.setWordWrap(True)
+            note.setVisible(False)
             self.workflow_lens_buttons[lens_key] = button
             self.workflow_lens_notes[lens_key] = note
-            layout.addWidget(button)
-            layout.addWidget(note)
+            lens_grid.addWidget(button, index // 2, index % 2)
+        layout.addLayout(lens_grid)
+        self.workflow_lens_active_note = QLabel("--")
+        self.workflow_lens_active_note.setObjectName("subtitle")
+        self.workflow_lens_active_note.setWordWrap(True)
+        self.workflow_lens_active_note.setMaximumHeight(44)
+        layout.addWidget(self.workflow_lens_active_note)
         return card
 
     def _build_rail_focus_panel(self) -> CardFrame:
@@ -431,15 +456,25 @@ class ECProcessingPage(QWidget):
 
     def _build_processing_cockpit(self) -> CardFrame:
         card = CardFrame(role="cockpit")
+        card.setProperty("deckRole", "processingCockpitDeck")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_sm)
         header = QHBoxLayout()
         header.setSpacing(TOKENS.spacing_sm)
-        header.addWidget(section_title("处理 Cockpit", "当前 RP 运行、方法和交付状态。"))
-        header.addStretch(1)
+        header_text = QVBoxLayout()
+        header_text.setSpacing(0)
+        title = QLabel("处理 Cockpit")
+        title.setObjectName("metricValue")
+        title.setProperty("compactMetric", True)
+        subtitle = QLabel("当前 RP 运行、方法和交付状态。")
+        subtitle.setObjectName("subtitle")
+        subtitle.setWordWrap(True)
         self.cockpit_status_chip = chip("等待运行", "warning")
-        header.addWidget(self.cockpit_status_chip)
+        header_text.addWidget(title)
+        header_text.addWidget(subtitle)
+        header_text.addWidget(self.cockpit_status_chip, 0, Qt.AlignLeft)
+        header.addLayout(header_text, 1)
         layout.addLayout(header)
 
         grid = QGridLayout()
@@ -513,14 +548,21 @@ class ECProcessingPage(QWidget):
             return
         active_step = self.controller.ec_nav_step
         active_lens = ""
+        active_note = ""
         for lens_key, _title, _subtitle, steps in WORKFLOW_LENSES:
             if active_step in steps:
                 active_lens = lens_key
+                active_note = _subtitle
                 break
         for lens_key, button in self.workflow_lens_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(lens_key == active_lens)
+            button.blockSignals(False)
             button.setProperty("variant", "primary" if lens_key == active_lens else "")
             button.style().unpolish(button)
             button.style().polish(button)
+        if hasattr(self, "workflow_lens_active_note"):
+            self.workflow_lens_active_note.setText(active_note or "选择左侧步骤后显示对应工作流分层。")
 
     def _show_rail_focus(self, focus: str) -> None:
         if not hasattr(self, "rail_focus_sections"):

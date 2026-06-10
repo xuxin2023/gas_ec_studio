@@ -63,17 +63,22 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.run_bar.property("cardRole") == "command"
         assert page.tree_card.property("cardRole") == "rail"
         assert page.desktop_rail.property("cardRole") == "rail"
+        assert page.desktop_rail.minimumWidth() == 360
+        assert page.desktop_rail.maximumWidth() == 460
         assert page.desktop_rail_scroll.objectName() == "railScroll"
         assert page.desktop_rail_scroll.widgetResizable() is True
         assert page.desktop_rail_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.desktop_rail_scroll.widget() is page.desktop_rail_body
         assert page.cockpit_card.property("cardRole") == "cockpit"
+        assert page.cockpit_card.property("deckRole") == "processingCockpitDeck"
         assert page.rail_focus_card.property("cardRole") == "panel"
         assert page.rail_focus_stack.count() == 2
         assert page.rail_focus_stack.currentWidget() is page.readiness_card
         assert page.rail_focus_buttons["readiness"].isChecked() is True
         assert page.readiness_card.property("cardRole") == "panel"
         assert page.workflow_lens_card.property("cardRole") == "panel"
+        assert page.workflow_lens_card.property("deckRole") == "workflowLensCompact"
+        assert page.workflow_lens_card.maximumHeight() == 190
         assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.method_family_card.property("cardRole") == "cockpit"
         assert page.method_support_card.property("cardRole") == "panel"
@@ -92,6 +97,9 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.cockpit_method_value.property("compactMetric") is True
         assert page.step_tree.objectName() == "workflowTree"
         assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
+        assert page.workflow_lens_buttons["project"].text() == "项目"
+        assert page.workflow_lens_active_note.text() != "--"
+        assert page.workflow_lens_buttons["project"].isChecked() is True
         assert "schema=FLUXNET" in page.coverage_values["network"].text()
         assert "footprint=kljun" in page.coverage_values["methods"].text()
         assert "footprint=kljun" in page.method_snapshot_label.text()
