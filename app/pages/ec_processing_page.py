@@ -253,32 +253,35 @@ class ECProcessingPage(QWidget):
 
     def _build_run_bar(self) -> CardFrame:
         card = CardFrame(role="command")
-        layout = QHBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout = QGridLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        layout.setVerticalSpacing(TOKENS.spacing_xs)
 
         intro = section_title("运行条", "先选择数据来源与时间范围，再决定正式运行还是仅做预检查。")
-        layout.addWidget(intro)
-        layout.addStretch(1)
+        intro.setMaximumWidth(300)
+        layout.addWidget(intro, 0, 0, 2, 1)
 
         self.data_source_combo = QComboBox()
         self.data_source_combo.setEditable(True)
         self.data_source_combo.addItems(["当前项目高频目录", "最近归档批次", "回放文件夹"])
+        self.data_source_combo.setMinimumWidth(150)
         self.time_range_combo = QComboBox()
         self.time_range_combo.setEditable(True)
         self.time_range_combo.addItems(["最近 24 小时", "今天", "最近 7 天", "自定义时间窗"])
-        layout.addWidget(QLabel("数据来源"))
-        layout.addWidget(self.data_source_combo)
-        layout.addWidget(QLabel("时间范围"))
-        layout.addWidget(self.time_range_combo)
+        self.time_range_combo.setMinimumWidth(130)
+        layout.addWidget(QLabel("数据来源"), 0, 1)
+        layout.addWidget(self.data_source_combo, 0, 2)
+        layout.addWidget(QLabel("时间范围"), 0, 3)
+        layout.addWidget(self.time_range_combo, 0, 4)
 
         self.run_status_chip = chip("标准运行", "accent")
-        layout.addWidget(self.run_status_chip)
+        layout.addWidget(self.run_status_chip, 0, 5)
         self.run_summary_label = QLabel("尚未生成真实 RP 结果。")
         self.run_summary_label.setObjectName("subtitle")
         self.run_summary_label.setWordWrap(True)
-        self.run_summary_label.setMinimumWidth(260)
-        layout.addWidget(self.run_summary_label)
+        self.run_summary_label.setMinimumWidth(180)
+        layout.addWidget(self.run_summary_label, 1, 1, 1, 2)
 
         run_button = QPushButton("运行处理")
         run_button.setProperty("variant", "primary")
@@ -289,21 +292,27 @@ class ECProcessingPage(QWidget):
         save_template_button.clicked.connect(self._save_template)
         restore_button = QPushButton("恢复默认")
         restore_button.clicked.connect(self._restore_default)
-        for button in (run_button, precheck_button, save_template_button, restore_button):
-            layout.addWidget(button)
+        for column, button in enumerate((run_button, precheck_button, save_template_button, restore_button), start=3):
+            button.setMinimumWidth(0)
+            layout.addWidget(button, 1, column)
+        layout.setColumnStretch(0, 2)
+        layout.setColumnStretch(2, 1)
+        layout.setColumnStretch(4, 1)
         return card
 
     def _build_rp_closure_deck(self) -> CardFrame:
         card = CardFrame(role="cockpit")
         card.setProperty("deckRole", "rpClosureDeck")
-        card.setMaximumHeight(98)
+        card.setMaximumHeight(142)
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_md)
 
         intro = QVBoxLayout()
         intro.setSpacing(TOKENS.spacing_xs)
-        intro.addWidget(section_title("RP 闭环总控", "把通量、不确定度、方法、对标和网络交付固定到首屏。"))
+        intro_title = section_title("RP 闭环总控", "通量、方法、对标和网络交付固定在首屏。")
+        intro_title.setMaximumWidth(160)
+        intro.addWidget(intro_title)
         self.rp_closure_chip = chip("待运行", "warning")
         intro.addWidget(self.rp_closure_chip)
         layout.addLayout(intro)
@@ -326,13 +335,15 @@ class ECProcessingPage(QWidget):
                 ("network", "网络"),
             )
         ):
-            grid.addWidget(self._rp_closure_tile(key, title), 0, index)
+            grid.addWidget(self._rp_closure_tile(key, title), index // 3, index % 3)
         layout.addLayout(grid, 1)
         return card
 
     def _rp_closure_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("evidenceKey", key)
+        tile.setMinimumWidth(0)
+        tile.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         tile.setMinimumHeight(54)
         tile.setMaximumHeight(66)
         tile_layout = QVBoxLayout(tile)
@@ -366,7 +377,7 @@ class ECProcessingPage(QWidget):
 
     def _build_desktop_rail(self) -> CardFrame:
         rail = CardFrame(muted=True, role="rail")
-        rail.setMinimumWidth(360)
+        rail.setMinimumWidth(384)
         rail.setMaximumWidth(460)
         layout = QVBoxLayout(rail)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -402,7 +413,9 @@ class ECProcessingPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_sm)
-        layout.addWidget(section_title("工作流分层", "把项目、核心计算、高级方法和交付输出压缩成可跳转的四段导航。"))
+        title = section_title("工作流分层", "项目、核心、高级和交付四段导航。")
+        title.setMaximumWidth(300)
+        layout.addWidget(title)
 
         lens_grid = QGridLayout()
         lens_grid.setContentsMargins(0, 0, 0, 0)
@@ -553,13 +566,12 @@ class ECProcessingPage(QWidget):
         grid = QGridLayout()
         grid.setHorizontalSpacing(TOKENS.spacing_sm)
         grid.setVerticalSpacing(TOKENS.spacing_sm)
-        self.cockpit_method_value, self.cockpit_method_note = self._build_cockpit_tile(grid, 0, 0, "方法栈", column_span=2)
+        self.cockpit_method_value, self.cockpit_method_note = self._build_cockpit_tile(grid, 0, 0, "方法栈")
         self.cockpit_result_value, self.cockpit_result_note = self._build_cockpit_tile(grid, 1, 0, "主通量")
-        self.cockpit_uncertainty_value, self.cockpit_uncertainty_note = self._build_cockpit_tile(grid, 1, 1, "不确定度")
-        self.cockpit_benchmark_value, self.cockpit_benchmark_note = self._build_cockpit_tile(grid, 2, 0, "Benchmark")
-        self.cockpit_delivery_value, self.cockpit_delivery_note = self._build_cockpit_tile(grid, 2, 1, "交付出口")
+        self.cockpit_uncertainty_value, self.cockpit_uncertainty_note = self._build_cockpit_tile(grid, 2, 0, "不确定度")
+        self.cockpit_benchmark_value, self.cockpit_benchmark_note = self._build_cockpit_tile(grid, 3, 0, "Benchmark")
+        self.cockpit_delivery_value, self.cockpit_delivery_note = self._build_cockpit_tile(grid, 4, 0, "交付出口")
         grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
         layout.addLayout(grid)
         return card
 

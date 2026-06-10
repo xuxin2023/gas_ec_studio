@@ -12,6 +12,7 @@ from app.main_window import StudioMainWindow
 from app.pages.ec_processing_page import ECProcessingPage
 from app.studio import StudioController
 from models.hf_models import FrameQuality, NormalizedHFFrame
+from tests.ui_geometry_helpers import assert_contained, assert_no_visible_competitor_name, assert_no_visual_overlap
 
 
 def _app() -> QApplication:
@@ -63,7 +64,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.run_bar.property("cardRole") == "command"
         assert page.rp_closure_deck.property("cardRole") == "cockpit"
         assert page.rp_closure_deck.property("deckRole") == "rpClosureDeck"
-        assert page.rp_closure_deck.maximumHeight() == 98
+        assert page.rp_closure_deck.maximumHeight() == 142
         assert page.rp_closure_chip.text().startswith("待运行")
         assert set(page.rp_closure_tiles) == {"run", "flux", "uncertainty", "methods", "benchmark", "network"}
         assert all(tile.property("cardRole") == "tile" for tile in page.rp_closure_tiles.values())
@@ -73,7 +74,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.rp_closure_values["network"].text() == "FLUXNET"
         assert page.tree_card.property("cardRole") == "rail"
         assert page.desktop_rail.property("cardRole") == "rail"
-        assert page.desktop_rail.minimumWidth() == 360
+        assert page.desktop_rail.minimumWidth() == 384
         assert page.desktop_rail.maximumWidth() == 460
         assert page.desktop_rail_scroll.objectName() == "railScroll"
         assert page.desktop_rail_scroll.widgetResizable() is True
@@ -186,6 +187,38 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.window_plan_curve.xData is not None and len(page.window_plan_curve.xData) > 0
         assert "真实窗口" in page.window_plan_note.text()
     finally:
+        controller.shutdown()
+
+
+def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatch, tmp_path) -> None:
+    app = _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    try:
+        page = ECProcessingPage(controller)
+        page.show()
+        for width, height in ((1280, 760), (1440, 920), (1600, 900)):
+            page.resize(width, height)
+            page.refresh()
+            app.processEvents()
+
+            assert page.desktop_rail.width() <= page.desktop_rail.maximumWidth()
+            assert page.desktop_rail.width() >= page.desktop_rail.minimumWidth()
+            assert page.desktop_rail_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+            assert_contained(page, page.rp_closure_deck, page)
+            assert_contained(page, page.tree_card, page)
+            assert_contained(page, page.desktop_rail, page)
+
+            closure_tiles = list(page.rp_closure_tiles.values())
+            for tile in closure_tiles:
+                assert_contained(page.rp_closure_deck, tile, page)
+            assert_no_visual_overlap(closure_tiles, page)
+
+            assert_contained(page.desktop_rail_scroll.viewport(), page.workflow_lens_card, page)
+            assert_no_visible_competitor_name(page)
+    finally:
+        page.close()
+        page.deleteLater()
         controller.shutdown()
 
 

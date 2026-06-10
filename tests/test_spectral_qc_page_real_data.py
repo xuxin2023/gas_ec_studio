@@ -11,6 +11,7 @@ from app.main_window import StudioMainWindow
 from app.pages.spectral_qc_page import SpectralQCPage
 from app.studio import StudioController
 from models.hf_models import FrameQuality, NormalizedHFFrame
+from tests.ui_geometry_helpers import assert_contained, assert_no_visible_competitor_name, assert_no_visual_overlap
 
 
 def _app() -> QApplication:
@@ -122,6 +123,44 @@ def test_spectral_qc_page_refreshes_with_real_result(monkeypatch, tmp_path) -> N
         assert page.cross_curve.xData is not None and len(page.cross_curve.xData) > 0
         assert page.ogive_curve.xData is not None and len(page.ogive_curve.xData) > 0
     finally:
+        controller.shutdown()
+
+
+def test_spectral_qc_viewport_layout_keeps_evidence_decks_stable(monkeypatch, tmp_path) -> None:
+    app = _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    try:
+        page = SpectralQCPage(controller)
+        page.show()
+        for width, height in ((1280, 760), (1440, 920), (1600, 900)):
+            page.resize(width, height)
+            page.refresh()
+            app.processEvents()
+
+            assert page.tree_card.width() <= page.tree_card.maximumWidth()
+            assert page.tree_card.width() >= page.tree_card.minimumWidth()
+            assert_contained(page, page.run_bar, page)
+            assert_contained(page, page.evidence_deck, page)
+            assert_contained(page, page.tree_card, page)
+
+            source_panels = [page.spectral_source_panel, page.spectral_action_panel]
+            for panel in source_panels:
+                assert_contained(page.run_bar, panel, page)
+            assert_no_visual_overlap(source_panels, page)
+
+            evidence_tiles = list(page.evidence_tiles.values())
+            for tile in evidence_tiles:
+                assert_contained(page.evidence_deck, tile, page)
+            assert_no_visual_overlap(evidence_tiles, page)
+
+            for card in page.summary_metric_cards:
+                assert_contained(page.summary_row, card, page)
+            assert_no_visual_overlap(page.summary_metric_cards, page)
+            assert_no_visible_competitor_name(page)
+    finally:
+        page.close()
+        page.deleteLater()
         controller.shutdown()
 
 

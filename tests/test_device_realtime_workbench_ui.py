@@ -8,6 +8,7 @@ from app.pages.device_center_page import DeviceCenterPage
 from app.pages.realtime_page import RealtimePage
 from app.studio import StudioController
 from app.theme import apply_app_theme
+from tests.ui_geometry_helpers import assert_contained, assert_no_visible_competitor_name, assert_no_visual_overlap
 
 
 def _app() -> QApplication:
@@ -65,6 +66,29 @@ def test_device_center_uses_field_operations_deck() -> None:
         controller.shutdown()
 
 
+def test_device_center_top_decks_fit_common_desktop_viewports() -> None:
+    app = _app()
+    controller = StudioController()
+    page = DeviceCenterPage(controller)
+    try:
+        page.show()
+        controller.set_view_mode("operator")
+        for width, height in ((1280, 760), (1440, 920), (1600, 900)):
+            page.resize(width, height)
+            page.refresh()
+            app.processEvents()
+
+            top_cards = [page.status_card, page.field_readiness_card]
+            for card in top_cards:
+                assert_contained(page, card, page)
+            assert_no_visual_overlap(top_cards, page)
+            assert_no_visible_competitor_name(page)
+    finally:
+        page.close()
+        page.deleteLater()
+        controller.shutdown()
+
+
 def test_realtime_page_uses_session_cockpit_deck() -> None:
     _app()
     controller = StudioController()
@@ -79,17 +103,51 @@ def test_realtime_page_uses_session_cockpit_deck() -> None:
         assert page.capture_command_chip.text() == "实时控制台"
         assert page.summary_card.property("cardRole") == "cockpit"
         assert page.summary_card.property("deckRole") == "realtimeSummaryDeck"
-        assert page.summary_card.maximumHeight() == 132
+        assert page.summary_card.maximumHeight() == 116
         assert len(page.summary_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)
         assert all(value.property("compactMetric") is True for value in page.summary_values.values())
         assert page.plot_card.property("cardRole") == "panel"
         assert page.bottom_card.property("cardRole") == "rail"
-        assert page.bottom_card.minimumHeight() == 214
+        assert page.bottom_card.minimumHeight() == 162
+        assert page.bottom_card.maximumHeight() == 180
         assert page.session_device_value.property("compactMetric") is True
         assert page.session_state_chip.text() in {"待连接", "需关注", "采集中", "等待帧"}
         assert page.session_device_value.text() != "--"
         assert "buffer=" in page.session_window_note.text()
     finally:
+        page.deleteLater()
+        controller.shutdown()
+
+
+def test_realtime_page_viewport_layout_keeps_cockpit_stable() -> None:
+    app = _app()
+    controller = StudioController()
+    page = RealtimePage(controller)
+    try:
+        page.show()
+        for width, height in ((1280, 760), (1440, 920), (1600, 900)):
+            page.resize(width, height)
+            page.refresh()
+            app.processEvents()
+
+            assert page.width() <= width
+            assert page.height() <= height
+            page_cards = [page.control_card, page.summary_card, page.plot_card, page.bottom_card]
+            for card in page_cards:
+                assert_contained(page, card, page)
+            assert_no_visual_overlap(page_cards, page)
+
+            control_panels = [page.capture_target_panel, page.capture_metric_panel, page.capture_action_panel]
+            for panel in control_panels:
+                assert_contained(page.control_card, panel, page)
+            assert_no_visual_overlap(control_panels, page)
+
+            for card in page.summary_metric_cards:
+                assert_contained(page.summary_card, card, page)
+            assert_no_visual_overlap(page.summary_metric_cards, page)
+            assert_no_visible_competitor_name(page)
+    finally:
+        page.close()
         page.deleteLater()
         controller.shutdown()
