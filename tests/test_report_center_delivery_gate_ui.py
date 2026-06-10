@@ -36,6 +36,9 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_next_value.property("compactMetric") is True
         assert page.preview_header_card.property("cardRole") == "cockpit"
         assert page.preview_deck_card.property("cardRole") == "rail"
+        assert page.preview_delivery_trail_card.property("cardRole") == "console"
+        assert page.preview_delivery_trail_value.property("compactMetric") is True
+        assert page.preview_delivery_trail_chip.property("chipTone") == "accent"
         assert page.preview_content_card.property("cardRole") == "panel"
         assert len(page.preview_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.preview_metric_cards)
@@ -165,6 +168,8 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_gate_next_value.text() == "交付归档"
         assert page.closure_deck_chip.text() == "就绪"
         assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
+        assert "batch-001" in page.preview_delivery_trail_note.text()
+        assert "report=run_summary" in page.preview_delivery_trail_note.text()
         assert page.preview_table.rowCount() == 2
         assert page.empty_state_card.isHidden() is True
     finally:

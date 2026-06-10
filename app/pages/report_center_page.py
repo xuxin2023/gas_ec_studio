@@ -154,6 +154,28 @@ class ReportCenterPage(QWidget):
             metrics_layout.addWidget(card, 0, index)
         preview_deck_layout.addWidget(self.preview_metrics_row)
 
+        self.preview_delivery_trail_card = CardFrame(muted=True, role="console")
+        trail_layout = QVBoxLayout(self.preview_delivery_trail_card)
+        trail_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        trail_layout.setSpacing(TOKENS.spacing_sm)
+        trail_header = QHBoxLayout()
+        trail_header.setContentsMargins(0, 0, 0, 0)
+        trail_header.addWidget(section_title("交付线索", "把当前报告、批次、来源和更新时间固定在预览区顶部。"))
+        trail_header.addStretch(1)
+        self.preview_delivery_trail_chip = chip("同步", "accent")
+        trail_header.addWidget(self.preview_delivery_trail_chip)
+        trail_layout.addLayout(trail_header)
+        self.preview_delivery_trail_value = QLabel("--")
+        self.preview_delivery_trail_value.setObjectName("metricValue")
+        self.preview_delivery_trail_value.setProperty("compactMetric", True)
+        self.preview_delivery_trail_value.setWordWrap(True)
+        self.preview_delivery_trail_note = QLabel("--")
+        self.preview_delivery_trail_note.setObjectName("subtitle")
+        self.preview_delivery_trail_note.setWordWrap(True)
+        trail_layout.addWidget(self.preview_delivery_trail_value)
+        trail_layout.addWidget(self.preview_delivery_trail_note)
+        preview_deck_layout.addWidget(self.preview_delivery_trail_card)
+
         self.preview_content_card = CardFrame(role="panel")
         content_layout = QVBoxLayout(self.preview_content_card)
         content_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -662,6 +684,16 @@ class ReportCenterPage(QWidget):
             _ui_safe_text(
                 f"来源：{report.get('source', '--')}\n批次：{filters.get('batch', '--')}  |  时间：{report.get('updated_at', '--')}"
             )
+        )
+        source = str(report.get("source", "--") or "--")
+        batch = str(filters.get("batch", "--") or "--")
+        updated_at = str(report.get("updated_at", "--") or "--")
+        report_key = str(report.get("report_key", "--") or "--")
+        self.preview_delivery_trail_value.setText(
+            _ui_safe_text(f"{report.get('title', 'Report Preview')} · {view_mode}")
+        )
+        self.preview_delivery_trail_note.setText(
+            _ui_safe_text(f"report={report_key} | source={source} | batch={batch} | updated={updated_at}")
         )
 
         is_benchmark_cockpit = str(report.get("report_key", "")) == "benchmark_cockpit"
