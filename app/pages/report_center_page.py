@@ -683,15 +683,37 @@ class ReportCenterPage(QWidget):
     def _open_fixture_pack_report(self) -> None:
         self.controller.set_report_nav_section("fixture_pack")
 
+    @staticmethod
+    def _compact_report_source(source: object, *, max_chars: int = 56) -> str:
+        text = _ui_safe_text(str(source or "--").strip() or "--")
+        if text == "--":
+            return text
+        normalized = text.replace("\\", "/")
+        is_path_like = "/" in normalized or "\\" in text or (len(text) > 1 and text[1] == ":")
+        if not is_path_like and len(text) <= max_chars:
+            return text
+        if not is_path_like:
+            return f"...{text[-max_chars + 3:]}"
+        parts = [part for part in normalized.split("/") if part]
+        if not parts:
+            return text
+        tail = parts[-1]
+        if tail.lower() in {"results", "exports"} and len(parts) > 1:
+            tail = f"{parts[-2]} / {tail}"
+        return tail if len(tail) <= max_chars else f"...{tail[-max_chars + 3:]}"
+
     def _refresh_preview(self, report: dict, view_mode: str, filters: dict) -> None:
         self._set_chip(self.preview_mode_chip, view_mode, "accent")
         self.preview_title_label.setText(_ui_safe_text(report.get("title", "Report Preview")))
+        raw_source = str(report.get("source", "--") or "--")
+        source_display = self._compact_report_source(raw_source)
         self.preview_source_label.setText(
             _ui_safe_text(
-                f"来源：{report.get('source', '--')}\n批次：{filters.get('batch', '--')}  |  时间：{report.get('updated_at', '--')}"
+                f"来源：{source_display}\n批次：{filters.get('batch', '--')}  |  时间：{report.get('updated_at', '--')}"
             )
         )
-        source = str(report.get("source", "--") or "--")
+        self.preview_source_label.setToolTip(_ui_safe_text(raw_source))
+        source = source_display
         batch = str(filters.get("batch", "--") or "--")
         updated_at = str(report.get("updated_at", "--") or "--")
         report_key = str(report.get("report_key", "--") or "--")
@@ -701,6 +723,7 @@ class ReportCenterPage(QWidget):
         self.preview_delivery_trail_note.setText(
             _ui_safe_text(f"report={report_key} | source={source} | batch={batch} | updated={updated_at}")
         )
+        self.preview_delivery_trail_note.setToolTip(_ui_safe_text(raw_source))
 
         is_benchmark_cockpit = str(report.get("report_key", "")) == "benchmark_cockpit"
         is_fixture_pack = str(report.get("report_key", "")) == "fixture_pack"

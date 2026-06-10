@@ -7231,11 +7231,15 @@ class StudioController(QObject):
             row = window.to_dict()
             row["notes"] = " | ".join(window.notes)
             window_rows.append(row)
+        current_source = self._describe_compare_source(result.current_source)
+        reference_source = self._describe_compare_source(result.reference_source)
         return {
             "status": "ready",
             "compare_id": result.compare_id,
-            "current_source": self._describe_compare_source(result.current_source),
-            "reference_source": self._describe_compare_source(result.reference_source),
+            "current_source": current_source,
+            "reference_source": reference_source,
+            "current_source_display": self._compact_compare_source(current_source),
+            "reference_source_display": self._compact_compare_source(reference_source),
             "summary_metrics": summary_metrics,
             "risk_summary": list(result.risk_summary),
             "window_rows": window_rows,
@@ -7303,10 +7307,18 @@ class StudioController(QObject):
         dominant_causes = [str(item) for item in attribution.get("dominant_causes", [])]
         secondary_causes = [str(item) for item in attribution.get("secondary_causes", [])]
         attribution_rows = list(attribution.get("window_rows", []))
+        current_source_display = str(
+            compare.get("current_source_display")
+            or self._compact_compare_source(compare.get("current_source", "--"))
+        )
+        reference_source_display = str(
+            compare.get("reference_source_display")
+            or self._compact_compare_source(compare.get("reference_source", "--"))
+        )
         table_rows = [
             ("compare_id", compare.get("compare_id", "--"), "最近一次行业参考对标任务 ID"),
-            ("当前来源", compare.get("current_source", "--"), "本软件当前真实导出结果目录"),
-            ("参考来源", compare.get("reference_source", "--"), "行业参考结果目录或映射"),
+            ("当前来源", current_source_display, "本软件当前真实导出结果目录"),
+            ("参考来源", reference_source_display, "行业参考结果目录或映射"),
             ("current_window_count", summary.get("current_window_count", 0), "当前结果窗口数量"),
             ("reference_window_count", summary.get("reference_window_count", 0), "参考结果窗口数量"),
             ("matched_window_count", summary.get("matched_window_count", 0), "成功匹配的窗口数量"),
@@ -7355,7 +7367,7 @@ class StudioController(QObject):
             )
         return {
             "title": "行业参考对标报告",
-            "source": compare.get("current_source", "--"),
+            "source": current_source_display,
             "updated_at": str(summary.get("created_at", "--")),
             "report_key": "eddypro_compare",
             "metrics": [
@@ -7380,8 +7392,8 @@ class StudioController(QObject):
             "versions": [
                 f"compare_id：{compare.get('compare_id', '--')}",
                 f"attribution_id：{attribution.get('attribution_id', '--')}",
-                f"当前来源：{compare.get('current_source', '--')}",
-                f"参考来源：{compare.get('reference_source', '--')}",
+                f"当前来源：{current_source_display}",
+                f"参考来源：{reference_source_display}",
             ],
             "usage": [
                 "优先看归因摘要，再回看窗口差异表前 10 项。",
@@ -8183,6 +8195,25 @@ class StudioController(QObject):
         if isinstance(mapping, dict) and mapping:
             return ", ".join(f"{key}={value}" for key, value in mapping.items())
         return str(source.get("source_type", "--"))
+
+    @staticmethod
+    def _compact_compare_source(source: object, *, max_chars: int = 56) -> str:
+        text = str(source or "--").strip() or "--"
+        if text == "--":
+            return text
+        normalized = text.replace("\\", "/")
+        is_path_like = "/" in normalized or "\\" in text or (len(text) > 1 and text[1] == ":")
+        if not is_path_like and len(text) <= max_chars:
+            return text
+        if not is_path_like:
+            return f"...{text[-max_chars + 3:]}"
+        parts = [part for part in normalized.split("/") if part]
+        if not parts:
+            return text
+        tail = parts[-1]
+        if tail.lower() in {"results", "exports"} and len(parts) > 1:
+            tail = f"{parts[-2]} / {tail}"
+        return tail if len(tail) <= max_chars else f"...{tail[-max_chars + 3:]}"
 
     def _format_optional_float(self, value: object, digits: int) -> str:
         if value in (None, ""):

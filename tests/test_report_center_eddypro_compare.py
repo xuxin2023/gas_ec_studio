@@ -189,6 +189,19 @@ def test_report_center_displays_real_compare_summary(monkeypatch, tmp_path: Path
 
         assert "EddyPro" not in page.preview_title_label.text()
         _assert_no_forbidden_ui_text(page)
+        assert "report_center_compare_fixture" in page.preview_source_label.text()
+        assert str(current_export_dir) not in page.preview_source_label.text()
+        assert str(current_export_dir) not in page.preview_delivery_trail_note.text()
+        table_text = " ".join(
+            page.preview_table.item(row, col).text()
+            for row in range(page.preview_table.rowCount())
+            for col in range(page.preview_table.columnCount())
+            if page.preview_table.item(row, col) is not None
+        )
+        assert "report_center_compare_fixture" in table_text
+        assert "reference" in table_text
+        assert str(current_export_dir) not in table_text
+        assert str(reference_dir) not in table_text
         assert page.preview_metric_values[0].text() != "0"
         assert page.preview_table.rowCount() > 5
         assert any(page.preview_table.item(row, 0).text() == "compare_id" for row in range(page.preview_table.rowCount()))
