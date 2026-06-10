@@ -61,12 +61,15 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert page.spectral_source_panel.property("cardRole") == "tile"
         assert page.spectral_action_panel.property("cardRole") == "tile"
         assert page.summary_row.objectName() == "spectralSummaryDeck"
-        assert page.summary_row.maximumHeight() == 104
+        assert page.summary_row.property("deckRole") == "spectralCockpitKpis"
+        assert page.summary_row.parentWidget() is page.run_bar
+        assert page.summary_row.maximumHeight() == 136
         assert len(page.summary_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)
         assert page.lag_confidence_value.property("compactMetric") is True
         assert page.tree_card.property("cardRole") == "rail"
         assert page.footer_bar.property("cardRole") == "rail"
+        assert page.footer_bar.maximumHeight() == 78
         visible_notes = [
             page.overview_focus_note.text(),
             page.overview_reason_label.text(),

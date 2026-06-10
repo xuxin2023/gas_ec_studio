@@ -63,9 +63,6 @@ class SpectralQCPage(QWidget):
         self.run_bar = self._build_run_bar()
         layout.addWidget(self.run_bar)
 
-        self.summary_row = self._build_summary_row()
-        layout.addWidget(self.summary_row)
-
         body = QHBoxLayout()
         body.setSpacing(TOKENS.spacing_md)
         layout.addLayout(body, 1)
@@ -180,7 +177,8 @@ class SpectralQCPage(QWidget):
 
     def _build_run_bar(self) -> CardFrame:
         card = CardFrame(role="command")
-        card.setMinimumHeight(166)
+        card.setMinimumHeight(190)
+        card.setMaximumHeight(220)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
@@ -247,13 +245,17 @@ class SpectralQCPage(QWidget):
             button.clicked.connect(callback)
             action_layout.addWidget(button, 1 + index // 3, index % 3)
         deck.addWidget(self.spectral_action_panel, 4)
+        self.summary_row = self._build_summary_row()
+        deck.addWidget(self.summary_row, 3)
         layout.addLayout(deck)
         return card
 
     def _build_summary_row(self) -> QWidget:
         wrapper = QWidget()
         wrapper.setObjectName("spectralSummaryDeck")
-        wrapper.setMaximumHeight(104)
+        wrapper.setProperty("deckRole", "spectralCockpitKpis")
+        wrapper.setMinimumWidth(360)
+        wrapper.setMaximumHeight(136)
         layout = QGridLayout(wrapper)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setHorizontalSpacing(TOKENS.spacing_sm)
@@ -273,10 +275,10 @@ class SpectralQCPage(QWidget):
         ]
         for index, (key, title, value) in enumerate(cards):
             card = CardFrame(muted=True, role="tile")
-            card.setMinimumHeight(74)
-            card.setMaximumHeight(92)
+            card.setMinimumHeight(56)
+            card.setMaximumHeight(64)
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+            card_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
             card_layout.setSpacing(TOKENS.spacing_xs)
             header = QHBoxLayout()
             header.setContentsMargins(0, 0, 0, 0)
@@ -287,6 +289,7 @@ class SpectralQCPage(QWidget):
             header.addStretch(1)
             tone = "accent" if index in {0, 2} else "warning"
             tone_chip = chip("分析中", tone)
+            tone_chip.setMaximumHeight(20)
             self.summary_chips[key] = tone_chip
             header.addWidget(tone_chip)
             card_layout.addLayout(header)
@@ -295,15 +298,26 @@ class SpectralQCPage(QWidget):
             value.setWordWrap(True)
             card_layout.addWidget(value)
             self.summary_metric_cards.append(card)
-            layout.addWidget(card, 0, index)
+            layout.addWidget(card, index // 2, index % 2)
         return wrapper
 
     def _build_footer_bar(self) -> CardFrame:
         card = CardFrame(muted=True, role="rail")
+        card.setMaximumHeight(78)
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_md)
-        layout.addWidget(section_title("摘要栏", "把当前窗口结论、等级、异常原因和导出状态固定在页面底部。"))
+        footer_title_stack = QVBoxLayout()
+        footer_title_stack.setContentsMargins(0, 0, 0, 0)
+        footer_title_stack.setSpacing(TOKENS.spacing_xs)
+        footer_title = QLabel("证据条")
+        footer_title.setObjectName("metricLabel")
+        footer_subtitle = QLabel("当前窗口、QC 等级、异常原因和导出状态固定在页面底部。")
+        footer_subtitle.setObjectName("subtitle")
+        footer_subtitle.setWordWrap(True)
+        footer_title_stack.addWidget(footer_title)
+        footer_title_stack.addWidget(footer_subtitle)
+        layout.addLayout(footer_title_stack)
         layout.addStretch(1)
 
         self.footer_window_label = QLabel("当前窗口：--")
