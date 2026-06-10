@@ -304,8 +304,8 @@ class ReportCenterPage(QWidget):
 
         self.delivery_focus_card = CardFrame(muted=True, role="panel")
         focus_layout = QVBoxLayout(self.delivery_focus_card)
-        focus_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        focus_layout.setSpacing(TOKENS.spacing_md)
+        focus_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_md)
+        focus_layout.setSpacing(TOKENS.spacing_sm)
         focus_layout.addWidget(section_title("交付聚焦", "在交付门槛、导出详情和批次对比之间切换，不拉长右侧栏。"))
         focus_switch_row = QHBoxLayout()
         focus_switch_row.setContentsMargins(0, 0, 0, 0)
@@ -326,6 +326,7 @@ class ReportCenterPage(QWidget):
         focus_switch_row.addStretch(1)
         focus_layout.addLayout(focus_switch_row)
         self.delivery_focus_stack = QStackedWidget()
+        self.delivery_focus_stack.setProperty("stackRole", "compactDeliveryInspector")
         focus_layout.addWidget(self.delivery_focus_stack)
         delivery_layout.addWidget(self.delivery_focus_card, 1)
 
@@ -579,16 +580,21 @@ class ReportCenterPage(QWidget):
         ]
         for index, (key, title, value) in enumerate(cards):
             card = CardFrame(muted=True, role="tile")
+            card.setMinimumHeight(74)
+            card.setMaximumHeight(86)
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-            card_layout.setSpacing(TOKENS.spacing_sm)
+            card_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+            card_layout.setSpacing(TOKENS.spacing_xs)
             label = QLabel(title)
             label.setObjectName("metricLabel")
             card_layout.addWidget(label)
             value.setObjectName("metricValue")
+            value.setProperty("compactMetric", True)
             value.setWordWrap(True)
+            value.setMaximumHeight(34)
             card_layout.addWidget(value)
             tone_chip = chip("就绪", "accent" if index != 2 else "warning")
+            tone_chip.setMaximumHeight(20)
             self.summary_chips[key] = tone_chip
             card_layout.addWidget(tone_chip)
             layout.addWidget(card, index // 2, index % 2)
@@ -684,12 +690,15 @@ class ReportCenterPage(QWidget):
         card = CardFrame(role="cockpit")
         card.setProperty("deckRole", "deliveryGateMatrix")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_sm)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
-        header.addWidget(section_title("交付门槛", "把交付前必须一致的状态压缩成一个检查矩阵。"))
+        gate_title = QLabel("门槛矩阵")
+        gate_title.setObjectName("metricLabel")
+        gate_title.setToolTip("把交付前必须一致的状态压缩成一个检查矩阵。")
+        header.addWidget(gate_title)
         header.addStretch(1)
         self.delivery_gate_chip = chip("待生成", "warning")
         header.addWidget(self.delivery_gate_chip)
@@ -697,8 +706,8 @@ class ReportCenterPage(QWidget):
 
         self.delivery_gate_hero_card = CardFrame(muted=True, role="console")
         self.delivery_gate_hero_card.setProperty("deckRole", "deliveryReadinessHero")
-        self.delivery_gate_hero_card.setMinimumHeight(98)
-        self.delivery_gate_hero_card.setMaximumHeight(132)
+        self.delivery_gate_hero_card.setMinimumHeight(54)
+        self.delivery_gate_hero_card.setMaximumHeight(62)
         hero_layout = QVBoxLayout(self.delivery_gate_hero_card)
         hero_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         hero_layout.setSpacing(TOKENS.spacing_xs)
@@ -714,18 +723,21 @@ class ReportCenterPage(QWidget):
         hero_layout.addLayout(hero_top)
         self.delivery_gate_ready_value = QLabel("--")
         self.delivery_gate_ready_value.setObjectName("metricValue")
+        self.delivery_gate_ready_value.setProperty("compactMetric", True)
         self.delivery_gate_ready_value.setWordWrap(True)
         self.delivery_gate_ready_note = QLabel("--")
         self.delivery_gate_ready_note.setObjectName("subtitle")
         self.delivery_gate_ready_note.setWordWrap(True)
+        self.delivery_gate_ready_note.setMaximumHeight(30)
+        self.delivery_gate_ready_note.setVisible(False)
         hero_layout.addWidget(self.delivery_gate_ready_value)
         hero_layout.addWidget(self.delivery_gate_ready_note)
         layout.addWidget(self.delivery_gate_hero_card)
 
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(TOKENS.spacing_sm)
-        grid.setVerticalSpacing(TOKENS.spacing_sm)
+        grid.setHorizontalSpacing(TOKENS.spacing_xs)
+        grid.setVerticalSpacing(TOKENS.spacing_xs)
         self.delivery_gate_values: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
         self.delivery_gate_tiles: dict[str, CardFrame] = {}
         gate_items = [
@@ -737,13 +749,14 @@ class ReportCenterPage(QWidget):
             ("methods", "方法", "三族方法溯源闭合"),
         ]
         for index, (key, title, hint) in enumerate(gate_items):
-            grid.addWidget(self._delivery_gate_tile(key, title, hint), index // 2, index % 2)
+            grid.addWidget(self._delivery_gate_tile(key, title, hint), index // 3, index % 3)
         layout.addLayout(grid)
 
         next_card = CardFrame(muted=True, role="tile")
-        next_card.setMaximumHeight(96)
-        next_layout = QVBoxLayout(next_card)
-        next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        next_card.setMaximumHeight(38)
+        next_card.setProperty("gateKey", "nextAction")
+        next_layout = QHBoxLayout(next_card)
+        next_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         next_layout.setSpacing(TOKENS.spacing_xs)
         next_title = QLabel("下一步")
         next_title.setObjectName("metricLabel")
@@ -754,40 +767,40 @@ class ReportCenterPage(QWidget):
         self.delivery_gate_next_note = QLabel("--")
         self.delivery_gate_next_note.setObjectName("subtitle")
         self.delivery_gate_next_note.setWordWrap(True)
+        self.delivery_gate_next_note.setMaximumHeight(24)
+        self.delivery_gate_next_note.setVisible(False)
         next_layout.addWidget(next_title)
+        next_layout.addStretch(1)
         next_layout.addWidget(self.delivery_gate_next_value)
-        next_layout.addWidget(self.delivery_gate_next_note)
         layout.addWidget(next_card)
         return card
 
     def _delivery_gate_tile(self, key: str, title: str, hint: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("gateKey", key)
-        tile.setMinimumHeight(58)
-        tile.setMaximumHeight(68)
-        layout = QVBoxLayout(tile)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
-        layout.setSpacing(TOKENS.spacing_xs)
-        top = QHBoxLayout()
-        top.setContentsMargins(0, 0, 0, 0)
+        tile.setMinimumHeight(30)
+        tile.setMaximumHeight(34)
+        layout = QHBoxLayout(tile)
+        layout.setContentsMargins(TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs)
+        layout.setSpacing(0)
         title_label = QLabel(_ui_safe_text(title))
         title_label.setObjectName("metricLabel")
-        status_chip = chip("待检查", "warning")
-        top.addWidget(title_label)
-        top.addStretch(1)
-        top.addWidget(status_chip)
+        status_chip = chip("检查", "warning")
+        status_chip.setMaximumHeight(16)
+        status_chip.setVisible(False)
         value = QLabel("--")
         value.setObjectName("metricValue")
         value.setProperty("compactMetric", True)
         value.setWordWrap(False)
+        value.setMaximumHeight(18)
         note = QLabel(_ui_safe_text(hint))
         note.setObjectName("subtitle")
         note.setWordWrap(True)
         note.setMaximumHeight(36)
         note.setVisible(False)
-        layout.addLayout(top)
+        layout.addWidget(title_label)
+        layout.addStretch(1)
         layout.addWidget(value)
-        layout.addWidget(note)
         self.delivery_gate_values[key] = (value, note, status_chip)
         self.delivery_gate_tiles[key] = tile
         return tile
@@ -1992,6 +2005,8 @@ class ReportCenterPage(QWidget):
         )
         self.delivery_gate_next_value.setText(_ui_safe_text(next_action))
         self.delivery_gate_next_note.setText(_ui_safe_text(next_note))
+        self.delivery_gate_next_value.setToolTip(_ui_safe_text(next_note))
+        self.delivery_gate_next_note.setToolTip(_ui_safe_text(next_note))
         self._refresh_delivery_gate_hero(
             gate_text=gate_text,
             gate_tone=gate_tone,
@@ -2075,7 +2090,7 @@ class ReportCenterPage(QWidget):
         note_label.setText(_ui_safe_text(note))
         value_label.setToolTip(_ui_safe_text(note))
         note_label.setToolTip(_ui_safe_text(note))
-        status_text = {"success": "通过", "accent": "可用", "warning": "待复核"}.get(tone, "待复核")
+        status_text = {"success": "通过", "accent": "可用", "warning": "复核"}.get(tone, "复核")
         self._set_chip(status_chip, status_text, tone)
         tile = self.delivery_gate_tiles.get(key)
         if tile is not None:
@@ -2101,6 +2116,7 @@ class ReportCenterPage(QWidget):
         else:
             note = f"尚未形成完整交付链；下一步：{next_action}。{next_note}"
         self.delivery_gate_ready_note.setText(_ui_safe_text(note))
+        self.delivery_gate_ready_value.setToolTip(_ui_safe_text(note))
         self.delivery_gate_ready_note.setToolTip(_ui_safe_text(next_note))
 
     def _delivery_next_action(
