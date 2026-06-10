@@ -36,12 +36,18 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_next_value.property("compactMetric") is True
         assert page.preview_header_card.property("cardRole") == "cockpit"
         assert page.preview_deck_card.property("cardRole") == "rail"
+        assert page.preview_deck_card.property("deckRole") == "reportPreviewDeck"
         assert page.preview_delivery_trail_card.property("cardRole") == "console"
         assert page.preview_delivery_trail_value.property("compactMetric") is True
         assert page.preview_delivery_trail_chip.property("chipTone") == "accent"
         assert page.preview_content_card.property("cardRole") == "panel"
+        assert page.preview_content_card.property("deckRole") == "compactPreviewPane"
+        assert page.preview_plot.maximumHeight() == 220
+        assert page.preview_table.maximumHeight() == 150
         assert len(page.preview_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.preview_metric_cards)
+        assert all(card.maximumHeight() == 96 for card in page.preview_metric_cards)
+        assert all(value.property("compactMetric") is True for value in page.preview_metric_values)
         assert page.closure_deck_card.property("cardRole") == "rail"
         assert page.closure_deck_chip.text() == "下一步"
         assert page.inner_inspector.property("cardRole") == "panel"
