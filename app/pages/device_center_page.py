@@ -86,6 +86,9 @@ class DeviceCenterPage(QWidget):
         device_grid_layout.addLayout(self.device_grid)
         self.layout.addWidget(self.device_grid_card)
 
+        self.operator_mission_card = self._build_operator_mission_card()
+        self.layout.addWidget(self.operator_mission_card)
+
         self.activity_card = CardFrame(muted=True, role="rail")
         activity_layout = QHBoxLayout(self.activity_card)
         activity_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
@@ -133,7 +136,9 @@ class DeviceCenterPage(QWidget):
 
         self._refresh_field_readiness(summary, selected)
         self._rebuild_device_cards()
+        self._refresh_operator_mission(summary, selected)
         self._refresh_recent_activity()
+        self.operator_mission_card.setVisible(self.controller.view_mode != "engineer")
         self.activity_card.setVisible(self.controller.view_mode == "engineer")
 
     def _status_metric_card(self, title: str) -> CardFrame:
@@ -319,6 +324,82 @@ class DeviceCenterPage(QWidget):
         layout.addWidget(self.quick_add_panel, 2)
         layout.addWidget(self.quick_actions_panel, 3)
         return card
+
+    def _build_operator_mission_card(self) -> CardFrame:
+        card = CardFrame(role="cockpit")
+        card.setProperty("deckRole", "deviceOperatorMissionDeck")
+        card.setMinimumHeight(148)
+        card.setMaximumHeight(186)
+        layout = QGridLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        layout.setHorizontalSpacing(TOKENS.spacing_md)
+        layout.setVerticalSpacing(TOKENS.spacing_sm)
+        layout.addWidget(
+            section_title("处理链路交接台", "把设备接入、实时采集、EC 处理和报告交付压缩到一行，减少首页和计算页之间的跳转盲区。"),
+            0,
+            0,
+            1,
+            4,
+        )
+
+        self.operator_mission_tiles: dict[str, tuple[QLabel, QLabel]] = {}
+        stages = (
+            ("device", "设备接入"),
+            ("capture", "实时采集"),
+            ("processing", "EC 处理"),
+            ("delivery", "报告交付"),
+        )
+        for index, (key, title) in enumerate(stages):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("missionStage", key)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+            tile_layout.setSpacing(TOKENS.spacing_xs)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value = QLabel("--")
+            value.setObjectName("metricValue")
+            value.setProperty("compactMetric", True)
+            value.setWordWrap(True)
+            note = QLabel("--")
+            note.setObjectName("subtitle")
+            note.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value)
+            tile_layout.addWidget(note)
+            self.operator_mission_tiles[key] = (value, note)
+            layout.addWidget(tile, 1, index)
+        return card
+
+    def _refresh_operator_mission(self, summary: dict, selected) -> None:
+        device_value, device_note = self.operator_mission_tiles["device"]
+        capture_value, capture_note = self.operator_mission_tiles["capture"]
+        processing_value, processing_note = self.operator_mission_tiles["processing"]
+        delivery_value, delivery_note = self.operator_mission_tiles["delivery"]
+
+        total = int(summary.get("total_devices", 0) or 0)
+        online = int(summary.get("online_devices", 0) or 0)
+        sampling = int(summary.get("sampling_devices", 0) or 0)
+        abnormal = int(summary.get("abnormal_devices", 0) or 0)
+        device_value.setText("就绪" if selected is not None and online > 0 and abnormal == 0 else "待检查")
+        device_note.setText(
+            f"online={online}/{total}，selected={selected.config.label if selected else '--'}，abnormal={abnormal}"
+        )
+
+        capture_value.setText("采集中" if sampling else "待启动")
+        capture_note.setText("已有实时缓冲，可进入采集页复核曲线。" if sampling else "连接设备后启动实时采集，确认高频帧稳定。")
+
+        processing_summary = dict(self.controller.ec_processing_workspace.get("summary", {}) or {})
+        processing_status = str(processing_summary.get("status", "empty") or "empty")
+        valid_windows = processing_summary.get("valid_window_count", 0)
+        window_count = processing_summary.get("window_count", 0)
+        processing_value.setText("已闭合" if processing_status == "ok" else "待运行")
+        processing_note.setText(f"status={processing_status}，windows={valid_windows}/{window_count}")
+
+        report_workspace = dict(self.controller.report_center_workspace or {})
+        export_status = str(report_workspace.get("export_status", "not_exported") or "not_exported")
+        delivery_value.setText("已导出" if export_status in {"exported", "ready"} else "待交付")
+        delivery_note.setText(f"export={export_status}，处理完成后进入报告中心生成交付包。")
 
     def _compact_setup_grid(self, fields: list[tuple[str, QWidget]]) -> QGridLayout:
         grid = QGridLayout()
