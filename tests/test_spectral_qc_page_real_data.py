@@ -57,6 +57,11 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         page = SpectralQCPage(controller)
         page.refresh()
 
+        assert page.run_bar.property("cardRole") == "command"
+        assert page.spectral_source_panel.property("cardRole") == "tile"
+        assert page.spectral_action_panel.property("cardRole") == "tile"
+        assert page.tree_card.property("cardRole") == "rail"
+        assert page.footer_bar.property("cardRole") == "rail"
         assert page.window_table.rowCount() == 0
         assert page.lag_curve.xData is None or len(page.lag_curve.xData) == 0
         assert page.power_curve.xData is None or len(page.power_curve.xData) == 0

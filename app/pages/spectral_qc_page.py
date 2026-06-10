@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -69,7 +70,7 @@ class SpectralQCPage(QWidget):
         body.setSpacing(TOKENS.spacing_md)
         layout.addLayout(body, 1)
 
-        self.tree_card = CardFrame(muted=True)
+        self.tree_card = CardFrame(muted=True, role="rail")
         tree_layout = QVBoxLayout(self.tree_card)
         tree_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         tree_layout.setSpacing(TOKENS.spacing_md)
@@ -178,13 +179,24 @@ class SpectralQCPage(QWidget):
         self.qc_attention_spin.valueChanged.connect(self._refresh_qc_plot)
 
     def _build_run_bar(self) -> CardFrame:
-        card = CardFrame()
-        layout = QHBoxLayout(card)
+        card = CardFrame(role="command")
+        card.setMinimumHeight(166)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
 
-        layout.addWidget(section_title("运行条", "先选数据来源和时间范围，再决定是做完整谱分析还是快速 QC 摘要。"))
-        layout.addStretch(1)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.addWidget(section_title("运行条", "先选数据来源和时间范围，再决定是做完整谱分析还是快速 QC 摘要。"))
+        header.addStretch(1)
+        self.spectral_run_chip = chip("谱分析控制台", "accent")
+        header.addWidget(self.spectral_run_chip)
+        layout.addLayout(header)
+
+        deck = QHBoxLayout()
+        deck.setContentsMargins(0, 0, 0, 0)
+        deck.setSpacing(TOKENS.spacing_md)
 
         self.data_source_combo = QComboBox()
         self.data_source_combo.setEditable(True)
@@ -193,10 +205,25 @@ class SpectralQCPage(QWidget):
         self.time_range_combo.setEditable(True)
         self.time_range_combo.addItems(["最近 24 小时", "今天", "最近 7 天", "自定义时间窗"])
 
-        layout.addWidget(QLabel("数据来源"))
-        layout.addWidget(self.data_source_combo)
-        layout.addWidget(QLabel("时间范围"))
-        layout.addWidget(self.time_range_combo)
+        self.spectral_source_panel = CardFrame(muted=True, role="tile")
+        source_layout = QGridLayout(self.spectral_source_panel)
+        source_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        source_layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        source_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        source_title = QLabel("分析目标")
+        source_title.setObjectName("metricLabel")
+        source_layout.addWidget(source_title, 0, 0, 1, 2)
+        data_label = QLabel("数据来源")
+        data_label.setObjectName("metricLabel")
+        time_label = QLabel("时间范围")
+        time_label.setObjectName("metricLabel")
+        source_layout.addWidget(data_label, 1, 0)
+        source_layout.addWidget(self.data_source_combo, 2, 0)
+        source_layout.addWidget(time_label, 1, 1)
+        source_layout.addWidget(self.time_range_combo, 2, 1)
+        source_layout.setColumnStretch(0, 1)
+        source_layout.setColumnStretch(1, 1)
+        deck.addWidget(self.spectral_source_panel, 3)
 
         buttons = [
             ("运行谱分析", True, lambda: self._run_analysis(qc_only=False)),
@@ -205,12 +232,22 @@ class SpectralQCPage(QWidget):
             ("保存为模板", False, self._save_template),
             ("恢复默认", False, self._restore_default),
         ]
-        for text, primary, callback in buttons:
+        self.spectral_action_panel = CardFrame(muted=True, role="tile")
+        action_layout = QGridLayout(self.spectral_action_panel)
+        action_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        action_layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        action_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        action_title = QLabel("谱分析动作")
+        action_title.setObjectName("metricLabel")
+        action_layout.addWidget(action_title, 0, 0, 1, 3)
+        for index, (text, primary, callback) in enumerate(buttons):
             button = QPushButton(text)
             if primary:
                 button.setProperty("variant", "primary")
             button.clicked.connect(callback)
-            layout.addWidget(button)
+            action_layout.addWidget(button, 1 + index // 3, index % 3)
+        deck.addWidget(self.spectral_action_panel, 4)
+        layout.addLayout(deck)
         return card
 
     def _build_summary_row(self) -> QWidget:
@@ -249,7 +286,7 @@ class SpectralQCPage(QWidget):
         return wrapper
 
     def _build_footer_bar(self) -> CardFrame:
-        card = CardFrame(muted=True)
+        card = CardFrame(muted=True, role="rail")
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
