@@ -61,6 +61,16 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
 
         assert "尚未生成真实 RP 结果" in page.run_summary_label.text()
         assert page.run_bar.property("cardRole") == "command"
+        assert page.rp_closure_deck.property("cardRole") == "cockpit"
+        assert page.rp_closure_deck.property("deckRole") == "rpClosureDeck"
+        assert page.rp_closure_deck.maximumHeight() == 98
+        assert page.rp_closure_chip.text().startswith("待运行")
+        assert set(page.rp_closure_tiles) == {"run", "flux", "uncertainty", "methods", "benchmark", "network"}
+        assert all(tile.property("cardRole") == "tile" for tile in page.rp_closure_tiles.values())
+        assert all(value.property("compactMetric") is True for value in page.rp_closure_values.values())
+        assert page.rp_closure_values["run"].text() == "待运行"
+        assert page.rp_closure_values["flux"].text() == "待生成"
+        assert page.rp_closure_values["network"].text() == "FLUXNET"
         assert page.tree_card.property("cardRole") == "rail"
         assert page.desktop_rail.property("cardRole") == "rail"
         assert page.desktop_rail.minimumWidth() == 360
@@ -164,6 +174,10 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.full_output_mode_combo.currentText() == "only_available"
         assert page.cockpit_result_value.text() != "尚未运行"
         assert page.cockpit_uncertainty_value.text().startswith("±")
+        assert page.rp_closure_values["run"].text() == "已运行"
+        assert page.rp_closure_values["flux"].text() != "待生成"
+        assert page.rp_closure_values["uncertainty"].text().startswith("±")
+        assert page.rp_closure_tiles["run"].property("evidenceTone") == "success"
         assert page.cockpit_delivery_value.text() == "FLUXNET"
         assert "windows=" in page.cockpit_result_note.text()
         assert page.window_readiness_value.text() != "36,000"

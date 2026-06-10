@@ -78,6 +78,8 @@ class ECProcessingPage(QWidget):
 
         self.run_bar = self._build_run_bar()
         layout.addWidget(self.run_bar)
+        self.rp_closure_deck = self._build_rp_closure_deck()
+        layout.addWidget(self.rp_closure_deck)
 
         body = QSplitter(Qt.Horizontal)
         body.setChildrenCollapsible(False)
@@ -290,6 +292,77 @@ class ECProcessingPage(QWidget):
         for button in (run_button, precheck_button, save_template_button, restore_button):
             layout.addWidget(button)
         return card
+
+    def _build_rp_closure_deck(self) -> CardFrame:
+        card = CardFrame(role="cockpit")
+        card.setProperty("deckRole", "rpClosureDeck")
+        card.setMaximumHeight(98)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_md)
+
+        intro = QVBoxLayout()
+        intro.setSpacing(TOKENS.spacing_xs)
+        intro.addWidget(section_title("RP 闭环总控", "把通量、不确定度、方法、对标和网络交付固定到首屏。"))
+        self.rp_closure_chip = chip("待运行", "warning")
+        intro.addWidget(self.rp_closure_chip)
+        layout.addLayout(intro)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        grid.setVerticalSpacing(TOKENS.spacing_xs)
+        self.rp_closure_tiles: dict[str, CardFrame] = {}
+        self.rp_closure_values: dict[str, QLabel] = {}
+        self.rp_closure_notes: dict[str, QLabel] = {}
+        self.rp_closure_chips: dict[str, QLabel] = {}
+        for index, (key, title) in enumerate(
+            (
+                ("run", "运行"),
+                ("flux", "主通量"),
+                ("uncertainty", "不确定度"),
+                ("methods", "方法"),
+                ("benchmark", "对标"),
+                ("network", "网络"),
+            )
+        ):
+            grid.addWidget(self._rp_closure_tile(key, title), 0, index)
+        layout.addLayout(grid, 1)
+        return card
+
+    def _rp_closure_tile(self, key: str, title: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("evidenceKey", key)
+        tile.setMinimumHeight(54)
+        tile.setMaximumHeight(66)
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        tile_layout.setSpacing(1)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(TOKENS.spacing_xs)
+        label = QLabel(title)
+        label.setObjectName("metricLabel")
+        status_chip = chip("待检查", "warning")
+        status_chip.setMaximumHeight(20)
+        header.addWidget(label)
+        header.addStretch(1)
+        header.addWidget(status_chip)
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setProperty("compactMetric", True)
+        value.setWordWrap(False)
+        note = QLabel("--")
+        note.setObjectName("subtitle")
+        note.setWordWrap(False)
+        tile_layout.addLayout(header)
+        tile_layout.addWidget(value)
+        tile_layout.addWidget(note)
+        self.rp_closure_tiles[key] = tile
+        self.rp_closure_values[key] = value
+        self.rp_closure_notes[key] = note
+        self.rp_closure_chips[key] = status_chip
+        return tile
 
     def _build_desktop_rail(self) -> CardFrame:
         rail = CardFrame(muted=True, role="rail")
@@ -2010,6 +2083,141 @@ class ECProcessingPage(QWidget):
         self.cockpit_delivery_note.setText(
             f"validation={validation_status}，missing={len(missing_fields or [])}，export={export_status[:48]}"
         )
+        self._refresh_rp_closure_deck()
+
+    def _refresh_rp_closure_deck(self) -> None:
+        if not hasattr(self, "rp_closure_values"):
+            return
+        workspace = self.controller.ec_processing_workspace
+        summary = dict(workspace.get("summary", {}) or {})
+        status = str(summary.get("status", "empty") or "empty")
+        current = self._current_window()
+        diagnostics = dict(current.diagnostics or {}) if current is not None else {}
+        run = self.controller.current_rp_run()
+        run_summary = dict(run.summary if run is not None else {})
+
+        run_tone = "success" if current is not None and status == "ok" else ("warning" if status == "empty" else "danger")
+        run_value = "已运行" if current is not None else "待运行"
+        run_note = f"windows={summary.get('valid_window_count', 0)}/{summary.get('window_count', 0)}，status={status}"
+        self._set_rp_closure_tile("run", run_value, run_note, run_tone)
+
+        if current is None:
+            self._set_rp_closure_tile("flux", "待生成", "运行处理后显示 primary_flux 与 QC。", "warning")
+            self._set_rp_closure_tile("uncertainty", "待生成", "运行后显示 random error、relative uncertainty 和 confidence band。", "warning")
+        else:
+            flux_tone = {"A": "success", "B": "warning", "C": "danger"}.get(str(current.qc_grade), "accent")
+            self._set_rp_closure_tile(
+                "flux",
+                self._format_metric(current.primary_flux, digits=4),
+                f"window={current.window_id}，source={current.primary_flux_source or '--'}，QC={current.qc_grade}",
+                flux_tone,
+            )
+            band = diagnostics.get("primary_flux_uncertainty_band")
+            relative = diagnostics.get("primary_flux_relative_uncertainty")
+            uncertainty_tone = "success" if isinstance(band, (int, float)) else "warning"
+            self._set_rp_closure_tile(
+                "uncertainty",
+                f"±{self._format_metric(band, digits=4)}",
+                f"relative={self._format_percent(relative)}，method={diagnostics.get('uncertainty_method', self._current_combo_text('uncertainty_mode_combo', '--'))}",
+                uncertainty_tone,
+            )
+
+        footprint_method = self._current_combo_text("footprint_method_combo", "kljun")
+        uncertainty_method = self._current_combo_text("uncertainty_mode_combo", "mann_lenschow")
+        spectral_method = self._current_combo_text("spectral_method_combo", "massman")
+        method_validation_label = getattr(self, "method_validation_label", None)
+        validation_text = method_validation_label.text() if method_validation_label is not None else ""
+        methods_tone = "warning" if "review" in validation_text.lower() or "复核" in validation_text else "success"
+        self._set_rp_closure_tile(
+            "methods",
+            f"{footprint_method} / {uncertainty_method}",
+            f"spectral={spectral_method}，cospectrum={self._current_combo_text('spectral_cospectrum_combo', 'fcc_auto')}",
+            methods_tone,
+        )
+
+        benchmark_state = dict(self.controller.report_center_workspace.get("benchmark", {}) or {})
+        benchmark_status = str(
+            run_summary.get("benchmark_status")
+            or diagnostics.get("benchmark_status")
+            or benchmark_state.get("status")
+            or "inactive"
+        )
+        deviation = dict(run_summary.get("benchmark_deviation_summary") or diagnostics.get("benchmark_deviation_summary") or {})
+        pass_rate = run_summary.get("pass_rate", deviation.get("pass_rate"))
+        failed_fields = run_summary.get("failed_fields", deviation.get("failed_fields", []))
+        if isinstance(failed_fields, str):
+            failed_fields = [failed_fields]
+        benchmark_value = self._format_percent(pass_rate) if isinstance(pass_rate, (int, float)) else benchmark_status
+        benchmark_active = benchmark_status.lower() not in {"", "--", "inactive", "not_requested", "no_rp_result"}
+        benchmark_tone = "success" if benchmark_active and isinstance(pass_rate, (int, float)) else ("accent" if benchmark_active else "warning")
+        self._set_rp_closure_tile(
+            "benchmark",
+            benchmark_value,
+            f"ref={run_summary.get('benchmark_reference_id') or benchmark_state.get('reference_id') or '--'}，failed={len(failed_fields or [])}",
+            benchmark_tone,
+        )
+
+        network = dict(self.controller.report_center_workspace.get("network_output", {}) or {})
+        schema_target = diagnostics.get("schema_target") or network.get("schema_target", "FLUXNET")
+        validation_status = diagnostics.get("validation_status", diagnostics.get("network_validation_status", "--"))
+        missing_fields = diagnostics.get("missing_fields", diagnostics.get("network_missing_fields", []))
+        if isinstance(missing_fields, str):
+            missing_fields = [missing_fields]
+        export_status = self._export_status_display(
+            str(self.controller.report_center_workspace.get("export_status", "not_exported") or "not_exported")
+        )
+        network_ready = bool(schema_target) and len(missing_fields or []) == 0
+        export_done = self._export_status_is_done(export_status)
+        network_tone = "success" if network_ready and export_done else ("accent" if network_ready else "warning")
+        self._set_rp_closure_tile(
+            "network",
+            str(schema_target),
+            f"validation={validation_status}，missing={len(missing_fields or [])}，export={export_status}",
+            network_tone,
+        )
+
+        tones = [
+            run_tone,
+            self.rp_closure_tiles["flux"].property("evidenceTone"),
+            self.rp_closure_tiles["uncertainty"].property("evidenceTone"),
+            methods_tone,
+            benchmark_tone,
+            network_tone,
+        ]
+        success_count = sum(1 for tone in tones if tone == "success")
+        if success_count >= 5:
+            deck_text, deck_tone = "可交付", "success"
+        elif current is not None:
+            deck_text, deck_tone = "待复核", "accent"
+        else:
+            deck_text, deck_tone = "待运行", "warning"
+        self._set_generic_chip(self.rp_closure_chip, f"{deck_text} · {success_count}/6", deck_tone)
+        self.rp_closure_deck.setProperty("evidenceStatus", deck_tone)
+        self.rp_closure_deck.style().unpolish(self.rp_closure_deck)
+        self.rp_closure_deck.style().polish(self.rp_closure_deck)
+
+    def _set_rp_closure_tile(self, key: str, value: str, note: str, tone: str) -> None:
+        value_label = self.rp_closure_values[key]
+        note_label = self.rp_closure_notes[key]
+        tile = self.rp_closure_tiles[key]
+        display_value = self._compact_text(value, 18)
+        display_note = self._compact_text(note, 30)
+        value_label.setText(display_value)
+        note_label.setText(display_note)
+        tooltip = f"{value}\n{note}"
+        value_label.setToolTip(tooltip)
+        note_label.setToolTip(tooltip)
+        status_text = {"success": "通过", "accent": "可用", "warning": "待复核", "danger": "风险"}.get(tone, "待复核")
+        self._set_generic_chip(self.rp_closure_chips[key], status_text, tone)
+        tile.setProperty("evidenceTone", tone)
+        tile.style().unpolish(tile)
+        tile.style().polish(tile)
+
+    def _set_generic_chip(self, label: QLabel, text: str, tone: str) -> None:
+        label.setText(text)
+        label.setProperty("chipTone", tone)
+        label.style().unpolish(label)
+        label.style().polish(label)
 
     def _set_cockpit_chip(self, text: str, tone: str) -> None:
         self.cockpit_status_chip.setText(text)
@@ -2036,6 +2244,24 @@ class ECProcessingPage(QWidget):
         if abs(numeric) <= 1.0:
             numeric *= 100.0
         return f"{numeric:.1f}%"
+
+    def _compact_text(self, value: object, max_chars: int) -> str:
+        text = str(value or "--").strip() or "--"
+        if len(text) <= max_chars:
+            return text
+        return f"{text[: max_chars - 3]}..."
+
+    def _export_status_display(self, export_status: str) -> str:
+        text = export_status.strip()
+        if not text or text.lower() in {"not_exported", "not exported yet"}:
+            return "尚未导出"
+        return text
+
+    def _export_status_is_done(self, export_status: str) -> bool:
+        text = export_status.strip().lower()
+        if not text or text in {"not_exported", "not exported yet", "尚未导出"}:
+            return False
+        return not any(token in text for token in ("not_exported", "not exported", "尚未导出", "未导出"))
 
     def _refresh_readiness_panel(self) -> None:
         if not hasattr(self, "window_readiness_value"):
