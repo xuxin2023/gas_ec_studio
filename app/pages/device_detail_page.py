@@ -241,14 +241,24 @@ class DeviceDetailPage(QWidget):
         self.device_ops_chip = chip("待选择", "warning")
         layout.addWidget(self.device_ops_chip)
         self.device_ops_values: dict[str, tuple[QLabel, QLabel]] = {}
-        for key, title in (
+        self.device_ops_grid = QGridLayout()
+        self.device_ops_grid.setContentsMargins(0, 0, 0, 0)
+        self.device_ops_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        self.device_ops_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        for index, (key, title) in enumerate(
+            (
             ("link", "链路"),
             ("telemetry", "遥测"),
             ("primary", "主分析仪"),
             ("trace", "微量气体"),
             ("diagnostics", "诊断"),
+            )
         ):
-            layout.addWidget(self._device_ops_tile(key, title))
+            row = index // 2
+            column = index % 2
+            column_span = 2 if key == "diagnostics" else 1
+            self.device_ops_grid.addWidget(self._device_ops_tile(key, title), row, column, 1, column_span)
+        layout.addLayout(self.device_ops_grid)
 
         next_card = CardFrame(muted=True, role="tile")
         next_layout = QVBoxLayout(next_card)
@@ -258,6 +268,7 @@ class DeviceDetailPage(QWidget):
         label.setObjectName("metricLabel")
         self.device_ops_next_value = QLabel("--")
         self.device_ops_next_value.setObjectName("metricValue")
+        self.device_ops_next_value.setProperty("compactMetric", True)
         self.device_ops_next_value.setWordWrap(True)
         self.device_ops_next_note = QLabel("--")
         self.device_ops_next_note.setObjectName("subtitle")
@@ -278,6 +289,7 @@ class DeviceDetailPage(QWidget):
         label.setObjectName("metricLabel")
         value = QLabel("--")
         value.setObjectName("metricValue")
+        value.setProperty("compactMetric", True)
         value.setWordWrap(True)
         note = QLabel("--")
         note.setObjectName("subtitle")

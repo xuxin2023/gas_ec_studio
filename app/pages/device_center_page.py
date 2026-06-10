@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -223,11 +224,17 @@ class DeviceCenterPage(QWidget):
 
     def _build_quick_actions(self) -> CardFrame:
         card = CardFrame(role="command")
+        card.setMinimumHeight(328)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         layout.setSpacing(TOKENS.spacing_lg)
 
-        add_block = QVBoxLayout()
+        self.quick_add_panel = CardFrame(muted=True, role="tile")
+        self.quick_add_panel.setMinimumHeight(280)
+        self.quick_add_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        add_block = QVBoxLayout(self.quick_add_panel)
+        add_block.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         add_block.setSpacing(TOKENS.spacing_sm)
         add_block.addWidget(section_title("快捷新增", "快速录入设备名称、端口、波特率和设备 ID。"))
         self.label_input = QLineEdit("新分析仪")
@@ -240,15 +247,17 @@ class DeviceCenterPage(QWidget):
         for profile in self.controller.available_gas_analyzer_profiles():
             self.analyzer_profile_combo.addItem(str(profile["label"]), str(profile["profile_id"]))
         self.analyzer_profile_combo.setCurrentIndex(max(0, self.analyzer_profile_combo.findData("ygas_irga")))
-        for title, widget in (
-            ("设备名称", self.label_input),
-            ("气体分析仪型号", self.analyzer_profile_combo),
-            ("COM 口 / 模拟端口", self.port_input),
-            ("波特率", self.baudrate_spin),
-            ("设备 ID", self.device_id_input),
-        ):
-            add_block.addWidget(QLabel(title))
-            add_block.addWidget(widget)
+        add_block.addLayout(
+            self._compact_setup_grid(
+                [
+                    ("设备名称", self.label_input),
+                    ("气体分析仪型号", self.analyzer_profile_combo),
+                    ("COM 口 / 模拟端口", self.port_input),
+                    ("波特率", self.baudrate_spin),
+                    ("设备 ID", self.device_id_input),
+                ]
+            )
+        )
         add_button = QPushButton("添加设备")
         add_button.setProperty("variant", "primary")
         add_button.clicked.connect(self._add_device)
@@ -258,7 +267,11 @@ class DeviceCenterPage(QWidget):
         hint.setWordWrap(True)
         add_block.addWidget(hint)
 
-        actions_block = QVBoxLayout()
+        self.quick_actions_panel = CardFrame(muted=True, role="tile")
+        self.quick_actions_panel.setMinimumHeight(280)
+        self.quick_actions_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        actions_block = QVBoxLayout(self.quick_actions_panel)
+        actions_block.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         actions_block.setSpacing(TOKENS.spacing_md)
         actions_block.addWidget(section_title("快捷操作", "针对当前选中设备执行最常见动作，必要时再进入单设备详情页。"))
         self.current_target = QLabel("当前设备：尚未选择")
@@ -284,8 +297,10 @@ class DeviceCenterPage(QWidget):
             button.clicked.connect(lambda _checked=False, fn=action: self._safe_call(fn))
             button_grid.addWidget(button, index // 2, index % 2)
         actions_block.addLayout(button_grid)
+        actions_block.addSpacing(TOKENS.spacing_xs)
 
         tip_card = CardFrame(role="panel")
+        tip_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         tip_layout = QVBoxLayout(tip_card)
         tip_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         tip_layout.setSpacing(6)
@@ -301,9 +316,33 @@ class DeviceCenterPage(QWidget):
             tip_layout.addWidget(note)
         actions_block.addWidget(tip_card)
 
-        layout.addLayout(add_block, 2)
-        layout.addLayout(actions_block, 3)
+        layout.addWidget(self.quick_add_panel, 2)
+        layout.addWidget(self.quick_actions_panel, 3)
         return card
+
+    def _compact_setup_grid(self, fields: list[tuple[str, QWidget]]) -> QGridLayout:
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(TOKENS.spacing_md)
+        grid.setVerticalSpacing(TOKENS.spacing_sm)
+        for index, (title, widget) in enumerate(fields):
+            row = index // 2
+            column = index % 2
+            field = QWidget()
+            field.setMinimumHeight(62)
+            field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+            widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            field_layout = QVBoxLayout(field)
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(TOKENS.spacing_xs)
+            label = QLabel(title)
+            label.setObjectName("metricLabel")
+            field_layout.addWidget(label)
+            field_layout.addWidget(widget)
+            grid.addWidget(field, row, column)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        return grid
 
     def _rebuild_device_cards(self) -> None:
         while self.device_grid.count():

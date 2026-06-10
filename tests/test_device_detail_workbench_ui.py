@@ -41,7 +41,10 @@ def test_device_detail_uses_device_operations_rail(monkeypatch, tmp_path: Path) 
             assert page.header_card.property("cardRole") == "command"
             assert page.summary_card.property("cardRole") == "cockpit"
             assert page.device_ops_rail.property("cardRole") == "rail"
+            assert page.device_ops_grid.count() == 5
             assert set(page.device_ops_values) == {"link", "telemetry", "primary", "trace", "diagnostics"}
+            assert page.device_ops_values["link"][0].property("compactMetric") is True
+            assert page.device_ops_next_value.property("compactMetric") is True
             assert page.device_ops_values["link"][0].text() == "在线"
             assert page.device_ops_values["telemetry"][0].text().endswith("Hz")
             assert page.device_ops_values["primary"][0].text() == "ygas_irga"

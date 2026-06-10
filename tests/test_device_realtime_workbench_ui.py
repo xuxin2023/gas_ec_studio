@@ -29,6 +29,8 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert page.status_card.property("cardRole") == "cockpit"
         assert page.field_readiness_card.property("cardRole") == "panel"
         assert page.quick_card.property("cardRole") == "command"
+        assert page.quick_add_panel.property("cardRole") == "tile"
+        assert page.quick_actions_panel.property("cardRole") == "tile"
         assert page.device_grid_card.property("cardRole") == "panel"
         assert page.activity_card.property("cardRole") == "rail"
         assert set(page.readiness_values) == {"fleet", "target", "protocol", "next"}
