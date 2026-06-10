@@ -52,7 +52,7 @@ def test_realtime_page_uses_session_cockpit_deck() -> None:
         assert page.capture_target_panel.property("cardRole") == "tile"
         assert page.capture_metric_panel.property("cardRole") == "tile"
         assert page.capture_action_panel.property("cardRole") == "tile"
-        assert page.capture_command_chip.text() == "Live command deck"
+        assert page.capture_command_chip.text() == "实时控制台"
         assert page.summary_card.property("cardRole") == "cockpit"
         assert page.plot_card.property("cardRole") == "panel"
         assert page.bottom_card.property("cardRole") == "rail"

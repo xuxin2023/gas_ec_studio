@@ -76,7 +76,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert "footprint=kljun" in page.coverage_values["methods"].text()
         assert "footprint=kljun" in page.method_snapshot_label.text()
         assert "uncertainty=mann_lenschow" in page.method_snapshot_label.text()
-        assert page.method_family_gate_chip.text() in {"Ready", "Review"}
+        assert page.method_family_gate_chip.text() in {"就绪", "复核"}
         page._show_method_family("spectral")
         assert page.method_family_stack.currentWidget() is page.spectral_card
         assert page.method_family_buttons["spectral"].isChecked() is True
@@ -84,7 +84,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         page.footprint_canopy_spin.setValue(5.0)
         page._refresh_uncertainty_preview()
         assert "z_m > canopy_height_m" in page.method_validation_label.text()
-        assert page.method_family_gate_chip.text() == "Review"
+        assert page.method_family_gate_chip.text() == "复核"
         page.workflow_lens_buttons["advanced"].click()
         assert controller.ec_nav_step == "crosswind_correction"
         assert page.workflow_lens_buttons["advanced"].property("variant") == "primary"

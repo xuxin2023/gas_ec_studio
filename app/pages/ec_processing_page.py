@@ -297,7 +297,7 @@ class ECProcessingPage(QWidget):
         layout = QVBoxLayout(rail)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
-        layout.addWidget(section_title("EC Workbench", "固定显示当前运行闭合状态，不再藏在长页面底部。"))
+        layout.addWidget(section_title("EC 工作台", "固定显示当前运行闭合状态，不再藏在长页面底部。"))
         self.workflow_lens_card = self._build_workflow_lens_panel()
         layout.addWidget(self.workflow_lens_card)
         self.cockpit_card = self._build_processing_cockpit()
@@ -556,10 +556,10 @@ class ECProcessingPage(QWidget):
         )
         self.method_snapshot_label.setText(snapshot)
         if issues:
-            self._set_method_gate_chip("Review", "warning")
+            self._set_method_gate_chip("复核", "warning")
             self.method_validation_label.setText(" | ".join(issues[:4]))
         else:
-            self._set_method_gate_chip("Ready", "success")
+            self._set_method_gate_chip("就绪", "success")
             self.method_validation_label.setText("Ranges ok; UI snapshot keys match pipeline config names.")
 
     def _refresh_output_coverage_panel(self) -> None:
@@ -1130,9 +1130,9 @@ class ECProcessingPage(QWidget):
         method_shell_layout.setSpacing(TOKENS.spacing_sm)
         method_header = QHBoxLayout()
         method_header.setSpacing(TOKENS.spacing_sm)
-        method_header.addWidget(section_title("Method console", "Switch between method families, review the live config snapshot, then run the RP pipeline."))
+        method_header.addWidget(section_title("方法控制台", "切换足迹、不确定度和谱修正方法族，复核实时配置快照后再运行 RP pipeline。"))
         method_header.addStretch(1)
-        self.method_family_gate_chip = chip("Review", "warning")
+        self.method_family_gate_chip = chip("复核", "warning")
         method_header.addWidget(self.method_family_gate_chip)
         method_shell_layout.addLayout(method_header)
 
@@ -1141,9 +1141,9 @@ class ECProcessingPage(QWidget):
         method_switch_row.setSpacing(TOKENS.spacing_xs)
         self.method_family_buttons: dict[str, QToolButton] = {}
         for family, text in (
-            ("footprint", "Footprint"),
-            ("uncertainty", "Uncertainty"),
-            ("spectral", "Spectral"),
+            ("footprint", "足迹"),
+            ("uncertainty", "不确定度"),
+            ("spectral", "谱修正"),
         ):
             button = QToolButton()
             button.setText(text)
@@ -1171,7 +1171,7 @@ class ECProcessingPage(QWidget):
         footprint_layout = QVBoxLayout(self.footprint_card)
         footprint_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         footprint_layout.setSpacing(TOKENS.spacing_sm)
-        footprint_layout.addWidget(section_title("Footprint", "推荐：kljun / z_m=3.0 / canopy_height_m=5.0"))
+        footprint_layout.addWidget(section_title("足迹方法", "推荐：kljun / z_m=3.0 / canopy_height_m=5.0"))
         self.footprint_enable_combo = QComboBox()
         self.footprint_enable_combo.addItems(["enabled", "disabled"])
         self.footprint_method_combo = QComboBox()
@@ -1211,7 +1211,7 @@ class ECProcessingPage(QWidget):
         uncertainty_layout = QVBoxLayout(self.uncertainty_card)
         uncertainty_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         uncertainty_layout.setSpacing(TOKENS.spacing_sm)
-        uncertainty_layout.addWidget(section_title("Uncertainty", "推荐：mann_lenschow / integral_timescale_s=5.0 / confidence_level=0.95"))
+        uncertainty_layout.addWidget(section_title("不确定度方法", "推荐：mann_lenschow / integral_timescale_s=5.0 / confidence_level=0.95"))
         self.uncertainty_mode_combo = QComboBox()
         self.uncertainty_mode_combo.addItems(["mann_lenschow", "finkelstein_sims", "composite_empirical"])
         self.uncertainty_timescale_spin = self._double_spin(0.5, 120.0, 1, suffix=" s")
@@ -1235,7 +1235,7 @@ class ECProcessingPage(QWidget):
         spectral_layout = QVBoxLayout(self.spectral_card)
         spectral_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         spectral_layout.setSpacing(TOKENS.spacing_sm)
-        spectral_layout.addWidget(section_title("Spectral Correction", "推荐：massman；Fratini 默认自动尝试 FCC measured cospectrum"))
+        spectral_layout.addWidget(section_title("谱修正方法", "推荐：massman；Fratini 默认自动尝试 FCC measured cospectrum"))
         self.spectral_enable_combo = QComboBox()
         self.spectral_enable_combo.addItems(["enabled", "disabled"])
         self.spectral_method_combo = QComboBox()

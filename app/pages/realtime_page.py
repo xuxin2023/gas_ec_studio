@@ -135,7 +135,7 @@ class RealtimePage(QWidget):
         header.setContentsMargins(0, 0, 0, 0)
         header.addWidget(section_title("控制条", "设备、时间窗和指标都在这一层完成，不需要离开当前页。"))
         header.addStretch(1)
-        self.capture_command_chip = chip("Live command deck", "accent")
+        self.capture_command_chip = chip("实时控制台", "accent")
         header.addWidget(self.capture_command_chip)
         layout.addLayout(header)
 

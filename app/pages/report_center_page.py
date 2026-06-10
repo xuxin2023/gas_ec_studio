@@ -124,8 +124,8 @@ class ReportCenterPage(QWidget):
         preview_deck_layout.setSpacing(TOKENS.spacing_md)
         preview_deck_layout.addWidget(
             section_title(
-                "Report preview deck",
-                "KPI, plot, and supporting table stay together so the center pane reads like a delivery cockpit.",
+                "报告预览台",
+                "KPI、图表和支撑表格集中在一起，让中间区像交付驾驶舱一样阅读。",
             )
         )
 
@@ -187,12 +187,12 @@ class ReportCenterPage(QWidget):
         closure_header.setContentsMargins(0, 0, 0, 0)
         closure_header.addWidget(
             section_title(
-                "Closure deck",
-                "Conclusion text and the startup route live together so the report center always shows the next closure move.",
+                "闭环路线",
+                "结论文本和启动路线放在一起，让报告中心始终显示下一步闭环动作。",
             )
         )
         closure_header.addStretch(1)
-        self.closure_deck_chip = chip("Next action", "warning")
+        self.closure_deck_chip = chip("下一步", "warning")
         closure_header.addWidget(self.closure_deck_chip)
         closure_deck_layout.addLayout(closure_header)
 
@@ -217,7 +217,7 @@ class ReportCenterPage(QWidget):
         delivery_layout.addWidget(
             section_title(
                 "交付驾驶舱",
-                "浏览报告时持续显示交付 Gate、导出状态、方法溯源和批次差异。",
+                "浏览报告时持续显示交付门槛、导出状态、方法溯源和批次差异。",
             )
         )
 
@@ -228,15 +228,15 @@ class ReportCenterPage(QWidget):
         focus_layout = QVBoxLayout(self.delivery_focus_card)
         focus_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         focus_layout.setSpacing(TOKENS.spacing_md)
-        focus_layout.addWidget(section_title("Delivery focus", "Switch between release gate, export details, and batch comparison without extending the rail."))
+        focus_layout.addWidget(section_title("交付聚焦", "在交付门槛、导出详情和批次对比之间切换，不拉长右侧栏。"))
         focus_switch_row = QHBoxLayout()
         focus_switch_row.setContentsMargins(0, 0, 0, 0)
         focus_switch_row.setSpacing(TOKENS.spacing_xs)
         self.delivery_focus_buttons: dict[str, QToolButton] = {}
         for key, text in (
-            ("gate", "Gate"),
-            ("details", "Details"),
-            ("batch", "Batch"),
+            ("gate", "门槛"),
+            ("details", "详情"),
+            ("batch", "批次"),
         ):
             button = QToolButton()
             button.setText(text)
@@ -1163,7 +1163,7 @@ class ReportCenterPage(QWidget):
 
     def _on_official_bundle_validate(self) -> None:
         result = self.controller.validate_official_raw_bundle_for_report_center(self._official_bundle_path_value())
-        self._show_info("行业参考 P0 Gate", result["message"])
+        self._show_info("行业参考 P0 门槛", result["message"])
         self.refresh()
 
     def _on_official_bundle_evidence_pack(self) -> None:
@@ -1647,7 +1647,7 @@ class ReportCenterPage(QWidget):
         if hasattr(self, "closure_deck_chip"):
             self._set_chip(
                 self.closure_deck_chip,
-                "Ready" if has_real_result else "Next action",
+                "就绪" if has_real_result else "下一步",
                 "success" if has_real_result else "warning",
             )
 
