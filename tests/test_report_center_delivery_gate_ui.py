@@ -27,7 +27,13 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         page.refresh()
 
         assert page.delivery_rail.property("cardRole") == "rail"
+        assert page.delivery_focus_card.property("cardRole") == "panel"
+        assert page.delivery_focus_stack.count() == 3
+        assert page.delivery_focus_buttons["gate"].isChecked() is True
+        assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
         assert page.delivery_gate_card.property("cardRole") == "cockpit"
+        assert page.delivery_gate_values["report"][0].property("compactMetric") is True
+        assert page.delivery_gate_next_value.property("compactMetric") is True
         assert page.preview_header_card.property("cardRole") == "cockpit"
         assert page.preview_content_card.property("cardRole") == "panel"
         assert page.inner_inspector.property("cardRole") == "panel"
@@ -63,6 +69,12 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.inspector_stack.currentWidget() is page.file_card
         assert page.inspector_switches["file"].isChecked() is True
         assert page.inspector_switches["export"].isChecked() is False
+        page._show_delivery_focus("batch")
+        assert page.delivery_focus_stack.currentWidget() is page.batch_card
+        assert page.delivery_focus_buttons["batch"].isChecked() is True
+        page._show_delivery_focus("details")
+        assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+        assert page.delivery_focus_buttons["details"].isChecked() is True
     finally:
         page.deleteLater()
         controller.shutdown()
@@ -146,6 +158,7 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_gate_values["benchmark"][0].text() == "ref-001"
         assert page.delivery_gate_values["methods"][0].text() == "已汇总"
         assert page.delivery_gate_next_value.text() == "交付归档"
+        assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
         assert page.preview_table.rowCount() == 2
         assert page.empty_state_card.isHidden() is True
     finally:

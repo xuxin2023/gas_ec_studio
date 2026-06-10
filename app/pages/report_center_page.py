@@ -191,8 +191,36 @@ class ReportCenterPage(QWidget):
 
         self.summary_row = self._build_summary_row()
         delivery_layout.addWidget(self.summary_row)
+
+        self.delivery_focus_card = CardFrame(muted=True, role="panel")
+        focus_layout = QVBoxLayout(self.delivery_focus_card)
+        focus_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        focus_layout.setSpacing(TOKENS.spacing_md)
+        focus_layout.addWidget(section_title("Delivery focus", "Switch between release gate, export details, and batch comparison without extending the rail."))
+        focus_switch_row = QHBoxLayout()
+        focus_switch_row.setContentsMargins(0, 0, 0, 0)
+        focus_switch_row.setSpacing(TOKENS.spacing_xs)
+        self.delivery_focus_buttons: dict[str, QToolButton] = {}
+        for key, text in (
+            ("gate", "Gate"),
+            ("details", "Details"),
+            ("batch", "Batch"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, section=key: self._show_delivery_focus(section))
+            self.delivery_focus_buttons[key] = button
+            focus_switch_row.addWidget(button)
+        focus_switch_row.addStretch(1)
+        focus_layout.addLayout(focus_switch_row)
+        self.delivery_focus_stack = QStackedWidget()
+        focus_layout.addWidget(self.delivery_focus_stack)
+        delivery_layout.addWidget(self.delivery_focus_card, 1)
+
         self.delivery_gate_card = self._build_delivery_gate_card()
-        delivery_layout.addWidget(self.delivery_gate_card)
+        self.delivery_focus_stack.addWidget(self.delivery_gate_card)
 
         self.inner_inspector = CardFrame(muted=True, role="panel")
         inspector_layout = QVBoxLayout(self.inner_inspector)
@@ -236,7 +264,7 @@ class ReportCenterPage(QWidget):
             self.inspector_stack.addWidget(card)
         inspector_layout.addWidget(self.inspector_stack)
         self._show_inspector_section("export")
-        delivery_layout.addWidget(self.inner_inspector)
+        self.delivery_focus_stack.addWidget(self.inner_inspector)
 
         self.batch_card = CardFrame(muted=True, role="panel")
         batch_layout = QVBoxLayout(self.batch_card)
@@ -257,7 +285,13 @@ class ReportCenterPage(QWidget):
         self.batch_summary_layout = QVBoxLayout()
         self.batch_summary_layout.setSpacing(TOKENS.spacing_sm)
         batch_layout.addLayout(self.batch_summary_layout)
-        delivery_layout.addWidget(self.batch_card)
+        self.delivery_focus_stack.addWidget(self.batch_card)
+        self.delivery_focus_sections = {
+            "gate": self.delivery_gate_card,
+            "details": self.inner_inspector,
+            "batch": self.batch_card,
+        }
+        self._show_delivery_focus("gate")
         delivery_layout.addStretch(1)
         self.delivery_rail.setMinimumWidth(330)
         self.delivery_rail.setMaximumWidth(420)
@@ -485,6 +519,7 @@ class ReportCenterPage(QWidget):
         next_title.setObjectName("metricLabel")
         self.delivery_gate_next_value = QLabel("--")
         self.delivery_gate_next_value.setObjectName("metricValue")
+        self.delivery_gate_next_value.setProperty("compactMetric", True)
         self.delivery_gate_next_value.setWordWrap(True)
         self.delivery_gate_next_note = QLabel("--")
         self.delivery_gate_next_note.setObjectName("subtitle")
@@ -510,6 +545,7 @@ class ReportCenterPage(QWidget):
         top.addWidget(status_chip)
         value = QLabel("--")
         value.setObjectName("metricValue")
+        value.setProperty("compactMetric", True)
         value.setWordWrap(True)
         note = QLabel(_ui_safe_text(hint))
         note.setObjectName("subtitle")
@@ -1599,6 +1635,20 @@ class ReportCenterPage(QWidget):
             return
         self.inspector_stack.setCurrentWidget(card)
         for key, button in self.inspector_switches.items():
+            button.blockSignals(True)
+            button.setChecked(key == section)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _show_delivery_focus(self, section: str) -> None:
+        if not hasattr(self, "delivery_focus_sections"):
+            return
+        card = self.delivery_focus_sections.get(section)
+        if card is None:
+            return
+        self.delivery_focus_stack.setCurrentWidget(card)
+        for key, button in self.delivery_focus_buttons.items():
             button.blockSignals(True)
             button.setChecked(key == section)
             button.blockSignals(False)
