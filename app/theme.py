@@ -26,24 +26,27 @@ class DesignTokens:
     font_md: int = 14
     font_lg: int = 18
     font_xl: int = 26
-    color_bg: str = "#eef4f8"
-    color_bg_deep: str = "#dbe8ef"
+    color_bg: str = "#eaf2f6"
+    color_bg_deep: str = "#cddfe8"
     color_surface: str = "#ffffff"
-    color_surface_soft: str = "#f8fbff"
+    color_surface_soft: str = "#f5f9fc"
     color_surface_warm: str = "#fffdf8"
-    color_border: str = "#ccdae6"
-    color_border_strong: str = "#9bb2c5"
-    color_text: str = "#102232"
-    color_text_muted: str = "#587083"
-    color_accent: str = "#0f6c81"
-    color_accent_hover: str = "#0b5c6f"
-    color_accent_soft: str = "#dff3f7"
+    color_border: str = "#bfd1dc"
+    color_border_strong: str = "#819aad"
+    color_text: str = "#0c2230"
+    color_text_muted: str = "#506b7d"
+    color_accent: str = "#0b6f7f"
+    color_accent_hover: str = "#075a69"
+    color_accent_soft: str = "#d8f3f4"
     color_success: str = "#19784c"
     color_warning: str = "#a86612"
     color_error: str = "#ba2f2b"
     color_copper: str = "#b66b1d"
     color_chip_neutral: str = "#e4edf3"
     color_chip_text: str = "#25384a"
+    color_hero_ink: str = "#081f2d"
+    color_hero_teal: str = "#0b6678"
+    color_hero_mint: str = "#d8f1e8"
     shadow_soft: str = "rgba(15, 35, 52, 0.11)"
 
 
@@ -113,8 +116,9 @@ def build_stylesheet() -> str:
     QWidget#appShell {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,
-            stop: 0 #f7fbfd,
-            stop: 0.42 {TOKENS.color_bg},
+            stop: 0 #fbfdfe,
+            stop: 0.28 #edf7f8,
+            stop: 0.66 {TOKENS.color_bg},
             stop: 1 {TOKENS.color_bg_deep}
         );
     }}
@@ -131,15 +135,33 @@ def build_stylesheet() -> str:
     QFrame#card[cardRole="hero"] {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 0,
-            stop: 0 #ffffff,
-            stop: 0.34 #f8fcfd,
-            stop: 0.72 #edf8f4,
-            stop: 1 #e7f3ef
+            stop: 0 {TOKENS.color_hero_ink},
+            stop: 0.48 {TOKENS.color_hero_teal},
+            stop: 0.78 #bfe8df,
+            stop: 1 {TOKENS.color_hero_mint}
         );
-        border: 1px solid #bfd8df;
+        border: 1px solid #7eb3bd;
+    }}
+    QFrame#card[cardRole="hero"] QLabel#pageTitle {{
+        color: #f7fcfd;
+        letter-spacing: 0.4px;
+    }}
+    QFrame#card[cardRole="hero"] QLabel#subtitle {{
+        color: #d6edf2;
+    }}
+    QFrame#card[cardRole="hero"] QLabel[heroStatus="true"] {{
+        color: #214254;
+    }}
+    QFrame#card[cardRole="hero"] QLabel#subtitle[heroStatus="true"] {{
+        color: #214254;
     }}
     QFrame#card[cardRole="panel"] {{
-        background: {TOKENS.color_surface_warm};
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #fffefb,
+            stop: 0.7 #ffffff,
+            stop: 1 #f4faf8
+        );
     }}
     QFrame#card[cardRole="command"] {{
         background: qlineargradient(
@@ -153,15 +175,15 @@ def build_stylesheet() -> str:
     QFrame#card[cardRole="cockpit"] {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,
-            stop: 0 #fffdf8,
+            stop: 0 #fffcf2,
             stop: 0.55 #ffffff,
-            stop: 1 #eff8f4
+            stop: 1 #e9f7f1
         );
-        border: 1px solid #d4e2d8;
+        border: 1px solid #c7dccf;
     }}
     QFrame#cardMuted[cardRole="tile"] {{
-        background: rgba(255, 255, 255, 0.82);
-        border: 1px solid #d7e4eb;
+        background: rgba(255, 255, 255, 0.88);
+        border: 1px solid #d3e1e8;
         border-radius: {TOKENS.radius_md}px;
     }}
     QFrame#cardMuted[cardRole="rail"] {{
@@ -220,16 +242,16 @@ def build_stylesheet() -> str:
         min-width: 340px;
         padding: 10px 14px;
         border-radius: {TOKENS.radius_md}px;
-        background: rgba(255, 255, 255, 0.76);
-        border: 1px solid #d2e4eb;
-        color: {TOKENS.color_text_muted};
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        color: #214254;
     }}
     QLabel[shellTile="true"] {{
         min-width: 78px;
         padding: 8px 10px;
         border-radius: {TOKENS.radius_md}px;
-        background: rgba(255, 255, 255, 0.72);
-        border: 1px solid #d2e4eb;
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.68);
         color: {TOKENS.color_text};
         font-weight: 800;
         line-height: 1.25;
@@ -334,8 +356,9 @@ def build_stylesheet() -> str:
     QPushButton[navButton="true"]:checked {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 0,
-            stop: 0 {TOKENS.color_accent_soft},
-            stop: 1 #ffffff
+            stop: 0 #bfecef,
+            stop: 0.12 {TOKENS.color_accent_soft},
+            stop: 1 rgba(255, 255, 255, 0.92)
         );
         border: 1px solid #a7ccd5;
         color: {TOKENS.color_accent};
@@ -343,14 +366,15 @@ def build_stylesheet() -> str:
     QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {{
         min-height: 38px;
         border-radius: {TOKENS.radius_sm}px;
-        border: 1px solid {TOKENS.color_border};
-        background: white;
+        border: 1px solid #c5d7e2;
+        background: #fbfdfe;
         padding: 6px 10px;
         selection-background-color: {TOKENS.color_accent};
     }}
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus, QPlainTextEdit:focus {{
         border: 1px solid {TOKENS.color_accent};
         background: #ffffff;
+        color: {TOKENS.color_text};
     }}
     QTextEdit, QPlainTextEdit {{
         min-height: 100px;
@@ -400,8 +424,16 @@ def build_stylesheet() -> str:
         padding: 0 12px;
         font-weight: 600;
     }}
+    QToolButton:hover {{
+        border-color: {TOKENS.color_border_strong};
+        background: #fbfdfe;
+    }}
     QToolButton:checked {{
-        background: {TOKENS.color_accent_soft};
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #c5eef1,
+            stop: 1 #f7fdfd
+        );
         color: {TOKENS.color_accent};
         border-color: #a7ccd5;
     }}
@@ -446,7 +478,8 @@ def build_stylesheet() -> str:
     QTreeWidget#workflowTree::item:selected {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 0,
-            stop: 0 {TOKENS.color_accent_soft},
+            stop: 0 #bce8ef,
+            stop: 0.16 {TOKENS.color_accent_soft},
             stop: 1 #ffffff
         );
         color: {TOKENS.color_accent};

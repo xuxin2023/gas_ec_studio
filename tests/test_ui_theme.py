@@ -14,6 +14,8 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert "QWidget#appShell" in stylesheet
     assert "qlineargradient" in stylesheet
     assert 'QFrame#card[cardRole="hero"]' in stylesheet
+    assert 'QFrame#card[cardRole="hero"] QLabel#pageTitle' in stylesheet
+    assert 'QFrame#card[cardRole="hero"] QLabel#subtitle[heroStatus="true"]' in stylesheet
     assert 'QFrame#card[cardRole="command"]' in stylesheet
     assert 'QFrame#card[cardRole="cockpit"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"]' in stylesheet
