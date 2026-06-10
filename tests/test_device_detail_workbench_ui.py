@@ -40,6 +40,11 @@ def test_device_detail_uses_device_operations_rail(monkeypatch, tmp_path: Path) 
 
             assert page.header_card.property("cardRole") == "command"
             assert page.summary_card.property("cardRole") == "cockpit"
+            assert page.summary_card.property("deckRole") == "deviceSummaryDeck"
+            assert page.summary_card.maximumHeight() == 124
+            assert len(page.summary_metric_cards) == 7
+            assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)
+            assert all(value.property("compactMetric") is True for value in page.summary_values.values())
             assert page.device_ops_rail.property("cardRole") == "rail"
             assert page.device_ops_grid.count() == 5
             assert set(page.device_ops_values) == {"link", "telemetry", "primary", "trace", "diagnostics"}

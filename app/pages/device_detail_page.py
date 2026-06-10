@@ -77,10 +77,13 @@ class DeviceDetailPage(QWidget):
         layout.addWidget(self.header_card)
 
         self.summary_card = CardFrame(role="cockpit")
+        self.summary_card.setProperty("deckRole", "deviceSummaryDeck")
+        self.summary_card.setMaximumHeight(124)
         self.summary_layout = QHBoxLayout(self.summary_card)
         self.summary_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         self.summary_layout.setSpacing(TOKENS.spacing_md)
         self.summary_values: dict[str, QLabel] = {}
+        self.summary_metric_cards: list[CardFrame] = []
         for key, title in (
             ("online", "在线状态"),
             ("mode", "模式"),
@@ -91,16 +94,21 @@ class DeviceDetailPage(QWidget):
             ("data_state", "数据状态"),
         ):
             card = CardFrame(muted=True, role="tile")
+            card.setMinimumHeight(78)
+            card.setMaximumHeight(98)
             inner = QVBoxLayout(card)
             inner.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+            inner.setSpacing(TOKENS.spacing_xs)
             label = QLabel(title)
             label.setObjectName("metricLabel")
             value = QLabel("--")
             value.setObjectName("metricValue")
+            value.setProperty("compactMetric", True)
             value.setWordWrap(True)
             inner.addWidget(label)
             inner.addWidget(value)
             self.summary_values[key] = value
+            self.summary_metric_cards.append(card)
             self.summary_layout.addWidget(card, 1)
         layout.addWidget(self.summary_card)
 
