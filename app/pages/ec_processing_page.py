@@ -1766,7 +1766,7 @@ class ECProcessingPage(QWidget):
         spectral_method = self._current_combo_text("spectral_method_combo", "massman")
         method_compare = self._current_combo_text("method_compare_combo", "disabled")
         cospectrum = self._current_combo_text("spectral_cospectrum_combo", "fcc_auto")
-        self.cockpit_method_value.setText(f"{footprint_method} / {uncertainty_method}")
+        self.cockpit_method_value.setText(f"{footprint_method} / {uncertainty_method} / {spectral_method}")
         self.cockpit_method_note.setText(
             f"footprint={self._current_combo_text('footprint_enable_combo', 'enabled')}，"
             f"spectral={self._current_combo_text('spectral_enable_combo', 'enabled')}，"

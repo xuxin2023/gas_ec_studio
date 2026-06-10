@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
+    QGridLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QTextEdit,
     QToolButton,
     QVBoxLayout,
@@ -123,10 +125,23 @@ class RealtimePage(QWidget):
 
     def _build_control_bar(self) -> CardFrame:
         card = CardFrame(role="command")
-        layout = QHBoxLayout(card)
+        card.setMinimumHeight(176)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
-        layout.addWidget(section_title("控制条", "设备、时间窗和指标都在这一层完成，不需要离开当前页。"))
+        layout.setSpacing(TOKENS.spacing_sm)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.addWidget(section_title("控制条", "设备、时间窗和指标都在这一层完成，不需要离开当前页。"))
+        header.addStretch(1)
+        self.capture_command_chip = chip("Live command deck", "accent")
+        header.addWidget(self.capture_command_chip)
+        layout.addLayout(header)
+
+        deck = QHBoxLayout()
+        deck.setContentsMargins(0, 0, 0, 0)
+        deck.setSpacing(TOKENS.spacing_md)
 
         self.device_combo = QComboBox()
         self.device_combo.currentIndexChanged.connect(self._on_device_changed)
@@ -134,10 +149,26 @@ class RealtimePage(QWidget):
         self.window_combo.addItems(list(self.window_options.keys()))
         self.window_combo.setCurrentText("最近 2 分钟")
         self.window_combo.currentIndexChanged.connect(lambda _index: self.refresh())
-        layout.addWidget(QLabel("设备"))
-        layout.addWidget(self.device_combo)
-        layout.addWidget(QLabel("时间窗"))
-        layout.addWidget(self.window_combo)
+
+        self.capture_target_panel = CardFrame(muted=True, role="tile")
+        target_layout = QGridLayout(self.capture_target_panel)
+        target_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        target_layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        target_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        target_title = QLabel("采集目标")
+        target_title.setObjectName("metricLabel")
+        target_layout.addWidget(target_title, 0, 0, 1, 2)
+        device_label = QLabel("设备")
+        device_label.setObjectName("metricLabel")
+        window_label = QLabel("时间窗")
+        window_label.setObjectName("metricLabel")
+        target_layout.addWidget(device_label, 1, 0)
+        target_layout.addWidget(self.device_combo, 2, 0)
+        target_layout.addWidget(window_label, 1, 1)
+        target_layout.addWidget(self.window_combo, 2, 1)
+        target_layout.setColumnStretch(0, 1)
+        target_layout.setColumnStretch(1, 1)
+        deck.addWidget(self.capture_target_panel, 3)
 
         metrics_wrapper = QWidget()
         metrics_layout = QHBoxLayout(metrics_wrapper)
@@ -151,9 +182,16 @@ class RealtimePage(QWidget):
             button.clicked.connect(self._update_metric_visibility)
             self.metric_buttons[key] = button
             metrics_layout.addWidget(button)
-        layout.addWidget(QLabel("指标"))
-        layout.addWidget(metrics_wrapper)
-        layout.addStretch(1)
+        self.capture_metric_panel = CardFrame(muted=True, role="tile")
+        metric_layout = QVBoxLayout(self.capture_metric_panel)
+        metric_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        metric_layout.setSpacing(TOKENS.spacing_xs)
+        metric_title = QLabel("曲线指标")
+        metric_title.setObjectName("metricLabel")
+        metric_layout.addWidget(metric_title)
+        metric_layout.addWidget(metrics_wrapper)
+        metric_layout.addStretch(1)
+        deck.addWidget(self.capture_metric_panel, 2)
 
         self.start_button = QPushButton("开始")
         self.start_button.setProperty("variant", "primary")
@@ -169,8 +207,18 @@ class RealtimePage(QWidget):
         clear_button.clicked.connect(self._clear_selected_buffer)
         restore_button = QPushButton("恢复视图")
         restore_button.clicked.connect(self._reset_view)
-        for button in (self.start_button, self.pause_button, mark_button, export_button, clear_button, restore_button):
-            layout.addWidget(button)
+        self.capture_action_panel = CardFrame(muted=True, role="tile")
+        action_layout = QGridLayout(self.capture_action_panel)
+        action_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        action_layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        action_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        action_title = QLabel("采集动作")
+        action_title.setObjectName("metricLabel")
+        action_layout.addWidget(action_title, 0, 0, 1, 3)
+        for index, button in enumerate((self.start_button, self.pause_button, mark_button, export_button, clear_button, restore_button)):
+            action_layout.addWidget(button, 1 + index // 3, index % 3)
+        deck.addWidget(self.capture_action_panel, 4)
+        layout.addLayout(deck)
         return card
 
     def _build_summary_bar(self) -> CardFrame:
