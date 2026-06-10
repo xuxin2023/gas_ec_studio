@@ -302,10 +302,8 @@ class ECProcessingPage(QWidget):
         layout.addWidget(self.workflow_lens_card)
         self.cockpit_card = self._build_processing_cockpit()
         layout.addWidget(self.cockpit_card)
-        self.readiness_card = self._build_readiness_panel()
-        layout.addWidget(self.readiness_card)
-        self.output_coverage_card = self._build_output_coverage_panel()
-        layout.addWidget(self.output_coverage_card)
+        self.rail_focus_card = self._build_rail_focus_panel()
+        layout.addWidget(self.rail_focus_card)
         layout.addStretch(1)
         return rail
 
@@ -327,6 +325,44 @@ class ECProcessingPage(QWidget):
             self.workflow_lens_notes[lens_key] = note
             layout.addWidget(button)
             layout.addWidget(note)
+        return card
+
+    def _build_rail_focus_panel(self) -> CardFrame:
+        card = CardFrame(role="panel")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
+        layout.addWidget(section_title("闭合聚合", "把运行闭合度和输出覆盖压缩成同一张右侧工作台卡片。"))
+
+        switch_row = QHBoxLayout()
+        switch_row.setContentsMargins(0, 0, 0, 0)
+        switch_row.setSpacing(TOKENS.spacing_xs)
+        self.rail_focus_buttons: dict[str, QToolButton] = {}
+        for key, text in (
+            ("readiness", "闭合度"),
+            ("coverage", "覆盖矩阵"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, focus=key: self._show_rail_focus(focus))
+            self.rail_focus_buttons[key] = button
+            switch_row.addWidget(button)
+        switch_row.addStretch(1)
+        layout.addLayout(switch_row)
+
+        self.rail_focus_stack = QStackedWidget()
+        self.readiness_card = self._build_readiness_panel()
+        self.output_coverage_card = self._build_output_coverage_panel()
+        self.rail_focus_sections = {
+            "readiness": self.readiness_card,
+            "coverage": self.output_coverage_card,
+        }
+        self.rail_focus_stack.addWidget(self.readiness_card)
+        self.rail_focus_stack.addWidget(self.output_coverage_card)
+        layout.addWidget(self.rail_focus_stack)
+        self._show_rail_focus("readiness")
         return card
 
     def _build_output_coverage_panel(self) -> CardFrame:
@@ -469,6 +505,20 @@ class ECProcessingPage(QWidget):
                 break
         for lens_key, button in self.workflow_lens_buttons.items():
             button.setProperty("variant", "primary" if lens_key == active_lens else "")
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _show_rail_focus(self, focus: str) -> None:
+        if not hasattr(self, "rail_focus_sections"):
+            return
+        card = self.rail_focus_sections.get(focus)
+        if card is None:
+            return
+        self.rail_focus_stack.setCurrentWidget(card)
+        for key, button in self.rail_focus_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == focus)
+            button.blockSignals(False)
             button.style().unpolish(button)
             button.style().polish(button)
 

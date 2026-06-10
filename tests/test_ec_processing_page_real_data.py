@@ -63,6 +63,10 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.tree_card.property("cardRole") == "rail"
         assert page.desktop_rail.property("cardRole") == "rail"
         assert page.cockpit_card.property("cardRole") == "cockpit"
+        assert page.rail_focus_card.property("cardRole") == "panel"
+        assert page.rail_focus_stack.count() == 2
+        assert page.rail_focus_stack.currentWidget() is page.readiness_card
+        assert page.rail_focus_buttons["readiness"].isChecked() is True
         assert page.readiness_card.property("cardRole") == "panel"
         assert page.workflow_lens_card.property("cardRole") == "panel"
         assert page.output_coverage_card.property("cardRole") == "panel"
@@ -80,6 +84,9 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         page._show_method_family("spectral")
         assert page.method_family_stack.currentWidget() is page.spectral_card
         assert page.method_family_buttons["spectral"].isChecked() is True
+        page._show_rail_focus("coverage")
+        assert page.rail_focus_stack.currentWidget() is page.output_coverage_card
+        assert page.rail_focus_buttons["coverage"].isChecked() is True
         page.footprint_zm_spin.setValue(1.0)
         page.footprint_canopy_spin.setValue(5.0)
         page._refresh_uncertainty_preview()

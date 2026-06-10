@@ -28,6 +28,13 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         page.refresh()
 
         assert page.output_coverage_card.property("cardRole") == "panel"
+        assert page.rail_focus_card.property("cardRole") == "panel"
+        assert page.rail_focus_stack.count() == 2
+        assert page.rail_focus_stack.currentWidget() is page.readiness_card
+        assert page.rail_focus_buttons["readiness"].isChecked() is True
+        page._show_rail_focus("coverage")
+        assert page.rail_focus_stack.currentWidget() is page.output_coverage_card
+        assert page.rail_focus_buttons["coverage"].isChecked() is True
         assert set(page.coverage_values) == {
             "metadata",
             "processing",
