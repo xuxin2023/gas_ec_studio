@@ -60,8 +60,25 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert page.run_bar.property("cardRole") == "command"
         assert page.spectral_source_panel.property("cardRole") == "tile"
         assert page.spectral_action_panel.property("cardRole") == "tile"
+        assert page.summary_row.objectName() == "spectralSummaryDeck"
+        assert page.summary_row.maximumHeight() == 104
+        assert len(page.summary_metric_cards) == 4
+        assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)
+        assert page.lag_confidence_value.property("compactMetric") is True
         assert page.tree_card.property("cardRole") == "rail"
         assert page.footer_bar.property("cardRole") == "rail"
+        visible_notes = [
+            page.overview_focus_note.text(),
+            page.overview_reason_label.text(),
+            page.overview_action_label.text(),
+            page.lag_phase_note.text(),
+            page.power_note_label.text(),
+            page.cross_note_label.text(),
+            page.ogive_note_label.text(),
+            page.qc_note_label.text(),
+        ]
+        assert all("???" not in text for text in visible_notes)
+        assert "lag" in page.overview_focus_note.text()
         assert page.window_table.rowCount() == 0
         assert page.lag_curve.xData is None or len(page.lag_curve.xData) == 0
         assert page.power_curve.xData is None or len(page.power_curve.xData) == 0

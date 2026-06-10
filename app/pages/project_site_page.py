@@ -738,7 +738,7 @@ class ProjectSitePage(QWidget):
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         card_layout.setSpacing(TOKENS.spacing_md)
-        card_layout.addWidget(section_title("Metadata Editor", "? metadata ????????????????????"))
+        card_layout.addWidget(section_title("Metadata Editor", "集中维护站点、仪器、原始文件、Biomet 与动态元数据。"))
 
         station_card = CardFrame(muted=True)
         station_layout = QFormLayout(station_card)

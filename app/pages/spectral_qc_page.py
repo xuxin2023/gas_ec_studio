@@ -252,16 +252,19 @@ class SpectralQCPage(QWidget):
 
     def _build_summary_row(self) -> QWidget:
         wrapper = QWidget()
+        wrapper.setObjectName("spectralSummaryDeck")
+        wrapper.setMaximumHeight(104)
         layout = QGridLayout(wrapper)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setHorizontalSpacing(TOKENS.spacing_md)
-        layout.setVerticalSpacing(TOKENS.spacing_md)
+        layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        layout.setVerticalSpacing(TOKENS.spacing_sm)
 
         self.lag_confidence_value = QLabel("--")
         self.high_freq_risk_value = QLabel("--")
         self.good_windows_value = QLabel("--")
         self.attention_windows_value = QLabel("--")
         self.summary_chips: dict[str, QLabel] = {}
+        self.summary_metric_cards: list[CardFrame] = []
         cards = [
             ("lag_confidence", "lag 可信度", self.lag_confidence_value),
             ("high_freq_risk", "高频损失风险", self.high_freq_risk_value),
@@ -269,19 +272,29 @@ class SpectralQCPage(QWidget):
             ("attention_windows", "需关注窗口数", self.attention_windows_value),
         ]
         for index, (key, title, value) in enumerate(cards):
-            card = CardFrame()
+            card = CardFrame(muted=True, role="tile")
+            card.setMinimumHeight(74)
+            card.setMaximumHeight(92)
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-            card_layout.setSpacing(TOKENS.spacing_sm)
+            card_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+            card_layout.setSpacing(TOKENS.spacing_xs)
+            header = QHBoxLayout()
+            header.setContentsMargins(0, 0, 0, 0)
+            header.setSpacing(TOKENS.spacing_xs)
             label = QLabel(title)
             label.setObjectName("metricLabel")
-            card_layout.addWidget(label)
-            value.setObjectName("metricValue")
-            card_layout.addWidget(value)
+            header.addWidget(label)
+            header.addStretch(1)
             tone = "accent" if index in {0, 2} else "warning"
             tone_chip = chip("分析中", tone)
             self.summary_chips[key] = tone_chip
-            card_layout.addWidget(tone_chip)
+            header.addWidget(tone_chip)
+            card_layout.addLayout(header)
+            value.setObjectName("metricValue")
+            value.setProperty("compactMetric", True)
+            value.setWordWrap(True)
+            card_layout.addWidget(value)
+            self.summary_metric_cards.append(card)
             layout.addWidget(card, 0, index)
         return wrapper
 
@@ -898,10 +911,10 @@ class SpectralQCPage(QWidget):
         current = self._selected_window()
         focus_text = self.overview_focus_combo.currentText().strip()
         self.overview_focus_note.setText(
-            f"?????{focus_text}?????? lag ????????????????????????"
+            f"当前关注：{focus_text}。优先复核 lag、频谱能量和修正因子是否指向同一类问题。"
         )
-        self.overview_reason_label.setText(current.get("reason", "????????????"))
-        self.overview_action_label.setText("??????? lag ????????????????????? QC ???")
+        self.overview_reason_label.setText(current.get("reason", "暂无异常原因；运行谱分析后会显示主导风险。"))
+        self.overview_action_label.setText("建议先查看 lag 与互谱相位，再进入 QC 总览确认等级。")
 
         focus_rows = [row for row in windows if row.get("qc_grade") in {"B", "C"}][:5] or windows[:5]
         self.overview_table.setRowCount(len(focus_rows))
@@ -915,47 +928,47 @@ class SpectralQCPage(QWidget):
         current = self._selected_window_result()
         if current is None or not current.lag_curve_x or not current.lag_curve_y:
             self._set_empty_curve(self.lag_curve)
-            self.lag_phase_note.setText("?????????? lag ???")
-            self.lag_plot_note.setText("????????????? lag ???")
+            self.lag_phase_note.setText("暂无真实窗口 lag 曲线。")
+            self.lag_plot_note.setText("运行谱分析后会显示协方差峰值与 lag 置信度。")
             return
         self.lag_curve.setData(current.lag_curve_x, current.lag_curve_y)
-        self.lag_phase_note.setText(f"???? lag {current.lag_seconds:.2f} s???? {current.lag_confidence:.2f}?")
-        self.lag_plot_note.setText("lag ???????? WindowSpectralResult ????????")
+        self.lag_phase_note.setText(f"当前 lag {current.lag_seconds:.2f} s，置信度 {current.lag_confidence:.2f}。")
+        self.lag_plot_note.setText("lag 曲线来自 WindowSpectralResult，可用于复核峰值定位。")
 
     def _refresh_power_plot(self) -> None:
         current = self._selected_window_result()
         if current is None or not current.power_freq:
             self._set_empty_curve(self.power_curve)
             self._set_empty_curve(self.power_ref_curve)
-            self.power_note_label.setText("??????????????")
-            self.power_plot_note.setText("?????????????????")
+            self.power_note_label.setText("暂无功率谱结果。")
+            self.power_plot_note.setText("运行谱分析后会叠加 measured spectrum 与 reference spectrum。")
             return
         self.power_ref_curve.setData(current.power_freq, current.power_ref)
         self.power_curve.setData(current.power_freq, current.power_measured)
-        self.power_note_label.setText(f"?????????{current.anomaly_type}?")
-        self.power_plot_note.setText("??????????? power_freq / power_measured / power_ref?")
+        self.power_note_label.setText(f"主导异常类型：{current.anomaly_type}。")
+        self.power_plot_note.setText("曲线字段：power_freq / power_measured / power_ref。")
 
     def _refresh_cross_plot(self) -> None:
         current = self._selected_window_result()
         if current is None or not current.cross_freq:
             self._set_empty_curve(self.cross_curve)
-            self.cross_note_label.setText("????????????/???")
-            self.cross_plot_note.setText("???????????????/???")
+            self.cross_note_label.setText("暂无互谱/协谱结果。")
+            self.cross_plot_note.setText("运行谱分析后会显示频率与协谱值。")
             return
         self.cross_curve.setData(current.cross_freq, current.cross_value)
-        self.cross_note_label.setText(f"???? QC {current.qc_grade}????? {current.anomaly_type}?")
-        self.cross_plot_note.setText("?????????? cross_freq / cross_value?")
+        self.cross_note_label.setText(f"当前 QC {current.qc_grade}，异常类型 {current.anomaly_type}。")
+        self.cross_plot_note.setText("曲线字段：cross_freq / cross_value。")
 
     def _refresh_ogive_plot(self) -> None:
         current = self._selected_window_result()
         if current is None or not current.ogive_freq:
             self._set_empty_curve(self.ogive_curve)
-            self.ogive_note_label.setText("?????????? ogive?")
-            self.ogive_plot_note.setText("????????????? ogive?")
+            self.ogive_note_label.setText("暂无 ogive 积分曲线。")
+            self.ogive_plot_note.setText("运行谱分析后会显示窗口积分收敛情况。")
             return
         self.ogive_curve.setData(current.ogive_freq, current.ogive_value)
-        self.ogive_note_label.setText(f"???????? {current.correction_factor:.3f}?")
-        self.ogive_plot_note.setText("ogive ???????? ogive_freq / ogive_value?")
+        self.ogive_note_label.setText(f"当前修正因子 {current.correction_factor:.3f}。")
+        self.ogive_plot_note.setText("ogive 曲线字段：ogive_freq / ogive_value。")
 
     def _refresh_transfer_plot(self) -> None:
         current = self._selected_window_result()
@@ -1036,14 +1049,14 @@ class SpectralQCPage(QWidget):
         self.qc_bar_item = pg.BarGraphItem(x=xs, height=heights, width=0.78, brushes=brushes)
         self.qc_plot.addItem(self.qc_bar_item)
         if not windows:
-            self.qc_note_label.setText("????????????? QC?")
-            self.qc_plot_note.setText("????????????? QC ?????")
+            self.qc_note_label.setText("暂无窗口级 QC 结果。")
+            self.qc_plot_note.setText("运行谱分析后会按窗口显示 QC 等级。")
         else:
-            self.qc_note_label.setText("QC ??????????? qc_band_value / qc_grade?")
-            self.qc_plot_note.setText("?????? QC ???")
+            self.qc_note_label.setText("QC 条带来自窗口级 qc_band_value / qc_grade。")
+            self.qc_plot_note.setText("颜色用于区分 A/B/C 等级。")
 
         grade_counts = {"A": 0, "B": 0, "C": 0}
-        reasons = {"A": "????", "B": "?????", "C": "??????"}
+        reasons = {"A": "可直接使用", "B": "建议复核", "C": "需重点排查"}
         for window in windows:
             grade_counts[window.qc_grade] += 1
         self.qc_summary_table.setRowCount(3)
@@ -1095,7 +1108,7 @@ class SpectralQCPage(QWidget):
         filtered = [row for row in windows if match_time(row)]
         if grade_filter in {"A", "B", "C"}:
             filtered = [row for row in filtered if row.get("qc_grade") == grade_filter]
-        known_anomalies = {"???", "????", "lag ??", "????", "???"}
+        known_anomalies = {"无", "高频损失", "lag 偏移", "低频未收敛", "相位异常"}
         if anomaly_filter in known_anomalies:
             filtered = [row for row in filtered if row.get("anomaly_type") == anomaly_filter]
         return filtered
