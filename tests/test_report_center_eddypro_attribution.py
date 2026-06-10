@@ -5,47 +5,18 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import numpy as np
 from PySide6.QtWidgets import QApplication
 
 from app.main_window import StudioMainWindow
 from app.pages.report_center_page import ReportCenterPage
 from app.studio import StudioController
 from app.widgets.context_inspector import ContextInspector
-from models.hf_models import FrameQuality, NormalizedHFFrame
 
 
 def _app() -> QApplication:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication.instance()
     return app or QApplication([])
-
-
-def _make_rows(sample_hz: float = 10.0, samples: int = 600) -> list[NormalizedHFFrame]:
-    start = datetime(2026, 4, 18, 9, 0, 0)
-    time_axis = np.arange(samples, dtype=float) / sample_hz
-    vertical = np.sin(2.0 * np.pi * 0.18 * time_axis) + 0.25 * np.sin(2.0 * np.pi * 0.72 * time_axis)
-    co2_signal = np.roll(vertical, 6) + 0.04 * np.sin(2.0 * np.pi * 1.1 * time_axis)
-    h2o_signal = 0.7 * np.roll(vertical, 4) + 0.03 * np.cos(2.0 * np.pi * 0.9 * time_axis)
-
-    rows: list[NormalizedHFFrame] = []
-    for index in range(samples):
-        rows.append(
-            NormalizedHFFrame(
-                timestamp=start + timedelta(seconds=float(time_axis[index])),
-                device_uid="dev-1",
-                device_id="001",
-                mode=2,
-                frame_quality=FrameQuality.FULL,
-                co2_ppm=float(410.0 + 8.0 * co2_signal[index]),
-                h2o_mmol=float(12.0 + 1.2 * h2o_signal[index]),
-                pressure_kpa=101.3,
-                chamber_temp_c=25.0,
-                case_temp_c=24.8,
-                raw_text=json.dumps({"w": float(vertical[index])}),
-            )
-        )
-    return rows
 
 
 def _prepare_reference_dir(reference_dir: Path, current_export_dir: Path | None = None) -> None:
@@ -86,16 +57,57 @@ def _prepare_reference_dir(reference_dir: Path, current_export_dir: Path | None 
     )
 
 
-def _run_and_export_real_results(controller: StudioController) -> None:
-    controller.project_workspace.setdefault("timing", {})["sample_hz"] = 10.0
-    controller.project_workspace["timing"]["block_minutes"] = 5 / 60
-    controller.ec_processing["steps"]["window_sampling"]["sample_hz"] = 10.0
-    controller.ec_processing["steps"]["window_sampling"]["window_minutes"] = 5 / 60
-    for row in _make_rows():
-        controller.realtime_buffer.append(row)
-    controller.run_ec_processing()
-    controller.run_spectral_qc()
-    controller.export_current_report()
+def _prepare_current_compare_export(controller: StudioController) -> Path:
+    export_dir = controller.runtime_root / "exports" / "results" / "report_center_attribution_fixture"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    start = datetime(2026, 4, 18, 9, 0, 0)
+    records = []
+    for index, (lag, flux, correction, qc) in enumerate(
+        (
+            (0.30, 0.0200, 1.000, "A"),
+            (0.40, 0.0185, 1.010, "A"),
+            (0.50, 0.0192, 1.020, "B"),
+        ),
+        start=1,
+    ):
+        window_start = start + timedelta(minutes=5 * (index - 1))
+        window_end = window_start + timedelta(minutes=5)
+        records.append(
+            {
+                "window_key": f"cur-{index}",
+                "start_time": window_start.isoformat(),
+                "end_time": window_end.isoformat(),
+                "lag_seconds": f"{lag:.3f}",
+                "flux": f"{flux:.6f}",
+                "corrected_flux_after": f"{flux:.6f}",
+                "correction_factor": f"{correction:.4f}",
+                "qc_grade": qc,
+            }
+        )
+    header = "window_key,start_time,end_time,lag_seconds,flux,corrected_flux_after,correction_factor,qc_grade"
+    lines = [
+        header,
+        *[
+            ",".join(str(row[column]) for column in header.split(","))
+            for row in records
+        ],
+    ]
+    payload = "\n".join(lines) + "\n"
+    (export_dir / "rp_results.csv").write_text(payload, encoding="utf-8")
+    (export_dir / "spectral_qc_results.csv").write_text(payload, encoding="utf-8")
+    (export_dir / "summary.json").write_text(
+        json.dumps({"run_id": "attribution-fixture", "window_count": len(records)}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (export_dir / "config_snapshot.json").write_text(
+        json.dumps({"processing": "attribution-fixture"}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (export_dir / "project_site_snapshot.json").write_text(
+        json.dumps({"project": "attribution-fixture", "site": "synthetic"}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return export_dir
 
 
 def test_report_center_empty_state_without_attribution_result(monkeypatch, tmp_path: Path) -> None:
@@ -122,8 +134,7 @@ def test_report_center_displays_real_attribution_summary(monkeypatch, tmp_path: 
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
     controller = StudioController(workspace_root=tmp_path)
     try:
-        _run_and_export_real_results(controller)
-        current_export_dir = controller._latest_result_export_dir()
+        current_export_dir = _prepare_current_compare_export(controller)
         reference_dir = tmp_path / "reference"
         _prepare_reference_dir(reference_dir, current_export_dir)
 
@@ -158,8 +169,7 @@ def test_context_inspector_returns_eddypro_attribution_inspector(monkeypatch, tm
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
     controller = StudioController(workspace_root=tmp_path)
     try:
-        _run_and_export_real_results(controller)
-        current_export_dir = controller._latest_result_export_dir()
+        current_export_dir = _prepare_current_compare_export(controller)
         reference_dir = tmp_path / "reference"
         _prepare_reference_dir(reference_dir, current_export_dir)
 
@@ -185,8 +195,7 @@ def test_compare_with_eddypro_updates_attribution_workspace(monkeypatch, tmp_pat
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
     controller = StudioController(workspace_root=tmp_path)
     try:
-        _run_and_export_real_results(controller)
-        current_export_dir = controller._latest_result_export_dir()
+        current_export_dir = _prepare_current_compare_export(controller)
         reference_dir = tmp_path / "reference"
         _prepare_reference_dir(reference_dir, current_export_dir)
 
@@ -211,8 +220,7 @@ def test_main_window_report_center_page_smoke_with_attribution(monkeypatch, tmp_
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
     controller = StudioController(workspace_root=tmp_path)
     try:
-        _run_and_export_real_results(controller)
-        current_export_dir = controller._latest_result_export_dir()
+        current_export_dir = _prepare_current_compare_export(controller)
         reference_dir = tmp_path / "reference"
         _prepare_reference_dir(reference_dir, current_export_dir)
         controller.compare_with_eddypro(
