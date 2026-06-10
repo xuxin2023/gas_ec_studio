@@ -742,6 +742,7 @@ class ECProcessingPage(QWidget):
 
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             scroll.setWidget(container)
             self.step_indexes[key] = self.content_stack.addWidget(scroll)
 
@@ -1179,7 +1180,7 @@ class ECProcessingPage(QWidget):
         row.addWidget(preview_card, 3)
 
     def _build_uncertainty_page(self, layout: QVBoxLayout) -> None:
-        row = QHBoxLayout()
+        row = QVBoxLayout()
         row.setSpacing(TOKENS.spacing_md)
         layout.addLayout(row)
         param_card = CardFrame()
@@ -1434,30 +1435,52 @@ class ECProcessingPage(QWidget):
         self._show_method_support("primary")
         param_layout.addWidget(self.method_support_card)
 
-        row.addWidget(param_card, 3)
+        row.addWidget(param_card)
 
-        preview_card = CardFrame(muted=True)
-        preview_layout = QGridLayout(preview_card)
+        self.method_result_card = CardFrame(muted=True, role="cockpit")
+        preview_layout = QVBoxLayout(self.method_result_card)
         preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        preview_layout.setHorizontalSpacing(TOKENS.spacing_md)
-        preview_layout.setVerticalSpacing(TOKENS.spacing_md)
-        preview_layout.addWidget(section_title("中间结果", "显示 method summary、uncertainty band 和 Fratini/FCC 路径状态。"), 0, 0, 1, 3)
+        preview_layout.setSpacing(TOKENS.spacing_md)
+        result_header = QHBoxLayout()
+        result_header.setContentsMargins(0, 0, 0, 0)
+        result_header.setSpacing(TOKENS.spacing_sm)
+        result_header.addWidget(section_title("方法结果仪表", "把 uncertainty band、Fratini/FCC 路径和方法 rollup 固定在同一块结果面板。"))
+        result_header.addStretch(1)
+        self.method_result_chip = chip("结果联动", "accent")
+        result_header.addWidget(self.method_result_chip)
+        preview_layout.addLayout(result_header)
+
+        metric_grid = QGridLayout()
+        metric_grid.setContentsMargins(0, 0, 0, 0)
+        metric_grid.setHorizontalSpacing(TOKENS.spacing_md)
+        metric_grid.setVerticalSpacing(TOKENS.spacing_md)
         self.uncertainty_sampling_label = QLabel("--")
         self.uncertainty_sensor_label = QLabel("--")
         self.uncertainty_processing_label = QLabel("--")
-        for col, (title, value) in enumerate(
+        for index, (title, value) in enumerate(
             (
                 ("random_error", self.uncertainty_sampling_label),
                 ("relative", self.uncertainty_sensor_label),
                 ("band", self.uncertainty_processing_label),
             )
         ):
-            preview_layout.addWidget(self._metric_box(title, value), 1, col)
+            if index == 2:
+                metric_grid.addWidget(self._metric_box(title, value), 1, 0, 1, 2)
+            else:
+                metric_grid.addWidget(self._metric_box(title, value), 0, index)
+        preview_layout.addLayout(metric_grid)
+        self.method_result_note_card = CardFrame(muted=True, role="console")
+        note_layout = QVBoxLayout(self.method_result_note_card)
+        note_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        note_layout.setSpacing(TOKENS.spacing_sm)
+        note_layout.addWidget(section_title("路径解释", "运行后这里显示 footprint / uncertainty / spectral correction 的实际来源。"))
         self.uncertainty_preview_note = QLabel("--")
         self.uncertainty_preview_note.setObjectName("subtitle")
         self.uncertainty_preview_note.setWordWrap(True)
-        preview_layout.addWidget(self.uncertainty_preview_note, 2, 0, 1, 3)
-        row.addWidget(preview_card, 3)
+        note_layout.addWidget(self.uncertainty_preview_note)
+        preview_layout.addWidget(self.method_result_note_card)
+        preview_layout.addStretch(1)
+        row.insertWidget(0, self.method_result_card)
 
     def _build_output_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()

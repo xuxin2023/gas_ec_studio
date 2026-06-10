@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 
 import numpy as np
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from app.main_window import StudioMainWindow
@@ -75,8 +76,15 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.method_support_stack.count() == 2
         assert page.method_support_stack.currentWidget() is page.primary_analyzer_card
         assert page.method_support_buttons["primary"].isChecked() is True
+        assert page.method_result_card.property("cardRole") == "cockpit"
+        assert page.method_result_note_card.property("cardRole") == "console"
+        assert page.method_result_chip.property("chipTone") == "accent"
         assert page.method_family_stack.count() == 3
         assert page.method_family_buttons["footprint"].isChecked() is True
+        assert all(
+            page.content_stack.widget(index).horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+            for index in page.step_indexes.values()
+        )
         assert page.cockpit_method_value.property("compactMetric") is True
         assert page.step_tree.objectName() == "workflowTree"
         assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
