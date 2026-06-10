@@ -22,6 +22,8 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[cardRole="rail"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="console"]' in stylesheet
     assert 'QLabel[shellTile="true"]' in stylesheet
+    assert 'QWidget[shellClosureStrip="true"]' in stylesheet
+    assert 'QLabel[closureStage="true"]' in stylesheet
     assert 'QPushButton[navButton="true"]' in stylesheet
     assert 'QToolButton[viewSwitch="true"]' in stylesheet
     assert "QTreeWidget#workflowTree" in stylesheet
@@ -152,9 +154,22 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.log_panel.latest_line.text() == "暂无日志。"
     assert window.header_online_tile.property("shellTile") is True
     assert window.header_alarm_tile.property("shellTone") in {"success", "danger"}
+    assert window.header_closure_strip.property("shellClosureStrip") is True
+    assert set(window.header_closure_tiles) == {"device", "capture", "rp", "spectral", "delivery"}
+    assert all(tile.property("closureStage") is True for tile in window.header_closure_tiles.values())
+    assert window.header_closure_tiles["rp"].text() == "RP\n待运行"
+    assert window.header_closure_tiles["delivery"].text() == "交付\n待交付"
     assert window.operator_btn.property("viewSwitch") is True
     assert window.engineer_btn.property("viewSwitch") is True
     assert all(button.property("navButton") is True for button in window.navigation._buttons.values())
+
+    controller.ec_processing_workspace["summary"]["status"] = "ok"
+    controller.spectral_qc_workspace["run"]["last_result_status"] = "ok"
+    controller.report_center_workspace["export_status"] = "exported"
+    window._refresh_shell()
+    assert window.header_closure_tiles["rp"].text() == "RP\n已闭合"
+    assert window.header_closure_tiles["spectral"].text() == "谱修正\n已分析"
+    assert window.header_closure_tiles["delivery"].text() == "交付\n已交付"
 
     window.log_panel.set_expanded(True)
     assert window.log_panel._expanded is True

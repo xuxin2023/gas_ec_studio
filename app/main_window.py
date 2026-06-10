@@ -137,6 +137,22 @@ class StudioMainWindow(QMainWindow):
         self.header_status.setWordWrap(True)
         layout.addWidget(self.header_status)
 
+        self.header_closure_strip = QWidget()
+        self.header_closure_strip.setProperty("shellClosureStrip", True)
+        closure_layout = QHBoxLayout(self.header_closure_strip)
+        closure_layout.setContentsMargins(0, 0, 0, 0)
+        closure_layout.setSpacing(TOKENS.spacing_xs)
+        self.header_closure_tiles = {
+            "device": self._closure_stage("设备", "--"),
+            "capture": self._closure_stage("采集", "--"),
+            "rp": self._closure_stage("RP", "--"),
+            "spectral": self._closure_stage("谱修正", "--"),
+            "delivery": self._closure_stage("交付", "--"),
+        }
+        for tile in self.header_closure_tiles.values():
+            closure_layout.addWidget(tile)
+        layout.addWidget(self.header_closure_strip)
+
         telemetry = QHBoxLayout()
         telemetry.setSpacing(TOKENS.spacing_sm)
         self.header_online_tile = self._header_tile("在线", "--")
@@ -177,9 +193,23 @@ class StudioMainWindow(QMainWindow):
         tile.setMinimumWidth(78)
         return tile
 
+    def _closure_stage(self, label: str, value: str) -> QLabel:
+        tile = QLabel(f"{label}\n{value}")
+        tile.setProperty("closureStage", True)
+        tile.setAlignment(Qt.AlignCenter)
+        tile.setMinimumWidth(62)
+        return tile
+
     def _set_header_tile(self, tile: QLabel, label: str, value: str, tone: str = "neutral") -> None:
         tile.setText(f"{label}\n{value}")
         tile.setProperty("shellTone", tone)
+        tile.style().unpolish(tile)
+        tile.style().polish(tile)
+
+    def _set_closure_stage(self, key: str, label: str, value: str, tone: str = "neutral") -> None:
+        tile = self.header_closure_tiles[key]
+        tile.setText(f"{label}\n{value}")
+        tile.setProperty("closureTone", tone)
         tile.style().unpolish(tile)
         tile.style().polish(tile)
 
@@ -220,7 +250,57 @@ class StudioMainWindow(QMainWindow):
         self._set_header_tile(self.header_sampling_tile, "采集", str(summary["sampling_devices"]), sampling_tone)
         self._set_header_tile(self.header_alarm_tile, "异常", str(summary["abnormal_devices"]), alarm_tone)
         self._set_header_tile(self.header_view_tile, "视图", view_label, "accent")
+        self._refresh_closure_strip(summary)
         self.operator_btn.setChecked(self.controller.view_mode == "operator")
         self.engineer_btn.setChecked(self.controller.view_mode == "engineer")
         self.inspector.refresh(self.controller.context_snapshot())
         self.log_panel.set_lines(self.controller.log_lines())
+
+    def _refresh_closure_strip(self, summary: dict) -> None:
+        if summary["online_devices"] <= 0:
+            device_value, device_tone = "待接入", "warning"
+        elif summary["abnormal_devices"] > 0:
+            device_value, device_tone = "需处理", "danger"
+        else:
+            device_value, device_tone = "就绪", "success"
+
+        capture_value = "采集中" if summary["sampling_devices"] > 0 else "待启动"
+        capture_tone = "success" if summary["sampling_devices"] > 0 else "warning"
+
+        rp_summary = self.controller.ec_processing_workspace.get("summary", {})
+        rp_status = str(rp_summary.get("status", "")).lower()
+        if rp_status in {"ok", "ready", "complete", "completed", "success"}:
+            rp_value, rp_tone = "已闭合", "success"
+        elif rp_status in {"empty", "", "not_run", "pending"}:
+            rp_value, rp_tone = "待运行", "warning"
+        else:
+            rp_value, rp_tone = "需复核", "danger"
+
+        spectral_run = self.controller.spectral_qc_workspace.get("run", {})
+        spectral_summary = self.controller.spectral_qc_workspace.get("summary", {})
+        spectral_status = str(spectral_run.get("last_result_status", "")).lower()
+        spectral_windows = int(spectral_summary.get("qc_good_windows", 0) or 0) + int(
+            spectral_summary.get("attention_windows", 0) or 0
+        )
+        if spectral_status in {"ok", "ready", "complete", "completed", "success"} or spectral_windows > 0:
+            spectral_value, spectral_tone = "已分析", "success"
+        elif spectral_status in {"error", "failed", "blocked"}:
+            spectral_value, spectral_tone = "需复核", "danger"
+        else:
+            spectral_value, spectral_tone = "待分析", "warning"
+
+        report_workspace = self.controller.report_center_workspace
+        export_status = str(report_workspace.get("export_status", ""))
+        export_status_key = export_status.lower()
+        if export_status_key in {"exported", "ready", "delivered"} or any(marker in export_status for marker in ("已导出", "已交付")):
+            delivery_value, delivery_tone = "已交付", "success"
+        elif export_status_key in {"failed", "error", "blocked"}:
+            delivery_value, delivery_tone = "需复核", "danger"
+        else:
+            delivery_value, delivery_tone = "待交付", "warning"
+
+        self._set_closure_stage("device", "设备", device_value, device_tone)
+        self._set_closure_stage("capture", "采集", capture_value, capture_tone)
+        self._set_closure_stage("rp", "RP", rp_value, rp_tone)
+        self._set_closure_stage("spectral", "谱修正", spectral_value, spectral_tone)
+        self._set_closure_stage("delivery", "交付", delivery_value, delivery_tone)

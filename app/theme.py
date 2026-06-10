@@ -291,6 +291,38 @@ def build_stylesheet() -> str:
         border-color: #efc1c1;
         color: {TOKENS.color_error};
     }}
+    QWidget[shellClosureStrip="true"] {{
+        padding: 2px;
+        border-radius: {TOKENS.radius_md}px;
+        background: rgba(33, 66, 84, 0.08);
+        border: 1px solid rgba(33, 66, 84, 0.10);
+    }}
+    QLabel[closureStage="true"] {{
+        min-width: 62px;
+        padding: 6px 8px;
+        border-radius: {TOKENS.radius_sm}px;
+        background: rgba(255, 255, 255, 0.76);
+        border: 1px solid rgba(255, 255, 255, 0.62);
+        color: {TOKENS.color_text_muted};
+        font-size: {TOKENS.font_xs}px;
+        font-weight: 800;
+        line-height: 1.18;
+    }}
+    QLabel[closureStage="true"][closureTone="success"] {{
+        background: #e8f7ee;
+        border-color: #b7dcc9;
+        color: {TOKENS.color_success};
+    }}
+    QLabel[closureStage="true"][closureTone="warning"] {{
+        background: #fff5df;
+        border-color: #ead1a5;
+        color: {TOKENS.color_warning};
+    }}
+    QLabel[closureStage="true"][closureTone="danger"] {{
+        background: #fdeaea;
+        border-color: #efc1c1;
+        color: {TOKENS.color_error};
+    }}
     QLabel#chip {{
         border-radius: {TOKENS.radius_sm}px;
         padding: 4px 10px;
