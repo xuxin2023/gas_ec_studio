@@ -46,10 +46,10 @@ class NavigationRail(CardFrame):
             self._buttons[key] = button
             layout.addWidget(button)
 
-        layout.addStretch(1)
-
-        footer = QFrame()
-        footer_layout = QVBoxLayout(footer)
+        self.principle_footer = QFrame()
+        self.principle_footer.setProperty("navPrincipleCard", True)
+        self.principle_footer.setMaximumHeight(150)
+        footer_layout = QVBoxLayout(self.principle_footer)
         footer_layout.setContentsMargins(0, 0, 0, 0)
         footer_layout.setSpacing(4)
         title = QLabel("视图原则")
@@ -65,7 +65,8 @@ class NavigationRail(CardFrame):
             item.setObjectName("subtitle")
             item.setWordWrap(True)
             footer_layout.addWidget(item)
-        layout.addWidget(footer)
+        layout.addWidget(self.principle_footer)
+        layout.addStretch(1)
 
         self.select("device_center")
 

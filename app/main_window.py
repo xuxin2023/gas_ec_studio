@@ -91,7 +91,7 @@ class StudioMainWindow(QMainWindow):
 
         self.log_panel = LogPanel()
         vertical.addWidget(self.log_panel)
-        vertical.setSizes([820, 220])
+        vertical.setSizes([930, 84])
 
         self.device_center_page.open_detail_requested.connect(self._open_device_detail)
         self.device_center_page.open_realtime_requested.connect(lambda: self._set_page("realtime"))

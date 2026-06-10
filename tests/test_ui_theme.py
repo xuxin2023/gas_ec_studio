@@ -134,13 +134,33 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.header.property("cardRole") == "hero"
     assert window.header_status.property("heroStatus") is True
     assert window.navigation.property("cardRole") == "rail"
+    assert window.navigation.principle_footer.property("navPrincipleCard") is True
+    assert window.navigation.principle_footer.maximumHeight() == 150
     assert window.inspector.property("cardRole") == "rail"
     assert window.log_panel.property("cardRole") == "console"
+    assert window.log_panel._expanded is False
+    assert window.log_panel.editor.isHidden() is True
+    assert window.log_panel.latest_line.isHidden() is False
+    assert window.log_panel.maximumHeight() == 84
+    assert window.log_panel.toggle_button.text() == "展开"
+    assert window.log_panel.log_count_chip.text().endswith("条")
+    window.log_panel.set_lines(["first", "second"])
+    assert window.log_panel.log_count_chip.text() == "2 条"
+    assert window.log_panel.latest_line.text() == "first"
+    window.log_panel.clear()
+    assert window.log_panel.log_count_chip.text() == "0 条"
+    assert window.log_panel.latest_line.text() == "暂无日志。"
     assert window.header_online_tile.property("shellTile") is True
     assert window.header_alarm_tile.property("shellTone") in {"success", "danger"}
     assert window.operator_btn.property("viewSwitch") is True
     assert window.engineer_btn.property("viewSwitch") is True
     assert all(button.property("navButton") is True for button in window.navigation._buttons.values())
+
+    window.log_panel.set_expanded(True)
+    assert window.log_panel._expanded is True
+    assert window.log_panel.editor.isHidden() is False
+    assert window.log_panel.latest_line.isHidden() is True
+    assert window.log_panel.maximumHeight() == 260
 
     window.close()
     controller.shutdown()
