@@ -570,6 +570,12 @@ def test_report_center_registers_official_raw_bundle_as_active_fixture_pack(monk
         assert "pass_rate=100.0%" in rows_text
         assert hasattr(page, "_official_bundle_controls_card")
         assert not page._official_bundle_controls_card.isHidden()
+        assert page._official_bundle_controls_card.property("deckRole") == "officialRawOpsCockpit"
+        assert page._official_bundle_status_card.property("cardRole") == "console"
+        assert page._official_ops_chip.text() == "闭环就绪"
+        assert set(page._official_ops_values) == {"bundle", "parity", "public", "selected"}
+        assert page._official_ops_values["bundle"][1].text()
+        assert page._official_ops_values["parity"][1].text() == "pass"
 
         controller.set_report_nav_section("benchmark_cockpit")
         controller.refresh_report_center()
@@ -873,6 +879,8 @@ def test_report_center_official_raw_matrix_filters_and_fixture_actions(monkeypat
         assert hasattr(page, "_official_fixture_rerun")
         assert hasattr(page, "_official_fixture_disable")
         assert hasattr(page, "_official_fixture_replace")
+        assert page._official_bundle_controls_card.property("deckRole") == "officialRawOpsCockpit"
+        assert page._official_ops_values["selected"][1].text()
 
         detail = controller.inspect_official_raw_fixture_detail_for_report_center("site_002_official")
         assert detail["status"] == "pass"

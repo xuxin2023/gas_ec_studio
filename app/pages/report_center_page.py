@@ -1058,22 +1058,106 @@ class ReportCenterPage(QWidget):
                     if idx >= 0:
                         parent_layout.insertWidget(idx + 1, self._benchmark_controls_card)
 
+    def _official_ops_metric_tile(self, key: str, title: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setMaximumHeight(72)
+        layout = QVBoxLayout(tile)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setSpacing(1)
+        label = QLabel(_ui_safe_text(title))
+        label.setObjectName("metricLabel")
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setProperty("compactMetric", True)
+        value.setWordWrap(False)
+        note = QLabel("--")
+        note.setObjectName("subtitle")
+        note.setWordWrap(False)
+        layout.addWidget(label)
+        layout.addWidget(value)
+        layout.addWidget(note)
+        self._official_ops_values[key] = (tile, value, note)
+        return tile
+
+    def _official_button_group(
+        self,
+        title: str,
+        subtitle: str,
+        buttons: list[QPushButton],
+        *,
+        columns: int = 3,
+    ) -> CardFrame:
+        card = CardFrame(muted=True, role="tile")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
+        layout.addWidget(section_title(title, subtitle))
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(TOKENS.spacing_xs)
+        grid.setVerticalSpacing(TOKENS.spacing_xs)
+        for index, button in enumerate(buttons):
+            grid.addWidget(button, index // columns, index % columns)
+        layout.addLayout(grid)
+        return card
+
     def _build_official_raw_bundle_controls(self, report: dict) -> None:
         if not hasattr(self, "_official_bundle_controls_card"):
             self._official_bundle_controls_card = CardFrame(muted=True, role="panel")
+            self._official_bundle_controls_card.setProperty("deckRole", "officialRawOpsCockpit")
             self._official_bundle_controls_layout = QVBoxLayout(self._official_bundle_controls_card)
             self._official_bundle_controls_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
             self._official_bundle_controls_layout.setSpacing(TOKENS.spacing_sm)
-            self._official_bundle_controls_layout.addWidget(
-                section_title("行业参考原始包", "检查、归档或注册真实 raw-to-final 参考验证包。")
-            )
-            ctrl_row = QHBoxLayout()
-            ctrl_row.setSpacing(TOKENS.spacing_md)
-            ctrl_row.addWidget(QLabel("验证包："))
+            header = QHBoxLayout()
+            header.setContentsMargins(0, 0, 0, 0)
+            header.addWidget(section_title("行业参考原始包", "检查、归档或注册真实 raw-to-final 参考验证包。"))
+            header.addStretch(1)
+            self._official_ops_chip = chip("待选择", "warning")
+            header.addWidget(self._official_ops_chip)
+            self._official_bundle_controls_layout.addLayout(header)
+
+            self._official_ops_values: dict[str, tuple[CardFrame, QLabel, QLabel]] = {}
+            ops_grid = QGridLayout()
+            ops_grid.setContentsMargins(0, 0, 0, 0)
+            ops_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+            ops_grid.setVerticalSpacing(TOKENS.spacing_sm)
+            for index, (key, title) in enumerate(
+                (
+                    ("bundle", "验证包"),
+                    ("parity", "对标状态"),
+                    ("public", "公开参考"),
+                    ("selected", "当前选择"),
+                )
+            ):
+                ops_grid.addWidget(self._official_ops_metric_tile(key, title), 0, index)
+            self._official_bundle_controls_layout.addLayout(ops_grid)
+
+            source_card = CardFrame(muted=True, role="tile")
+            source_layout = QVBoxLayout(source_card)
+            source_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+            source_layout.setSpacing(TOKENS.spacing_xs)
+            source_layout.addWidget(section_title("验证包来源", "选择单包或目录根，替换/覆盖选项在同一区域确认。"))
+            source_row = QHBoxLayout()
+            source_row.setContentsMargins(0, 0, 0, 0)
+            source_row.setSpacing(TOKENS.spacing_sm)
             self._official_bundle_path = QLineEdit()
             self._official_bundle_path.setPlaceholderText("references/reference/official_raw/site_001")
-            ctrl_row.addWidget(self._official_bundle_path, 1)
             self._official_bundle_browse = QPushButton("浏览")
+            source_row.addWidget(QLabel("路径"))
+            source_row.addWidget(self._official_bundle_path, 1)
+            source_row.addWidget(self._official_bundle_browse)
+            source_layout.addLayout(source_row)
+            option_row = QHBoxLayout()
+            option_row.setContentsMargins(0, 0, 0, 0)
+            option_row.setSpacing(TOKENS.spacing_sm)
+            self._public_fixture_overwrite = QCheckBox("覆盖公开缓存")
+            self._official_bundle_replace = QCheckBox("替换现有")
+            option_row.addWidget(self._public_fixture_overwrite)
+            option_row.addWidget(self._official_bundle_replace)
+            option_row.addStretch(1)
+            source_layout.addLayout(option_row)
+            self._official_bundle_controls_layout.addWidget(source_card)
+
             self._official_bundle_build_manifest = QPushButton("生成清单")
             self._official_bundle_inspect = QPushButton("检查")
             self._official_bundle_validate = QPushButton("验证 P0")
@@ -1085,25 +1169,48 @@ class ReportCenterPage(QWidget):
             self._official_bundle_inspect_tree = QPushButton("检查目录")
             self._official_bundle_register_tree = QPushButton("注册目录")
             self._public_fixture_refresh = QPushButton("刷新公开参考")
-            self._public_fixture_overwrite = QCheckBox("覆盖公开缓存")
-            self._official_bundle_replace = QCheckBox("替换现有")
-            ctrl_row.addWidget(self._official_bundle_browse)
-            ctrl_row.addWidget(self._official_bundle_build_manifest)
-            ctrl_row.addWidget(self._official_bundle_inspect)
-            ctrl_row.addWidget(self._official_bundle_validate)
-            ctrl_row.addWidget(self._official_bundle_evidence_pack)
-            ctrl_row.addWidget(self._official_bundle_acceptance)
-            ctrl_row.addWidget(self._official_bundle_register)
-            ctrl_row.addWidget(self._official_bundle_build_tree_manifests)
-            ctrl_row.addWidget(self._official_bundle_inspect_tree)
-            ctrl_row.addWidget(self._official_bundle_register_tree)
-            ctrl_row.addWidget(self._public_fixture_refresh)
-            ctrl_row.addWidget(self._public_fixture_overwrite)
-            ctrl_row.addWidget(self._official_bundle_replace)
-            self._official_bundle_controls_layout.addLayout(ctrl_row)
-            run_row = QHBoxLayout()
-            run_row.setSpacing(TOKENS.spacing_md)
-            run_row.addWidget(QLabel("参考运行："))
+            action_grid = QGridLayout()
+            action_grid.setContentsMargins(0, 0, 0, 0)
+            action_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+            action_grid.setVerticalSpacing(TOKENS.spacing_sm)
+            action_grid.addWidget(
+                self._official_button_group(
+                    "单包闭环",
+                    "从清单到注册的 raw-to-final 单包动作。",
+                    [
+                        self._official_bundle_build_manifest,
+                        self._official_bundle_inspect,
+                        self._official_bundle_validate,
+                        self._official_bundle_evidence_pack,
+                        self._official_bundle_acceptance,
+                        self._official_bundle_register,
+                    ],
+                ),
+                0,
+                0,
+            )
+            action_grid.addWidget(
+                self._official_button_group(
+                    "目录批量",
+                    "批量清单、目录检查、注册和公开参考刷新。",
+                    [
+                        self._official_bundle_build_tree_manifests,
+                        self._official_bundle_inspect_tree,
+                        self._official_bundle_register_tree,
+                        self._public_fixture_refresh,
+                    ],
+                    columns=2,
+                ),
+                0,
+                1,
+            )
+            self._official_bundle_controls_layout.addLayout(action_grid)
+
+            run_card = CardFrame(muted=True, role="tile")
+            run_layout = QVBoxLayout(run_card)
+            run_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+            run_layout.setSpacing(TOKENS.spacing_xs)
+            run_layout.addWidget(section_title("参考运行", "记录外部运行命令与输出，或直接触发闭环运行。"))
             self._official_run_command = QLineEdit()
             self._official_run_command.setPlaceholderText("reference_processor.exe --run reference/project.config")
             self._official_run_version = QLineEdit()
@@ -1113,17 +1220,26 @@ class ReportCenterPage(QWidget):
             self._official_run_capture = QPushButton("记录运行")
             self._official_closure_run = QPushButton("闭环运行")
             self._official_closure_run.setProperty("variant", "primary")
-            run_row.addWidget(self._official_run_command, 2)
-            run_row.addWidget(QLabel("版本"))
-            run_row.addWidget(self._official_run_version)
-            run_row.addWidget(QLabel("输出"))
-            run_row.addWidget(self._official_run_outputs)
-            run_row.addWidget(self._official_run_capture)
-            run_row.addWidget(self._official_closure_run)
-            self._official_bundle_controls_layout.addLayout(run_row)
-            filter_row = QHBoxLayout()
-            filter_row.setSpacing(TOKENS.spacing_md)
-            filter_row.addWidget(QLabel("矩阵："))
+            run_form = QGridLayout()
+            run_form.setContentsMargins(0, 0, 0, 0)
+            run_form.setHorizontalSpacing(TOKENS.spacing_sm)
+            run_form.setVerticalSpacing(TOKENS.spacing_xs)
+            run_form.addWidget(QLabel("命令"), 0, 0)
+            run_form.addWidget(self._official_run_command, 0, 1, 1, 3)
+            run_form.addWidget(QLabel("版本"), 0, 4)
+            run_form.addWidget(self._official_run_version, 0, 5)
+            run_form.addWidget(QLabel("输出"), 1, 0)
+            run_form.addWidget(self._official_run_outputs, 1, 1, 1, 3)
+            run_form.addWidget(self._official_run_capture, 1, 4)
+            run_form.addWidget(self._official_closure_run, 1, 5)
+            run_layout.addLayout(run_form)
+            self._official_bundle_controls_layout.addWidget(run_card)
+
+            matrix_card = CardFrame(muted=True, role="tile")
+            matrix_layout = QVBoxLayout(matrix_card)
+            matrix_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+            matrix_layout.setSpacing(TOKENS.spacing_xs)
+            matrix_layout.addWidget(section_title("验证矩阵", "筛选、查看详情、重跑、停用或替换单个验证包。"))
             self._official_matrix_format = QComboBox()
             self._official_matrix_site = QComboBox()
             self._official_matrix_parity = QComboBox()
@@ -1133,24 +1249,35 @@ class ReportCenterPage(QWidget):
             self._official_fixture_rerun = QPushButton("重跑验证包")
             self._official_fixture_disable = QPushButton("停用验证包")
             self._official_fixture_replace = QPushButton("替换验证包")
-            filter_row.addWidget(QLabel("格式"))
-            filter_row.addWidget(self._official_matrix_format)
-            filter_row.addWidget(QLabel("站点"))
-            filter_row.addWidget(self._official_matrix_site)
-            filter_row.addWidget(QLabel("对标"))
-            filter_row.addWidget(self._official_matrix_parity)
-            filter_row.addWidget(QLabel("验证包"))
-            filter_row.addWidget(self._official_matrix_fixture, 1)
-            filter_row.addWidget(self._official_matrix_apply)
-            filter_row.addWidget(self._official_fixture_detail)
-            filter_row.addWidget(self._official_fixture_rerun)
-            filter_row.addWidget(self._official_fixture_disable)
-            filter_row.addWidget(self._official_fixture_replace)
-            self._official_bundle_controls_layout.addLayout(filter_row)
+            matrix_form = QGridLayout()
+            matrix_form.setContentsMargins(0, 0, 0, 0)
+            matrix_form.setHorizontalSpacing(TOKENS.spacing_sm)
+            matrix_form.setVerticalSpacing(TOKENS.spacing_xs)
+            matrix_form.addWidget(QLabel("格式"), 0, 0)
+            matrix_form.addWidget(self._official_matrix_format, 0, 1)
+            matrix_form.addWidget(QLabel("站点"), 0, 2)
+            matrix_form.addWidget(self._official_matrix_site, 0, 3)
+            matrix_form.addWidget(QLabel("对标"), 0, 4)
+            matrix_form.addWidget(self._official_matrix_parity, 0, 5)
+            matrix_form.addWidget(QLabel("验证包"), 1, 0)
+            matrix_form.addWidget(self._official_matrix_fixture, 1, 1, 1, 3)
+            matrix_form.addWidget(self._official_matrix_apply, 1, 4)
+            matrix_form.addWidget(self._official_fixture_detail, 1, 5)
+            matrix_form.addWidget(self._official_fixture_rerun, 2, 1)
+            matrix_form.addWidget(self._official_fixture_disable, 2, 2)
+            matrix_form.addWidget(self._official_fixture_replace, 2, 3)
+            matrix_layout.addLayout(matrix_form)
+            self._official_bundle_controls_layout.addWidget(matrix_card)
+
+            self._official_bundle_status_card = CardFrame(muted=True, role="console")
+            status_layout = QVBoxLayout(self._official_bundle_status_card)
+            status_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            status_layout.setSpacing(1)
             self._official_bundle_status = QLabel("--")
             self._official_bundle_status.setObjectName("subtitle")
             self._official_bundle_status.setWordWrap(True)
-            self._official_bundle_controls_layout.addWidget(self._official_bundle_status)
+            status_layout.addWidget(self._official_bundle_status)
+            self._official_bundle_controls_layout.addWidget(self._official_bundle_status_card)
             self._official_bundle_browse.clicked.connect(self._on_official_bundle_browse)
             self._official_bundle_build_manifest.clicked.connect(self._on_official_bundle_build_manifest)
             self._official_bundle_inspect.clicked.connect(self._on_official_bundle_inspect)
@@ -1214,6 +1341,13 @@ class ReportCenterPage(QWidget):
         if public_state.get("message"):
             status_parts.append(str(public_state.get("message")))
         self._official_bundle_status.setText(" | ".join(status_parts))
+        self._refresh_official_raw_ops_summary(
+            state=state,
+            public_state=public_state,
+            selected_fixture=selected_fixture,
+            current_path=current_path,
+            matrix_rows=matrix_rows,
+        )
         self._official_bundle_controls_card.setVisible(True)
         parent = self._official_bundle_controls_card.parent()
         if parent is None and hasattr(self, "preview_content_card"):
@@ -1222,6 +1356,66 @@ class ReportCenterPage(QWidget):
                 idx = parent_layout.indexOf(self.preview_content_card)
                 if idx >= 0:
                     parent_layout.insertWidget(idx + 1, self._official_bundle_controls_card)
+
+    def _refresh_official_raw_ops_summary(
+        self,
+        *,
+        state: dict,
+        public_state: dict,
+        selected_fixture: str,
+        current_path: str,
+        matrix_rows: list[dict],
+    ) -> None:
+        path_tail = current_path.replace("\\", "/").rstrip("/").split("/")[-1] if current_path else ""
+        selected = (
+            selected_fixture
+            or str(state.get("selected_fixture_id", "") or "")
+            or (str(matrix_rows[0].get("fixture_id", "")) if matrix_rows else "")
+            or "--"
+        )
+        parity_payload = dict(
+            state.get("parity", {})
+            or state.get("selected_parity", {})
+            or state.get("batch_parity", {})
+            or {}
+        )
+        parity_status = str(
+            parity_payload.get("status")
+            or state.get("parity_status")
+            or state.get("status")
+            or "待运行"
+        )
+        public_status = str(public_state.get("status") or "待刷新")
+        bundle_status = str(state.get("status") or ("已选择" if current_path else "未选择"))
+        bundle_value = str(state.get("fixture_id") or state.get("bundle_id") or path_tail or "--")
+        matrix_count = len(matrix_rows)
+        summary = {
+            "bundle": (bundle_value, bundle_status, self._official_status_tone(bundle_status)),
+            "parity": (parity_status, f"matrix rows={matrix_count}", self._official_status_tone(parity_status)),
+            "public": (public_status, str(public_state.get("fixture_count", "fixtures --")), self._official_status_tone(public_status)),
+            "selected": (selected, "当前矩阵选择", "accent" if selected != "--" else "warning"),
+        }
+        overall_tone = "success" if summary["parity"][2] == "success" else ("accent" if current_path else "warning")
+        self._set_chip(self._official_ops_chip, "闭环就绪" if overall_tone == "success" else "待复核", overall_tone)
+        for key, (value, note, tone) in summary.items():
+            tile, value_label, note_label = self._official_ops_values[key]
+            value_label.setText(_ui_safe_text(value))
+            note_label.setText(_ui_safe_text(note))
+            tooltip = _ui_safe_text(f"{value}\n{note}")
+            value_label.setToolTip(tooltip)
+            note_label.setToolTip(tooltip)
+            tile.setProperty("expertTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
+    @staticmethod
+    def _official_status_tone(status: str) -> str:
+        status_lower = status.strip().lower()
+        if any(token in status_lower for token in ("pass", "ready", "registered", "complete", "normalized", "closure_ready")):
+            return "success"
+        if any(token in status_lower for token in ("fail", "block", "missing", "not_", "pending", "未", "待")):
+            return "warning"
+        return "accent"
 
     def _append_official_raw_fixture_detail(self, report: dict) -> None:
         detail = dict(report.get("official_raw_selected_fixture_detail", {}) or {})
