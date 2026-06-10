@@ -54,8 +54,15 @@ def test_realtime_page_uses_session_cockpit_deck() -> None:
         assert page.capture_action_panel.property("cardRole") == "tile"
         assert page.capture_command_chip.text() == "实时控制台"
         assert page.summary_card.property("cardRole") == "cockpit"
+        assert page.summary_card.property("deckRole") == "realtimeSummaryDeck"
+        assert page.summary_card.maximumHeight() == 132
+        assert len(page.summary_metric_cards) == 4
+        assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)
+        assert all(value.property("compactMetric") is True for value in page.summary_values.values())
         assert page.plot_card.property("cardRole") == "panel"
         assert page.bottom_card.property("cardRole") == "rail"
+        assert page.bottom_card.minimumHeight() == 214
+        assert page.session_device_value.property("compactMetric") is True
         assert page.session_state_chip.text() in {"待连接", "需关注", "采集中", "等待帧"}
         assert page.session_device_value.text() != "--"
         assert "buffer=" in page.session_window_note.text()
