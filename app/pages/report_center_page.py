@@ -427,10 +427,10 @@ class ReportCenterPage(QWidget):
         self._set_combo_text(self.batch_combo, str(filters.get("batch", "")))
         self._set_combo_text(self.view_mode_combo, self._normalize_view_mode(str(filters.get("view_mode", "工程诊断"))))
 
-        self.recent_status_value.setText(str(summary.get("recent_status", "--")))
-        self.exportable_count_value.setText(str(summary.get("exportable_reports", "--")))
-        self.attention_count_value.setText(str(summary.get("attention_count", "--")))
-        self.last_generated_value.setText(str(summary.get("last_generated_at", "--")))
+        self._set_summary_metric(self.recent_status_value, summary.get("recent_status", "--"))
+        self._set_summary_metric(self.exportable_count_value, summary.get("exportable_reports", "--"))
+        self._set_summary_metric(self.attention_count_value, summary.get("attention_count", "--"))
+        self._set_summary_metric(self.last_generated_value, summary.get("last_generated_at", "--"))
 
         self._set_chip(self.summary_chips["recent_status"], "运行就绪", "success")
         self._set_chip(self.summary_chips["exportable"], "可导出", "accent")
@@ -572,6 +572,7 @@ class ReportCenterPage(QWidget):
         self.attention_count_value = QLabel("--")
         self.last_generated_value = QLabel("--")
         self.summary_chips: dict[str, QLabel] = {}
+        self.summary_cards: dict[str, CardFrame] = {}
         cards = [
             ("recent_status", "最近运行状态", self.recent_status_value),
             ("exportable", "可导出报告数量", self.exportable_count_value),
@@ -597,6 +598,7 @@ class ReportCenterPage(QWidget):
             tone_chip.setMaximumHeight(20)
             self.summary_chips[key] = tone_chip
             card_layout.addWidget(tone_chip)
+            self.summary_cards[key] = card
             layout.addWidget(card, index // 2, index % 2)
         return wrapper
 
@@ -752,10 +754,10 @@ class ReportCenterPage(QWidget):
             grid.addWidget(self._delivery_gate_tile(key, title, hint), index // 3, index % 3)
         layout.addLayout(grid)
 
-        next_card = CardFrame(muted=True, role="tile")
-        next_card.setMaximumHeight(38)
-        next_card.setProperty("gateKey", "nextAction")
-        next_layout = QHBoxLayout(next_card)
+        self.delivery_gate_next_card = CardFrame(muted=True, role="tile")
+        self.delivery_gate_next_card.setMaximumHeight(38)
+        self.delivery_gate_next_card.setProperty("gateKey", "nextAction")
+        next_layout = QHBoxLayout(self.delivery_gate_next_card)
         next_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         next_layout.setSpacing(TOKENS.spacing_xs)
         next_title = QLabel("下一步")
@@ -772,7 +774,7 @@ class ReportCenterPage(QWidget):
         next_layout.addWidget(next_title)
         next_layout.addStretch(1)
         next_layout.addWidget(self.delivery_gate_next_value)
-        layout.addWidget(next_card)
+        layout.addWidget(self.delivery_gate_next_card)
         return card
 
     def _delivery_gate_tile(self, key: str, title: str, hint: str) -> CardFrame:
@@ -890,6 +892,20 @@ class ReportCenterPage(QWidget):
         if tail.lower() in {"results", "exports"} and len(parts) > 1:
             tail = f"{parts[-2]} / {tail}"
         return tail if len(tail) <= max_chars else f"...{tail[-max_chars + 3:]}"
+
+    def _set_summary_metric(self, label: QLabel, value: object, *, max_chars: int = 9) -> None:
+        raw = _ui_safe_text(str(value or "--").strip() or "--")
+        display = raw
+        if "尚未生成真实运行结果" in raw:
+            display = "尚未生成"
+        elif "最近批次已完成" in raw:
+            display = "已完成"
+        elif len(raw) >= 16 and raw[:4].isdigit() and "-" in raw[:10]:
+            display = raw[5:16]
+        elif len(raw) > max_chars:
+            display = f"{raw[: max_chars - 1]}..."
+        label.setText(display)
+        label.setToolTip(raw)
 
     def _refresh_preview(self, report: dict, view_mode: str, filters: dict) -> None:
         self._set_chip(self.preview_mode_chip, view_mode, "accent")

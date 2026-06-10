@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QPoint, QRect
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from app.pages.report_center_page import ReportCenterPage
 from app.studio import StudioController
@@ -16,6 +17,30 @@ def _app() -> QApplication:
         app = QApplication([])
     apply_app_theme(app)
     return app
+
+
+def _bounds(widget: QWidget, root: QWidget) -> QRect:
+    return QRect(widget.mapTo(root, QPoint(0, 0)), widget.size())
+
+
+def _assert_contained(parent: QWidget, child: QWidget, root: QWidget) -> None:
+    parent_rect = _bounds(parent, root).adjusted(-1, -1, 1, 1)
+    child_rect = _bounds(child, root)
+    assert child_rect.width() > 0
+    assert child_rect.height() > 0
+    assert parent_rect.contains(child_rect), f"{child.objectName() or child.__class__.__name__} escaped its rail"
+
+
+def _assert_no_visual_overlap(widgets: list[QWidget], root: QWidget) -> None:
+    rects = [(_bounds(widget, root), widget) for widget in widgets if widget.isVisible()]
+    for index, (left_rect, left_widget) in enumerate(rects):
+        assert left_rect.width() > 0
+        assert left_rect.height() > 0
+        for right_rect, right_widget in rects[index + 1 :]:
+            assert not left_rect.intersects(right_rect), (
+                f"{left_widget.property('gateKey') or left_widget.__class__.__name__} overlaps "
+                f"{right_widget.property('gateKey') or right_widget.__class__.__name__}"
+            )
 
 
 def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tmp_path) -> None:
@@ -71,6 +96,9 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert all(card.property("cardRole") == "tile" for card in page.preview_metric_cards)
         assert all(card.maximumHeight() == 96 for card in page.preview_metric_cards)
         assert all(value.property("compactMetric") is True for value in page.preview_metric_values)
+        assert page.recent_status_value.toolTip()
+        assert len(page.recent_status_value.text()) <= 9
+        assert page.last_generated_value.toolTip()
         assert page.closure_deck_card.property("cardRole") == "rail"
         assert page.closure_deck_chip.text() == "下一步"
         assert page.inner_inspector.property("cardRole") == "panel"
@@ -126,6 +154,53 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.delivery_focus_buttons["details"].isChecked() is True
     finally:
+        page.deleteLater()
+        controller.shutdown()
+
+
+def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypatch, tmp_path) -> None:
+    app = _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    try:
+        page = ReportCenterPage(controller)
+        page.show()
+        for width, height in ((1280, 760), (1440, 920), (1600, 900)):
+            page.resize(width, height)
+            page.refresh()
+            page._show_delivery_focus("gate")
+            app.processEvents()
+
+            assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
+            assert page.delivery_focus_stack.property("stackRole") == "compactDeliveryInspector"
+            assert page.delivery_rail.width() <= page.delivery_rail.maximumWidth()
+            assert page.delivery_rail.width() >= page.delivery_rail.minimumWidth()
+            _assert_contained(page, page.delivery_rail, page)
+
+            summary_cards = list(page.summary_cards.values())
+            assert len(summary_cards) == 4
+            for card in summary_cards:
+                _assert_contained(page.delivery_rail, card, page)
+            _assert_no_visual_overlap(summary_cards, page)
+
+            gate_widgets = [
+                page.delivery_gate_hero_card,
+                *page.delivery_gate_tiles.values(),
+                page.delivery_gate_next_card,
+            ]
+            for widget in gate_widgets:
+                _assert_contained(page.delivery_gate_card, widget, page)
+            _assert_no_visual_overlap(gate_widgets, page)
+
+            visible_text = "\n".join(
+                label.text()
+                for label in page.findChildren(QLabel)
+                if label.isVisibleTo(page) and label.text()
+            )
+            assert "EddyPro" not in visible_text
+            assert "eddypro" not in visible_text
+    finally:
+        page.close()
         page.deleteLater()
         controller.shutdown()
 
