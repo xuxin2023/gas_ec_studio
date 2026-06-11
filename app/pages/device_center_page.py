@@ -13,8 +13,10 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -73,20 +75,25 @@ class DeviceCenterPage(QWidget):
         self.field_readiness_card = self._build_field_readiness()
         self.layout.addWidget(self.field_readiness_card)
 
-        self.device_grid_card = CardFrame(role="panel")
-        self.device_grid_card.setMinimumHeight(270)
-        device_grid_layout = QVBoxLayout(self.device_grid_card)
-        device_grid_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
-        device_grid_layout.setSpacing(TOKENS.spacing_md)
-        device_grid_layout.addWidget(section_title("设备面板", "每张卡片都同时承载运行状态、关键测量值和快捷入口，避免首页退化成纯表格。"))
-        self.device_grid = QGridLayout()
-        self.device_grid.setHorizontalSpacing(TOKENS.spacing_md)
-        self.device_grid.setVerticalSpacing(TOKENS.spacing_md)
-        device_grid_layout.addLayout(self.device_grid)
-        self.layout.addWidget(self.device_grid_card)
-
         self.quick_card = self._build_quick_actions()
         self.layout.addWidget(self.quick_card)
+
+        self.device_grid_card = CardFrame(role="panel")
+        self.device_grid_card.setMinimumHeight(198)
+        self.device_grid_card.setMaximumHeight(206)
+        device_grid_layout = QVBoxLayout(self.device_grid_card)
+        device_grid_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        device_grid_layout.setSpacing(TOKENS.spacing_xs)
+        device_grid_layout.addWidget(section_title("设备面板", "每张卡片都同时承载运行状态、关键测量值和快捷入口，避免首页退化成纯表格。"))
+        device_grid_title = device_grid_layout.itemAt(0).widget()
+        if device_grid_title is not None:
+            device_grid_title.setMaximumHeight(36)
+        self.device_grid = QGridLayout()
+        self.device_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        self.device_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.device_grid.setColumnStretch(0, 1)
+        device_grid_layout.addLayout(self.device_grid)
+        self.layout.addWidget(self.device_grid_card)
 
         self.operator_mission_card = self._build_operator_mission_card()
         self.layout.addWidget(self.operator_mission_card)
@@ -237,6 +244,144 @@ class DeviceCenterPage(QWidget):
             next_note.setText("先连接当前目标，再读取一帧确认协议链路。")
 
     def _build_quick_actions(self) -> CardFrame:
+        card = CardFrame(role="command")
+        card.setMinimumHeight(146)
+        card.setMaximumHeight(172)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_sm)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        title = section_title(
+            "现场快捷检查器",
+            "默认聚焦当前目标和高频动作；新增设备作为第二态收起，避免首屏被表单拉长。",
+        )
+        title.setMaximumHeight(36)
+        header.addWidget(title, 1)
+        self.quick_mode_buttons: dict[str, QToolButton] = {}
+        for mode, text in (("actions", "操作"), ("add", "新增")):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, key=mode: self._show_quick_mode(key))
+            self.quick_mode_buttons[mode] = button
+            header.addWidget(button)
+        layout.addLayout(header)
+
+        self.quick_stack = QStackedWidget()
+        self.quick_stack.setProperty("stackRole", "deviceQuickInspectorStack")
+        self.quick_stack.setMaximumHeight(112)
+        self.quick_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self.quick_stack)
+
+        self.quick_actions_panel = CardFrame(muted=True, role="tile")
+        self.quick_actions_panel.setMinimumHeight(104)
+        self.quick_actions_panel.setMaximumHeight(112)
+        self.quick_actions_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        actions_block = QVBoxLayout(self.quick_actions_panel)
+        actions_block.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+        actions_block.setSpacing(TOKENS.spacing_xs)
+
+        action_header = QHBoxLayout()
+        action_header.setContentsMargins(0, 0, 0, 0)
+        action_label = QLabel("快捷操作")
+        action_label.setObjectName("metricLabel")
+        action_header.addWidget(action_label)
+        action_header.addStretch(1)
+        self.current_target = QLabel("当前设备：尚未选择")
+        self.current_target.setObjectName("subtitle")
+        self.current_target.setWordWrap(False)
+        action_header.addWidget(self.current_target, 1)
+        actions_block.addLayout(action_header)
+
+        button_grid = QGridLayout()
+        button_grid.setContentsMargins(0, 0, 0, 0)
+        button_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        button_grid.setVerticalSpacing(TOKENS.spacing_xs)
+        actions = [
+            ("连接全部", self.controller.connect_all_devices, "primary"),
+            ("停止全部", self.controller.disconnect_all_devices, ""),
+            ("读取一帧", self.controller.read_frame_selected, ""),
+            ("广播配置", self._broadcast_config, "danger"),
+            ("实时采集", self.open_realtime_requested.emit, "primary"),
+            ("单设备详情", self._open_detail, ""),
+        ]
+        for index, (label, action, variant) in enumerate(actions):
+            button = QPushButton(label)
+            button.setMinimumWidth(0)
+            if variant:
+                button.setProperty("variant", variant)
+            button.clicked.connect(lambda _checked=False, fn=action: self._safe_call(fn))
+            button_grid.addWidget(button, index // 3, index % 3)
+        actions_block.addLayout(button_grid)
+
+        self.quick_tip_card = CardFrame(role="panel")
+        self.quick_tip_card.setMaximumHeight(0)
+        self.quick_tip_card.setVisible(False)
+        actions_block.addWidget(self.quick_tip_card)
+
+        self.quick_add_panel = CardFrame(muted=True, role="tile")
+        self.quick_add_panel.setMinimumHeight(104)
+        self.quick_add_panel.setMaximumHeight(112)
+        self.quick_add_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        add_grid = QGridLayout(self.quick_add_panel)
+        add_grid.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+        add_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        add_grid.setVerticalSpacing(TOKENS.spacing_xs)
+        self.label_input = QLineEdit("新分析仪")
+        self.port_input = QLineEdit("COM3")
+        self.baudrate_spin = QSpinBox()
+        self.baudrate_spin.setRange(1200, 921600)
+        self.baudrate_spin.setValue(115200)
+        self.device_id_input = QLineEdit("002")
+        self.analyzer_profile_combo = QComboBox()
+        for profile in self.controller.available_gas_analyzer_profiles():
+            self.analyzer_profile_combo.addItem(str(profile["label"]), str(profile["profile_id"]))
+        self.analyzer_profile_combo.setCurrentIndex(max(0, self.analyzer_profile_combo.findData("ygas_irga")))
+
+        fields = [
+            ("设备名", self.label_input),
+            ("分析仪", self.analyzer_profile_combo),
+            ("端口", self.port_input),
+            ("波特率", self.baudrate_spin),
+            ("设备 ID", self.device_id_input),
+        ]
+        for index, (label, widget) in enumerate(fields):
+            field = QWidget()
+            field_layout = QVBoxLayout(field)
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(1)
+            field_label = QLabel(label)
+            field_label.setObjectName("metricLabel")
+            field_layout.addWidget(field_label)
+            field_layout.addWidget(widget)
+            add_grid.addWidget(field, index // 3, index % 3)
+        add_button = QPushButton("添加设备")
+        add_button.setProperty("variant", "primary")
+        add_button.clicked.connect(self._add_device)
+        add_grid.addWidget(add_button, 1, 2)
+
+        self.quick_stack.addWidget(self.quick_actions_panel)
+        self.quick_stack.addWidget(self.quick_add_panel)
+        self.quick_sections = {
+            "actions": self.quick_actions_panel,
+            "add": self.quick_add_panel,
+        }
+        self._show_quick_mode("actions")
+        return card
+
+    def _show_quick_mode(self, mode: str) -> None:
+        section = self.quick_sections.get(mode)
+        if section is None:
+            return
+        self.quick_stack.setCurrentWidget(section)
+        for key, button in self.quick_mode_buttons.items():
+            button.setChecked(key == mode)
+
+    def _build_quick_actions_legacy(self) -> CardFrame:
         card = CardFrame(role="command")
         card.setMinimumHeight(238)
         card.setMaximumHeight(270)
@@ -546,6 +691,86 @@ class DeviceCenterPage(QWidget):
             item = self.device_grid.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+
+        cards = self.controller.device_cards()
+        if not cards:
+            empty = CardFrame(muted=True, role="tile")
+            empty.setMaximumHeight(92)
+            empty_layout = QVBoxLayout(empty)
+            empty_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+            empty_layout.addWidget(section_title("暂无设备", "先添加一台设备，首页摘要卡会自动生成。"))
+            self.device_grid.addWidget(empty, 0, 0)
+            return
+
+        single_card = len(cards) == 1
+        for index, data in enumerate(cards):
+            card = self._device_summary_card(data)
+            if single_card:
+                self.device_grid.addWidget(card, 0, 0)
+            else:
+                self.device_grid.addWidget(card, index // 2, index % 2)
+
+    def _device_summary_card(self, data: dict) -> CardFrame:
+        card = CardFrame(muted=not data["is_selected"], role="cockpit" if data["is_selected"] else "tile")
+        card.setMinimumHeight(116)
+        card.setMaximumHeight(126)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+        layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        layout.setVerticalSpacing(TOKENS.spacing_xs)
+
+        title = QLabel(data["label"])
+        title.setObjectName("sectionTitle")
+        title.setMaximumHeight(26)
+        layout.addWidget(title, 0, 0, 1, 2)
+        layout.addWidget(chip(data["status_text"], data["status_level"]), 0, 2)
+
+        meta = QLabel(
+            f"{data['analyzer_profile_label']} · {data['port']} · {data['baudrate']} bps · "
+            f"ID {data['device_id']} · MODE{data['mode']} · {'主动输出' if data['active_send'] else '按需读取'}"
+        )
+        meta.setObjectName("subtitle")
+        meta.setWordWrap(False)
+        meta.setMaximumHeight(18)
+        layout.addWidget(meta, 0, 3, 1, 4)
+
+        for column, (label, value) in enumerate(
+            (
+                ("CO2", f"{data['co2_ppm']:.2f} ppm" if data["co2_ppm"] is not None else "--"),
+                ("H2O", f"{data['h2o_mmol']:.2f} mmol" if data["h2o_mmol"] is not None else "--"),
+                ("压力", f"{data['pressure_kpa']:.2f} kPa" if data["pressure_kpa"] is not None else "--"),
+            )
+        ):
+            layout.addWidget(self._mini_metric(label, value), 1, column)
+
+        button_row = QHBoxLayout()
+        button_row.setContentsMargins(0, 0, 0, 0)
+        button_row.setSpacing(TOKENS.spacing_xs)
+        select_btn = QPushButton("设为当前")
+        select_btn.clicked.connect(lambda _checked=False, uid=data["uid"]: self.controller.select_device(uid))
+        link_btn = QPushButton("断开" if data["connected"] else "连接")
+        action = self.controller.disconnect_device if data["connected"] else self.controller.connect_device
+        link_btn.clicked.connect(lambda _checked=False, uid=data["uid"], fn=action: self._safe_call(lambda: fn(uid)))
+        read_btn = QPushButton("读取一帧")
+        read_btn.clicked.connect(lambda _checked=False, uid=data["uid"]: self._safe_call(lambda: self.controller.read_frame_once(uid)))
+        detail_btn = QPushButton("查看详情")
+        detail_btn.clicked.connect(lambda _checked=False, uid=data["uid"]: self.open_detail_requested.emit(uid))
+        for button in (select_btn, link_btn, read_btn, detail_btn):
+            button.setMinimumWidth(0)
+            button_row.addWidget(button)
+        layout.addLayout(button_row, 1, 3, 1, 4)
+        for column in range(7):
+            layout.setColumnStretch(column, 1)
+        return card
+
+    def _rebuild_device_cards_legacy(self) -> None:
+        while self.device_grid.count():
+            item = self.device_grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
                 widget.deleteLater()
 
         cards = self.controller.device_cards()
@@ -560,11 +785,11 @@ class DeviceCenterPage(QWidget):
         single_card = len(cards) == 1
         for index, data in enumerate(cards):
             card = CardFrame(muted=not data["is_selected"], role="cockpit" if data["is_selected"] else "tile")
-            card.setMinimumHeight(188)
-            card.setMaximumHeight(218)
+            card.setMinimumHeight(138)
+            card.setMaximumHeight(150)
             layout = QVBoxLayout(card)
-            layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-            layout.setSpacing(TOKENS.spacing_sm)
+            layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+            layout.setSpacing(TOKENS.spacing_xs)
 
             title_row = QHBoxLayout()
             title = QLabel(data["label"])
@@ -579,7 +804,8 @@ class DeviceCenterPage(QWidget):
                 f"MODE{data['mode']} · {'主动输出' if data['active_send'] else '按需读取'}"
             )
             meta.setObjectName("subtitle")
-            meta.setWordWrap(True)
+            meta.setWordWrap(False)
+            meta.setMaximumHeight(18)
             layout.addWidget(meta)
 
             metric_row = QHBoxLayout()
@@ -598,7 +824,9 @@ class DeviceCenterPage(QWidget):
                 f"当前提示：{data['last_message']}"
             )
             info.setObjectName("subtitle")
-            info.setWordWrap(True)
+            info.setWordWrap(False)
+            info.setMaximumHeight(18)
+            info.setVisible(False)
             layout.addWidget(info)
 
             button_row = QHBoxLayout()
@@ -624,8 +852,8 @@ class DeviceCenterPage(QWidget):
 
     def _mini_metric(self, title: str, value: str) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
-        card.setMinimumHeight(54)
-        card.setMaximumHeight(64)
+        card.setMinimumHeight(38)
+        card.setMaximumHeight(44)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         layout.setSpacing(0)
