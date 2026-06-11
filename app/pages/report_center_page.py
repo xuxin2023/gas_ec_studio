@@ -498,10 +498,16 @@ class ReportCenterPage(QWidget):
 
     def _build_filter_bar(self) -> CardFrame:
         card = CardFrame(role="command")
+        card.setMaximumHeight(104)
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
-        layout.addWidget(section_title("报告筛选", "从真实项目与运行批次驱动预览、导出和交付检查。"))
+        layout.setSpacing(TOKENS.spacing_sm)
+        title = section_title("报告筛选", "从真实项目与运行批次驱动预览、导出和交付检查。")
+        title.setMinimumWidth(220)
+        title.setMaximumWidth(260)
+        title.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        layout.addWidget(title)
         layout.addStretch(1)
 
         self.project_combo = QComboBox()
@@ -510,6 +516,15 @@ class ReportCenterPage(QWidget):
         self.batch_combo.setEditable(True)
         self.view_mode_combo = QComboBox()
         self.view_mode_combo.addItems(["操作汇总", "工程诊断", "管理汇报"])
+        combo_widths = (
+            (self.project_combo, 108),
+            (self.batch_combo, 108),
+            (self.view_mode_combo, 96),
+        )
+        for combo, width in combo_widths:
+            combo.setMinimumWidth(width)
+            combo.setMaximumHeight(36)
+            combo.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
 
         layout.addWidget(QLabel("项目"))
         layout.addWidget(self.project_combo)
@@ -529,6 +544,8 @@ class ReportCenterPage(QWidget):
             button = QPushButton(text)
             if primary:
                 button.setProperty("variant", "primary")
+            button.setMinimumWidth(0)
+            button.setMaximumHeight(36)
             button.clicked.connect(callback)
             layout.addWidget(button)
 
@@ -541,7 +558,7 @@ class ReportCenterPage(QWidget):
         card = CardFrame(role="cockpit")
         card.setProperty("deckRole", "reportCommandDeck")
         card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
-        card.setMaximumHeight(124)
+        card.setMaximumHeight(146)
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
@@ -577,8 +594,8 @@ class ReportCenterPage(QWidget):
     def _report_command_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("commandKey", key)
-        tile.setMinimumHeight(48)
-        tile.setMaximumHeight(58)
+        tile.setMinimumHeight(58)
+        tile.setMaximumHeight(62)
         layout = QVBoxLayout(tile)
         layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         layout.setSpacing(1)
@@ -586,16 +603,31 @@ class ReportCenterPage(QWidget):
         top.setContentsMargins(0, 0, 0, 0)
         label = QLabel(_ui_safe_text(title))
         label.setObjectName("metricLabel")
+        label.setMinimumWidth(0)
+        label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         status_chip = chip("待检查", "warning")
+        status_chip.setProperty("closureStage", True)
+        status_chip.setAlignment(Qt.AlignCenter)
+        status_chip.setMinimumWidth(52)
+        status_chip.setMaximumWidth(66)
+        status_chip.setMinimumHeight(22)
+        status_chip.setMaximumHeight(24)
+        status_chip.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         top.addWidget(label)
         top.addStretch(1)
         top.addWidget(status_chip)
         value = QLabel("--")
         value.setObjectName("metricValue")
         value.setProperty("compactMetric", True)
+        value.setMinimumWidth(0)
+        value.setMaximumHeight(20)
+        value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         value.setWordWrap(False)
         note = QLabel("--")
         note.setObjectName("subtitle")
+        note.setMinimumWidth(0)
+        note.setMaximumHeight(16)
+        note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         note.setWordWrap(False)
         layout.addLayout(top)
         layout.addWidget(value)
@@ -2561,6 +2593,8 @@ class ReportCenterPage(QWidget):
     def _set_chip(self, label: QLabel, text: str, tone: str) -> None:
         label.setText(_ui_safe_text(text))
         label.setProperty("chipTone", tone)
+        if label.property("closureStage") is True:
+            label.setProperty("closureTone", tone)
         label.style().unpolish(label)
         label.style().polish(label)
 

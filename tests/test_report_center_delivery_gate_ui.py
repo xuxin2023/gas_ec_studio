@@ -29,12 +29,19 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
 
         assert page.property("pageSurface") is True
         assert page.delivery_rail.property("cardRole") == "rail"
+        assert page.filter_bar.maximumHeight() == 104
+        assert page.project_combo.minimumWidth() >= 108
+        assert page.batch_combo.minimumWidth() >= 108
+        assert page.view_mode_combo.minimumWidth() >= 96
         assert page.report_command_deck.property("cardRole") == "cockpit"
         assert page.report_command_deck.property("deckRole") == "reportCommandDeck"
+        assert page.report_command_deck.maximumHeight() == 146
         assert page.report_command_chip.text().startswith("待生成")
         assert set(page.report_command_tiles) == {"report", "gate", "network", "benchmark", "methods", "export"}
         assert all(tile.property("cardRole") == "tile" for tile in page.report_command_tiles.values())
         assert all(value.property("compactMetric") is True for value in page.report_command_values.values())
+        assert all(chip.property("closureStage") is True for chip in page.report_command_chips.values())
+        assert all(chip.minimumHeight() == 22 for chip in page.report_command_chips.values())
         assert page.report_command_values["report"].text() == "待生成"
         assert page.report_command_values["export"].text() == "待运行"
         assert page.delivery_rail_inspector.property("deckRole") == "deliveryRailInspector"
