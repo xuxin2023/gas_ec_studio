@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
-from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 
 @dataclass(frozen=True, slots=True)
@@ -402,7 +402,11 @@ def build_stylesheet() -> str:
         border-color: {TOKENS.color_accent_hover};
     }}
     QPushButton[variant="danger"] {{
-        background: #fff5f5;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #fff1f1,
+            stop: 1 #fff8f8
+        );
         color: {TOKENS.color_error};
         border: 1px solid #f3c6c6;
     }}
@@ -509,11 +513,45 @@ def build_stylesheet() -> str:
         border-color: #a7ccd5;
     }}
     QToolButton[viewSwitch="true"] {{
-        min-width: 46px;
+        min-width: 42px;
         border-radius: 17px;
     }}
+    QFrame#card[cardRole="command"] QToolButton[viewSwitch="true"],
+    QFrame#cardMuted[cardRole="rail"] QToolButton[viewSwitch="true"],
+    QFrame#cardMuted[cardRole="panel"] QToolButton[viewSwitch="true"] {{
+        min-height: 32px;
+        padding: 0 10px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid #c8dde6;
+        color: {TOKENS.color_text_muted};
+    }}
+    QFrame#card[cardRole="command"] QToolButton[viewSwitch="true"]:hover,
+    QFrame#cardMuted[cardRole="rail"] QToolButton[viewSwitch="true"]:hover,
+    QFrame#cardMuted[cardRole="panel"] QToolButton[viewSwitch="true"]:hover {{
+        background: rgba(255, 255, 255, 0.92);
+        border-color: #95bdc8;
+        color: {TOKENS.color_text};
+    }}
+    QFrame#card[cardRole="command"] QToolButton[viewSwitch="true"]:checked,
+    QFrame#cardMuted[cardRole="rail"] QToolButton[viewSwitch="true"]:checked,
+    QFrame#cardMuted[cardRole="panel"] QToolButton[viewSwitch="true"]:checked {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #b8e9ed,
+            stop: 0.62 #dff8f6,
+            stop: 1 #f9fffc
+        );
+        border: 1px solid #8dbfc9;
+        color: {TOKENS.color_accent};
+        font-weight: 800;
+    }}
     QListWidget, QTableWidget, QTreeWidget {{
-        background: white;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #ffffff,
+            stop: 1 #f7fbfd
+        );
         border: 1px solid {TOKENS.color_border};
         border-radius: {TOKENS.radius_md}px;
         gridline-color: {TOKENS.color_border};
@@ -703,15 +741,21 @@ class CardFrame(QFrame):
 
 def section_title(title: str, subtitle: str = "") -> QWidget:
     wrapper = QWidget()
+    wrapper.setMinimumWidth(0)
+    wrapper.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
     layout = QVBoxLayout(wrapper)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(2)
     title_label = QLabel(title)
     title_label.setObjectName("sectionTitle")
+    title_label.setMinimumWidth(0)
+    title_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     layout.addWidget(title_label)
     if subtitle:
         subtitle_label = QLabel(subtitle)
         subtitle_label.setObjectName("subtitle")
+        subtitle_label.setMinimumWidth(0)
+        subtitle_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         subtitle_label.setWordWrap(True)
         layout.addWidget(subtitle_label)
     return wrapper

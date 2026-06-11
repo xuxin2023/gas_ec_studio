@@ -29,6 +29,9 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QLabel[closureStage="true"]' in stylesheet
     assert 'QPushButton[navButton="true"]' in stylesheet
     assert 'QToolButton[viewSwitch="true"]' in stylesheet
+    assert 'QFrame#cardMuted[cardRole="rail"] QToolButton[viewSwitch="true"]:checked' in stylesheet
+    assert 'QFrame#card[cardRole="command"] QToolButton[viewSwitch="true"]:checked' in stylesheet
+    assert 'QPushButton[variant="danger"]' in stylesheet and "#fff1f1" in stylesheet
     assert "QTreeWidget#workflowTree" in stylesheet
     assert "QPlainTextEdit" in stylesheet
     assert "EddyPro" not in stylesheet
