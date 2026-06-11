@@ -1076,6 +1076,48 @@ class ECProcessingPage(QWidget):
             self.step_indexes[key] = self.content_stack.addWidget(scroll)
 
     def _build_window_sampling_page(self, layout: QVBoxLayout) -> None:
+        self.window_cockpit_card = CardFrame(role="cockpit")
+        self.window_cockpit_card.setProperty("deckRole", "windowSamplingCockpit")
+        self.window_cockpit_card.setMaximumHeight(118)
+        cockpit_layout = QHBoxLayout(self.window_cockpit_card)
+        cockpit_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        cockpit_layout.setSpacing(TOKENS.spacing_md)
+        intro = QWidget()
+        intro.setMaximumWidth(170)
+        intro.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        intro_layout = QVBoxLayout(intro)
+        intro_layout.setContentsMargins(0, 0, 0, 0)
+        intro_layout.setSpacing(TOKENS.spacing_xs)
+        intro_title = QLabel("窗口驾驶舱")
+        intro_title.setObjectName("metricValue")
+        intro_title.setProperty("compactMetric", True)
+        intro_note = QLabel("先读规模、频率和批次轮廓，再调参数。")
+        intro_note.setObjectName("subtitle")
+        intro_note.setWordWrap(True)
+        intro_layout.addWidget(intro_title)
+        intro_layout.addWidget(intro_note)
+        intro_layout.addStretch(1)
+        cockpit_layout.addWidget(intro, 0)
+
+        cockpit_grid = QGridLayout()
+        cockpit_grid.setContentsMargins(0, 0, 0, 0)
+        cockpit_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        cockpit_grid.setVerticalSpacing(TOKENS.spacing_xs)
+        self.window_cockpit_tiles: dict[str, CardFrame] = {}
+        self.window_cockpit_values: dict[str, QLabel] = {}
+        self.window_cockpit_notes: dict[str, QLabel] = {}
+        for index, (key, title) in enumerate(
+            (
+                ("duration", "窗口时长"),
+                ("frequency", "采样频率"),
+                ("samples", "样本量"),
+                ("batches", "批次轮廓"),
+            )
+        ):
+            cockpit_grid.addWidget(self._window_cockpit_tile(key, title), index // 2, index % 2)
+        cockpit_layout.addLayout(cockpit_grid, 1)
+        layout.addWidget(self.window_cockpit_card)
+
         row = QHBoxLayout()
         row.setSpacing(TOKENS.spacing_md)
         layout.addLayout(row)
@@ -1132,6 +1174,29 @@ class ECProcessingPage(QWidget):
         self.window_plan_note.setWordWrap(True)
         timeline_layout.addWidget(self.window_plan_note)
         layout.addWidget(timeline_card)
+
+    def _window_cockpit_tile(self, key: str, title: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setMaximumHeight(46)
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        tile_layout.setSpacing(0)
+        title_label = QLabel(title)
+        title_label.setObjectName("metricLabel")
+        value_label = QLabel("--")
+        value_label.setObjectName("metricValue")
+        value_label.setProperty("compactMetric", True)
+        value_label.setWordWrap(False)
+        value_label.setMinimumWidth(0)
+        value_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        note_label = QLabel("--")
+        note_label.setVisible(False)
+        tile_layout.addWidget(title_label)
+        tile_layout.addWidget(value_label)
+        self.window_cockpit_tiles[key] = tile
+        self.window_cockpit_values[key] = value_label
+        self.window_cockpit_notes[key] = note_label
+        return tile
 
     def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
@@ -2527,7 +2592,13 @@ class ECProcessingPage(QWidget):
             return
         current = self._current_window()
         if current is None:
-            samples = self.window_minutes_spin.value() * self.window_sample_hz_spin.value() * 60
+            minutes = self.window_minutes_spin.value()
+            sample_hz = self.window_sample_hz_spin.value()
+            samples = minutes * sample_hz * 60
+            self._set_window_cockpit_tile("duration", f"{minutes} min", "configured window length", "accent")
+            self._set_window_cockpit_tile("frequency", f"{sample_hz} Hz", "configured sampling frequency", "accent")
+            self._set_window_cockpit_tile("samples", f"{samples:,}", "expected samples per window", "accent")
+            self._set_window_cockpit_tile("batches", "preview x4", "synthetic window preview before RP run", "warning")
             self.window_readiness_value.setText(f"{samples:,}")
             self.window_readiness_note.setText(
                 f"{self.window_minutes_spin.value()} min × {self.window_sample_hz_spin.value()} Hz，等待 RP 运行验证。"
@@ -2560,7 +2631,13 @@ class ECProcessingPage(QWidget):
         section = self._section_workspace("window_sampling")
         current = self._current_window()
         if current is None:
-            samples = self.window_minutes_spin.value() * self.window_sample_hz_spin.value() * 60
+            minutes = self.window_minutes_spin.value()
+            sample_hz = self.window_sample_hz_spin.value()
+            samples = minutes * sample_hz * 60
+            self._set_window_cockpit_tile("duration", f"{minutes} min", "configured window length", "accent")
+            self._set_window_cockpit_tile("frequency", f"{sample_hz} Hz", "configured sampling frequency", "accent")
+            self._set_window_cockpit_tile("samples", f"{samples:,}", "expected samples per window", "accent")
+            self._set_window_cockpit_tile("batches", "preview x4", "synthetic window preview before RP run", "warning")
             self.window_samples_label.setText(f"{samples:,} 点 / 窗口")
             self.window_preview_note.setText("暂无真实 RP 结果，运行处理后显示窗口切分与连续性摘要。")
             xs = np.arange(1, 5, dtype=float)
@@ -2578,11 +2655,35 @@ class ECProcessingPage(QWidget):
         else:
             xs = np.array([1.0], dtype=float)
             ys = np.array([float(current.sample_count)], dtype=float)
+        sample_hz = self.window_sample_hz_spin.value()
+        estimated_minutes = current.sample_count / max(float(sample_hz) * 60.0, 1.0)
+        missing_tone = "success" if current.missing_ratio <= 0.05 else ("warning" if current.missing_ratio <= 0.15 else "danger")
+        self._set_window_cockpit_tile("duration", f"{estimated_minutes:.1f} min", f"window={current.window_id}", "success")
+        self._set_window_cockpit_tile("frequency", f"{sample_hz} Hz", "active sampling setting", "success")
+        self._set_window_cockpit_tile("samples", f"{current.sample_count:,}", f"missing={current.missing_ratio * 100:.1f}%", missing_tone)
+        self._set_window_cockpit_tile("batches", f"{len(xs)} windows", "real RP window series", "success")
         self.window_plan_curve.setData(xs, ys)
         self.window_plan_note.setText(
             f"真实窗口 {len(xs)} 个；当前窗口 {current.window_id}，缺测率 {current.missing_ratio * 100:.1f}%。"
         )
         self._refresh_readiness_panel()
+
+    def _set_window_cockpit_tile(self, key: str, value: str, note: str, tone: str) -> None:
+        if not hasattr(self, "window_cockpit_values") or key not in self.window_cockpit_values:
+            return
+        value_label = self.window_cockpit_values[key]
+        note_label = self.window_cockpit_notes[key]
+        tile = self.window_cockpit_tiles[key]
+        display_value = self._compact_text(value, 18)
+        display_note = self._compact_text(note, 44)
+        value_label.setText(display_value)
+        note_label.setText(display_note)
+        tooltip = f"{value}\n{note}"
+        value_label.setToolTip(tooltip)
+        tile.setToolTip(tooltip)
+        tile.setProperty("evidenceTone", tone)
+        tile.style().unpolish(tile)
+        tile.style().polish(tile)
 
     def _refresh_cleaning_preview(self, *_args) -> None:
         section = self._section_workspace("data_cleaning")
