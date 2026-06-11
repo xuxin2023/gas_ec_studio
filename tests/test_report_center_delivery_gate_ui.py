@@ -77,10 +77,12 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_deck_card.property("cardRole") == "rail"
         assert page.preview_deck_card.property("deckRole") == "reportPreviewDeck"
         assert page.preview_delivery_trail_card.property("cardRole") == "console"
+        assert page.preview_delivery_trail_card.maximumHeight() == 108
         assert page.preview_delivery_trail_value.property("compactMetric") is True
         assert page.preview_delivery_trail_chip.property("chipTone") == "accent"
         assert page.preview_content_card.property("cardRole") == "panel"
         assert page.preview_content_card.property("deckRole") == "compactPreviewPane"
+        assert page.preview_content_card.maximumHeight() == 420
         assert page.expert_review_card.property("deckRole") == "expertReviewStrip"
         assert page.expert_review_card.isHidden() is True
         assert page.preview_plot.maximumHeight() == 220
