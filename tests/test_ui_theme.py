@@ -146,12 +146,13 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.log_panel._expanded is False
     assert window.log_panel.editor.isHidden() is True
     assert window.log_panel.latest_line.isHidden() is False
-    assert window.log_panel.maximumHeight() == 72
+    assert window.log_panel.maximumHeight() == 54
     assert window.log_panel.toggle_button.text() == "展开"
     assert window.log_panel.log_count_chip.text().endswith("条")
     window.log_panel.set_lines(["first", "second"])
     assert window.log_panel.log_count_chip.text() == "2 条"
     assert window.log_panel.latest_line.text() == "first"
+    assert window.log_panel.latest_line.toolTip() == "first"
     window.log_panel.clear()
     assert window.log_panel.log_count_chip.text() == "0 条"
     assert window.log_panel.latest_line.text() == "暂无日志。"

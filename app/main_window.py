@@ -110,7 +110,7 @@ class StudioMainWindow(QMainWindow):
 
         self.log_panel = LogPanel()
         self.vertical_splitter.addWidget(self.log_panel)
-        self.vertical_splitter.setSizes([780, 72])
+        self.vertical_splitter.setSizes([800, 54])
 
         self.device_center_page.open_detail_requested.connect(self._open_device_detail)
         self.device_center_page.open_realtime_requested.connect(lambda: self._set_page("realtime"))
@@ -320,10 +320,10 @@ class StudioMainWindow(QMainWindow):
         self.inspector.setVisible(inspector_visible)
         if not inspector_visible:
             self.inner_splitter.setSizes([1, 0])
-            self.vertical_splitter.setSizes([620, 72])
+            self.vertical_splitter.setSizes([650, 54])
         else:
             self.inner_splitter.setSizes([980, 300])
-            self.vertical_splitter.setSizes([780, 72])
+            self.vertical_splitter.setSizes([800, 54])
 
     def _refresh_closure_strip(self, summary: dict) -> None:
         if summary["online_devices"] <= 0:
