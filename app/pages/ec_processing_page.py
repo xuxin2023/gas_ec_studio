@@ -1355,6 +1355,26 @@ class ECProcessingPage(QWidget):
             tile.style().unpolish(tile)
             tile.style().polish(tile)
 
+    def _set_steadiness_metric(self, key: str, value: str, tone: str = "warning") -> None:
+        label = self.steadiness_metric_values.get(key)
+        if label is not None:
+            label.setText(value)
+        tile = self.steadiness_metric_tiles.get(key)
+        if tile is not None:
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
+    def _set_turbulence_metric(self, key: str, value: str, tone: str = "warning") -> None:
+        label = self.turbulence_metric_values.get(key)
+        if label is not None:
+            label.setText(value)
+        tile = self.turbulence_metric_tiles.get(key)
+        if tile is not None:
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
     def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
         row.setSpacing(TOKENS.spacing_md)
@@ -1866,6 +1886,9 @@ class ECProcessingPage(QWidget):
         row.setSpacing(TOKENS.spacing_md)
         layout.addLayout(row)
         param_card = CardFrame()
+        param_card.setProperty("deckRole", "steadinessParameterPanel")
+        param_card.setMaximumHeight(260)
+        self.steadiness_param_card = param_card
         param_layout = QVBoxLayout(param_card)
         param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         param_layout.setSpacing(TOKENS.spacing_md)
@@ -1877,19 +1900,58 @@ class ECProcessingPage(QWidget):
         param_layout.addLayout(form)
         row.addWidget(param_card, 2)
 
-        preview_card = CardFrame(muted=True)
+        preview_card = CardFrame(muted=True, role="panel")
+        preview_card.setProperty("deckRole", "steadinessEvidencePanel")
+        preview_card.setMaximumHeight(360)
+        self.steadiness_evidence_card = preview_card
         preview_layout = QVBoxLayout(preview_card)
-        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        preview_layout.setSpacing(TOKENS.spacing_sm)
         preview_layout.addWidget(section_title("中间结果", "预留稳态等级和解释区。"))
+        self.steadiness_status_chip = chip("preview", "warning")
+        preview_layout.addWidget(self.steadiness_status_chip, 0, Qt.AlignRight)
+        metric_grid = QGridLayout()
+        metric_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        metric_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.steadiness_metric_tiles: dict[str, CardFrame] = {}
+        self.steadiness_metric_values: dict[str, QLabel] = {}
+        for column, (key, title, value) in enumerate(
+            (
+                ("rule", "rule", "--"),
+                ("qc", "QC", "--"),
+                ("score", "score", "--"),
+                ("windows", "windows", "--"),
+            )
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("evidenceTone", "warning")
+            tile.setMaximumHeight(58)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(0)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value_label = QLabel(value)
+            value_label.setObjectName("metricValue")
+            value_label.setProperty("compactMetric", True)
+            value_label.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label)
+            metric_grid.addWidget(tile, 0, column)
+            self.steadiness_metric_tiles[key] = tile
+            self.steadiness_metric_values[key] = value_label
+        preview_layout.addLayout(metric_grid)
         self.steadiness_preview_label = QLabel("--")
         self.steadiness_preview_label.setObjectName("subtitle")
         self.steadiness_preview_label.setWordWrap(True)
-        preview_layout.addWidget(self.steadiness_preview_label)
         self.steadiness_score_plot = pg.PlotWidget()
         configure_plot_theme(self.steadiness_score_plot, left_label="stationarity score", bottom_label="window")
+        self.steadiness_score_plot.setMinimumHeight(168)
+        self.steadiness_score_plot.setMaximumHeight(190)
         self.steadiness_score_curve = self.steadiness_score_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["secondary"], width=2.1))
         preview_layout.addWidget(self.steadiness_score_plot, 1)
+        self.steadiness_preview_label.setMaximumHeight(42)
+        preview_layout.addWidget(self.steadiness_preview_label)
         row.addWidget(preview_card, 3)
 
     def _build_turbulence_page(self, layout: QVBoxLayout) -> None:
@@ -1897,6 +1959,9 @@ class ECProcessingPage(QWidget):
         row.setSpacing(TOKENS.spacing_md)
         layout.addLayout(row)
         param_card = CardFrame()
+        param_card.setProperty("deckRole", "turbulenceParameterPanel")
+        param_card.setMaximumHeight(260)
+        self.turbulence_param_card = param_card
         param_layout = QVBoxLayout(param_card)
         param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         param_layout.setSpacing(TOKENS.spacing_md)
@@ -1908,20 +1973,59 @@ class ECProcessingPage(QWidget):
         param_layout.addLayout(form)
         row.addWidget(param_card, 2)
 
-        preview_card = CardFrame(muted=True)
+        preview_card = CardFrame(muted=True, role="panel")
+        preview_card.setProperty("deckRole", "turbulenceEvidencePanel")
+        preview_card.setMaximumHeight(360)
+        self.turbulence_evidence_card = preview_card
         preview_layout = QVBoxLayout(preview_card)
-        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        preview_layout.setSpacing(TOKENS.spacing_sm)
         preview_layout.addWidget(section_title("中间结果", "先保留文字解释区，后续可接入稳定度散点图。"))
+        self.turbulence_status_chip = chip("preview", "warning")
+        preview_layout.addWidget(self.turbulence_status_chip, 0, Qt.AlignRight)
+        metric_grid = QGridLayout()
+        metric_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        metric_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.turbulence_metric_tiles: dict[str, CardFrame] = {}
+        self.turbulence_metric_values: dict[str, QLabel] = {}
+        for column, (key, title, value) in enumerate(
+            (
+                ("rule", "rule", "--"),
+                ("ustar", "u*", "--"),
+                ("score", "score", "--"),
+                ("status", "status", "--"),
+            )
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("evidenceTone", "warning")
+            tile.setMaximumHeight(58)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(0)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value_label = QLabel(value)
+            value_label.setObjectName("metricValue")
+            value_label.setProperty("compactMetric", True)
+            value_label.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label)
+            metric_grid.addWidget(tile, 0, column)
+            self.turbulence_metric_tiles[key] = tile
+            self.turbulence_metric_values[key] = value_label
+        preview_layout.addLayout(metric_grid)
         self.turbulence_preview_label = QLabel("--")
         self.turbulence_preview_label.setObjectName("subtitle")
         self.turbulence_preview_label.setWordWrap(True)
-        preview_layout.addWidget(self.turbulence_preview_label)
         self.turbulence_score_plot = pg.PlotWidget()
         configure_plot_theme(self.turbulence_score_plot, left_label="u* / turbulence score", bottom_label="window")
+        self.turbulence_score_plot.setMinimumHeight(168)
+        self.turbulence_score_plot.setMaximumHeight(190)
         self.turbulence_ustar_curve = self.turbulence_score_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["warning"], width=1.8))
         self.turbulence_score_curve = self.turbulence_score_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["secondary"], width=2.1))
         preview_layout.addWidget(self.turbulence_score_plot, 1)
+        self.turbulence_preview_label.setMaximumHeight(42)
+        preview_layout.addWidget(self.turbulence_preview_label)
         row.addWidget(preview_card, 3)
 
     def _build_uncertainty_page(self, layout: QVBoxLayout) -> None:
@@ -3276,10 +3380,22 @@ class ECProcessingPage(QWidget):
         windows = self.controller.ec_processing_workspace.get("windows", [])
         if current is None:
             self.steadiness_score_curve.setData([], [])
+            self._set_generic_chip(self.steadiness_status_chip, "preview", "warning")
+            self._set_steadiness_metric("rule", self.steadiness_rule_combo.currentText().strip(), "warning")
+            self._set_steadiness_metric("qc", "--", "warning")
+            self._set_steadiness_metric("score", "--", "warning")
+            self._set_steadiness_metric("windows", "--", "warning")
             self.steadiness_preview_label.setText("暂无真实 RP 结果，运行处理后显示窗口级 QC 与异常原因。")
             return
         xs, scores = self._series_from_windows(windows, "stationarity_score")
         self.steadiness_score_curve.setData(xs, scores)
+        tone = {"A": "success", "B": "warning", "C": "danger"}.get(str(current.qc_grade), "warning")
+        score = current.stationarity_score
+        self._set_generic_chip(self.steadiness_status_chip, "real", tone)
+        self._set_steadiness_metric("rule", self.steadiness_rule_combo.currentText().strip(), tone)
+        self._set_steadiness_metric("qc", str(current.qc_grade or "--"), tone)
+        self._set_steadiness_metric("score", f"{float(score):.1f}" if isinstance(score, (int, float)) else "--", tone)
+        self._set_steadiness_metric("windows", str(len(xs)), tone)
         self.steadiness_preview_label.setText(str(section.get("real_summary", current.reason)))
 
     def _refresh_turbulence_preview(self, *_args) -> None:
@@ -3289,6 +3405,11 @@ class ECProcessingPage(QWidget):
         if current is None:
             self.turbulence_ustar_curve.setData([], [])
             self.turbulence_score_curve.setData([], [])
+            self._set_generic_chip(self.turbulence_status_chip, "preview", "warning")
+            self._set_turbulence_metric("rule", self.ustar_rule_combo.currentText().strip(), "warning")
+            self._set_turbulence_metric("ustar", "--", "warning")
+            self._set_turbulence_metric("score", "--", "warning")
+            self._set_turbulence_metric("status", "--", "warning")
             self.turbulence_preview_label.setText("暂无真实 RP 结果。")
             return
         xs, ustar = self._series_from_windows(windows, "ustar")
@@ -3296,6 +3417,22 @@ class ECProcessingPage(QWidget):
         self.turbulence_ustar_curve.setData(xs, ustar)
         self.turbulence_score_curve.setData(xs, score)
         detail = current.turbulence_detail or {}
+        status = str(detail.get("status", "unknown") or "unknown")
+        if status in {"ok", "pass", "passed"}:
+            tone = "success"
+        elif status in {"fail", "failed", "insufficient_data"}:
+            tone = "danger"
+        else:
+            tone = "warning"
+        self._set_generic_chip(self.turbulence_status_chip, "real", tone)
+        self._set_turbulence_metric("rule", self.ustar_rule_combo.currentText().strip(), tone)
+        self._set_turbulence_metric("ustar", f"{float(current.ustar):.3f}" if isinstance(current.ustar, (int, float)) else "--", tone)
+        self._set_turbulence_metric(
+            "score",
+            f"{float(current.turbulence_score):.1f}" if isinstance(current.turbulence_score, (int, float)) else "--",
+            tone,
+        )
+        self._set_turbulence_metric("status", status, tone)
         self.turbulence_preview_label.setText(
             str(
                 section.get(

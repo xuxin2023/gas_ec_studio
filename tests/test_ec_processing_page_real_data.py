@@ -187,6 +187,26 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert set(page.density_metric_values) == {"source", "factor", "raw", "primary"}
         assert all(tile.property("cardRole") == "tile" for tile in page.density_metric_tiles.values())
         assert page.density_metric_values["factor"].text() == "--"
+        assert page.steadiness_param_card.property("deckRole") == "steadinessParameterPanel"
+        assert page.steadiness_param_card.maximumHeight() == 260
+        assert page.steadiness_evidence_card.property("deckRole") == "steadinessEvidencePanel"
+        assert page.steadiness_evidence_card.maximumHeight() == 360
+        assert page.steadiness_score_plot.maximumHeight() == 190
+        assert page.steadiness_status_chip.text() == "preview"
+        assert page.steadiness_status_chip.property("chipTone") == "warning"
+        assert set(page.steadiness_metric_values) == {"rule", "qc", "score", "windows"}
+        assert all(tile.property("cardRole") == "tile" for tile in page.steadiness_metric_tiles.values())
+        assert page.steadiness_metric_values["score"].text() == "--"
+        assert page.turbulence_param_card.property("deckRole") == "turbulenceParameterPanel"
+        assert page.turbulence_param_card.maximumHeight() == 260
+        assert page.turbulence_evidence_card.property("deckRole") == "turbulenceEvidencePanel"
+        assert page.turbulence_evidence_card.maximumHeight() == 360
+        assert page.turbulence_score_plot.maximumHeight() == 190
+        assert page.turbulence_status_chip.text() == "preview"
+        assert page.turbulence_status_chip.property("chipTone") == "warning"
+        assert set(page.turbulence_metric_values) == {"rule", "ustar", "score", "status"}
+        assert all(tile.property("cardRole") == "tile" for tile in page.turbulence_metric_tiles.values())
+        assert page.turbulence_metric_values["ustar"].text() == "--"
         assert page.cockpit_method_value.property("compactMetric") is True
         assert page.step_tree.objectName() == "workflowTree"
         assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
@@ -297,6 +317,18 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.density_metric_values["factor"].text().endswith("x")
         assert page.density_metric_values["raw"].text() != "--"
         assert page.density_metric_values["primary"].text() != "--"
+        assert page.steadiness_status_chip.text() == "real"
+        assert page.steadiness_status_chip.property("chipTone") in {"success", "warning", "danger"}
+        assert page.steadiness_metric_values["rule"].text() != "--"
+        assert page.steadiness_metric_values["qc"].text() != "--"
+        assert page.steadiness_metric_values["score"].text() != "--"
+        assert page.steadiness_metric_values["windows"].text() != "--"
+        assert page.turbulence_status_chip.text() == "real"
+        assert page.turbulence_status_chip.property("chipTone") in {"success", "warning", "danger"}
+        assert page.turbulence_metric_values["rule"].text() != "--"
+        assert page.turbulence_metric_values["ustar"].text() != "--"
+        assert page.turbulence_metric_values["score"].text() != "--"
+        assert page.turbulence_metric_values["status"].text() != "--"
         assert "lag=" in page.lag_note_label.text()
         assert "u*=" in page.turbulence_preview_label.text()
         assert page.uncertainty_sampling_label.text() != "真实 RP 未提供"
@@ -399,6 +431,26 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             assert density_card_rect.top() >= density_viewport_rect.top()
             assert density_card_rect.top() < density_viewport_rect.bottom()
             assert density_plot_rect.top() < density_viewport_rect.bottom()
+            page.step_tree.setCurrentItem(page.step_items["steadiness"])
+            app.processEvents()
+            steadiness_viewport = page.content_stack.currentWidget().viewport()
+            steadiness_viewport_rect = widget_bounds(steadiness_viewport, page)
+            steadiness_card_rect = widget_bounds(page.steadiness_evidence_card, page)
+            steadiness_plot_rect = widget_bounds(page.steadiness_score_plot, page)
+            assert page.steadiness_evidence_card.maximumHeight() == 360
+            assert steadiness_card_rect.top() >= steadiness_viewport_rect.top()
+            assert steadiness_card_rect.top() < steadiness_viewport_rect.bottom()
+            assert steadiness_plot_rect.top() < steadiness_viewport_rect.bottom()
+            page.step_tree.setCurrentItem(page.step_items["turbulence"])
+            app.processEvents()
+            turbulence_viewport = page.content_stack.currentWidget().viewport()
+            turbulence_viewport_rect = widget_bounds(turbulence_viewport, page)
+            turbulence_card_rect = widget_bounds(page.turbulence_evidence_card, page)
+            turbulence_plot_rect = widget_bounds(page.turbulence_score_plot, page)
+            assert page.turbulence_evidence_card.maximumHeight() == 360
+            assert turbulence_card_rect.top() >= turbulence_viewport_rect.top()
+            assert turbulence_card_rect.top() < turbulence_viewport_rect.bottom()
+            assert turbulence_plot_rect.top() < turbulence_viewport_rect.bottom()
             assert_no_visible_competitor_name(page)
     finally:
         page.close()
