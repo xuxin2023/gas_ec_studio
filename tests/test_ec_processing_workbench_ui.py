@@ -29,12 +29,19 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
 
         assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.rail_focus_card.property("cardRole") == "panel"
+        assert page.desktop_rail_inspector.property("deckRole") == "ecRailInspector"
+        assert page.desktop_rail_stack.count() == 3
+        assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
+        assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
         assert page.rail_focus_stack.count() == 2
         assert page.rail_focus_stack.currentWidget() is page.readiness_card
         assert page.rail_focus_buttons["readiness"].isChecked() is True
         page._show_rail_focus("coverage")
         assert page.rail_focus_stack.currentWidget() is page.output_coverage_card
         assert page.rail_focus_buttons["coverage"].isChecked() is True
+        assert page.desktop_rail_stack.currentWidget() is page.rail_focus_card
+        page._show_desktop_rail_mode("cockpit")
+        assert page.desktop_rail_stack.currentWidget() is page.cockpit_card
         assert set(page.coverage_values) == {
             "metadata",
             "processing",

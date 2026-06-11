@@ -65,6 +65,7 @@ class ECProcessingPage(QWidget):
         self.step_items: dict[str, QTreeWidgetItem] = {}
         self.workflow_lens_buttons: dict[str, QPushButton] = {}
         self.workflow_lens_notes: dict[str, QLabel] = {}
+        self.desktop_rail_mode_buttons: dict[str, QToolButton] = {}
         self.coverage_values: dict[str, QLabel] = {}
 
         layout = QVBoxLayout(self)
@@ -400,12 +401,48 @@ class ECProcessingPage(QWidget):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(TOKENS.spacing_md)
 
+        self.desktop_rail_inspector = CardFrame(role="panel")
+        self.desktop_rail_inspector.setProperty("deckRole", "ecRailInspector")
+        self.desktop_rail_inspector.setMinimumWidth(0)
+        self.desktop_rail_inspector.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        inspector_layout = QVBoxLayout(self.desktop_rail_inspector)
+        inspector_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        inspector_layout.setSpacing(TOKENS.spacing_sm)
+
+        mode_row = QHBoxLayout()
+        mode_row.setContentsMargins(0, 0, 0, 0)
+        mode_row.setSpacing(TOKENS.spacing_xs)
+        for mode, text in (
+            ("workflow", "流程"),
+            ("cockpit", "状态"),
+            ("closure", "闭合"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, key=mode: self._show_desktop_rail_mode(key))
+            self.desktop_rail_mode_buttons[mode] = button
+            mode_row.addWidget(button)
+        mode_row.addStretch(1)
+        inspector_layout.addLayout(mode_row)
+
+        self.desktop_rail_stack = QStackedWidget()
+        self.desktop_rail_stack.setMinimumWidth(0)
+        self.desktop_rail_stack.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.workflow_lens_card = self._build_workflow_lens_panel()
-        body_layout.addWidget(self.workflow_lens_card)
         self.cockpit_card = self._build_processing_cockpit()
-        body_layout.addWidget(self.cockpit_card)
         self.rail_focus_card = self._build_rail_focus_panel()
-        body_layout.addWidget(self.rail_focus_card)
+        self.desktop_rail_sections = {
+            "workflow": self.workflow_lens_card,
+            "cockpit": self.cockpit_card,
+            "closure": self.rail_focus_card,
+        }
+        for card in self.desktop_rail_sections.values():
+            self.desktop_rail_stack.addWidget(card)
+        inspector_layout.addWidget(self.desktop_rail_stack)
+        self._show_desktop_rail_mode("workflow")
+        body_layout.addWidget(self.desktop_rail_inspector)
         body_layout.addStretch(1)
         self.desktop_rail_scroll.setWidget(rail_body)
         layout.addWidget(self.desktop_rail_scroll, 1)
@@ -625,6 +662,7 @@ class ECProcessingPage(QWidget):
         return value_label, note_label
 
     def _select_workflow_lens(self, lens_key: str) -> None:
+        self._show_desktop_rail_mode("workflow")
         steps = next((items for key, _title, _subtitle, items in WORKFLOW_LENSES if key == lens_key), [])
         if not steps:
             return
@@ -658,6 +696,20 @@ class ECProcessingPage(QWidget):
         if hasattr(self, "workflow_lens_active_note"):
             self.workflow_lens_active_note.setText(active_note or "选择左侧步骤后显示对应工作流分层。")
 
+    def _show_desktop_rail_mode(self, mode: str) -> None:
+        if not hasattr(self, "desktop_rail_sections"):
+            return
+        card = self.desktop_rail_sections.get(mode)
+        if card is None:
+            return
+        self.desktop_rail_stack.setCurrentWidget(card)
+        for key, button in self.desktop_rail_mode_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == mode)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
     def _show_rail_focus(self, focus: str) -> None:
         if not hasattr(self, "rail_focus_sections"):
             return
@@ -665,6 +717,7 @@ class ECProcessingPage(QWidget):
         if card is None:
             return
         self.rail_focus_stack.setCurrentWidget(card)
+        self._show_desktop_rail_mode("closure")
         for key, button in self.rail_focus_buttons.items():
             button.blockSignals(True)
             button.setChecked(key == focus)

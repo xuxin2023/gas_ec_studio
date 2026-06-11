@@ -86,6 +86,10 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.desktop_rail_scroll.widgetResizable() is True
         assert page.desktop_rail_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.desktop_rail_scroll.widget() is page.desktop_rail_body
+        assert page.desktop_rail_inspector.property("deckRole") == "ecRailInspector"
+        assert page.desktop_rail_stack.count() == 3
+        assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
+        assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
         assert page.cockpit_card.property("cardRole") == "cockpit"
         assert page.cockpit_card.property("deckRole") == "processingCockpitDeck"
         assert page.rail_focus_card.property("cardRole") == "panel"
@@ -131,6 +135,11 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         page._show_rail_focus("coverage")
         assert page.rail_focus_stack.currentWidget() is page.output_coverage_card
         assert page.rail_focus_buttons["coverage"].isChecked() is True
+        assert page.desktop_rail_stack.currentWidget() is page.rail_focus_card
+        assert page.desktop_rail_mode_buttons["closure"].isChecked() is True
+        page._show_desktop_rail_mode("cockpit")
+        assert page.desktop_rail_stack.currentWidget() is page.cockpit_card
+        assert page.desktop_rail_mode_buttons["cockpit"].isChecked() is True
         page.footprint_zm_spin.setValue(1.0)
         page.footprint_canopy_spin.setValue(5.0)
         page._refresh_uncertainty_preview()
