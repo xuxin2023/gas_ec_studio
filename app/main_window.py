@@ -46,6 +46,9 @@ class StudioMainWindow(QMainWindow):
         self.resize(1440, 900)
         self.setMinimumSize(1180, 720)
         self._compact_shell: bool | None = None
+        self._inspector_visible: bool | None = None
+        self._active_page_key = "device_center"
+        self._embedded_inspector_pages = {"device_detail", "project_site", "ec_processing", "report_center"}
 
         central = QWidget()
         central.setObjectName("appShell")
@@ -271,6 +274,7 @@ class StudioMainWindow(QMainWindow):
             "spectral_qc": 5,
             "report_center": 6,
         }
+        self._active_page_key = page_key
         self.stack.setCurrentIndex(mapping[page_key])
         if page_key == "device_detail":
             self.navigation.select("device_center")
@@ -307,12 +311,14 @@ class StudioMainWindow(QMainWindow):
 
     def _apply_responsive_shell(self, force: bool = False) -> None:
         compact = self.width() < 1500
-        if not force and compact == self._compact_shell:
+        inspector_visible = (not compact) and self._active_page_key not in self._embedded_inspector_pages
+        if not force and compact == self._compact_shell and inspector_visible == self._inspector_visible:
             return
         self._compact_shell = compact
+        self._inspector_visible = inspector_visible
         self.header_status.setVisible(not compact)
-        self.inspector.setVisible(not compact)
-        if compact:
+        self.inspector.setVisible(inspector_visible)
+        if not inspector_visible:
             self.inner_splitter.setSizes([1, 0])
             self.vertical_splitter.setSizes([620, 72])
         else:

@@ -72,3 +72,31 @@ def test_main_window_switches_every_page_without_expanding_viewport(monkeypatch,
     finally:
         window.close()
         controller.shutdown()
+
+
+def test_main_window_hides_outer_inspector_for_embedded_workbench_pages(monkeypatch, tmp_path) -> None:
+    app = _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    try:
+        window = StudioMainWindow(controller)
+        window.show()
+        window.resize(1600, 900)
+        app.processEvents()
+
+        window._set_page("device_center")
+        app.processEvents()
+        assert window._compact_shell is False
+        assert window.inspector.isVisible() is True
+
+        for page_key in ("device_detail", "project_site", "ec_processing", "report_center"):
+            window._set_page(page_key)
+            app.processEvents()
+            assert window.width() <= 1600
+            assert window.height() <= 900
+            assert window._compact_shell is False
+            assert window.inspector.isVisible() is False
+            assert window.stack.width() >= 1180
+    finally:
+        window.close()
+        controller.shutdown()
