@@ -70,11 +70,13 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.run_bar.property("cardRole") == "command"
         assert page.rp_closure_deck.property("cardRole") == "cockpit"
         assert page.rp_closure_deck.property("deckRole") == "rpClosureDeck"
-        assert page.rp_closure_deck.maximumHeight() == 126
+        assert page.rp_closure_deck.maximumHeight() == 146
         assert page.rp_closure_chip.text().startswith("待运行")
         assert set(page.rp_closure_tiles) == {"run", "flux", "uncertainty", "methods", "benchmark", "network"}
         assert all(tile.property("cardRole") == "tile" for tile in page.rp_closure_tiles.values())
         assert all(value.property("compactMetric") is True for value in page.rp_closure_values.values())
+        assert all(chip.property("closureStage") is True for chip in page.rp_closure_chips.values())
+        assert all(chip.minimumHeight() == 22 for chip in page.rp_closure_chips.values())
         assert page.rp_closure_values["run"].text() == "待运行"
         assert page.rp_closure_values["flux"].text() == "待生成"
         assert page.rp_closure_values["network"].text() == "FLUXNET"

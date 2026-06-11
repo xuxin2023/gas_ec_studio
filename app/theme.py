@@ -337,6 +337,11 @@ def build_stylesheet() -> str:
         border-color: #b7dcc9;
         color: {TOKENS.color_success};
     }}
+    QLabel[closureStage="true"][closureTone="accent"] {{
+        background: #e5f6f8;
+        border-color: #b7dbe2;
+        color: {TOKENS.color_accent};
+    }}
     QLabel[closureStage="true"][closureTone="warning"] {{
         background: #fff5df;
         border-color: #ead1a5;
