@@ -12,7 +12,12 @@ from app.main_window import StudioMainWindow
 from app.pages.ec_processing_page import ECProcessingPage
 from app.studio import StudioController
 from models.hf_models import FrameQuality, NormalizedHFFrame
-from tests.ui_geometry_helpers import assert_contained, assert_no_visible_competitor_name, assert_no_visual_overlap
+from tests.ui_geometry_helpers import (
+    assert_contained,
+    assert_no_visible_competitor_name,
+    assert_no_visual_overlap,
+    widget_bounds,
+)
 
 
 def _app() -> QApplication:
@@ -65,7 +70,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.run_bar.property("cardRole") == "command"
         assert page.rp_closure_deck.property("cardRole") == "cockpit"
         assert page.rp_closure_deck.property("deckRole") == "rpClosureDeck"
-        assert page.rp_closure_deck.maximumHeight() == 142
+        assert page.rp_closure_deck.maximumHeight() == 126
         assert page.rp_closure_chip.text().startswith("待运行")
         assert set(page.rp_closure_tiles) == {"run", "flux", "uncertainty", "methods", "benchmark", "network"}
         assert all(tile.property("cardRole") == "tile" for tile in page.rp_closure_tiles.values())
@@ -75,8 +80,8 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.rp_closure_values["network"].text() == "FLUXNET"
         assert page.tree_card.property("cardRole") == "rail"
         assert page.desktop_rail.property("cardRole") == "rail"
-        assert page.desktop_rail.minimumWidth() == 384
-        assert page.desktop_rail.maximumWidth() == 460
+        assert page.desktop_rail.minimumWidth() == 280
+        assert page.desktop_rail.maximumWidth() == 340
         assert page.desktop_rail_scroll.objectName() == "railScroll"
         assert page.desktop_rail_scroll.widgetResizable() is True
         assert page.desktop_rail_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
@@ -220,6 +225,40 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
     finally:
         page.close()
         page.deleteLater()
+        controller.shutdown()
+
+
+def test_ec_processing_method_console_controls_are_visible_in_main_shell(monkeypatch, tmp_path) -> None:
+    app = _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    window = None
+    try:
+        window = StudioMainWindow(controller)
+        window.resize(1440, 900)
+        window._set_page("ec_processing")
+        page = window.ec_processing_page
+        page.step_tree.setCurrentItem(page.step_items["uncertainty"])
+        page.refresh()
+        window.show()
+        app.processEvents()
+
+        scroll = page.content_stack.currentWidget()
+        viewport_rect = widget_bounds(scroll.viewport(), page)
+        family_rect = widget_bounds(page.method_family_card, page)
+        stack_rect = widget_bounds(page.method_family_stack, page)
+
+        assert page.method_result_card.property("deckRole") == "methodResultCompact"
+        assert page.method_result_card.geometry().y() > page.method_support_card.geometry().y()
+        assert family_rect.top() < viewport_rect.bottom()
+        assert stack_rect.top() < viewport_rect.bottom()
+        assert_contained(scroll.viewport(), page.footprint_enable_combo, page)
+        assert_contained(scroll.viewport(), page.footprint_method_combo, page)
+        assert page.content_stack.width() >= 620
+        assert page.desktop_rail.minimumWidth() == 280
+    finally:
+        if window is not None:
+            window.close()
         controller.shutdown()
 
 
