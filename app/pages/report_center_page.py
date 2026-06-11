@@ -382,6 +382,7 @@ class ReportCenterPage(QWidget):
         self.delivery_focus_stack.addWidget(self.delivery_gate_card)
 
         self.inner_inspector = CardFrame(muted=True, role="panel")
+        self.inner_inspector.setProperty("deckRole", "deliveryDetailInspector")
         inspector_layout = QVBoxLayout(self.inner_inspector)
         inspector_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         inspector_layout.setSpacing(TOKENS.spacing_md)
@@ -408,6 +409,7 @@ class ReportCenterPage(QWidget):
         inspector_layout.addLayout(switch_row)
 
         self.inspector_stack = QStackedWidget()
+        self.inspector_stack.setProperty("stackRole", "deliveryDetailInspectorStack")
 
         self.export_card, self.export_content = self._inspector_card("导出选项", "把当前报告的导出方式和出口统一放在这里。")
         self.file_card, self.file_content = self._inspector_card("文件信息", "不只显示路径，还要说明状态和用途。")
@@ -2463,38 +2465,107 @@ class ReportCenterPage(QWidget):
             button.style().polish(button)
 
     def _refresh_inner_inspector(self, report: dict, export_status: str, view_mode: str) -> None:
+        self.inspector_detail_tiles: dict[str, CardFrame] = {}
+        self.inspector_detail_values: dict[str, QLabel] = {}
+        report_key = str(report.get("report_key", self.controller.report_center_workspace.get("selected_report", "--")) or "--")
+        report_title = str(report.get("title", "--") or "--")
+        source = str(report.get("source", "--") or "--")
+        updated_at = str(report.get("updated_at", "--") or "--")
+        export_options = [str(item) for item in report.get("export_options", [])]
+        file_info = dict(report.get("file_info", {}) or {})
+        workspace = self.controller.report_center_workspace
+        reports = dict(workspace.get("reports", {}) or {})
+        for key, value in self._delivery_file_values(reports).items():
+            file_info.setdefault(str(key), str(value))
+        benchmark_report = dict(reports.get("benchmark_cockpit", {}) or {})
+        network_summary = self._network_gate_summary(workspace, benchmark_report)
+        versions = [str(item) for item in report.get("versions", [])]
+        usage = [str(item) for item in report.get("usage", [])]
+        export_done = self._export_status_is_done(export_status)
+        export_tone = "success" if export_done else ("accent" if export_options else "warning")
+        manifest_ready = any("manifest" in str(key).lower() or "清单" in str(key) for key in file_info)
+        network_file = next((str(value) for key, value in file_info.items() if "network" in str(key).lower() or "网络" in str(key)), "")
+        network_ready = bool(network_file) or network_summary.get("tone") == "success"
+
         self._clear_layout(self.export_content)
-        export_status_label = QLabel(_ui_safe_text(f"当前状态：{export_status}"))
-        export_status_label.setObjectName("subtitle")
-        export_status_label.setWordWrap(True)
-        self.export_content.addWidget(chip(view_mode, "accent"))
-        self.export_content.addWidget(export_status_label)
-        for text in report.get("export_options", []):
-            label = QLabel(_ui_safe_text(f"• {text}"))
-            label.setObjectName("subtitle")
-            label.setWordWrap(True)
-            self.export_content.addWidget(label)
+        self._add_inspector_tile(
+            self.export_content,
+            "export.status",
+            "当前状态",
+            "已导出" if export_done else ("可导出" if export_options else "待生成"),
+            export_status,
+            export_tone,
+        )
+        self._add_inspector_tile(
+            self.export_content,
+            "export.options",
+            "导出选项",
+            f"{len(export_options)} 项" if export_options else "未配置",
+            " / ".join(export_options[:3]) or "生成报告后显示可用导出动作。",
+            "success" if export_options else "warning",
+        )
+        self._add_inspector_tile(self.export_content, "export.report", "报告", report_key, report_title, "success" if report else "warning")
+        self.export_content.addStretch(1)
 
         self._clear_layout(self.file_content)
-        for key, value in report.get("file_info", {}).items():
-            label = QLabel(_ui_safe_text(f"{key}：{value}"))
-            label.setObjectName("subtitle")
-            label.setWordWrap(True)
-            self.file_content.addWidget(label)
+        self._add_inspector_tile(
+            self.file_content,
+            "file.count",
+            "文件数",
+            f"{len(file_info)} 个" if file_info else "0 个",
+            " / ".join(file_info.keys()) or "导出后显示交付文件。",
+            "success" if file_info else "warning",
+        )
+        self._add_inspector_tile(
+            self.file_content,
+            "file.manifest",
+            "Manifest",
+            "ready" if manifest_ready else "--",
+            next((str(value) for key, value in file_info.items() if "manifest" in str(key).lower() or "清单" in str(key)), "尚未发现 manifest 文件。"),
+            "success" if manifest_ready else "warning",
+        )
+        self._add_inspector_tile(
+            self.file_content,
+            "file.network",
+            "网络校验",
+            "ready" if network_ready else "--",
+            network_file or network_summary.get("note", "尚未发现网络校验文件。"),
+            "success" if network_ready else "warning",
+        )
+        self.file_content.addStretch(1)
 
         self._clear_layout(self.version_content)
-        for text in report.get("versions", []):
-            label = QLabel(_ui_safe_text(f"• {text}"))
-            label.setObjectName("subtitle")
-            label.setWordWrap(True)
-            self.version_content.addWidget(label)
+        self._add_inspector_tile(self.version_content, "version.source", "来源", source, report_title, "success" if source != "--" else "warning")
+        self._add_inspector_tile(self.version_content, "version.updated", "更新时间", updated_at, updated_at, "success" if updated_at != "--" else "warning")
+        self._add_inspector_tile(
+            self.version_content,
+            "version.count",
+            "版本记录",
+            f"{len(versions)} 条" if versions else "0 条",
+            " / ".join(versions[:3]) or "暂无版本记录。",
+            "success" if versions else "accent",
+        )
+        self.version_content.addStretch(1)
 
         self._clear_layout(self.usage_content)
-        for text in report.get("usage", []):
-            label = QLabel(_ui_safe_text(f"• {text}"))
-            label.setObjectName("subtitle")
-            label.setWordWrap(True)
-            self.usage_content.addWidget(label)
+        self._add_inspector_tile(self.usage_content, "usage.audience", "当前场景", view_mode, "不同视图会压缩不同层级的结论。", "accent")
+        self._add_inspector_tile(
+            self.usage_content,
+            "usage.count",
+            "建议数",
+            f"{len(usage)} 条" if usage else "默认建议",
+            " / ".join(usage[:3]) or "可结合门槛矩阵和报告预览使用。",
+            "success" if usage else "accent",
+        )
+        self._add_inspector_tile(
+            self.usage_content,
+            "usage.next",
+            "下一步",
+            "交付归档" if export_done else ("导出报告" if export_options else "生成报告"),
+            export_status,
+            "success" if export_done else "accent",
+        )
+        self.usage_content.addStretch(1)
 
     def _refresh_batch_compare(self, batch_compare: dict) -> None:
         current_batch = str(batch_compare.get("current_batch", "") or "--")
@@ -2621,6 +2692,57 @@ class ReportCenterPage(QWidget):
             label.setProperty("closureTone", tone)
         label.style().unpolish(label)
         label.style().polish(label)
+
+    def _add_inspector_tile(
+        self,
+        layout: QVBoxLayout,
+        key: str,
+        title: str,
+        value: str,
+        note: str,
+        tone: str,
+    ) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("inspectorTile", True)
+        tile.setProperty("inspectorKey", key)
+        tile.setProperty("gateTone", tone)
+        tile.setMinimumHeight(42)
+        tile.setMaximumHeight(48)
+        tile_layout = QHBoxLayout(tile)
+        tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        tile_layout.setSpacing(TOKENS.spacing_sm)
+
+        text_box = QVBoxLayout()
+        text_box.setContentsMargins(0, 0, 0, 0)
+        text_box.setSpacing(0)
+        title_label = QLabel(_ui_safe_text(title))
+        title_label.setObjectName("metricLabel")
+        title_label.setMaximumHeight(16)
+        value_label = QLabel(_ui_safe_text(value))
+        value_label.setObjectName("metricValue")
+        value_label.setProperty("compactMetric", True)
+        value_label.setMaximumHeight(22)
+        value_label.setWordWrap(False)
+        value_label.setToolTip(_ui_safe_text(note))
+        text_box.addWidget(title_label)
+        text_box.addWidget(value_label)
+
+        status_text = {"success": "通过", "accent": "可用", "warning": "复核", "danger": "阻塞"}.get(tone, "复核")
+        status_chip = chip(status_text, tone)
+        status_chip.setProperty("closureStage", True)
+        status_chip.setMinimumHeight(18)
+        status_chip.setMaximumHeight(20)
+        status_chip.setMinimumWidth(48)
+        status_chip.setMaximumWidth(62)
+        status_chip.setAlignment(Qt.AlignCenter)
+        status_chip.setToolTip(_ui_safe_text(note))
+
+        tile_layout.addLayout(text_box, 1)
+        tile_layout.addWidget(status_chip)
+        layout.addWidget(tile)
+        self.inspector_detail_tiles[key] = tile
+        self.inspector_detail_values[key] = value_label
+        return tile
 
     def _show_info(self, title: str, message: object) -> None:
         QMessageBox.information(self, _ui_safe_text(title), _ui_safe_text(message))

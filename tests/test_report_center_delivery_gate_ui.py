@@ -153,6 +153,25 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         page._show_delivery_focus("details")
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.delivery_focus_buttons["details"].isChecked() is True
+        assert page.inner_inspector.property("deckRole") == "deliveryDetailInspector"
+        assert page.inspector_stack.property("stackRole") == "deliveryDetailInspectorStack"
+        assert set(page.inspector_detail_tiles) == {
+            "export.status",
+            "export.options",
+            "export.report",
+            "file.count",
+            "file.manifest",
+            "file.network",
+            "version.source",
+            "version.updated",
+            "version.count",
+            "usage.audience",
+            "usage.count",
+            "usage.next",
+        }
+        assert all(tile.property("cardRole") == "tile" for tile in page.inspector_detail_tiles.values())
+        assert all(tile.property("inspectorTile") is True for tile in page.inspector_detail_tiles.values())
+        assert all(tile.maximumHeight() == 48 for tile in page.inspector_detail_tiles.values())
     finally:
         page.deleteLater()
         controller.shutdown()
@@ -297,6 +316,13 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.report_command_values["methods"].text() == "已汇总"
         assert page.report_command_values["export"].text() == "已导出"
         assert page.report_command_tiles["network"].property("commandTone") == "success"
+        page._show_delivery_focus("details")
+        assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+        assert page.inspector_detail_values["export.status"].text() == "已导出"
+        assert page.inspector_detail_values["file.manifest"].text() == "ready"
+        assert page.inspector_detail_values["file.network"].text() == "ready"
+        assert page.inspector_detail_values["usage.next"].text() == "交付归档"
+        page._show_delivery_focus("gate")
         assert page.closure_deck_chip.text() == "就绪"
         assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
         assert "batch-001" in page.preview_delivery_trail_note.text()
