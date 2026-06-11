@@ -73,10 +73,8 @@ class DeviceCenterPage(QWidget):
         self.field_readiness_card = self._build_field_readiness()
         self.layout.addWidget(self.field_readiness_card)
 
-        self.quick_card = self._build_quick_actions()
-        self.layout.addWidget(self.quick_card)
-
         self.device_grid_card = CardFrame(role="panel")
+        self.device_grid_card.setMinimumHeight(270)
         device_grid_layout = QVBoxLayout(self.device_grid_card)
         device_grid_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         device_grid_layout.setSpacing(TOKENS.spacing_md)
@@ -86,6 +84,9 @@ class DeviceCenterPage(QWidget):
         self.device_grid.setVerticalSpacing(TOKENS.spacing_md)
         device_grid_layout.addLayout(self.device_grid)
         self.layout.addWidget(self.device_grid_card)
+
+        self.quick_card = self._build_quick_actions()
+        self.layout.addWidget(self.quick_card)
 
         self.operator_mission_card = self._build_operator_mission_card()
         self.layout.addWidget(self.operator_mission_card)
@@ -163,6 +164,7 @@ class DeviceCenterPage(QWidget):
 
     def _build_field_readiness(self) -> CardFrame:
         card = CardFrame(role="panel")
+        card.setMaximumHeight(158)
         layout = QGridLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
         layout.setHorizontalSpacing(TOKENS.spacing_md)
@@ -178,6 +180,7 @@ class DeviceCenterPage(QWidget):
             )
         ):
             tile = CardFrame(muted=True, role="tile")
+            tile.setMaximumHeight(80)
             tile_layout = QVBoxLayout(tile)
             tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
             tile_layout.setSpacing(TOKENS.spacing_xs)
@@ -235,18 +238,20 @@ class DeviceCenterPage(QWidget):
 
     def _build_quick_actions(self) -> CardFrame:
         card = CardFrame(role="command")
-        card.setMinimumHeight(328)
+        card.setMinimumHeight(238)
+        card.setMaximumHeight(270)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
-        layout.setSpacing(TOKENS.spacing_lg)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_md)
 
         self.quick_add_panel = CardFrame(muted=True, role="tile")
-        self.quick_add_panel.setMinimumHeight(280)
+        self.quick_add_panel.setMinimumHeight(210)
+        self.quick_add_panel.setMaximumHeight(236)
         self.quick_add_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         add_block = QVBoxLayout(self.quick_add_panel)
         add_block.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        add_block.setSpacing(TOKENS.spacing_sm)
+        add_block.setSpacing(TOKENS.spacing_xs)
         add_block.addWidget(section_title("快捷新增", "快速录入设备名称、端口、波特率和设备 ID。"))
         self.label_input = QLineEdit("新分析仪")
         self.port_input = QLineEdit("COM3")
@@ -279,11 +284,12 @@ class DeviceCenterPage(QWidget):
         add_block.addWidget(hint)
 
         self.quick_actions_panel = CardFrame(muted=True, role="tile")
-        self.quick_actions_panel.setMinimumHeight(280)
+        self.quick_actions_panel.setMinimumHeight(210)
+        self.quick_actions_panel.setMaximumHeight(236)
         self.quick_actions_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         actions_block = QVBoxLayout(self.quick_actions_panel)
         actions_block.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        actions_block.setSpacing(TOKENS.spacing_md)
+        actions_block.setSpacing(TOKENS.spacing_xs)
         actions_block.addWidget(section_title("快捷操作", "针对当前选中设备执行最常见动作，必要时再进入单设备详情页。"))
         self.current_target = QLabel("当前设备：尚未选择")
         self.current_target.setObjectName("subtitle")
@@ -306,26 +312,21 @@ class DeviceCenterPage(QWidget):
             if variant:
                 button.setProperty("variant", variant)
             button.clicked.connect(lambda _checked=False, fn=action: self._safe_call(fn))
-            button_grid.addWidget(button, index // 2, index % 2)
+            button_grid.addWidget(button, index // 3, index % 3)
         actions_block.addLayout(button_grid)
         actions_block.addSpacing(TOKENS.spacing_xs)
 
-        tip_card = CardFrame(role="panel")
-        tip_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        tip_layout = QVBoxLayout(tip_card)
-        tip_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        tip_layout.setSpacing(6)
-        tip_layout.addWidget(section_title("首页原则", "操作员先看态势与动作，工程师再看事务和原始帧。"))
-        for text in (
-            "如果异常设备数上升，先看右侧检查器给出的建议操作。",
-            "如果需要深入追查某一台设备，请进入单设备详情页。",
-            "危险动作会弹出二次确认，不会在首页直接静默执行。",
-        ):
-            note = QLabel(f"• {text}")
-            note.setObjectName("subtitle")
-            note.setWordWrap(True)
-            tip_layout.addWidget(note)
-        actions_block.addWidget(tip_card)
+        self.quick_tip_card = CardFrame(role="panel")
+        self.quick_tip_card.setMaximumHeight(54)
+        self.quick_tip_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        tip_layout = QVBoxLayout(self.quick_tip_card)
+        tip_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+        tip_layout.setSpacing(0)
+        tip = QLabel("首页原则：操作员先看态势与动作；深查单台设备再进详情；危险动作保留二次确认。")
+        tip.setObjectName("subtitle")
+        tip.setWordWrap(True)
+        tip_layout.addWidget(tip)
+        actions_block.addWidget(self.quick_tip_card)
 
         layout.addWidget(self.quick_add_panel, 2)
         layout.addWidget(self.quick_actions_panel, 3)
@@ -518,13 +519,14 @@ class DeviceCenterPage(QWidget):
     def _compact_setup_grid(self, fields: list[tuple[str, QWidget]]) -> QGridLayout:
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(TOKENS.spacing_md)
-        grid.setVerticalSpacing(TOKENS.spacing_sm)
+        grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        grid.setVerticalSpacing(TOKENS.spacing_xs)
+        columns = 3 if len(fields) > 4 else 2
         for index, (title, widget) in enumerate(fields):
-            row = index // 2
-            column = index % 2
+            row = index // columns
+            column = index % columns
             field = QWidget()
-            field.setMinimumHeight(62)
+            field.setMinimumHeight(50)
             field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             field_layout = QVBoxLayout(field)
@@ -535,8 +537,8 @@ class DeviceCenterPage(QWidget):
             field_layout.addWidget(label)
             field_layout.addWidget(widget)
             grid.addWidget(field, row, column)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
+        for column in range(columns):
+            grid.setColumnStretch(column, 1)
         return grid
 
     def _rebuild_device_cards(self) -> None:
@@ -555,8 +557,11 @@ class DeviceCenterPage(QWidget):
             self.device_grid.addWidget(empty, 0, 0)
             return
 
+        single_card = len(cards) == 1
         for index, data in enumerate(cards):
             card = CardFrame(muted=not data["is_selected"], role="cockpit" if data["is_selected"] else "tile")
+            card.setMinimumHeight(188)
+            card.setMaximumHeight(218)
             layout = QVBoxLayout(card)
             layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
             layout.setSpacing(TOKENS.spacing_sm)
@@ -612,17 +617,23 @@ class DeviceCenterPage(QWidget):
             button_row.addWidget(detail_btn)
             layout.addLayout(button_row)
 
-            self.device_grid.addWidget(card, index // 2, index % 2)
+            if single_card:
+                self.device_grid.addWidget(card, 0, 0, 1, 2)
+            else:
+                self.device_grid.addWidget(card, index // 2, index % 2)
 
     def _mini_metric(self, title: str, value: str) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
+        card.setMinimumHeight(54)
+        card.setMaximumHeight(64)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         layout.setSpacing(0)
         title_label = QLabel(title)
         title_label.setObjectName("metricLabel")
         value_label = QLabel(value)
-        value_label.setObjectName("sectionTitle")
+        value_label.setObjectName("metricValue")
+        value_label.setProperty("compactMetric", True)
         layout.addWidget(title_label)
         layout.addWidget(value_label)
         return card

@@ -8,7 +8,7 @@ from app.pages.device_center_page import DeviceCenterPage
 from app.pages.realtime_page import RealtimePage
 from app.studio import StudioController
 from app.theme import apply_app_theme
-from tests.ui_geometry_helpers import assert_contained, assert_no_visible_competitor_name, assert_no_visual_overlap
+from tests.ui_geometry_helpers import assert_contained, assert_no_visible_competitor_name, assert_no_visual_overlap, widget_bounds
 
 
 def _app() -> QApplication:
@@ -30,10 +30,16 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert page.property("pageSurface") is True
         assert page.status_card.property("cardRole") == "cockpit"
         assert page.field_readiness_card.property("cardRole") == "panel"
+        assert page.field_readiness_card.maximumHeight() == 158
         assert page.quick_card.property("cardRole") == "command"
+        assert page.quick_card.maximumHeight() == 270
         assert page.quick_add_panel.property("cardRole") == "tile"
+        assert page.quick_add_panel.maximumHeight() == 236
         assert page.quick_actions_panel.property("cardRole") == "tile"
+        assert page.quick_actions_panel.maximumHeight() == 236
+        assert page.quick_tip_card.maximumHeight() == 54
         assert page.device_grid_card.property("cardRole") == "panel"
+        assert page.device_grid_card.minimumHeight() == 270
         assert page.operator_mission_card.property("cardRole") == "cockpit"
         assert page.operator_mission_card.property("deckRole") == "deviceOperatorMissionDeck"
         assert set(page.operator_mission_tiles) == {"device", "capture", "processing", "delivery"}
@@ -79,10 +85,14 @@ def test_device_center_top_decks_fit_common_desktop_viewports() -> None:
             page.refresh()
             app.processEvents()
 
-            top_cards = [page.status_card, page.field_readiness_card]
+            top_cards = [page.status_card, page.field_readiness_card, page.device_grid_card]
             for card in top_cards:
                 assert_contained(page, card, page)
             assert_no_visual_overlap(top_cards, page)
+            assert widget_bounds(page.quick_card, page).top() < height
+            assert page.quick_card.height() <= page.quick_card.maximumHeight()
+            assert page.quick_add_panel.height() <= page.quick_add_panel.maximumHeight()
+            assert page.quick_actions_panel.height() <= page.quick_actions_panel.maximumHeight()
             assert_no_visible_competitor_name(page)
     finally:
         page.close()
