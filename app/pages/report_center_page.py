@@ -90,13 +90,13 @@ class ReportCenterPage(QWidget):
         self.report_tree.setIndentation(10)
         self.report_tree.itemSelectionChanged.connect(self._on_report_changed)
         tree_layout.addWidget(self.report_tree, 1)
-        self.tree_card.setMinimumWidth(240)
-        self.tree_card.setMaximumWidth(310)
+        self.tree_card.setMinimumWidth(210)
+        self.tree_card.setMaximumWidth(280)
         workbench.addWidget(self.tree_card)
 
         center_scroll = QScrollArea()
         center_scroll.setWidgetResizable(True)
-        center_scroll.setMinimumWidth(620)
+        center_scroll.setMinimumWidth(500)
         center_container = QWidget()
         center_layout = QVBoxLayout(center_container)
         center_layout.setContentsMargins(0, 0, 0, 0)
@@ -405,10 +405,10 @@ class ReportCenterPage(QWidget):
         }
         self._show_delivery_focus("gate")
         delivery_layout.addStretch(1)
-        self.delivery_rail.setMinimumWidth(330)
-        self.delivery_rail.setMaximumWidth(420)
+        self.delivery_rail.setMinimumWidth(280)
+        self.delivery_rail.setMaximumWidth(360)
         workbench.addWidget(self.delivery_rail)
-        workbench.setSizes([260, 840, 380])
+        workbench.setSizes([230, 720, 310])
 
         self._build_tree()
 

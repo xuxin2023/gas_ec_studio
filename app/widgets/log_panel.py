@@ -20,12 +20,12 @@ class LogPanel(CardFrame):
         super().__init__(muted=True, role="console", parent=parent)
         self._expanded = False
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setMinimumHeight(84)
-        self.setMaximumHeight(84)
+        self.setMinimumHeight(72)
+        self.setMaximumHeight(72)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_sm)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
 
         header = QHBoxLayout()
         title = QLabel("底部日志面板")
@@ -83,5 +83,5 @@ class LogPanel(CardFrame):
         self.tip.setVisible(self._expanded)
         self.latest_line.setVisible(not self._expanded)
         self.toggle_button.setText("折叠" if self._expanded else "展开")
-        self.setMinimumHeight(180 if self._expanded else 84)
-        self.setMaximumHeight(260 if self._expanded else 84)
+        self.setMinimumHeight(180 if self._expanded else 72)
+        self.setMaximumHeight(260 if self._expanded else 72)

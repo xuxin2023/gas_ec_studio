@@ -146,7 +146,7 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.log_panel._expanded is False
     assert window.log_panel.editor.isHidden() is True
     assert window.log_panel.latest_line.isHidden() is False
-    assert window.log_panel.maximumHeight() == 84
+    assert window.log_panel.maximumHeight() == 72
     assert window.log_panel.toggle_button.text() == "展开"
     assert window.log_panel.log_count_chip.text().endswith("条")
     window.log_panel.set_lines(["first", "second"])

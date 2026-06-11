@@ -11,11 +11,11 @@ class NavigationRail(CardFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(muted=True, role="rail", parent=parent)
-        self.setMinimumWidth(220)
-        self.setMaximumWidth(260)
+        self.setMinimumWidth(188)
+        self.setMaximumWidth(220)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
 
         brand = section_title("Gas EC Studio", "高端科学仪器工作台")
         layout.addWidget(brand)
@@ -40,7 +40,7 @@ class NavigationRail(CardFrame):
             button = QPushButton(f"{title}\n{subtitle}")
             button.setProperty("navButton", True)
             button.setCheckable(True)
-            button.setMinimumHeight(58)
+            button.setMinimumHeight(52)
             button.clicked.connect(lambda checked, page_key=key: self._emit_page(page_key, checked))
             self._group.addButton(button, index)
             self._buttons[key] = button

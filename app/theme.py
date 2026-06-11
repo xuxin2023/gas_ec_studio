@@ -278,16 +278,16 @@ def build_stylesheet() -> str:
         font-weight: 700;
     }}
     QLabel[heroStatus="true"] {{
-        min-width: 340px;
-        padding: 10px 14px;
+        min-width: 160px;
+        padding: 7px 10px;
         border-radius: {TOKENS.radius_md}px;
         background: rgba(255, 255, 255, 0.86);
         border: 1px solid rgba(255, 255, 255, 0.72);
         color: #214254;
     }}
     QLabel[shellTile="true"] {{
-        min-width: 78px;
-        padding: 8px 10px;
+        min-width: 40px;
+        padding: 6px 7px;
         border-radius: {TOKENS.radius_md}px;
         background: rgba(255, 255, 255, 0.82);
         border: 1px solid rgba(255, 255, 255, 0.68);
@@ -322,8 +322,8 @@ def build_stylesheet() -> str:
         border: 1px solid rgba(33, 66, 84, 0.10);
     }}
     QLabel[closureStage="true"] {{
-        min-width: 62px;
-        padding: 6px 8px;
+        min-width: 40px;
+        padding: 5px 6px;
         border-radius: {TOKENS.radius_sm}px;
         background: rgba(255, 255, 255, 0.76);
         border: 1px solid rgba(255, 255, 255, 0.62);
@@ -410,8 +410,8 @@ def build_stylesheet() -> str:
         background: transparent;
     }}
     QPushButton[navButton="true"] {{
-        min-height: 58px;
-        padding: 8px 12px;
+        min-height: 52px;
+        padding: 7px 10px;
         text-align: left;
         border-radius: {TOKENS.radius_md}px;
         background: transparent;
@@ -509,7 +509,7 @@ def build_stylesheet() -> str:
         border-color: #a7ccd5;
     }}
     QToolButton[viewSwitch="true"] {{
-        min-width: 88px;
+        min-width: 46px;
         border-radius: 17px;
     }}
     QListWidget, QTableWidget, QTreeWidget {{

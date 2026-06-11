@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QToolButton,
@@ -27,12 +28,24 @@ from app.widgets.log_panel import LogPanel
 from app.widgets.navigation import NavigationRail
 
 
+class AdaptiveStackedWidget(QStackedWidget):
+    """Keep the shell responsive while pages manage their own dense content."""
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        return QSize(940, 620)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(620, 420)
+
+
 class StudioMainWindow(QMainWindow):
     def __init__(self, controller: StudioController) -> None:
         super().__init__()
         self.controller = controller
         self.setWindowTitle("Gas EC Studio")
-        self.resize(1760, 1020)
+        self.resize(1440, 900)
+        self.setMinimumSize(1180, 720)
+        self._compact_shell: bool | None = None
 
         central = QWidget()
         central.setObjectName("appShell")
@@ -44,27 +57,30 @@ class StudioMainWindow(QMainWindow):
         self.header = self._build_header()
         root.addWidget(self.header)
 
-        vertical = QSplitter(Qt.Vertical)
-        vertical.setObjectName("shellVerticalSplitter")
-        root.addWidget(vertical, 1)
+        self.vertical_splitter = QSplitter(Qt.Vertical)
+        self.vertical_splitter.setObjectName("shellVerticalSplitter")
+        self.vertical_splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        root.addWidget(self.vertical_splitter, 1)
 
         top_widget = QWidget()
         top_widget.setObjectName("mainDeck")
         top_layout = QHBoxLayout(top_widget)
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(TOKENS.spacing_md)
-        vertical.addWidget(top_widget)
+        self.vertical_splitter.addWidget(top_widget)
 
         self.navigation = NavigationRail()
         self.navigation.page_changed.connect(self._set_page)
         top_layout.addWidget(self.navigation)
 
-        inner_splitter = QSplitter(Qt.Horizontal)
-        inner_splitter.setObjectName("shellInnerSplitter")
-        top_layout.addWidget(inner_splitter, 1)
+        self.inner_splitter = QSplitter(Qt.Horizontal)
+        self.inner_splitter.setObjectName("shellInnerSplitter")
+        self.inner_splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        top_layout.addWidget(self.inner_splitter, 1)
 
-        self.stack = QStackedWidget()
+        self.stack = AdaptiveStackedWidget()
         self.stack.setObjectName("workspaceStack")
+        self.stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.device_center_page = DeviceCenterPage(controller)
         self.device_detail_page = DeviceDetailPage(controller)
         self.realtime_page = RealtimePage(controller)
@@ -83,15 +99,15 @@ class StudioMainWindow(QMainWindow):
         }
         for key in ("device_center", "device_detail", "realtime", "project_site", "ec_processing", "spectral_qc", "report_center"):
             self.stack.addWidget(self.pages[key])
-        inner_splitter.addWidget(self.stack)
+        self.inner_splitter.addWidget(self.stack)
 
         self.inspector = ContextInspector()
-        inner_splitter.addWidget(self.inspector)
-        inner_splitter.setSizes([1080, 360])
+        self.inner_splitter.addWidget(self.inspector)
+        self.inner_splitter.setSizes([1000, 300])
 
         self.log_panel = LogPanel()
-        vertical.addWidget(self.log_panel)
-        vertical.setSizes([930, 84])
+        self.vertical_splitter.addWidget(self.log_panel)
+        self.vertical_splitter.setSizes([780, 72])
 
         self.device_center_page.open_detail_requested.connect(self._open_device_detail)
         self.device_center_page.open_realtime_requested.connect(lambda: self._set_page("realtime"))
@@ -109,36 +125,53 @@ class StudioMainWindow(QMainWindow):
         self.controller.report_changed.connect(self._refresh_shell)
         self._set_page("device_center")
         self._refresh_shell()
+        self._apply_responsive_shell(force=True)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self.controller.shutdown()
         super().closeEvent(event)
 
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._apply_responsive_shell()
+
     def _build_header(self) -> CardFrame:
         card = CardFrame(role="hero")
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_sm)
 
+        title_holder = QWidget()
+        title_holder.setMaximumWidth(300)
+        title_holder.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         title_box = QVBoxLayout()
+        title_box.setContentsMargins(0, 0, 0, 0)
+        title_box.setSpacing(TOKENS.spacing_xs)
         title = QLabel("Gas EC Studio")
         title.setObjectName("pageTitle")
         subtitle = QLabel("独立的气体分析仪高端工程工作台，兼顾现场操作、协议诊断和高频采集。")
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
+        subtitle.setMinimumWidth(0)
+        subtitle.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Minimum)
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
-        layout.addLayout(title_box)
+        title_holder.setLayout(title_box)
+        layout.addWidget(title_holder)
         layout.addStretch(1)
 
         self.header_status = QLabel()
         self.header_status.setObjectName("subtitle")
         self.header_status.setProperty("heroStatus", True)
         self.header_status.setWordWrap(True)
+        self.header_status.setMinimumWidth(0)
+        self.header_status.setMaximumWidth(220)
+        self.header_status.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         layout.addWidget(self.header_status)
 
         self.header_closure_strip = QWidget()
         self.header_closure_strip.setProperty("shellClosureStrip", True)
+        self.header_closure_strip.setMaximumWidth(318)
         closure_layout = QHBoxLayout(self.header_closure_strip)
         closure_layout.setContentsMargins(0, 0, 0, 0)
         closure_layout.setSpacing(TOKENS.spacing_xs)
@@ -153,7 +186,10 @@ class StudioMainWindow(QMainWindow):
             closure_layout.addWidget(tile)
         layout.addWidget(self.header_closure_strip)
 
-        telemetry = QHBoxLayout()
+        self.header_telemetry_strip = QWidget()
+        self.header_telemetry_strip.setMaximumWidth(270)
+        telemetry = QHBoxLayout(self.header_telemetry_strip)
+        telemetry.setContentsMargins(0, 0, 0, 0)
         telemetry.setSpacing(TOKENS.spacing_sm)
         self.header_online_tile = self._header_tile("在线", "--")
         self.header_sampling_tile = self._header_tile("采集", "--")
@@ -166,20 +202,28 @@ class StudioMainWindow(QMainWindow):
             self.header_view_tile,
         ):
             telemetry.addWidget(tile)
-        layout.addLayout(telemetry)
+        layout.addWidget(self.header_telemetry_strip)
 
         group = QButtonGroup(card)
         self.operator_btn = QToolButton()
         self.operator_btn.setText("操作员视图")
         self.operator_btn.setProperty("viewSwitch", True)
+        self.operator_btn.setText("OP")
+        self.operator_btn.setToolTip("Operator view")
         self.operator_btn.setCheckable(True)
         self.operator_btn.setChecked(True)
         self.operator_btn.clicked.connect(lambda: self.controller.set_view_mode("operator"))
         self.engineer_btn = QToolButton()
         self.engineer_btn.setText("工程师视图")
         self.engineer_btn.setProperty("viewSwitch", True)
+        self.engineer_btn.setText("ENG")
+        self.engineer_btn.setToolTip("Engineer view")
         self.engineer_btn.setCheckable(True)
         self.engineer_btn.clicked.connect(lambda: self.controller.set_view_mode("engineer"))
+        for button in (self.operator_btn, self.engineer_btn):
+            button.setMinimumWidth(0)
+            button.setMaximumWidth(58)
+            button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         group.addButton(self.operator_btn)
         group.addButton(self.engineer_btn)
         layout.addWidget(self.operator_btn)
@@ -190,14 +234,18 @@ class StudioMainWindow(QMainWindow):
         tile = QLabel(f"{label}\n{value}")
         tile.setProperty("shellTile", True)
         tile.setAlignment(Qt.AlignCenter)
-        tile.setMinimumWidth(78)
+        tile.setMinimumWidth(0)
+        tile.setMaximumWidth(64)
+        tile.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         return tile
 
     def _closure_stage(self, label: str, value: str) -> QLabel:
         tile = QLabel(f"{label}\n{value}")
         tile.setProperty("closureStage", True)
         tile.setAlignment(Qt.AlignCenter)
-        tile.setMinimumWidth(62)
+        tile.setMinimumWidth(0)
+        tile.setMaximumWidth(56)
+        tile.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         return tile
 
     def _set_header_tile(self, tile: QLabel, label: str, value: str, tone: str = "neutral") -> None:
@@ -255,6 +303,21 @@ class StudioMainWindow(QMainWindow):
         self.engineer_btn.setChecked(self.controller.view_mode == "engineer")
         self.inspector.refresh(self.controller.context_snapshot())
         self.log_panel.set_lines(self.controller.log_lines())
+        self._apply_responsive_shell()
+
+    def _apply_responsive_shell(self, force: bool = False) -> None:
+        compact = self.width() < 1500
+        if not force and compact == self._compact_shell:
+            return
+        self._compact_shell = compact
+        self.header_status.setVisible(not compact)
+        self.inspector.setVisible(not compact)
+        if compact:
+            self.inner_splitter.setSizes([1, 0])
+            self.vertical_splitter.setSizes([620, 72])
+        else:
+            self.inner_splitter.setSizes([980, 300])
+            self.vertical_splitter.setSizes([780, 72])
 
     def _refresh_closure_strip(self, summary: dict) -> None:
         if summary["online_devices"] <= 0:

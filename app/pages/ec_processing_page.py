@@ -97,8 +97,8 @@ class ECProcessingPage(QWidget):
         self.step_tree.setIndentation(10)
         self.step_tree.itemSelectionChanged.connect(self._on_step_changed)
         tree_layout.addWidget(self.step_tree, 1)
-        self.tree_card.setMinimumWidth(260)
-        self.tree_card.setMaximumWidth(320)
+        self.tree_card.setMinimumWidth(230)
+        self.tree_card.setMaximumWidth(290)
         body.addWidget(self.tree_card)
 
         self.content_stack = QStackedWidget()
@@ -106,7 +106,7 @@ class ECProcessingPage(QWidget):
 
         self.desktop_rail = self._build_desktop_rail()
         body.addWidget(self.desktop_rail)
-        body.setSizes([250, 770, 420])
+        body.setSizes([230, 760, 340])
 
         self._build_tree()
         self._build_pages()
@@ -378,8 +378,8 @@ class ECProcessingPage(QWidget):
 
     def _build_desktop_rail(self) -> CardFrame:
         rail = CardFrame(muted=True, role="rail")
-        rail.setMinimumWidth(384)
-        rail.setMaximumWidth(460)
+        rail.setMinimumWidth(320)
+        rail.setMaximumWidth(390)
         layout = QVBoxLayout(rail)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)

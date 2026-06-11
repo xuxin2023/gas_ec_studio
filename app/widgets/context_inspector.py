@@ -46,8 +46,8 @@ SPECTRAL_SECTION_LABELS = {
 class ContextInspector(CardFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(muted=True, role="rail", parent=parent)
-        self.setMinimumWidth(320)
-        self.setMaximumWidth(420)
+        self.setMinimumWidth(280)
+        self.setMaximumWidth(340)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_md)
