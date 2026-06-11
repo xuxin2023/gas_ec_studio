@@ -84,8 +84,10 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert page.operator_evidence_tiles["processing_gate"][1].text().startswith("windows=")
         assert page.activity_card.property("cardRole") == "rail"
         assert set(page.readiness_values) == {"fleet", "target", "protocol", "next"}
+        assert all(value.property("compactMetric") is True for value, _note in page.readiness_values.values())
         assert page.readiness_values["fleet"][0].text() in {"可采", "待检查"}
         assert page.readiness_values["next"][0].text() in {"连接设备", "进入采集", "处理异常", "选择设备"}
+        assert page.device_grid.itemAt(0).widget().isVisibleTo(page) is True
         controller.set_view_mode("engineer")
         assert page.operator_mission_card.isVisibleTo(page) is False
         assert page.operator_evidence_card.isVisibleTo(page) is False

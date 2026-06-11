@@ -195,10 +195,12 @@ class DeviceCenterPage(QWidget):
             title_label.setObjectName("metricLabel")
             value = QLabel("--")
             value.setObjectName("metricValue")
-            value.setWordWrap(True)
+            value.setProperty("compactMetric", True)
+            value.setWordWrap(False)
             note = QLabel("--")
             note.setObjectName("subtitle")
-            note.setWordWrap(True)
+            note.setMaximumHeight(16)
+            note.setWordWrap(False)
             tile_layout.addWidget(title_label)
             tile_layout.addWidget(value)
             tile_layout.addWidget(note)
@@ -785,6 +787,7 @@ class DeviceCenterPage(QWidget):
             empty_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
             empty_layout.addWidget(section_title("暂无设备", "先添加一台设备，首页摘要卡会自动生成。"))
             self.device_grid.addWidget(empty, 0, 0)
+            empty.show()
             return
 
         single_card = len(cards) == 1
@@ -794,6 +797,7 @@ class DeviceCenterPage(QWidget):
                 self.device_grid.addWidget(card, 0, 0)
             else:
                 self.device_grid.addWidget(card, index // 2, index % 2)
+            card.show()
 
     def _device_summary_card(self, data: dict) -> CardFrame:
         card = CardFrame(muted=not data["is_selected"], role="cockpit" if data["is_selected"] else "tile")
