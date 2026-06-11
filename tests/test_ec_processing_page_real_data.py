@@ -177,6 +177,16 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert set(page.covariance_metric_values) == {"method", "w_co2", "w_h2o", "raw"}
         assert all(tile.property("cardRole") == "tile" for tile in page.covariance_metric_tiles.values())
         assert page.covariance_metric_values["w_co2"].text() == "--"
+        assert page.density_param_card.property("deckRole") == "densityParameterPanel"
+        assert page.density_param_card.maximumHeight() == 260
+        assert page.density_evidence_card.property("deckRole") == "densityEvidencePanel"
+        assert page.density_evidence_card.maximumHeight() == 360
+        assert page.density_plot.maximumHeight() == 190
+        assert page.density_status_chip.text() == "preview"
+        assert page.density_status_chip.property("chipTone") == "warning"
+        assert set(page.density_metric_values) == {"source", "factor", "raw", "primary"}
+        assert all(tile.property("cardRole") == "tile" for tile in page.density_metric_tiles.values())
+        assert page.density_metric_values["factor"].text() == "--"
         assert page.cockpit_method_value.property("compactMetric") is True
         assert page.step_tree.objectName() == "workflowTree"
         assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
@@ -281,6 +291,12 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.covariance_metric_values["w_co2"].text() != "--"
         assert page.covariance_metric_values["w_h2o"].text() != "--"
         assert page.covariance_metric_values["raw"].text() != "--"
+        assert page.density_status_chip.text() == "real"
+        assert page.density_status_chip.property("chipTone") in {"success", "warning", "danger"}
+        assert page.density_metric_values["source"].text() != "--"
+        assert page.density_metric_values["factor"].text().endswith("x")
+        assert page.density_metric_values["raw"].text() != "--"
+        assert page.density_metric_values["primary"].text() != "--"
         assert "lag=" in page.lag_note_label.text()
         assert "u*=" in page.turbulence_preview_label.text()
         assert page.uncertainty_sampling_label.text() != "真实 RP 未提供"
@@ -373,6 +389,16 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             assert page.covariance_evidence_card.maximumHeight() == 280
             assert covariance_card_rect.top() >= covariance_viewport_rect.top()
             assert covariance_card_rect.bottom() <= covariance_viewport_rect.bottom()
+            page.step_tree.setCurrentItem(page.step_items["density_correction"])
+            app.processEvents()
+            density_viewport = page.content_stack.currentWidget().viewport()
+            density_viewport_rect = widget_bounds(density_viewport, page)
+            density_card_rect = widget_bounds(page.density_evidence_card, page)
+            density_plot_rect = widget_bounds(page.density_plot, page)
+            assert page.density_evidence_card.maximumHeight() == 360
+            assert density_card_rect.top() >= density_viewport_rect.top()
+            assert density_card_rect.top() < density_viewport_rect.bottom()
+            assert density_plot_rect.top() < density_viewport_rect.bottom()
             assert_no_visible_competitor_name(page)
     finally:
         page.close()

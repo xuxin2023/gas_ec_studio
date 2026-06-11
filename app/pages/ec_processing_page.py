@@ -1345,6 +1345,16 @@ class ECProcessingPage(QWidget):
             tile.style().unpolish(tile)
             tile.style().polish(tile)
 
+    def _set_density_metric(self, key: str, value: str, tone: str = "warning") -> None:
+        label = self.density_metric_values.get(key)
+        if label is not None:
+            label.setText(value)
+        tile = self.density_metric_tiles.get(key)
+        if tile is not None:
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
     def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
         row.setSpacing(TOKENS.spacing_md)
@@ -1780,6 +1790,9 @@ class ECProcessingPage(QWidget):
         row.setSpacing(TOKENS.spacing_md)
         layout.addLayout(row)
         param_card = CardFrame()
+        param_card.setProperty("deckRole", "densityParameterPanel")
+        param_card.setMaximumHeight(260)
+        self.density_param_card = param_card
         param_layout = QVBoxLayout(param_card)
         param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         param_layout.setSpacing(TOKENS.spacing_md)
@@ -1791,25 +1804,60 @@ class ECProcessingPage(QWidget):
         param_layout.addLayout(form)
         row.addWidget(param_card, 2)
 
-        compare_card = CardFrame(muted=True)
+        compare_card = CardFrame(muted=True, role="panel")
+        compare_card.setProperty("deckRole", "densityEvidencePanel")
+        compare_card.setMaximumHeight(360)
+        self.density_evidence_card = compare_card
         compare_layout = QVBoxLayout(compare_card)
-        compare_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        compare_layout.setSpacing(TOKENS.spacing_md)
+        compare_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        compare_layout.setSpacing(TOKENS.spacing_sm)
         compare_layout.addWidget(section_title("修正前后对比区", "预留修正前后对比区，帮助用户理解修正影响。"))
-        metrics_row = QHBoxLayout()
-        self.density_before_label = QLabel("--")
-        self.density_after_label = QLabel("--")
-        metrics_row.addWidget(self._metric_box("修正前", self.density_before_label), 1)
-        metrics_row.addWidget(self._metric_box("修正后", self.density_after_label), 1)
-        compare_layout.addLayout(metrics_row)
+        self.density_status_chip = chip("preview", "warning")
+        compare_layout.addWidget(self.density_status_chip, 0, Qt.AlignRight)
+        metric_grid = QGridLayout()
+        metric_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        metric_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.density_metric_tiles: dict[str, CardFrame] = {}
+        self.density_metric_values: dict[str, QLabel] = {}
+        for column, (key, title, value) in enumerate(
+            (
+                ("source", "source", "--"),
+                ("factor", "factor", "--"),
+                ("raw", "raw", "--"),
+                ("primary", "primary", "--"),
+            )
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("evidenceTone", "warning")
+            tile.setMaximumHeight(58)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(0)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value_label = QLabel(value)
+            value_label.setObjectName("metricValue")
+            value_label.setProperty("compactMetric", True)
+            value_label.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label)
+            metric_grid.addWidget(tile, 0, column)
+            self.density_metric_tiles[key] = tile
+            self.density_metric_values[key] = value_label
+        compare_layout.addLayout(metric_grid)
+        self.density_before_label = self.density_metric_values["raw"]
+        self.density_after_label = self.density_metric_values["primary"]
         self.density_plot = pg.PlotWidget()
         configure_plot_theme(self.density_plot, left_label="通量", bottom_label="窗口序号")
+        self.density_plot.setMinimumHeight(168)
+        self.density_plot.setMaximumHeight(190)
         self.density_before_curve = self.density_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["muted"], width=1.8))
         self.density_after_curve = self.density_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["secondary"], width=2.1))
         compare_layout.addWidget(self.density_plot, 1)
         self.density_note_label = QLabel("--")
         self.density_note_label.setObjectName("subtitle")
         self.density_note_label.setWordWrap(True)
+        self.density_note_label.setMaximumHeight(42)
         compare_layout.addWidget(self.density_note_label)
         row.addWidget(compare_card, 3)
 
@@ -3196,8 +3244,11 @@ class ECProcessingPage(QWidget):
         if not windows or current is None:
             self.density_before_curve.setData([], [])
             self.density_after_curve.setData([], [])
-            self.density_before_label.setText("--")
-            self.density_after_label.setText("--")
+            self._set_generic_chip(self.density_status_chip, "preview", "warning")
+            self._set_density_metric("source", self.density_correction_combo.currentText().strip(), "warning")
+            self._set_density_metric("factor", "--", "warning")
+            self._set_density_metric("raw", "--", "warning")
+            self._set_density_metric("primary", "--", "warning")
             self.density_note_label.setText("暂无真实 RP 结果，运行处理后显示密度/混合比修正摘要。")
             return
         xs = np.arange(1, len(windows) + 1, dtype=float)
@@ -3205,10 +3256,18 @@ class ECProcessingPage(QWidget):
         after = np.array([float(window.get("primary_flux", window.get("density_corrected_flux", 0.0))) for window in windows], dtype=float)
         self.density_before_curve.setData(xs, before)
         self.density_after_curve.setData(xs, after)
-        self.density_before_label.setText(f"{current.raw_flux:.6f}")
         primary_flux_val = current.primary_flux if current.primary_flux != 0.0 else current.density_corrected_flux
         primary_source = current.primary_flux_source or "wpl"
-        self.density_after_label.setText(f"{primary_flux_val:.6f} [{primary_source}]")
+        intermediate = dict(section.get("intermediate", {}) or {})
+        factor = intermediate.get("density_correction_factor")
+        if not isinstance(factor, (int, float)):
+            factor = current.density_corrected_flux / current.raw_flux if abs(current.raw_flux) > 1e-12 else 1.0
+        tone = "success" if len(xs) > 0 else "danger"
+        self._set_generic_chip(self.density_status_chip, "real", tone)
+        self._set_density_metric("source", str(primary_source), tone)
+        self._set_density_metric("factor", f"{float(factor):.2f}x", tone)
+        self._set_density_metric("raw", f"{current.raw_flux:.2f}", tone)
+        self._set_density_metric("primary", f"{primary_flux_val:.2f}", tone)
         self.density_note_label.setText(str(section.get("real_summary", current.reason)))
 
     def _refresh_steadiness_preview(self, *_args) -> None:
