@@ -56,9 +56,10 @@ class DeviceCenterPage(QWidget):
         )
 
         self.status_card = CardFrame(role="cockpit")
+        self.status_card.setMaximumHeight(90)
         self.status_layout = QHBoxLayout(self.status_card)
-        self.status_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        self.status_layout.setSpacing(TOKENS.spacing_md)
+        self.status_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        self.status_layout.setSpacing(TOKENS.spacing_sm)
         self.metric_labels: dict[str, QLabel] = {}
         for key, title in (
             ("online_devices", "在线设备数"),
@@ -79,8 +80,8 @@ class DeviceCenterPage(QWidget):
         self.layout.addWidget(self.quick_card)
 
         self.device_grid_card = CardFrame(role="panel")
-        self.device_grid_card.setMinimumHeight(198)
-        self.device_grid_card.setMaximumHeight(206)
+        self.device_grid_card.setMinimumHeight(176)
+        self.device_grid_card.setMaximumHeight(184)
         device_grid_layout = QVBoxLayout(self.device_grid_card)
         device_grid_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
         device_grid_layout.setSpacing(TOKENS.spacing_xs)
@@ -123,6 +124,7 @@ class DeviceCenterPage(QWidget):
         activity_layout.addLayout(tx_block, 3)
         activity_layout.addLayout(event_block, 2)
         self.layout.addWidget(self.activity_card)
+        self._install_operations_deck()
         self.layout.addStretch(1)
 
         self.controller.devices_changed.connect(self.refresh)
@@ -151,9 +153,7 @@ class DeviceCenterPage(QWidget):
         self._refresh_operator_mission(summary, selected)
         self._refresh_operator_evidence(summary, selected)
         self._refresh_recent_activity()
-        self.operator_mission_card.setVisible(self.controller.view_mode != "engineer")
-        self.operator_evidence_card.setVisible(self.controller.view_mode != "engineer")
-        self.activity_card.setVisible(self.controller.view_mode == "engineer")
+        self._sync_operations_mode()
 
     def _status_metric_card(self, title: str) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
@@ -171,10 +171,10 @@ class DeviceCenterPage(QWidget):
 
     def _build_field_readiness(self) -> CardFrame:
         card = CardFrame(role="panel")
-        card.setMaximumHeight(158)
+        card.setMaximumHeight(136)
         layout = QGridLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        layout.setHorizontalSpacing(TOKENS.spacing_md)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        layout.setHorizontalSpacing(TOKENS.spacing_sm)
         layout.setVerticalSpacing(TOKENS.spacing_sm)
         layout.addWidget(section_title("现场就绪驾驶舱", "把设备舰队、当前目标、协议链路和下一步动作压缩到一行，减少来回找状态。"), 0, 0, 1, 4)
         self.readiness_values: dict[str, tuple[QLabel, QLabel]] = {}
@@ -187,7 +187,7 @@ class DeviceCenterPage(QWidget):
             )
         ):
             tile = CardFrame(muted=True, role="tile")
-            tile.setMaximumHeight(80)
+            tile.setMaximumHeight(64)
             tile_layout = QVBoxLayout(tile)
             tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
             tile_layout.setSpacing(TOKENS.spacing_xs)
@@ -245,8 +245,8 @@ class DeviceCenterPage(QWidget):
 
     def _build_quick_actions(self) -> CardFrame:
         card = CardFrame(role="command")
-        card.setMinimumHeight(146)
-        card.setMaximumHeight(172)
+        card.setMinimumHeight(132)
+        card.setMaximumHeight(154)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
@@ -273,13 +273,13 @@ class DeviceCenterPage(QWidget):
 
         self.quick_stack = QStackedWidget()
         self.quick_stack.setProperty("stackRole", "deviceQuickInspectorStack")
-        self.quick_stack.setMaximumHeight(112)
+        self.quick_stack.setMaximumHeight(96)
         self.quick_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.quick_stack)
 
         self.quick_actions_panel = CardFrame(muted=True, role="tile")
-        self.quick_actions_panel.setMinimumHeight(104)
-        self.quick_actions_panel.setMaximumHeight(112)
+        self.quick_actions_panel.setMinimumHeight(92)
+        self.quick_actions_panel.setMaximumHeight(96)
         self.quick_actions_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         actions_block = QVBoxLayout(self.quick_actions_panel)
         actions_block.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
@@ -315,7 +315,7 @@ class DeviceCenterPage(QWidget):
             if variant:
                 button.setProperty("variant", variant)
             button.clicked.connect(lambda _checked=False, fn=action: self._safe_call(fn))
-            button_grid.addWidget(button, index // 3, index % 3)
+            button_grid.addWidget(button, 0, index)
         actions_block.addLayout(button_grid)
 
         self.quick_tip_card = CardFrame(role="panel")
@@ -324,8 +324,8 @@ class DeviceCenterPage(QWidget):
         actions_block.addWidget(self.quick_tip_card)
 
         self.quick_add_panel = CardFrame(muted=True, role="tile")
-        self.quick_add_panel.setMinimumHeight(104)
-        self.quick_add_panel.setMaximumHeight(112)
+        self.quick_add_panel.setMinimumHeight(92)
+        self.quick_add_panel.setMaximumHeight(96)
         self.quick_add_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         add_grid = QGridLayout(self.quick_add_panel)
         add_grid.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
@@ -380,6 +380,89 @@ class DeviceCenterPage(QWidget):
         self.quick_stack.setCurrentWidget(section)
         for key, button in self.quick_mode_buttons.items():
             button.setChecked(key == mode)
+
+    def _install_operations_deck(self) -> None:
+        self.operations_deck_card = CardFrame(muted=True, role="rail")
+        self.operations_deck_card.setProperty("deckRole", "deviceOperationsInspector")
+        self.operations_deck_card.setMinimumHeight(188)
+        self.operations_deck_card.setMaximumHeight(206)
+        self.operations_deck_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        deck_layout = QVBoxLayout(self.operations_deck_card)
+        deck_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        deck_layout.setSpacing(TOKENS.spacing_xs)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        title = section_title(
+            "现场闭环检查器",
+            "把处理链路、证据矩阵和工程日志收进一个桌面 inspector，避免首页继续向下堆面板。",
+        )
+        title.setMaximumHeight(36)
+        header.addWidget(title, 1)
+        self.operations_mode_buttons: dict[str, QToolButton] = {}
+        for mode, text in (("mission", "链路"), ("evidence", "证据"), ("activity", "日志")):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, key=mode: self._show_operations_mode(key))
+            self.operations_mode_buttons[mode] = button
+            header.addWidget(button)
+        deck_layout.addLayout(header)
+
+        self.operations_stack = QStackedWidget()
+        self.operations_stack.setProperty("stackRole", "deviceOperationsInspectorStack")
+        self.operations_stack.setMaximumHeight(150)
+        self.operations_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        deck_layout.addWidget(self.operations_stack)
+
+        insert_at = self.layout.indexOf(self.operator_mission_card)
+        self.layout.insertWidget(insert_at, self.operations_deck_card)
+        self.operations_sections = {
+            "mission": self.operator_mission_card,
+            "evidence": self.operator_evidence_card,
+            "activity": self.activity_card,
+        }
+        for widget in self.operations_sections.values():
+            self.layout.removeWidget(widget)
+            widget.setParent(None)
+            self._compact_operations_section(widget)
+            self.operations_stack.addWidget(widget)
+        self._last_operations_view_mode: str | None = None
+        self._show_operations_mode("mission")
+
+    def _compact_operations_section(self, widget: QWidget) -> None:
+        widget.setMinimumHeight(132)
+        widget.setMaximumHeight(150)
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = widget.layout()
+        if isinstance(layout, QGridLayout):
+            title_item = layout.itemAtPosition(0, 0)
+            if title_item is not None and title_item.widget() is not None:
+                title_item.widget().setVisible(False)
+                title_item.widget().setMaximumHeight(0)
+        for child in widget.findChildren(CardFrame):
+            if child.property("cardRole") == "tile":
+                child.setMinimumHeight(48)
+                child.setMaximumHeight(58)
+                for label in child.findChildren(QLabel):
+                    if label.objectName() == "subtitle":
+                        label.setVisible(False)
+
+    def _show_operations_mode(self, mode: str) -> None:
+        section = self.operations_sections.get(mode)
+        if section is None:
+            return
+        self.operations_stack.setCurrentWidget(section)
+        for key, button in self.operations_mode_buttons.items():
+            button.setChecked(key == mode)
+
+    def _sync_operations_mode(self) -> None:
+        view_mode = self.controller.view_mode
+        if view_mode == self._last_operations_view_mode:
+            return
+        self._last_operations_view_mode = view_mode
+        self._show_operations_mode("activity" if view_mode == "engineer" else "mission")
 
     def _build_quick_actions_legacy(self) -> CardFrame:
         card = CardFrame(role="command")
@@ -714,8 +797,8 @@ class DeviceCenterPage(QWidget):
 
     def _device_summary_card(self, data: dict) -> CardFrame:
         card = CardFrame(muted=not data["is_selected"], role="cockpit" if data["is_selected"] else "tile")
-        card.setMinimumHeight(116)
-        card.setMaximumHeight(126)
+        card.setMinimumHeight(98)
+        card.setMaximumHeight(108)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout = QGridLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
@@ -724,7 +807,7 @@ class DeviceCenterPage(QWidget):
 
         title = QLabel(data["label"])
         title.setObjectName("sectionTitle")
-        title.setMaximumHeight(26)
+        title.setMaximumHeight(22)
         layout.addWidget(title, 0, 0, 1, 2)
         layout.addWidget(chip(data["status_text"], data["status_level"]), 0, 2)
 
@@ -852,8 +935,8 @@ class DeviceCenterPage(QWidget):
 
     def _mini_metric(self, title: str, value: str) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
-        card.setMinimumHeight(38)
-        card.setMaximumHeight(44)
+        card.setMinimumHeight(34)
+        card.setMaximumHeight(38)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         layout.setSpacing(0)

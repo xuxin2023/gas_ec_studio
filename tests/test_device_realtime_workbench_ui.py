@@ -29,10 +29,11 @@ def test_device_center_uses_field_operations_deck() -> None:
 
         assert page.property("pageSurface") is True
         assert page.status_card.property("cardRole") == "cockpit"
+        assert page.status_card.maximumHeight() == 90
         assert page.field_readiness_card.property("cardRole") == "panel"
-        assert page.field_readiness_card.maximumHeight() == 158
+        assert page.field_readiness_card.maximumHeight() == 136
         assert page.quick_card.property("cardRole") == "command"
-        assert page.quick_card.maximumHeight() == 172
+        assert page.quick_card.maximumHeight() == 154
         assert page.quick_stack.property("stackRole") == "deviceQuickInspectorStack"
         assert page.quick_stack.count() == 2
         assert page.quick_stack.currentWidget() is page.quick_actions_panel
@@ -43,14 +44,24 @@ def test_device_center_uses_field_operations_deck() -> None:
         page._show_quick_mode("actions")
         assert page.quick_stack.currentWidget() is page.quick_actions_panel
         assert page.quick_add_panel.property("cardRole") == "tile"
-        assert page.quick_add_panel.maximumHeight() == 112
+        assert page.quick_add_panel.maximumHeight() == 96
         assert page.quick_actions_panel.property("cardRole") == "tile"
-        assert page.quick_actions_panel.maximumHeight() == 112
+        assert page.quick_actions_panel.maximumHeight() == 96
         assert page.quick_tip_card.maximumHeight() == 0
         assert page.quick_tip_card.isVisibleTo(page) is False
         assert page.device_grid_card.property("cardRole") == "panel"
-        assert page.device_grid_card.minimumHeight() == 198
-        assert page.device_grid_card.maximumHeight() == 206
+        assert page.device_grid_card.minimumHeight() == 176
+        assert page.device_grid_card.maximumHeight() == 184
+        assert page.operations_deck_card.property("cardRole") == "rail"
+        assert page.operations_deck_card.property("deckRole") == "deviceOperationsInspector"
+        assert page.operations_deck_card.maximumHeight() == 206
+        assert page.operations_stack.property("stackRole") == "deviceOperationsInspectorStack"
+        assert page.operations_stack.currentWidget() is page.operator_mission_card
+        assert page.operations_mode_buttons["mission"].isChecked() is True
+        page._show_operations_mode("evidence")
+        assert page.operations_stack.currentWidget() is page.operator_evidence_card
+        assert page.operations_mode_buttons["evidence"].isChecked() is True
+        page._show_operations_mode("mission")
         assert page.operator_mission_card.property("cardRole") == "cockpit"
         assert page.operator_mission_card.property("deckRole") == "deviceOperatorMissionDeck"
         assert set(page.operator_mission_tiles) == {"device", "capture", "processing", "delivery"}
@@ -67,7 +78,7 @@ def test_device_center_uses_field_operations_deck() -> None:
             "processing_gate",
             "delivery_gate",
         }
-        assert page.operator_evidence_card.isVisibleTo(page) is True
+        assert page.operator_evidence_card.isVisibleTo(page) is False
         assert page.operator_evidence_tiles["runtime_buffer"][0].property("compactMetric") is True
         assert "帧" in page.operator_evidence_tiles["runtime_buffer"][0].text()
         assert page.operator_evidence_tiles["processing_gate"][1].text().startswith("windows=")
@@ -79,6 +90,8 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert page.operator_mission_card.isVisibleTo(page) is False
         assert page.operator_evidence_card.isVisibleTo(page) is False
         assert page.activity_card.isVisibleTo(page) is True
+        assert page.operations_stack.currentWidget() is page.activity_card
+        assert page.operations_mode_buttons["activity"].isChecked() is True
     finally:
         page.deleteLater()
         controller.shutdown()
@@ -104,6 +117,10 @@ def test_device_center_top_decks_fit_common_desktop_viewports() -> None:
             assert page.quick_card.height() <= page.quick_card.maximumHeight()
             assert page.quick_add_panel.height() <= page.quick_add_panel.maximumHeight()
             assert page.quick_actions_panel.height() <= page.quick_actions_panel.maximumHeight()
+            assert widget_bounds(page.operations_deck_card, page).top() < height
+            if height >= 900:
+                assert_contained(page, page.operations_deck_card, page)
+                assert_no_visual_overlap(top_cards + [page.operations_deck_card], page)
             assert_no_visible_competitor_name(page)
     finally:
         page.close()
