@@ -1335,6 +1335,16 @@ class ECProcessingPage(QWidget):
             tile.style().unpolish(tile)
             tile.style().polish(tile)
 
+    def _set_covariance_metric(self, key: str, value: str, tone: str = "warning") -> None:
+        label = self.covariance_metric_values.get(key)
+        if label is not None:
+            label.setText(value)
+        tile = self.covariance_metric_tiles.get(key)
+        if tile is not None:
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
     def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
         row.setSpacing(TOKENS.spacing_md)
@@ -1703,6 +1713,9 @@ class ECProcessingPage(QWidget):
         row.setSpacing(TOKENS.spacing_md)
         layout.addLayout(row)
         param_card = CardFrame()
+        param_card.setProperty("deckRole", "covarianceParameterPanel")
+        param_card.setMaximumHeight(240)
+        self.covariance_param_card = param_card
         param_layout = QVBoxLayout(param_card)
         param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         param_layout.setSpacing(TOKENS.spacing_md)
@@ -1714,23 +1727,52 @@ class ECProcessingPage(QWidget):
         param_layout.addLayout(form)
         row.addWidget(param_card, 2)
 
-        preview_card = CardFrame(muted=True)
+        preview_card = CardFrame(muted=True, role="panel")
+        preview_card.setProperty("deckRole", "covarianceEvidencePanel")
+        preview_card.setMaximumHeight(280)
+        self.covariance_evidence_card = preview_card
         preview_layout = QGridLayout(preview_card)
-        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        preview_layout.setHorizontalSpacing(TOKENS.spacing_md)
-        preview_layout.setVerticalSpacing(TOKENS.spacing_md)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        preview_layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        preview_layout.setVerticalSpacing(TOKENS.spacing_sm)
         preview_layout.addWidget(section_title("中间结果", "预留主要协方差结果位，便于后续接入真实中间量。"), 0, 0, 1, 3)
-        self.covariance_metric_flux = QLabel("--")
-        self.covariance_metric_h2o = QLabel("--")
-        self.covariance_metric_temp = QLabel("--")
-        for col, (title, value) in enumerate(
+        self.covariance_status_chip = chip("preview", "warning")
+        preview_layout.addWidget(self.covariance_status_chip, 0, 3, Qt.AlignRight)
+        self.covariance_metric_tiles: dict[str, CardFrame] = {}
+        self.covariance_metric_values: dict[str, QLabel] = {}
+        for col, (key, title, value) in enumerate(
             (
-                ("w'c'", self.covariance_metric_flux),
-                ("w'q'", self.covariance_metric_h2o),
-                ("w'T'", self.covariance_metric_temp),
+                ("method", "method", "--"),
+                ("w_co2", "w'co2", "--"),
+                ("w_h2o", "w'h2o", "--"),
+                ("raw", "raw flux", "--"),
             )
         ):
-            preview_layout.addWidget(self._metric_box(title, value), 1, col)
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("evidenceTone", "warning")
+            tile.setMaximumHeight(68)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(0)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value_label = QLabel(value)
+            value_label.setObjectName("metricValue")
+            value_label.setProperty("compactMetric", True)
+            value_label.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label)
+            preview_layout.addWidget(tile, 1, col)
+            self.covariance_metric_tiles[key] = tile
+            self.covariance_metric_values[key] = value_label
+        self.covariance_metric_flux = self.covariance_metric_values["w_co2"]
+        self.covariance_metric_h2o = self.covariance_metric_values["w_h2o"]
+        self.covariance_metric_temp = self.covariance_metric_values["raw"]
+        self.covariance_note_label = QLabel("--")
+        self.covariance_note_label.setObjectName("subtitle")
+        self.covariance_note_label.setWordWrap(True)
+        self.covariance_note_label.setMaximumHeight(48)
+        preview_layout.addWidget(self.covariance_note_label, 2, 0, 1, 4)
         row.addWidget(preview_card, 3)
 
     def _build_density_correction_page(self, layout: QVBoxLayout) -> None:
@@ -3130,13 +3172,22 @@ class ECProcessingPage(QWidget):
     def _refresh_covariance_preview(self, *_args) -> None:
         current = self._current_window()
         if current is None:
-            self.covariance_metric_flux.setText("--")
-            self.covariance_metric_h2o.setText("--")
-            self.covariance_metric_temp.setText("--")
+            self._set_generic_chip(self.covariance_status_chip, "preview", "warning")
+            self._set_covariance_metric("method", self.covariance_mode_combo.currentText().strip(), "warning")
+            self._set_covariance_metric("w_co2", "--", "warning")
+            self._set_covariance_metric("w_h2o", "--", "warning")
+            self._set_covariance_metric("raw", "--", "warning")
+            self.covariance_note_label.setText("暂无真实 RP 结果，运行处理后显示协方差和原始通量。")
             return
-        self.covariance_metric_flux.setText(f"{current.cov_w_co2:.6f}")
-        self.covariance_metric_h2o.setText(f"{current.cov_w_h2o:.6f}")
-        self.covariance_metric_temp.setText(f"{current.raw_flux:.6f}")
+        section = self._section_workspace("covariance")
+        tone = "success" if current.valid_sample_count > 0 else "danger"
+        self._set_generic_chip(self.covariance_status_chip, "real", tone)
+        self._set_covariance_metric("method", self.covariance_mode_combo.currentText().strip(), tone)
+        self._set_covariance_metric("w_co2", f"{current.cov_w_co2:.6f}", tone)
+        self._set_covariance_metric("w_h2o", f"{current.cov_w_h2o:.6f}", tone)
+        self._set_covariance_metric("raw", f"{current.raw_flux:.3f}", tone)
+        summary = str(section.get("real_summary", "协方差摘要不可用。"))
+        self.covariance_note_label.setText(f"{summary} valid_samples={current.valid_sample_count}.")
 
     def _refresh_density_preview(self, *_args) -> None:
         windows = self.controller.ec_processing_workspace.get("windows", [])

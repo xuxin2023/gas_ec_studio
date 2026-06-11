@@ -168,6 +168,15 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert set(page.detrend_metric_values) == {"method", "windows", "raw", "primary"}
         assert all(tile.property("cardRole") == "tile" for tile in page.detrend_metric_tiles.values())
         assert page.detrend_metric_values["windows"].text() == "--"
+        assert page.covariance_param_card.property("deckRole") == "covarianceParameterPanel"
+        assert page.covariance_param_card.maximumHeight() == 240
+        assert page.covariance_evidence_card.property("deckRole") == "covarianceEvidencePanel"
+        assert page.covariance_evidence_card.maximumHeight() == 280
+        assert page.covariance_status_chip.text() == "preview"
+        assert page.covariance_status_chip.property("chipTone") == "warning"
+        assert set(page.covariance_metric_values) == {"method", "w_co2", "w_h2o", "raw"}
+        assert all(tile.property("cardRole") == "tile" for tile in page.covariance_metric_tiles.values())
+        assert page.covariance_metric_values["w_co2"].text() == "--"
         assert page.cockpit_method_value.property("compactMetric") is True
         assert page.step_tree.objectName() == "workflowTree"
         assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
@@ -266,6 +275,12 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.detrend_metric_values["windows"].text() != "--"
         assert page.detrend_metric_values["raw"].text() != "--"
         assert page.detrend_metric_values["primary"].text() != "--"
+        assert page.covariance_status_chip.text() == "real"
+        assert page.covariance_status_chip.property("chipTone") in {"success", "warning", "danger"}
+        assert page.covariance_metric_values["method"].text() != "--"
+        assert page.covariance_metric_values["w_co2"].text() != "--"
+        assert page.covariance_metric_values["w_h2o"].text() != "--"
+        assert page.covariance_metric_values["raw"].text() != "--"
         assert "lag=" in page.lag_note_label.text()
         assert "u*=" in page.turbulence_preview_label.text()
         assert page.uncertainty_sampling_label.text() != "真实 RP 未提供"
@@ -350,6 +365,14 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             assert detrend_card_rect.top() >= detrend_viewport_rect.top()
             assert detrend_card_rect.top() < detrend_viewport_rect.bottom()
             assert detrend_plot_rect.top() < detrend_viewport_rect.bottom()
+            page.step_tree.setCurrentItem(page.step_items["covariance"])
+            app.processEvents()
+            covariance_viewport = page.content_stack.currentWidget().viewport()
+            covariance_viewport_rect = widget_bounds(covariance_viewport, page)
+            covariance_card_rect = widget_bounds(page.covariance_evidence_card, page)
+            assert page.covariance_evidence_card.maximumHeight() == 280
+            assert covariance_card_rect.top() >= covariance_viewport_rect.top()
+            assert covariance_card_rect.bottom() <= covariance_viewport_rect.bottom()
             assert_no_visible_competitor_name(page)
     finally:
         page.close()
