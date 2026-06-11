@@ -139,6 +139,16 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.window_plan_plot.maximumHeight() == 168
         assert page.window_timeline_chip.text() == "preview"
         assert page.window_timeline_chip.property("chipTone") == "warning"
+        assert page.lag_param_card.property("deckRole") == "lagParameterPanel"
+        assert page.lag_param_card.maximumHeight() == 330
+        assert page.lag_covariance_card.property("deckRole") == "lagCovariancePanel"
+        assert page.lag_covariance_card.maximumHeight() == 360
+        assert page.lag_plot.maximumHeight() == 216
+        assert page.lag_status_chip.text() == "preview"
+        assert page.lag_status_chip.property("chipTone") == "warning"
+        assert set(page.lag_metric_values) == {"lag", "confidence", "search", "strategy"}
+        assert all(tile.property("cardRole") == "tile" for tile in page.lag_metric_tiles.values())
+        assert page.lag_metric_values["confidence"].text() == "--"
         assert page.cockpit_method_value.property("compactMetric") is True
         assert page.step_tree.objectName() == "workflowTree"
         assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
@@ -220,6 +230,11 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.window_cockpit_tiles["samples"].property("evidenceTone") in {"success", "warning", "danger"}
         assert page.window_timeline_chip.text() == "real"
         assert page.window_timeline_chip.property("chipTone") == "success"
+        assert page.lag_status_chip.text() == "real"
+        assert page.lag_status_chip.property("chipTone") in {"success", "warning", "danger"}
+        assert page.lag_metric_values["lag"].text().endswith("s")
+        assert page.lag_metric_values["confidence"].text() != "--"
+        assert page.lag_metric_tiles["lag"].property("evidenceTone") in {"success", "warning", "danger"}
         assert "lag=" in page.lag_note_label.text()
         assert "u*=" in page.turbulence_preview_label.text()
         assert page.uncertainty_sampling_label.text() != "真实 RP 未提供"
@@ -251,6 +266,7 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
         for width, height in ((1280, 760), (1440, 920), (1600, 900)):
             page.resize(width, height)
             page.refresh()
+            page.step_tree.setCurrentItem(page.step_items["window_sampling"])
             app.processEvents()
 
             assert page.desktop_rail.width() <= page.desktop_rail.maximumWidth()
@@ -275,6 +291,16 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             assert timeline_rect.top() >= viewport_rect.top()
             assert timeline_rect.top() < viewport_rect.bottom()
             assert plot_rect.top() < viewport_rect.bottom()
+            page.step_tree.setCurrentItem(page.step_items["lag"])
+            app.processEvents()
+            lag_viewport = page.content_stack.currentWidget().viewport()
+            lag_viewport_rect = widget_bounds(lag_viewport, page)
+            lag_card_rect = widget_bounds(page.lag_covariance_card, page)
+            lag_plot_rect = widget_bounds(page.lag_plot, page)
+            assert page.lag_covariance_card.maximumHeight() == 360
+            assert lag_card_rect.top() >= lag_viewport_rect.top()
+            assert lag_card_rect.top() < lag_viewport_rect.bottom()
+            assert lag_plot_rect.top() < lag_viewport_rect.bottom()
             assert_no_visible_competitor_name(page)
     finally:
         page.close()

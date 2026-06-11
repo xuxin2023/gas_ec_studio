@@ -1305,6 +1305,16 @@ class ECProcessingPage(QWidget):
         self.window_cockpit_notes[key] = note_label
         return tile
 
+    def _set_lag_metric(self, key: str, value: str, tone: str = "warning") -> None:
+        label = self.lag_metric_values.get(key)
+        if label is not None:
+            label.setText(value)
+        tile = self.lag_metric_tiles.get(key)
+        if tile is not None:
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
     def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
         row.setSpacing(TOKENS.spacing_md)
@@ -1393,6 +1403,9 @@ class ECProcessingPage(QWidget):
         layout.addLayout(row)
 
         param_card = CardFrame()
+        param_card.setProperty("deckRole", "lagParameterPanel")
+        param_card.setMaximumHeight(330)
+        self.lag_param_card = param_card
         param_layout = QVBoxLayout(param_card)
         param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         param_layout.setSpacing(TOKENS.spacing_md)
@@ -1411,18 +1424,57 @@ class ECProcessingPage(QWidget):
         param_layout.addLayout(form)
         row.addWidget(param_card, 2)
 
-        plot_card = CardFrame(muted=True)
+        plot_card = CardFrame(muted=True, role="panel")
+        plot_card.setProperty("deckRole", "lagCovariancePanel")
+        plot_card.setMaximumHeight(360)
+        self.lag_covariance_card = plot_card
         plot_layout = QVBoxLayout(plot_card)
-        plot_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        plot_layout.setSpacing(TOKENS.spacing_md)
+        plot_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        plot_layout.setSpacing(TOKENS.spacing_sm)
         plot_layout.addWidget(section_title("Covariance 曲线区", "预留协方差曲线区，让 lag 的峰值选择可见可解释。"))
+        self.lag_status_chip = chip("preview", "warning")
+        plot_layout.addWidget(self.lag_status_chip, 0, Qt.AlignRight)
+        metric_grid = QGridLayout()
+        metric_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        metric_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.lag_metric_tiles: dict[str, CardFrame] = {}
+        self.lag_metric_values: dict[str, QLabel] = {}
+        for column, (key, title, value) in enumerate(
+            (
+                ("lag", "lag", "--"),
+                ("confidence", "confidence", "--"),
+                ("search", "search", "--"),
+                ("strategy", "strategy", "--"),
+            )
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("evidenceTone", "warning")
+            tile.setMaximumHeight(58)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(0)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value_label = QLabel(value)
+            value_label.setObjectName("metricValue")
+            value_label.setProperty("compactMetric", True)
+            value_label.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label)
+            metric_grid.addWidget(tile, 0, column)
+            self.lag_metric_tiles[key] = tile
+            self.lag_metric_values[key] = value_label
+        plot_layout.addLayout(metric_grid)
         self.lag_plot = pg.PlotWidget()
         configure_plot_theme(self.lag_plot, left_label="归一化协方差", bottom_label="时滞 (s)")
+        self.lag_plot.setMinimumHeight(188)
+        self.lag_plot.setMaximumHeight(216)
         self.lag_curve = self.lag_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.1))
         plot_layout.addWidget(self.lag_plot, 1)
         self.lag_note_label = QLabel("--")
         self.lag_note_label.setObjectName("subtitle")
         self.lag_note_label.setWordWrap(True)
+        self.lag_note_label.setMaximumHeight(42)
         plot_layout.addWidget(self.lag_note_label)
         row.addWidget(plot_card, 3)
 
@@ -2842,12 +2894,23 @@ class ECProcessingPage(QWidget):
         current = self._current_window()
         if current is None:
             self.lag_curve.setData([], [])
+            self._set_generic_chip(self.lag_status_chip, "preview", "warning")
+            self._set_lag_metric("lag", f"{self.lag_expected_spin.value():.1f}s", "warning")
+            self._set_lag_metric("confidence", "--", "warning")
+            self._set_lag_metric("search", f"±{self.lag_search_window_spin.value():.1f}s", "warning")
+            self._set_lag_metric("strategy", self.lag_strategy_combo.currentText().strip(), "warning")
             self.lag_note_label.setText("暂无真实 RP 结果，运行处理后显示 lag 协方差曲线。")
             return
         x_values = section.get("intermediate", {}).get("lag_curve_x", [])
         y_values = section.get("intermediate", {}).get("lag_curve_y", [])
         self.lag_curve.setData(x_values, y_values)
         lag_strategy = current.diagnostics.get("lag_strategy", "covariance_max") if current.diagnostics else "covariance_max"
+        confidence_tone = "success" if current.lag_confidence >= 0.7 else "warning" if current.lag_confidence >= 0.4 else "danger"
+        self._set_generic_chip(self.lag_status_chip, "real", confidence_tone)
+        self._set_lag_metric("lag", f"{current.lag_seconds:.3f}s", confidence_tone)
+        self._set_lag_metric("confidence", f"{current.lag_confidence:.2f}", confidence_tone)
+        self._set_lag_metric("search", f"{self.lag_search_window_spin.value():.1f}s", "success")
+        self._set_lag_metric("strategy", str(lag_strategy), "success")
         screening_detail = current.diagnostics.get("screening_detail", {}) if current.diagnostics else {}
         screening_summary = ""
         if screening_detail:
