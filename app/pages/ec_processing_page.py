@@ -1375,6 +1375,16 @@ class ECProcessingPage(QWidget):
             tile.style().unpolish(tile)
             tile.style().polish(tile)
 
+    def _set_output_metric(self, key: str, value: str, tone: str = "warning") -> None:
+        label = self.output_metric_values.get(key)
+        if label is not None:
+            label.setText(value)
+        tile = self.output_metric_tiles.get(key)
+        if tile is not None:
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
     def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
         row.setSpacing(TOKENS.spacing_md)
@@ -2391,6 +2401,9 @@ class ECProcessingPage(QWidget):
         row.setSpacing(TOKENS.spacing_md)
         layout.addLayout(row)
         param_card = CardFrame()
+        param_card.setProperty("deckRole", "outputParameterPanel")
+        param_card.setMaximumHeight(260)
+        self.output_param_card = param_card
         param_layout = QVBoxLayout(param_card)
         param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         param_layout.setSpacing(TOKENS.spacing_md)
@@ -2404,14 +2417,53 @@ class ECProcessingPage(QWidget):
         param_layout.addLayout(form)
         row.addWidget(param_card, 2)
 
-        preview_card = CardFrame(muted=True)
+        preview_card = CardFrame(muted=True, role="panel")
+        preview_card.setProperty("deckRole", "outputEvidencePanel")
+        preview_card.setMaximumHeight(360)
+        self.output_evidence_card = preview_card
         preview_layout = QVBoxLayout(preview_card)
-        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        preview_layout.setSpacing(TOKENS.spacing_sm)
         preview_layout.addWidget(section_title("中间结果", "在正式运行前先预览输出重点，避免漏掉关键诊断字段。"))
+        self.output_status_chip = chip("preview", "warning")
+        preview_layout.addWidget(self.output_status_chip, 0, Qt.AlignRight)
+        metric_grid = QGridLayout()
+        metric_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        metric_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.output_metric_tiles: dict[str, CardFrame] = {}
+        self.output_metric_values: dict[str, QLabel] = {}
+        for index, (key, title, value) in enumerate(
+            (
+                ("run", "run", "--"),
+                ("windows", "windows", "--"),
+                ("mode", "mode", "--"),
+                ("fields", "fields", "--"),
+                ("uncertainty", "uncertainty", "--"),
+                ("network", "network", "--"),
+            )
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("evidenceTone", "warning")
+            tile.setMaximumHeight(58)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(0)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value_label = QLabel(value)
+            value_label.setObjectName("metricValue")
+            value_label.setProperty("compactMetric", True)
+            value_label.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label)
+            metric_grid.addWidget(tile, index // 3, index % 3)
+            self.output_metric_tiles[key] = tile
+            self.output_metric_values[key] = value_label
+        preview_layout.addLayout(metric_grid)
         self.output_preview_label = QLabel("--")
         self.output_preview_label.setObjectName("subtitle")
         self.output_preview_label.setWordWrap(True)
+        self.output_preview_label.setMaximumHeight(54)
         preview_layout.addWidget(self.output_preview_label)
         row.addWidget(preview_card, 3)
 
@@ -3553,6 +3605,13 @@ class ECProcessingPage(QWidget):
         text = self.output_fields_edit.text().strip()
         fields = [field.strip() for field in text.split(",") if field.strip()]
         if current is None:
+            self._set_generic_chip(self.output_status_chip, "preview", "warning")
+            self._set_output_metric("run", "not run", "warning")
+            self._set_output_metric("windows", "--", "warning")
+            self._set_output_metric("mode", self.full_output_mode_combo.currentText().strip(), "warning")
+            self._set_output_metric("fields", f"{len(fields)} fields" if fields else "--", "warning")
+            self._set_output_metric("uncertainty", "--", "warning")
+            self._set_output_metric("network", "FLUXNET", "warning")
             self.output_preview_label.setText("暂无真实 RP 结果。")
             self._refresh_processing_cockpit()
             self._refresh_readiness_panel()
@@ -3560,11 +3619,32 @@ class ECProcessingPage(QWidget):
         summary = workspace.get("summary", {})
         field_text = "、".join(fields[:6]) if fields else "未设置输出字段"
         diagnostics = current.diagnostics or {}
+        network = dict(self.controller.report_center_workspace.get("network_output", {}) or {})
+        schema_target = diagnostics.get("schema_target") or network.get("schema_target", "FLUXNET")
+        validation_status = diagnostics.get("validation_status", diagnostics.get("network_validation_status", network.get("validation_status", "--")))
+        missing_fields = diagnostics.get("missing_fields", diagnostics.get("network_missing_fields", network.get("missing_fields", [])))
+        if isinstance(missing_fields, str):
+            missing_items = [item.strip() for item in missing_fields.replace("/", ",").split(",") if item.strip()]
+        else:
+            missing_items = list(missing_fields or [])
+        run_status = str(summary.get("status", "empty"))
+        network_ready = bool(schema_target) and len(missing_items) == 0
+        tone = "success" if run_status == "ok" and network_ready else ("warning" if current is not None else "danger")
+        uncertainty_band = diagnostics.get("primary_flux_uncertainty_band", "--")
+        if isinstance(uncertainty_band, (int, float)):
+            uncertainty_text = f"±{float(uncertainty_band):.2f}"
+        else:
+            uncertainty_text = str(uncertainty_band or "--")
+        self._set_generic_chip(self.output_status_chip, "real", tone)
+        self._set_output_metric("run", run_status, tone)
+        self._set_output_metric("windows", str(summary.get("window_count", 0)), tone)
+        self._set_output_metric("mode", self.full_output_mode_combo.currentText().strip(), tone)
+        self._set_output_metric("fields", f"{len(fields)} fields" if fields else "default", tone)
+        self._set_output_metric("uncertainty", uncertainty_text, tone)
+        self._set_output_metric("network", str(schema_target), tone)
         self.output_preview_label.setText(
-            f"运行状态 {summary.get('status', 'empty')}，窗口数 {summary.get('window_count', 0)}，"
-            f"full_output={self.full_output_mode_combo.currentText().strip()}，字段：{field_text}，"
-            f"uncertainty_band={diagnostics.get('primary_flux_uncertainty_band', '--')}，"
-            f"schema_target={diagnostics.get('schema_target', '--')}。"
+            f"字段：{field_text}；validation={validation_status}；missing={len(missing_items)}；"
+            f"export={self.controller.report_center_workspace.get('export_status', 'not_exported')}。"
         )
         self._refresh_processing_cockpit()
         self._refresh_readiness_panel()

@@ -207,6 +207,15 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert set(page.turbulence_metric_values) == {"rule", "ustar", "score", "status"}
         assert all(tile.property("cardRole") == "tile" for tile in page.turbulence_metric_tiles.values())
         assert page.turbulence_metric_values["ustar"].text() == "--"
+        assert page.output_param_card.property("deckRole") == "outputParameterPanel"
+        assert page.output_param_card.maximumHeight() == 260
+        assert page.output_evidence_card.property("deckRole") == "outputEvidencePanel"
+        assert page.output_evidence_card.maximumHeight() == 360
+        assert page.output_status_chip.text() == "preview"
+        assert page.output_status_chip.property("chipTone") == "warning"
+        assert set(page.output_metric_values) == {"run", "windows", "mode", "fields", "uncertainty", "network"}
+        assert all(tile.property("cardRole") == "tile" for tile in page.output_metric_tiles.values())
+        assert page.output_metric_values["uncertainty"].text() == "--"
         assert page.cockpit_method_value.property("compactMetric") is True
         assert page.step_tree.objectName() == "workflowTree"
         assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
@@ -329,6 +338,14 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.turbulence_metric_values["ustar"].text() != "--"
         assert page.turbulence_metric_values["score"].text() != "--"
         assert page.turbulence_metric_values["status"].text() != "--"
+        assert page.output_status_chip.text() == "real"
+        assert page.output_status_chip.property("chipTone") in {"success", "warning", "danger"}
+        assert page.output_metric_values["run"].text() != "--"
+        assert page.output_metric_values["windows"].text() != "--"
+        assert page.output_metric_values["mode"].text() == page.full_output_mode_combo.currentText()
+        assert page.output_metric_values["fields"].text() != "--"
+        assert page.output_metric_values["uncertainty"].text() != "--"
+        assert page.output_metric_values["network"].text() != "--"
         assert "lag=" in page.lag_note_label.text()
         assert "u*=" in page.turbulence_preview_label.text()
         assert page.uncertainty_sampling_label.text() != "真实 RP 未提供"
@@ -451,6 +468,14 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             assert turbulence_card_rect.top() >= turbulence_viewport_rect.top()
             assert turbulence_card_rect.top() < turbulence_viewport_rect.bottom()
             assert turbulence_plot_rect.top() < turbulence_viewport_rect.bottom()
+            page.step_tree.setCurrentItem(page.step_items["output"])
+            app.processEvents()
+            output_viewport = page.content_stack.currentWidget().viewport()
+            output_viewport_rect = widget_bounds(output_viewport, page)
+            output_card_rect = widget_bounds(page.output_evidence_card, page)
+            assert page.output_evidence_card.maximumHeight() == 360
+            assert output_card_rect.top() >= output_viewport_rect.top()
+            assert output_card_rect.bottom() <= output_viewport_rect.bottom()
             assert_no_visible_competitor_name(page)
     finally:
         page.close()
