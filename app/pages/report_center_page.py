@@ -784,6 +784,7 @@ class ReportCenterPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         layout.setSpacing(TOKENS.spacing_xs)
+        layout.setAlignment(Qt.AlignTop)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
@@ -830,10 +831,10 @@ class ReportCenterPage(QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(TOKENS.spacing_xs)
         grid.setVerticalSpacing(TOKENS.spacing_xs)
-        for row in range(2):
-            grid.setRowMinimumHeight(row, 24)
-        for column in range(3):
-            grid.setColumnMinimumWidth(column, 72)
+        for row in range(3):
+            grid.setRowMinimumHeight(row, 42)
+        for column in range(2):
+            grid.setColumnMinimumWidth(column, 104)
         self.delivery_gate_values: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
         self.delivery_gate_tiles: dict[str, CardFrame] = {}
         gate_items = [
@@ -845,11 +846,12 @@ class ReportCenterPage(QWidget):
             ("methods", "方法", "三族方法溯源闭合"),
         ]
         for index, (key, title, hint) in enumerate(gate_items):
-            grid.addWidget(self._delivery_gate_tile(key, title, hint), index // 3, index % 3)
+            grid.addWidget(self._delivery_gate_tile(key, title, hint), index // 2, index % 2)
         layout.addLayout(grid)
 
         self.delivery_gate_next_card = CardFrame(muted=True, role="tile")
-        self.delivery_gate_next_card.setMaximumHeight(28)
+        self.delivery_gate_next_card.setMaximumHeight(0)
+        self.delivery_gate_next_card.setVisible(False)
         self.delivery_gate_next_card.setProperty("gateKey", "nextAction")
         next_layout = QHBoxLayout(self.delivery_gate_next_card)
         next_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
@@ -874,28 +876,42 @@ class ReportCenterPage(QWidget):
     def _delivery_gate_tile(self, key: str, title: str, hint: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("gateKey", key)
-        tile.setMinimumHeight(22)
-        tile.setMaximumHeight(24)
-        layout = QHBoxLayout(tile)
+        tile.setMinimumHeight(38)
+        tile.setMaximumHeight(42)
+        layout = QVBoxLayout(tile)
         layout.setContentsMargins(TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs)
-        layout.setSpacing(0)
+        layout.setSpacing(1)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(TOKENS.spacing_xs)
         title_label = QLabel(_ui_safe_text(title))
         title_label.setObjectName("metricLabel")
+        title_label.setMinimumWidth(0)
+        title_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         status_chip = chip("检查", "warning")
-        status_chip.setMaximumHeight(16)
-        status_chip.setVisible(False)
+        status_chip.setProperty("closureStage", True)
+        status_chip.setAlignment(Qt.AlignCenter)
+        status_chip.setMinimumWidth(42)
+        status_chip.setMaximumWidth(56)
+        status_chip.setMinimumHeight(18)
+        status_chip.setMaximumHeight(20)
+        status_chip.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         value = QLabel("--")
         value.setObjectName("metricValue")
         value.setProperty("compactMetric", True)
+        value.setMinimumWidth(0)
         value.setWordWrap(False)
         value.setMaximumHeight(18)
+        value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         note = QLabel(_ui_safe_text(hint))
         note.setObjectName("subtitle")
         note.setWordWrap(True)
         note.setMaximumHeight(36)
         note.setVisible(False)
-        layout.addWidget(title_label)
-        layout.addStretch(1)
+        header.addWidget(title_label)
+        header.addStretch(1)
+        header.addWidget(status_chip)
+        layout.addLayout(header)
         layout.addWidget(value)
         self.delivery_gate_values[key] = (value, note, status_chip)
         self.delivery_gate_tiles[key] = tile

@@ -67,11 +67,14 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_hero_card.maximumHeight() == 36
         assert page.delivery_gate_ready_value.property("compactMetric") is True
         assert page.delivery_gate_ready_note.isHidden() is True
-        assert all(tile.maximumHeight() == 24 for tile in page.delivery_gate_tiles.values())
+        assert all(tile.maximumHeight() == 42 for tile in page.delivery_gate_tiles.values())
         assert page.delivery_gate_values["report"][0].property("compactMetric") is True
         assert page.delivery_gate_values["report"][1].isHidden() is True
-        assert page.delivery_gate_values["report"][2].isHidden() is True
+        assert page.delivery_gate_values["report"][2].isHidden() is False
+        assert page.delivery_gate_values["report"][2].property("closureStage") is True
+        assert page.delivery_gate_values["report"][2].minimumHeight() == 18
         assert page.delivery_gate_next_value.property("compactMetric") is True
+        assert page.delivery_gate_next_card.isHidden() is True
         assert page.delivery_gate_next_note.isHidden() is True
         assert page.preview_header_card.property("cardRole") == "cockpit"
         assert page.preview_deck_card.property("cardRole") == "rail"
@@ -189,7 +192,6 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             gate_widgets = [
                 page.delivery_gate_hero_card,
                 *page.delivery_gate_tiles.values(),
-                page.delivery_gate_next_card,
             ]
             for widget in gate_widgets:
                 assert_contained(page.delivery_gate_card, widget, page)
