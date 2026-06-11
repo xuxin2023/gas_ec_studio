@@ -1325,6 +1325,16 @@ class ECProcessingPage(QWidget):
             tile.style().unpolish(tile)
             tile.style().polish(tile)
 
+    def _set_detrend_metric(self, key: str, value: str, tone: str = "warning") -> None:
+        label = self.detrend_metric_values.get(key)
+        if label is not None:
+            label.setText(value)
+        tile = self.detrend_metric_tiles.get(key)
+        if tile is not None:
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
     def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
         row.setSpacing(TOKENS.spacing_md)
@@ -1619,6 +1629,9 @@ class ECProcessingPage(QWidget):
         row.setSpacing(TOKENS.spacing_md)
         layout.addLayout(row)
         param_card = CardFrame()
+        param_card.setProperty("deckRole", "detrendParameterPanel")
+        param_card.setMaximumHeight(260)
+        self.detrend_param_card = param_card
         param_layout = QVBoxLayout(param_card)
         param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         param_layout.setSpacing(TOKENS.spacing_md)
@@ -1630,20 +1643,59 @@ class ECProcessingPage(QWidget):
         param_layout.addLayout(form)
         row.addWidget(param_card, 2)
 
-        preview_card = CardFrame(muted=True)
+        preview_card = CardFrame(muted=True, role="panel")
+        preview_card.setProperty("deckRole", "detrendEvidencePanel")
+        preview_card.setMaximumHeight(360)
+        self.detrend_evidence_card = preview_card
         preview_layout = QVBoxLayout(preview_card)
-        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        preview_layout.setSpacing(TOKENS.spacing_sm)
         preview_layout.addWidget(section_title("中间结果", "当前仅保留说明区，后续可接入频谱与残差预览。"))
+        self.detrend_status_chip = chip("preview", "warning")
+        preview_layout.addWidget(self.detrend_status_chip, 0, Qt.AlignRight)
+        metric_grid = QGridLayout()
+        metric_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        metric_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.detrend_metric_tiles: dict[str, CardFrame] = {}
+        self.detrend_metric_values: dict[str, QLabel] = {}
+        for column, (key, title, value) in enumerate(
+            (
+                ("method", "method", "--"),
+                ("windows", "windows", "--"),
+                ("raw", "raw", "--"),
+                ("primary", "primary", "--"),
+            )
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("evidenceTone", "warning")
+            tile.setMaximumHeight(58)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(0)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value_label = QLabel(value)
+            value_label.setObjectName("metricValue")
+            value_label.setProperty("compactMetric", True)
+            value_label.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label)
+            metric_grid.addWidget(tile, 0, column)
+            self.detrend_metric_tiles[key] = tile
+            self.detrend_metric_values[key] = value_label
+        preview_layout.addLayout(metric_grid)
         self.detrend_preview_label = QLabel("--")
         self.detrend_preview_label.setObjectName("subtitle")
         self.detrend_preview_label.setWordWrap(True)
-        preview_layout.addWidget(self.detrend_preview_label)
+        self.detrend_preview_label.setMaximumHeight(42)
         self.detrend_flux_plot = pg.PlotWidget()
         configure_plot_theme(self.detrend_flux_plot, left_label="flux", bottom_label="window")
+        self.detrend_flux_plot.setMinimumHeight(168)
+        self.detrend_flux_plot.setMaximumHeight(190)
         self.detrend_raw_curve = self.detrend_flux_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["muted"], width=1.6))
         self.detrend_primary_curve = self.detrend_flux_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.1))
         preview_layout.addWidget(self.detrend_flux_plot, 1)
+        preview_layout.addWidget(self.detrend_preview_label)
         row.addWidget(preview_card, 3)
 
     def _build_covariance_page(self, layout: QVBoxLayout) -> None:
@@ -3053,12 +3105,26 @@ class ECProcessingPage(QWidget):
         if self._current_window() is None:
             self.detrend_raw_curve.setData([], [])
             self.detrend_primary_curve.setData([], [])
+            self._set_generic_chip(self.detrend_status_chip, "preview", "warning")
+            self._set_detrend_metric("method", self.detrend_mode_combo.currentText().strip(), "warning")
+            self._set_detrend_metric("windows", "--", "warning")
+            self._set_detrend_metric("raw", "--", "warning")
+            self._set_detrend_metric("primary", "--", "warning")
             self.detrend_preview_label.setText("暂无真实 RP 结果，运行处理后显示去趋势模式摘要。")
             return
+        current = self._current_window()
         xs, raw_flux = self._series_from_windows(windows, "raw_flux")
         _, primary_flux = self._series_from_windows(windows, "primary_flux", fallback_key="density_corrected_flux")
         self.detrend_raw_curve.setData(xs, raw_flux)
         self.detrend_primary_curve.setData(xs, primary_flux)
+        raw_value = float(current.raw_flux)
+        primary_value = float(current.primary_flux if current.primary_flux != 0.0 else current.density_corrected_flux)
+        tone = "success" if len(xs) > 0 else "danger"
+        self._set_generic_chip(self.detrend_status_chip, "real", tone)
+        self._set_detrend_metric("method", str(current.detrend_mode or "--"), tone)
+        self._set_detrend_metric("windows", str(len(xs)), tone)
+        self._set_detrend_metric("raw", f"{raw_value:.2f}", tone)
+        self._set_detrend_metric("primary", f"{primary_value:.2f}", tone)
         self.detrend_preview_label.setText(str(section.get("real_summary", "去趋势摘要不可用。")))
 
     def _refresh_covariance_preview(self, *_args) -> None:

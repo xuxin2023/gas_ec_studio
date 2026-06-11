@@ -158,6 +158,16 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert set(page.rotation_metric_values) == {"requested", "applied", "alpha", "beta"}
         assert all(tile.property("cardRole") == "tile" for tile in page.rotation_metric_tiles.values())
         assert page.rotation_metric_values["applied"].text() == "--"
+        assert page.detrend_param_card.property("deckRole") == "detrendParameterPanel"
+        assert page.detrend_param_card.maximumHeight() == 260
+        assert page.detrend_evidence_card.property("deckRole") == "detrendEvidencePanel"
+        assert page.detrend_evidence_card.maximumHeight() == 360
+        assert page.detrend_flux_plot.maximumHeight() == 190
+        assert page.detrend_status_chip.text() == "preview"
+        assert page.detrend_status_chip.property("chipTone") == "warning"
+        assert set(page.detrend_metric_values) == {"method", "windows", "raw", "primary"}
+        assert all(tile.property("cardRole") == "tile" for tile in page.detrend_metric_tiles.values())
+        assert page.detrend_metric_values["windows"].text() == "--"
         assert page.cockpit_method_value.property("compactMetric") is True
         assert page.step_tree.objectName() == "workflowTree"
         assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
@@ -250,6 +260,12 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.rotation_metric_values["applied"].text() != "--"
         assert page.rotation_metric_values["alpha"].text().endswith("deg")
         assert page.rotation_metric_values["beta"].text().endswith("deg")
+        assert page.detrend_status_chip.text() == "real"
+        assert page.detrend_status_chip.property("chipTone") in {"success", "warning", "danger"}
+        assert page.detrend_metric_values["method"].text() != "--"
+        assert page.detrend_metric_values["windows"].text() != "--"
+        assert page.detrend_metric_values["raw"].text() != "--"
+        assert page.detrend_metric_values["primary"].text() != "--"
         assert "lag=" in page.lag_note_label.text()
         assert "u*=" in page.turbulence_preview_label.text()
         assert page.uncertainty_sampling_label.text() != "真实 RP 未提供"
@@ -324,6 +340,16 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             assert page.rotation_evidence_card.maximumHeight() == 290
             assert rotation_card_rect.top() >= rotation_viewport_rect.top()
             assert rotation_card_rect.bottom() <= rotation_viewport_rect.bottom()
+            page.step_tree.setCurrentItem(page.step_items["detrend"])
+            app.processEvents()
+            detrend_viewport = page.content_stack.currentWidget().viewport()
+            detrend_viewport_rect = widget_bounds(detrend_viewport, page)
+            detrend_card_rect = widget_bounds(page.detrend_evidence_card, page)
+            detrend_plot_rect = widget_bounds(page.detrend_flux_plot, page)
+            assert page.detrend_evidence_card.maximumHeight() == 360
+            assert detrend_card_rect.top() >= detrend_viewport_rect.top()
+            assert detrend_card_rect.top() < detrend_viewport_rect.bottom()
+            assert detrend_plot_rect.top() < detrend_viewport_rect.bottom()
             assert_no_visible_competitor_name(page)
     finally:
         page.close()
