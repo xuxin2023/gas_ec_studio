@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QTableWidget,
@@ -123,6 +124,7 @@ class ReportCenterPage(QWidget):
 
         self.preview_deck_card = CardFrame(muted=True, role="rail")
         self.preview_deck_card.setProperty("deckRole", "reportPreviewDeck")
+        self.preview_deck_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         preview_deck_layout = QVBoxLayout(self.preview_deck_card)
         preview_deck_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         preview_deck_layout.setSpacing(TOKENS.spacing_md)
@@ -290,24 +292,28 @@ class ReportCenterPage(QWidget):
         center_layout.addStretch(1)
 
         self.delivery_rail = CardFrame(muted=True, role="rail")
+        self.delivery_rail.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         delivery_layout = QVBoxLayout(self.delivery_rail)
-        delivery_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        delivery_layout.setSpacing(TOKENS.spacing_md)
-        delivery_layout.addWidget(
-            section_title(
-                "交付驾驶舱",
-                "浏览报告时持续显示交付门槛、导出状态、方法溯源和批次差异。",
-            )
+        delivery_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        delivery_layout.setSpacing(TOKENS.spacing_sm)
+        delivery_title = section_title(
+            "交付驾驶舱",
+            "浏览报告时持续显示交付门槛、导出状态、方法溯源和批次差异。",
         )
+        delivery_title.setMaximumHeight(42)
+        delivery_layout.addWidget(delivery_title)
 
         self.summary_row = self._build_summary_row()
         delivery_layout.addWidget(self.summary_row)
 
         self.delivery_focus_card = CardFrame(muted=True, role="panel")
+        self.delivery_focus_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         focus_layout = QVBoxLayout(self.delivery_focus_card)
-        focus_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_md)
-        focus_layout.setSpacing(TOKENS.spacing_sm)
-        focus_layout.addWidget(section_title("交付聚焦", "在交付门槛、导出详情和批次对比之间切换，不拉长右侧栏。"))
+        focus_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        focus_layout.setSpacing(TOKENS.spacing_xs)
+        focus_title = section_title("交付聚焦", "在交付门槛、导出详情和批次对比之间切换，不拉长右侧栏。")
+        focus_title.setVisible(False)
+        focus_layout.addWidget(focus_title)
         focus_switch_row = QHBoxLayout()
         focus_switch_row.setContentsMargins(0, 0, 0, 0)
         focus_switch_row.setSpacing(TOKENS.spacing_xs)
@@ -328,6 +334,7 @@ class ReportCenterPage(QWidget):
         focus_layout.addLayout(focus_switch_row)
         self.delivery_focus_stack = QStackedWidget()
         self.delivery_focus_stack.setProperty("stackRole", "compactDeliveryInspector")
+        self.delivery_focus_stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         focus_layout.addWidget(self.delivery_focus_stack)
         delivery_layout.addWidget(self.delivery_focus_card, 1)
 
@@ -496,6 +503,7 @@ class ReportCenterPage(QWidget):
     def _build_report_command_deck(self) -> CardFrame:
         card = CardFrame(role="cockpit")
         card.setProperty("deckRole", "reportCommandDeck")
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         card.setMaximumHeight(124)
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
@@ -563,10 +571,12 @@ class ReportCenterPage(QWidget):
 
     def _build_summary_row(self) -> QWidget:
         wrapper = QWidget()
+        wrapper.setMaximumHeight(42)
+        wrapper.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout = QGridLayout(wrapper)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setHorizontalSpacing(TOKENS.spacing_md)
-        layout.setVerticalSpacing(TOKENS.spacing_md)
+        layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        layout.setVerticalSpacing(TOKENS.spacing_sm)
 
         self.recent_status_value = QLabel("--")
         self.exportable_count_value = QLabel("--")
@@ -582,25 +592,26 @@ class ReportCenterPage(QWidget):
         ]
         for index, (key, title, value) in enumerate(cards):
             card = CardFrame(muted=True, role="tile")
-            card.setMinimumHeight(74)
-            card.setMaximumHeight(86)
+            card.setMinimumHeight(36)
+            card.setMaximumHeight(40)
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
-            card_layout.setSpacing(TOKENS.spacing_xs)
+            card_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            card_layout.setSpacing(1)
             label = QLabel(title)
             label.setObjectName("metricLabel")
             card_layout.addWidget(label)
             value.setObjectName("metricValue")
             value.setProperty("compactMetric", True)
             value.setWordWrap(True)
-            value.setMaximumHeight(34)
+            value.setMaximumHeight(20)
             card_layout.addWidget(value)
             tone_chip = chip("就绪", "accent" if index != 2 else "warning")
             tone_chip.setMaximumHeight(20)
+            tone_chip.setVisible(False)
             self.summary_chips[key] = tone_chip
             card_layout.addWidget(tone_chip)
             self.summary_cards[key] = card
-            layout.addWidget(card, index // 2, index % 2)
+            layout.addWidget(card, 0, index)
         return wrapper
 
     def _build_empty_state_card(self) -> CardFrame:
@@ -692,9 +703,10 @@ class ReportCenterPage(QWidget):
     def _build_delivery_gate_card(self) -> CardFrame:
         card = CardFrame(role="cockpit")
         card.setProperty("deckRole", "deliveryGateMatrix")
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
-        layout.setSpacing(TOKENS.spacing_sm)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setSpacing(TOKENS.spacing_xs)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
@@ -709,11 +721,11 @@ class ReportCenterPage(QWidget):
 
         self.delivery_gate_hero_card = CardFrame(muted=True, role="console")
         self.delivery_gate_hero_card.setProperty("deckRole", "deliveryReadinessHero")
-        self.delivery_gate_hero_card.setMinimumHeight(54)
-        self.delivery_gate_hero_card.setMaximumHeight(62)
+        self.delivery_gate_hero_card.setMinimumHeight(32)
+        self.delivery_gate_hero_card.setMaximumHeight(36)
         hero_layout = QVBoxLayout(self.delivery_gate_hero_card)
-        hero_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
-        hero_layout.setSpacing(TOKENS.spacing_xs)
+        hero_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        hero_layout.setSpacing(1)
         hero_top = QHBoxLayout()
         hero_top.setContentsMargins(0, 0, 0, 0)
         self.delivery_gate_ready_label = QLabel("交付状态")
@@ -741,6 +753,10 @@ class ReportCenterPage(QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(TOKENS.spacing_xs)
         grid.setVerticalSpacing(TOKENS.spacing_xs)
+        for row in range(2):
+            grid.setRowMinimumHeight(row, 24)
+        for column in range(3):
+            grid.setColumnMinimumWidth(column, 72)
         self.delivery_gate_values: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
         self.delivery_gate_tiles: dict[str, CardFrame] = {}
         gate_items = [
@@ -756,7 +772,7 @@ class ReportCenterPage(QWidget):
         layout.addLayout(grid)
 
         self.delivery_gate_next_card = CardFrame(muted=True, role="tile")
-        self.delivery_gate_next_card.setMaximumHeight(38)
+        self.delivery_gate_next_card.setMaximumHeight(28)
         self.delivery_gate_next_card.setProperty("gateKey", "nextAction")
         next_layout = QHBoxLayout(self.delivery_gate_next_card)
         next_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
@@ -781,8 +797,8 @@ class ReportCenterPage(QWidget):
     def _delivery_gate_tile(self, key: str, title: str, hint: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("gateKey", key)
-        tile.setMinimumHeight(30)
-        tile.setMaximumHeight(34)
+        tile.setMinimumHeight(22)
+        tile.setMaximumHeight(24)
         layout = QHBoxLayout(tile)
         layout.setContentsMargins(TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs)
         layout.setSpacing(0)

@@ -48,10 +48,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_progress_badge.objectName() == "chip"
         assert page.delivery_gate_progress_badge.property("chipTone") in {"warning", "accent", "success"}
         assert page.delivery_focus_stack.property("stackRole") == "compactDeliveryInspector"
-        assert page.delivery_gate_hero_card.maximumHeight() == 62
+        assert page.delivery_gate_hero_card.maximumHeight() == 36
         assert page.delivery_gate_ready_value.property("compactMetric") is True
         assert page.delivery_gate_ready_note.isHidden() is True
-        assert all(tile.maximumHeight() == 34 for tile in page.delivery_gate_tiles.values())
+        assert all(tile.maximumHeight() == 24 for tile in page.delivery_gate_tiles.values())
         assert page.delivery_gate_values["report"][0].property("compactMetric") is True
         assert page.delivery_gate_values["report"][1].isHidden() is True
         assert page.delivery_gate_values["report"][2].isHidden() is True
@@ -148,6 +148,8 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             page._show_delivery_focus("gate")
             app.processEvents()
 
+            assert page.width() <= width
+            assert page.height() <= height
             assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
             assert page.delivery_focus_stack.property("stackRole") == "compactDeliveryInspector"
             assert page.delivery_rail.width() <= page.delivery_rail.maximumWidth()
