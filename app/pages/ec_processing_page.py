@@ -5,6 +5,7 @@ import json
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -63,6 +64,7 @@ class ECProcessingPage(QWidget):
         self.controller = controller
         self.step_indexes: dict[str, int] = {}
         self.step_items: dict[str, QTreeWidgetItem] = {}
+        self.step_status_labels: dict[str, str] = {}
         self.workflow_lens_buttons: dict[str, QPushButton] = {}
         self.workflow_lens_notes: dict[str, QLabel] = {}
         self.desktop_rail_mode_buttons: dict[str, QToolButton] = {}
@@ -92,10 +94,32 @@ class ECProcessingPage(QWidget):
         tree_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         tree_layout.setSpacing(TOKENS.spacing_md)
         tree_layout.addWidget(section_title("处理树", "按步骤理解配置与结果，中间结果始终和参数同屏出现。"))
+        self.step_nav_summary_card = CardFrame(muted=True, role="tile")
+        self.step_nav_summary_card.setProperty("deckRole", "ecStepNavigationStatus")
+        self.step_nav_summary_card.setMaximumHeight(58)
+        summary_layout = QVBoxLayout(self.step_nav_summary_card)
+        summary_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        summary_layout.setSpacing(1)
+        summary_title = QLabel("步骤状态")
+        summary_title.setObjectName("metricLabel")
+        self.step_nav_summary_value = QLabel("--")
+        self.step_nav_summary_value.setObjectName("metricValue")
+        self.step_nav_summary_value.setProperty("compactMetric", True)
+        self.step_nav_summary_value.setMinimumWidth(0)
+        self.step_nav_summary_value.setWordWrap(False)
+        self.step_nav_summary_value.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        summary_layout.addWidget(summary_title)
+        summary_layout.addWidget(self.step_nav_summary_value)
+        tree_layout.addWidget(self.step_nav_summary_card)
+
         self.step_tree = QTreeWidget()
         self.step_tree.setObjectName("workflowTree")
+        self.step_tree.setColumnCount(2)
+        self.step_tree.setColumnWidth(0, 122)
+        self.step_tree.setColumnWidth(1, 52)
         self.step_tree.setHeaderHidden(True)
-        self.step_tree.setIndentation(10)
+        self.step_tree.setIndentation(6)
+        self.step_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.step_tree.itemSelectionChanged.connect(self._on_step_changed)
         tree_layout.addWidget(self.step_tree, 1)
         self.tree_card.setMinimumWidth(210)
@@ -251,6 +275,7 @@ class ECProcessingPage(QWidget):
         self._refresh_primary_analyzer_preview()
         self._refresh_output_preview()
         self._refresh_output_coverage_panel()
+        self._refresh_step_tree_statuses()
         self._sync_step_from_controller()
 
     def _build_run_bar(self) -> CardFrame:
@@ -1046,6 +1071,77 @@ class ECProcessingPage(QWidget):
         tile.style().unpolish(tile)
         tile.style().polish(tile)
 
+    def _refresh_step_tree_statuses(self) -> None:
+        if not hasattr(self, "step_nav_summary_value"):
+            return
+        statuses = self._step_tree_status_model()
+        self.step_status_labels = {key: label for key, (label, _tone, _note) in statuses.items()}
+        counts = {"ready": 0, "pending": 0, "risk": 0}
+        palette = {
+            "success": ("#0f7d5b", "#e8f7ee"),
+            "accent": ("#0b7285", "#e5f6f8"),
+            "warning": ("#9a5a00", "#fff5df"),
+            "danger": ("#b42318", "#fdeaea"),
+        }
+        for key, item in self.step_items.items():
+            label, tone, note = statuses.get(key, ("待运行", "warning", "运行处理后生成状态。"))
+            if tone == "danger":
+                counts["risk"] += 1
+            elif label == "待运行":
+                counts["pending"] += 1
+            else:
+                counts["ready"] += 1
+            foreground, background = palette.get(tone, palette["warning"])
+            display_label = {
+                "待运行": "待跑",
+                "寰呰繍琛?": "待跑",
+                "可交付": "交付",
+                "鍙氦浠?": "交付",
+            }.get(label, label)
+            item.setText(1, display_label)
+            item.setData(1, Qt.UserRole, tone)
+            item.setData(1, Qt.UserRole + 1, label)
+            item.setToolTip(0, note)
+            item.setToolTip(1, note)
+            item.setForeground(1, QBrush(QColor(foreground)))
+            item.setBackground(1, QBrush(QColor(background)))
+        self.step_tree.setColumnWidth(0, 122)
+        self.step_tree.setColumnWidth(1, 52)
+        self.step_nav_summary_value.setText(
+            f"就绪 {counts['ready']} / 待运行 {counts['pending']} / 复核 {counts['risk']}"
+        )
+        summary_tone = "danger" if counts["risk"] else ("warning" if counts["pending"] else "success")
+        self.step_nav_summary_card.setProperty("evidenceTone", summary_tone)
+        self.step_nav_summary_card.style().unpolish(self.step_nav_summary_card)
+        self.step_nav_summary_card.style().polish(self.step_nav_summary_card)
+
+    def _step_tree_status_model(self) -> dict[str, tuple[str, str, str]]:
+        current = self._current_window()
+        workspace = self.controller.ec_processing_workspace
+        summary = dict(workspace.get("summary", {}) or {})
+        status = str(summary.get("status", "empty") or "empty")
+        configured_steps = {"window_sampling", "data_cleaning", "screening", "rotation", "detrend", "output"}
+        statuses: dict[str, tuple[str, str, str]] = {}
+        if current is not None and status == "ok":
+            for key, title, _subtitle in EC_STEPS:
+                statuses[key] = ("完成", "success", f"{title}: 已生成真实 RP 窗口结果。")
+            statuses["output"] = ("可交付", "success", "输出字段和网络交付检查已进入报告中心。")
+        else:
+            for key, title, _subtitle in EC_STEPS:
+                if key in configured_steps:
+                    statuses[key] = ("就绪", "accent", f"{title}: 配置已可用于下一次 RP 运行。")
+                else:
+                    statuses[key] = ("待运行", "warning", f"{title}: 运行 RP 后显示计算结果状态。")
+        validation_label = getattr(self, "method_validation_label", None)
+        validation_text = validation_label.text() if validation_label is not None else ""
+        if "review" in validation_text.lower() or "复核" in validation_text or "z_m > canopy_height_m" in validation_text:
+            statuses["uncertainty"] = ("复核", "danger", validation_text or "方法族参数需要复核。")
+            statuses["output"] = ("复核", "danger", "方法族复核完成前不建议进入交付导出。")
+        if status not in {"empty", "ok"} and current is None:
+            for key in ("lag", "covariance", "density_correction", "steadiness", "turbulence"):
+                statuses[key] = ("复核", "danger", str(summary.get("message", "运行状态需要复核。")))
+        return statuses
+
     def _build_tree(self) -> None:
         root = QTreeWidgetItem(["处理流程"])
         root.setFlags(root.flags() & ~Qt.ItemIsSelectable)
@@ -1053,10 +1149,13 @@ class ECProcessingPage(QWidget):
         for key, title, _subtitle in EC_STEPS:
             item = QTreeWidgetItem([title])
             item.setData(0, Qt.UserRole, key)
+            item.setText(1, "--")
+            item.setTextAlignment(1, Qt.AlignRight | Qt.AlignVCenter)
             item.setToolTip(0, title)
             root.addChild(item)
             self.step_items[key] = item
         root.setExpanded(True)
+        self._refresh_step_tree_statuses()
 
     def _build_pages(self) -> None:
         for key, title, subtitle in EC_STEPS:
@@ -2927,6 +3026,7 @@ class ECProcessingPage(QWidget):
         self.uncertainty_preview_note.setText(note)
         self._refresh_processing_cockpit()
         self._refresh_readiness_panel()
+        self._refresh_step_tree_statuses()
 
     def _refresh_primary_analyzer_preview(self, *_args) -> None:
         profile_id = str(self.primary_analyzer_profile_combo.currentData() or "ygas_irga")

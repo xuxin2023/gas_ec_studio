@@ -81,6 +81,14 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.rp_closure_values["flux"].text() == "待生成"
         assert page.rp_closure_values["network"].text() == "FLUXNET"
         assert page.tree_card.property("cardRole") == "rail"
+        assert page.step_nav_summary_card.property("deckRole") == "ecStepNavigationStatus"
+        assert page.step_nav_summary_card.maximumHeight() == 58
+        assert page.step_nav_summary_value.text().startswith("就绪")
+        assert page.step_tree.columnCount() == 2
+        assert page.step_tree.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+        assert page.step_items["window_sampling"].text(1) == "就绪"
+        assert page.step_items["lag"].text(1) == "待跑"
+        assert page.step_items["uncertainty"].data(1, Qt.UserRole) in {"warning", "danger"}
         assert page.desktop_rail.property("cardRole") == "rail"
         assert page.desktop_rail.minimumWidth() == 280
         assert page.desktop_rail.maximumWidth() == 340
@@ -156,6 +164,9 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         page._refresh_uncertainty_preview()
         assert "z_m > canopy_height_m" in page.method_validation_label.text()
         assert page.method_family_gate_chip.text() == "复核"
+        assert page.step_items["uncertainty"].text(1) == "复核"
+        assert page.step_items["output"].text(1) == "复核"
+        assert page.step_items["uncertainty"].data(1, Qt.UserRole) == "danger"
         page.workflow_lens_buttons["advanced"].click()
         assert controller.ec_nav_step == "crosswind_correction"
         assert page.workflow_lens_buttons["advanced"].property("variant") == "primary"
@@ -195,6 +206,9 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.turbulence_ustar_curve.xData is not None and len(page.turbulence_ustar_curve.xData) > 0
         assert page.turbulence_score_curve.xData is not None and len(page.turbulence_score_curve.xData) > 0
         assert page.window_samples_label.text() != "--"
+        assert page.step_items["window_sampling"].text(1) == "完成"
+        assert page.step_items["lag"].text(1) == "完成"
+        assert page.step_items["window_sampling"].data(1, Qt.UserRole) == "success"
         assert page.window_cockpit_values["frequency"].text() == "10 Hz"
         assert page.window_cockpit_values["batches"].text().endswith("windows")
         assert page.window_cockpit_tiles["batches"].property("evidenceTone") == "success"
@@ -235,6 +249,7 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             assert page.desktop_rail.width() <= page.desktop_rail.maximumWidth()
             assert page.desktop_rail.width() >= page.desktop_rail.minimumWidth()
             assert page.desktop_rail_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+            assert page.step_tree.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
             assert_contained(page, page.rp_closure_deck, page)
             assert_contained(page, page.tree_card, page)
             assert_contained(page, page.desktop_rail, page)
