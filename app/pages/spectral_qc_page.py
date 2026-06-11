@@ -46,6 +46,7 @@ SPECTRAL_SECTIONS = [
 class SpectralQCPage(QWidget):
     def __init__(self, controller: StudioController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setProperty("pageSurface", True)
         self.controller = controller
         self.section_indexes: dict[str, int] = {}
         self.section_items: dict[str, QTreeWidgetItem] = {}
@@ -328,6 +329,7 @@ class SpectralQCPage(QWidget):
         wrapper.setObjectName("spectralSummaryDeck")
         wrapper.setProperty("deckRole", "spectralCockpitKpis")
         wrapper.setMinimumWidth(360)
+        wrapper.setMinimumHeight(122)
         wrapper.setMaximumHeight(136)
         layout = QGridLayout(wrapper)
         layout.setContentsMargins(0, 0, 0, 0)

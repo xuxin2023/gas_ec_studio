@@ -110,6 +110,15 @@ def build_stylesheet() -> str:
     QWidget {{
         background: transparent;
     }}
+    QWidget[pageSurface="true"] {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #fbfdfe,
+            stop: 0.34 #edf7f8,
+            stop: 0.72 {TOKENS.color_bg},
+            stop: 1 {TOKENS.color_bg_deep}
+        );
+    }}
     QMainWindow {{
         background: {TOKENS.color_bg};
     }}

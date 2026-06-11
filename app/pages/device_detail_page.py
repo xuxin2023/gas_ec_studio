@@ -14,12 +14,14 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
     QToolButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -34,16 +36,18 @@ class DeviceDetailPage(QWidget):
 
     def __init__(self, controller: StudioController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setProperty("pageSurface", True)
         self.controller = controller
         self._coeff_result_text = "最近一次读取结果会显示在这里。操作员视图默认只显示结论，工程师视图可直接核对系数值。"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
 
         self.header_card = CardFrame(role="command")
+        self.header_card.setMaximumHeight(108)
         header_layout = QHBoxLayout(self.header_card)
-        header_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        header_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
         header_layout.setSpacing(TOKENS.spacing_md)
 
         title_box = QVBoxLayout()
@@ -57,9 +61,15 @@ class DeviceDetailPage(QWidget):
         header_layout.addLayout(title_box)
         header_layout.addStretch(1)
 
+        action_stack = QVBoxLayout()
+        action_stack.setContentsMargins(0, 0, 0, 0)
+        action_stack.setSpacing(TOKENS.spacing_xs)
+
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
         back_button = QPushButton("返回设备中心")
         back_button.clicked.connect(self.back_requested.emit)
-        header_layout.addWidget(back_button)
+        action_row.addWidget(back_button)
 
         mode_group = QButtonGroup(self.header_card)
         self.operator_btn = QToolButton()
@@ -72,19 +82,21 @@ class DeviceDetailPage(QWidget):
         self.engineer_btn.clicked.connect(lambda: self.controller.set_view_mode("engineer"))
         mode_group.addButton(self.operator_btn)
         mode_group.addButton(self.engineer_btn)
-        header_layout.addWidget(self.operator_btn)
-        header_layout.addWidget(self.engineer_btn)
+        action_row.addWidget(self.operator_btn)
+        action_row.addWidget(self.engineer_btn)
+        action_stack.addLayout(action_row)
+        header_layout.addLayout(action_stack)
         layout.addWidget(self.header_card)
 
         self.summary_card = CardFrame(role="cockpit")
         self.summary_card.setProperty("deckRole", "deviceSummaryDeck")
-        self.summary_card.setMaximumHeight(124)
-        self.summary_layout = QHBoxLayout(self.summary_card)
-        self.summary_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        self.summary_layout.setSpacing(TOKENS.spacing_md)
+        self.summary_card.setMaximumHeight(132)
+        self.summary_layout = QGridLayout(self.summary_card)
+        self.summary_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_xs, TOKENS.spacing_lg, TOKENS.spacing_xs)
+        self.summary_layout.setSpacing(TOKENS.spacing_xs)
         self.summary_values: dict[str, QLabel] = {}
         self.summary_metric_cards: list[CardFrame] = []
-        for key, title in (
+        for index, (key, title) in enumerate((
             ("online", "在线状态"),
             ("mode", "模式"),
             ("device_id", "设备 ID"),
@@ -92,12 +104,12 @@ class DeviceDetailPage(QWidget):
             ("frequency", "输出频率"),
             ("last_frame", "最近有效帧"),
             ("data_state", "数据状态"),
-        ):
+        )):
             card = CardFrame(muted=True, role="tile")
-            card.setMinimumHeight(78)
-            card.setMaximumHeight(98)
+            card.setMinimumHeight(48)
+            card.setMaximumHeight(54)
             inner = QVBoxLayout(card)
-            inner.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+            inner.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
             inner.setSpacing(TOKENS.spacing_xs)
             label = QLabel(title)
             label.setObjectName("metricLabel")
@@ -109,7 +121,7 @@ class DeviceDetailPage(QWidget):
             inner.addWidget(value)
             self.summary_values[key] = value
             self.summary_metric_cards.append(card)
-            self.summary_layout.addWidget(card, 1)
+            self.summary_layout.addWidget(card, index // 4, index % 4)
         layout.addWidget(self.summary_card)
 
         body = QHBoxLayout()
@@ -123,10 +135,10 @@ class DeviceDetailPage(QWidget):
         self.config_tab = QWidget()
         self.coeff_tab = QWidget()
         self.diagnostic_tab = QWidget()
-        self.tabs.addTab(self.overview_tab, "概览")
-        self.tabs.addTab(self.config_tab, "配置")
-        self.tabs.addTab(self.coeff_tab, "系数")
-        self.tabs.addTab(self.diagnostic_tab, "诊断")
+        self.tabs.addTab(self._scrollable_tab(self.overview_tab), "概览")
+        self.tabs.addTab(self._scrollable_tab(self.config_tab), "配置")
+        self.tabs.addTab(self._scrollable_tab(self.coeff_tab), "系数")
+        self.tabs.addTab(self._scrollable_tab(self.diagnostic_tab), "诊断")
 
         self.device_ops_rail = self._build_device_ops_rail()
         self.device_ops_rail.setMinimumWidth(300)
@@ -144,6 +156,14 @@ class DeviceDetailPage(QWidget):
         self.controller.events_changed.connect(self.refresh)
         self.controller.view_mode_changed.connect(lambda _mode: self.refresh())
         self.refresh()
+
+    def _scrollable_tab(self, content: QWidget) -> QScrollArea:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumSize(0, 0)
+        scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        scroll.setWidget(content)
+        return scroll
 
     def refresh(self) -> None:
         entry = self.controller.selected_device()

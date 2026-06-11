@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QTextEdit,
@@ -43,6 +44,7 @@ PROJECT_SECTIONS = [
 class ProjectSitePage(QWidget):
     def __init__(self, controller: StudioController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setProperty("pageSurface", True)
         self.controller = controller
         self.section_indexes: dict[str, int] = {}
         self.section_items: dict[str, QTreeWidgetItem] = {}
@@ -284,20 +286,29 @@ class ProjectSitePage(QWidget):
         self.site_ops_chip = chip("待检查", "warning")
         layout.addWidget(self.site_ops_chip)
         self.site_ops_values: dict[str, tuple[QLabel, QLabel]] = {}
-        for key, title in (
+        self.site_ops_tiles: list[CardFrame] = []
+        self.site_ops_grid = QGridLayout()
+        self.site_ops_grid.setContentsMargins(0, 0, 0, 0)
+        self.site_ops_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        self.site_ops_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        for index, (key, title) in enumerate((
             ("readiness", "完整性"),
             ("geometry", "站点几何"),
             ("chain", "采样链路"),
             ("timing", "时间窗"),
             ("delivery", "交付模板"),
             ("metadata", "元数据"),
-        ):
-            layout.addWidget(self._site_ops_tile(key, title))
+        )):
+            tile = self._site_ops_tile(key, title)
+            self.site_ops_tiles.append(tile)
+            self.site_ops_grid.addWidget(tile, index // 2, index % 2)
+        layout.addLayout(self.site_ops_grid)
 
         next_card = CardFrame(muted=True, role="tile")
         next_layout = QVBoxLayout(next_card)
         next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         next_layout.setSpacing(TOKENS.spacing_xs)
+        next_card.setMaximumHeight(104)
         next_label = QLabel("下一步")
         next_label.setObjectName("metricLabel")
         self.site_ops_next_value = QLabel("--")
@@ -315,6 +326,7 @@ class ProjectSitePage(QWidget):
 
     def _site_ops_tile(self, key: str, title: str) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
+        card.setMaximumHeight(86)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_xs)
@@ -358,6 +370,7 @@ class ProjectSitePage(QWidget):
 
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             scroll.setWidget(container)
             self.section_indexes[key] = self.content_stack.addWidget(scroll)
 
@@ -1441,6 +1454,10 @@ class ProjectSitePage(QWidget):
         label = QLabel(title)
         label.setObjectName("metricLabel")
         layout.addWidget(label)
+        if isinstance(widget, QLabel):
+            widget.setMinimumWidth(0)
+            widget.setWordWrap(True)
+            widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         layout.addWidget(widget)
         return card
 
