@@ -418,7 +418,7 @@ class ECProcessingPage(QWidget):
         self.desktop_rail_inspector = CardFrame(role="panel")
         self.desktop_rail_inspector.setProperty("deckRole", "ecRailInspector")
         self.desktop_rail_inspector.setMinimumWidth(0)
-        self.desktop_rail_inspector.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.desktop_rail_inspector.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         inspector_layout = QVBoxLayout(self.desktop_rail_inspector)
         inspector_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         inspector_layout.setSpacing(TOKENS.spacing_sm)
@@ -443,7 +443,7 @@ class ECProcessingPage(QWidget):
 
         self.desktop_rail_stack = QStackedWidget()
         self.desktop_rail_stack.setMinimumWidth(0)
-        self.desktop_rail_stack.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.desktop_rail_stack.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.workflow_lens_card = self._build_workflow_lens_panel()
         self.cockpit_card = self._build_processing_cockpit()
         self.rail_focus_card = self._build_rail_focus_panel()
@@ -455,12 +455,58 @@ class ECProcessingPage(QWidget):
         for card in self.desktop_rail_sections.values():
             self.desktop_rail_stack.addWidget(card)
         inspector_layout.addWidget(self.desktop_rail_stack)
+        self.desktop_rail_status_strip = self._build_desktop_rail_status_strip()
+        inspector_layout.addWidget(self.desktop_rail_status_strip)
+        inspector_layout.addStretch(1)
         self._show_desktop_rail_mode("workflow")
         body_layout.addWidget(self.desktop_rail_inspector)
         body_layout.addStretch(1)
         self.desktop_rail_scroll.setWidget(rail_body)
         layout.addWidget(self.desktop_rail_scroll, 1)
         return rail
+
+    def _build_desktop_rail_status_strip(self) -> CardFrame:
+        card = CardFrame(muted=True, role="rail")
+        card.setProperty("deckRole", "ecRailStatusStrip")
+        card.setMaximumHeight(156)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
+
+        header = QLabel("状态针盘")
+        header.setObjectName("metricLabel")
+        layout.addWidget(header)
+
+        self.desktop_rail_status_tiles: dict[str, CardFrame] = {}
+        self.desktop_rail_status_values: dict[str, QLabel] = {}
+        self.desktop_rail_status_notes: dict[str, QLabel] = {}
+        for key, title in (
+            ("step", "当前步骤"),
+            ("run", "运行状态"),
+            ("closure", "闭合度"),
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setMaximumHeight(36)
+            tile_layout = QHBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(TOKENS.spacing_xs)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            title_label.setMinimumWidth(56)
+            value_label = QLabel("--")
+            value_label.setObjectName("metricValue")
+            value_label.setProperty("compactMetric", True)
+            value_label.setMinimumWidth(0)
+            value_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            note_label = QLabel("--")
+            note_label.setVisible(False)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label, 1)
+            self.desktop_rail_status_tiles[key] = tile
+            self.desktop_rail_status_values[key] = value_label
+            self.desktop_rail_status_notes[key] = note_label
+            layout.addWidget(tile)
+        return card
 
     def _build_workflow_lens_panel(self) -> CardFrame:
         card = CardFrame(role="panel")
@@ -688,6 +734,7 @@ class ECProcessingPage(QWidget):
             self.controller.set_ec_nav_step(target_step)
             self._sync_step_from_controller()
         self._refresh_workflow_lens()
+        self._refresh_desktop_rail_status_strip()
 
     def _refresh_workflow_lens(self) -> None:
         if not self.workflow_lens_buttons:
@@ -717,6 +764,12 @@ class ECProcessingPage(QWidget):
         if card is None:
             return
         self.desktop_rail_stack.setCurrentWidget(card)
+        mode_heights = {
+            "workflow": 210,
+            "cockpit": 420,
+            "closure": 470,
+        }
+        self.desktop_rail_stack.setMaximumHeight(mode_heights.get(mode, 420))
         for key, button in self.desktop_rail_mode_buttons.items():
             button.blockSignals(True)
             button.setChecked(key == mode)
@@ -941,12 +994,57 @@ class ECProcessingPage(QWidget):
         self._set_coverage_gate_chip(gate_text, gate_tone)
         self.coverage_next_value.setText(next_value)
         self.coverage_next_note.setText(next_note)
+        self._refresh_desktop_rail_status_strip()
 
     def _set_coverage_gate_chip(self, text: str, tone: str) -> None:
         self.coverage_gate_chip.setText(text)
         self.coverage_gate_chip.setProperty("chipTone", tone)
         self.coverage_gate_chip.style().unpolish(self.coverage_gate_chip)
         self.coverage_gate_chip.style().polish(self.coverage_gate_chip)
+
+    def _refresh_desktop_rail_status_strip(self) -> None:
+        if not hasattr(self, "desktop_rail_status_values"):
+            return
+        summary = dict(self.controller.ec_processing_workspace.get("summary", {}) or {})
+        step_title = dict((key, title) for key, title, _subtitle in EC_STEPS).get(
+            self.controller.ec_nav_step,
+            "当前步骤",
+        )
+        current = self._current_window()
+        status = str(summary.get("status", "empty") or "empty")
+        status_tone = "success" if status == "ok" else ("warning" if status == "empty" else "accent")
+        run_value = "已运行" if current is not None else status
+        run_note = (
+            f"windows={summary.get('valid_window_count', 0)}/{summary.get('window_count', 0)}"
+            if current is not None
+            else str(summary.get("message", "运行处理后生成窗口结果。"))
+        )
+        closure_value = self.coverage_gate_chip.text() if hasattr(self, "coverage_gate_chip") else "--"
+        closure_note = self.coverage_next_value.text() if hasattr(self, "coverage_next_value") else "--"
+        closure_tone = (
+            str(self.coverage_gate_chip.property("chipTone") or "warning")
+            if hasattr(self, "coverage_gate_chip")
+            else "warning"
+        )
+
+        self._set_desktop_rail_status_tile("step", step_title, self.controller.ec_nav_step, "accent")
+        self._set_desktop_rail_status_tile("run", run_value, run_note, status_tone)
+        self._set_desktop_rail_status_tile("closure", closure_value, closure_note, closure_tone)
+
+    def _set_desktop_rail_status_tile(self, key: str, value: str, note: str, tone: str) -> None:
+        value_label = self.desktop_rail_status_values[key]
+        note_label = self.desktop_rail_status_notes[key]
+        tile = self.desktop_rail_status_tiles[key]
+        display_value = self._compact_text(value, 16)
+        display_note = self._compact_text(note, 42)
+        value_label.setText(display_value)
+        note_label.setText(display_note)
+        tooltip = f"{value}\n{note}"
+        value_label.setToolTip(tooltip)
+        tile.setToolTip(tooltip)
+        tile.setProperty("evidenceTone", tone)
+        tile.style().unpolish(tile)
+        tile.style().polish(tile)
 
     def _build_tree(self) -> None:
         root = QTreeWidgetItem(["处理流程"])
@@ -1880,6 +1978,7 @@ class ECProcessingPage(QWidget):
             self.step_tree.blockSignals(False)
         self.content_stack.setCurrentIndex(self.step_indexes[key])
         self._refresh_workflow_lens()
+        self._refresh_desktop_rail_status_strip()
 
     def _collect_payload(self) -> dict:
         return {
@@ -2157,6 +2256,7 @@ class ECProcessingPage(QWidget):
         self.run_status_chip.style().polish(self.run_status_chip)
         self.run_summary_label.setText(str(summary.get("message", "尚未生成真实 RP 结果。")))
         self._refresh_workflow_lens()
+        self._refresh_desktop_rail_status_strip()
 
     def _refresh_processing_cockpit(self, *_args) -> None:
         if not hasattr(self, "cockpit_method_value"):

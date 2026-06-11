@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QSizePolicy
 
 from app.pages.ec_processing_page import ECProcessingPage
 from app.studio import StudioController
@@ -30,6 +30,13 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.rail_focus_card.property("cardRole") == "panel"
         assert page.desktop_rail_inspector.property("deckRole") == "ecRailInspector"
+        assert page.desktop_rail_inspector.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Fixed
+        assert page.desktop_rail_status_strip.property("deckRole") == "ecRailStatusStrip"
+        assert page.desktop_rail_stack.maximumHeight() == 210
+        assert set(page.desktop_rail_status_values) == {"step", "run", "closure"}
+        assert page.desktop_rail_status_values["step"].text()
+        assert page.desktop_rail_status_values["run"].text() == "empty"
+        assert page.desktop_rail_status_values["closure"].text() == page.coverage_gate_chip.text()
         assert page.desktop_rail_stack.count() == 3
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
@@ -40,8 +47,10 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.rail_focus_stack.currentWidget() is page.output_coverage_card
         assert page.rail_focus_buttons["coverage"].isChecked() is True
         assert page.desktop_rail_stack.currentWidget() is page.rail_focus_card
+        assert page.desktop_rail_stack.maximumHeight() == 470
         page._show_desktop_rail_mode("cockpit")
         assert page.desktop_rail_stack.currentWidget() is page.cockpit_card
+        assert page.desktop_rail_stack.maximumHeight() == 420
         assert set(page.coverage_values) == {
             "metadata",
             "processing",
