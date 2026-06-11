@@ -1315,6 +1315,16 @@ class ECProcessingPage(QWidget):
             tile.style().unpolish(tile)
             tile.style().polish(tile)
 
+    def _set_rotation_metric(self, key: str, value: str, tone: str = "warning") -> None:
+        label = self.rotation_metric_values.get(key)
+        if label is not None:
+            label.setText(value)
+        tile = self.rotation_metric_tiles.get(key)
+        if tile is not None:
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
     def _build_data_cleaning_page(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
         row.setSpacing(TOKENS.spacing_md)
@@ -1483,6 +1493,9 @@ class ECProcessingPage(QWidget):
         row.setSpacing(TOKENS.spacing_md)
         layout.addLayout(row)
         param_card = CardFrame()
+        param_card.setProperty("deckRole", "rotationParameterPanel")
+        param_card.setMaximumHeight(260)
+        self.rotation_param_card = param_card
         param_layout = QVBoxLayout(param_card)
         param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         param_layout.setSpacing(TOKENS.spacing_md)
@@ -1494,14 +1507,51 @@ class ECProcessingPage(QWidget):
         param_layout.addLayout(form)
         row.addWidget(param_card, 2)
 
-        preview_card = CardFrame(muted=True)
+        preview_card = CardFrame(muted=True, role="panel")
+        preview_card.setProperty("deckRole", "rotationEvidencePanel")
+        preview_card.setMaximumHeight(290)
+        self.rotation_evidence_card = preview_card
         preview_layout = QVBoxLayout(preview_card)
-        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        preview_layout.setSpacing(TOKENS.spacing_md)
+        preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        preview_layout.setSpacing(TOKENS.spacing_sm)
         preview_layout.addWidget(section_title("中间结果", "这里保留方法说明，便于工程师解释为何采用当前旋转方式。"))
+        self.rotation_status_chip = chip("preview", "warning")
+        preview_layout.addWidget(self.rotation_status_chip, 0, Qt.AlignRight)
+        metric_grid = QGridLayout()
+        metric_grid.setHorizontalSpacing(TOKENS.spacing_sm)
+        metric_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.rotation_metric_tiles: dict[str, CardFrame] = {}
+        self.rotation_metric_values: dict[str, QLabel] = {}
+        for column, (key, title, value) in enumerate(
+            (
+                ("requested", "requested", "--"),
+                ("applied", "applied", "--"),
+                ("alpha", "alpha", "--"),
+                ("beta", "beta", "--"),
+            )
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("evidenceTone", "warning")
+            tile.setMaximumHeight(58)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(0)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            value_label = QLabel(value)
+            value_label.setObjectName("metricValue")
+            value_label.setProperty("compactMetric", True)
+            value_label.setWordWrap(True)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label)
+            metric_grid.addWidget(tile, 0, column)
+            self.rotation_metric_tiles[key] = tile
+            self.rotation_metric_values[key] = value_label
+        preview_layout.addLayout(metric_grid)
         self.rotation_preview_label = QLabel("--")
         self.rotation_preview_label.setObjectName("subtitle")
         self.rotation_preview_label.setWordWrap(True)
+        self.rotation_preview_label.setMaximumHeight(76)
         preview_layout.addWidget(self.rotation_preview_label)
         row.addWidget(preview_card, 3)
 
@@ -2922,10 +2972,49 @@ class ECProcessingPage(QWidget):
 
     def _refresh_rotation_preview(self, *_args) -> None:
         section = self._section_workspace("rotation")
-        if self._current_window() is None:
+        current = self._current_window()
+        if current is None:
+            self._set_generic_chip(self.rotation_status_chip, "preview", "warning")
+            self._set_rotation_metric("requested", self.rotation_mode_combo.currentText().strip(), "warning")
+            self._set_rotation_metric("applied", "--", "warning")
+            self._set_rotation_metric("alpha", "--", "warning")
+            self._set_rotation_metric("beta", "--", "warning")
             self.rotation_preview_label.setText("暂无真实 RP 结果，运行处理后显示旋转模式与回退原因。")
             return
-        self.rotation_preview_label.setText(str(section.get("real_summary", "旋转摘要不可用。")))
+        diagnostics = current.diagnostics or {}
+        intermediate = dict(section.get("intermediate", {}) or {})
+        requested = str(
+            diagnostics.get("requested_rotation_mode")
+            or intermediate.get("requested_rotation_mode")
+            or current.rotation_mode
+            or "--"
+        )
+        applied_impl = str(
+            diagnostics.get("applied_rotation_impl")
+            or intermediate.get("applied_rotation_impl")
+            or current.rotation_mode
+            or "--"
+        )
+        applied_flag = bool(diagnostics.get("rotation_applied", intermediate.get("rotation_applied", False)))
+        fallback = requested not in {"--", applied_impl} and applied_impl != "--"
+        tone = "warning" if fallback else "success" if applied_flag or requested == "none" else "danger"
+        status_text = "fallback" if fallback else "applied" if applied_flag else "not applied"
+        alpha = diagnostics.get("rotation_alpha_deg")
+        beta = diagnostics.get("rotation_beta_deg")
+        alpha_text = f"{float(alpha):.3f} deg" if isinstance(alpha, (int, float)) else "--"
+        beta_text = f"{float(beta):.3f} deg" if isinstance(beta, (int, float)) else "--"
+        self._set_generic_chip(self.rotation_status_chip, status_text, tone)
+        self._set_rotation_metric("requested", requested, tone)
+        self._set_rotation_metric("applied", applied_impl, tone)
+        self._set_rotation_metric("alpha", alpha_text, tone)
+        self._set_rotation_metric("beta", beta_text, tone)
+        reason = str(diagnostics.get("rotation_reason") or intermediate.get("rotation_reason") or current.reason or "--")
+        planar_status = str(diagnostics.get("planar_fit_library_status") or "not_requested")
+        sector = str(diagnostics.get("planar_fit_selected_sector") or "--")
+        summary = str(section.get("real_summary", "旋转摘要不可用。"))
+        self.rotation_preview_label.setText(
+            f"{summary} reason={reason}; planar_fit={planar_status}; sector={sector}."
+        )
 
     def _refresh_crosswind_preview(self, *_args) -> None:
         enabled = self.crosswind_enable_combo.currentText().strip() == "enabled"
