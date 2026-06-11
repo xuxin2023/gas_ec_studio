@@ -134,6 +134,11 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.window_cockpit_values["samples"].text() == "36,000"
         assert page.window_cockpit_values["batches"].text() == "preview x4"
         assert page.window_cockpit_tiles["batches"].property("evidenceTone") == "warning"
+        assert page.window_timeline_card.property("deckRole") == "windowTimelinePanel"
+        assert page.window_timeline_card.maximumHeight() == 274
+        assert page.window_plan_plot.maximumHeight() == 168
+        assert page.window_timeline_chip.text() == "preview"
+        assert page.window_timeline_chip.property("chipTone") == "warning"
         assert page.cockpit_method_value.property("compactMetric") is True
         assert page.step_tree.objectName() == "workflowTree"
         assert set(page.workflow_lens_buttons) == {"project", "core", "advanced", "delivery"}
@@ -213,6 +218,8 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.window_cockpit_values["batches"].text().endswith("windows")
         assert page.window_cockpit_tiles["batches"].property("evidenceTone") == "success"
         assert page.window_cockpit_tiles["samples"].property("evidenceTone") in {"success", "warning", "danger"}
+        assert page.window_timeline_chip.text() == "real"
+        assert page.window_timeline_chip.property("chipTone") == "success"
         assert "lag=" in page.lag_note_label.text()
         assert "u*=" in page.turbulence_preview_label.text()
         assert page.uncertainty_sampling_label.text() != "真实 RP 未提供"
@@ -260,7 +267,14 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             assert_no_visual_overlap(closure_tiles, page)
 
             assert_contained(page.desktop_rail_scroll.viewport(), page.workflow_lens_card, page)
-            assert_contained(page.content_stack.currentWidget().viewport(), page.window_cockpit_card, page)
+            content_viewport = page.content_stack.currentWidget().viewport()
+            viewport_rect = widget_bounds(content_viewport, page)
+            timeline_rect = widget_bounds(page.window_timeline_card, page)
+            plot_rect = widget_bounds(page.window_plan_plot, page)
+            assert_contained(content_viewport, page.window_cockpit_card, page)
+            assert timeline_rect.top() >= viewport_rect.top()
+            assert timeline_rect.top() < viewport_rect.bottom()
+            assert plot_rect.top() < viewport_rect.bottom()
             assert_no_visible_competitor_name(page)
     finally:
         page.close()

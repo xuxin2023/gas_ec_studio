@@ -1254,13 +1254,20 @@ class ECProcessingPage(QWidget):
         preview_layout.addWidget(self.window_preview_note)
         row.addWidget(preview_card, 2)
 
-        timeline_card = CardFrame(muted=True)
+        timeline_card = CardFrame(muted=True, role="panel")
+        timeline_card.setProperty("deckRole", "windowTimelinePanel")
+        timeline_card.setMaximumHeight(274)
+        self.window_timeline_card = timeline_card
         timeline_layout = QVBoxLayout(timeline_card)
-        timeline_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        timeline_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         timeline_layout.setSpacing(TOKENS.spacing_sm)
         timeline_layout.addWidget(section_title("窗口时间轴", "桌面端用图形先确认窗口规模和批次结构，再进入细节步骤。"))
+        self.window_timeline_chip = chip("preview", "warning")
+        timeline_layout.addWidget(self.window_timeline_chip, 0, Qt.AlignRight)
         self.window_plan_plot = pg.PlotWidget()
         configure_plot_theme(self.window_plan_plot, left_label="samples", bottom_label="window")
+        self.window_plan_plot.setMinimumHeight(148)
+        self.window_plan_plot.setMaximumHeight(168)
         self.window_plan_curve = self.window_plan_plot.plot(
             pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.0),
             symbol="o",
@@ -1271,8 +1278,9 @@ class ECProcessingPage(QWidget):
         self.window_plan_note = QLabel("--")
         self.window_plan_note.setObjectName("subtitle")
         self.window_plan_note.setWordWrap(True)
+        self.window_plan_note.setMaximumHeight(36)
         timeline_layout.addWidget(self.window_plan_note)
-        layout.addWidget(timeline_card)
+        layout.insertWidget(2, timeline_card)
 
     def _window_cockpit_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
@@ -2742,6 +2750,7 @@ class ECProcessingPage(QWidget):
             xs = np.arange(1, 5, dtype=float)
             ys = np.full_like(xs, float(samples), dtype=float)
             self.window_plan_curve.setData(xs, ys)
+            self._set_generic_chip(self.window_timeline_chip, "preview", "warning")
             self.window_plan_note.setText("预览 4 个待处理窗口；运行后会显示真实窗口样本量和连续性。")
             self._refresh_readiness_panel()
             return
@@ -2762,6 +2771,7 @@ class ECProcessingPage(QWidget):
         self._set_window_cockpit_tile("samples", f"{current.sample_count:,}", f"missing={current.missing_ratio * 100:.1f}%", missing_tone)
         self._set_window_cockpit_tile("batches", f"{len(xs)} windows", "real RP window series", "success")
         self.window_plan_curve.setData(xs, ys)
+        self._set_generic_chip(self.window_timeline_chip, "real", "success")
         self.window_plan_note.setText(
             f"真实窗口 {len(xs)} 个；当前窗口 {current.window_id}，缺测率 {current.missing_ratio * 100:.1f}%。"
         )
