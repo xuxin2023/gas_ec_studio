@@ -37,6 +37,15 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert all(value.property("compactMetric") is True for value in page.report_command_values.values())
         assert page.report_command_values["report"].text() == "待生成"
         assert page.report_command_values["export"].text() == "待运行"
+        assert page.delivery_rail_inspector.property("deckRole") == "deliveryRailInspector"
+        assert page.delivery_rail_stack.property("stackRole") == "deliveryRailInspectorStack"
+        assert page.delivery_rail_stack.count() == 2
+        assert page.delivery_rail_stack.currentWidget() is page.delivery_focus_card
+        assert page.delivery_rail_mode_buttons["delivery"].isChecked() is True
+        page._show_delivery_rail_mode("summary")
+        assert page.delivery_rail_stack.currentWidget() is page.summary_row
+        assert page.delivery_rail_mode_buttons["summary"].isChecked() is True
+        page._show_delivery_rail_mode("delivery")
         assert page.delivery_focus_card.property("cardRole") == "panel"
         assert page.delivery_focus_stack.count() == 3
         assert page.delivery_focus_buttons["gate"].isChecked() is True
@@ -127,6 +136,8 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         page._show_delivery_focus("batch")
         assert page.delivery_focus_stack.currentWidget() is page.batch_card
         assert page.delivery_focus_buttons["batch"].isChecked() is True
+        assert page.delivery_rail_stack.currentWidget() is page.delivery_focus_card
+        assert page.delivery_rail_mode_buttons["delivery"].isChecked() is True
         page._show_delivery_focus("details")
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.delivery_focus_buttons["details"].isChecked() is True
@@ -156,12 +167,16 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             assert page.delivery_rail.width() >= page.delivery_rail.minimumWidth()
             assert_contained(page, page.delivery_rail, page)
 
+            page._show_delivery_rail_mode("summary")
+            app.processEvents()
             summary_cards = list(page.summary_cards.values())
             assert len(summary_cards) == 4
             for card in summary_cards:
                 assert_contained(page.delivery_rail, card, page)
             assert_no_visual_overlap(summary_cards, page)
 
+            page._show_delivery_focus("gate")
+            app.processEvents()
             gate_widgets = [
                 page.delivery_gate_hero_card,
                 *page.delivery_gate_tiles.values(),

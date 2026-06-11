@@ -59,6 +59,7 @@ class ReportCenterPage(QWidget):
         self.setProperty("pageSurface", True)
         self.controller = controller
         self.report_items: dict[str, QTreeWidgetItem] = {}
+        self.delivery_rail_mode_buttons: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -303,8 +304,37 @@ class ReportCenterPage(QWidget):
         delivery_title.setMaximumHeight(42)
         delivery_layout.addWidget(delivery_title)
 
+        self.delivery_rail_inspector = CardFrame(role="panel")
+        self.delivery_rail_inspector.setProperty("deckRole", "deliveryRailInspector")
+        self.delivery_rail_inspector.setMinimumWidth(0)
+        self.delivery_rail_inspector.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        rail_inspector_layout = QVBoxLayout(self.delivery_rail_inspector)
+        rail_inspector_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        rail_inspector_layout.setSpacing(TOKENS.spacing_xs)
+
+        rail_mode_row = QHBoxLayout()
+        rail_mode_row.setContentsMargins(0, 0, 0, 0)
+        rail_mode_row.setSpacing(TOKENS.spacing_xs)
+        for mode, text in (
+            ("summary", "摘要"),
+            ("delivery", "交付"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, key=mode: self._show_delivery_rail_mode(key))
+            self.delivery_rail_mode_buttons[mode] = button
+            rail_mode_row.addWidget(button)
+        rail_mode_row.addStretch(1)
+        rail_inspector_layout.addLayout(rail_mode_row)
+
+        self.delivery_rail_stack = QStackedWidget()
+        self.delivery_rail_stack.setMinimumWidth(0)
+        self.delivery_rail_stack.setProperty("stackRole", "deliveryRailInspectorStack")
+        self.delivery_rail_stack.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.summary_row = self._build_summary_row()
-        delivery_layout.addWidget(self.summary_row)
+        self.delivery_rail_stack.addWidget(self.summary_row)
 
         self.delivery_focus_card = CardFrame(muted=True, role="panel")
         self.delivery_focus_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
@@ -336,7 +366,9 @@ class ReportCenterPage(QWidget):
         self.delivery_focus_stack.setProperty("stackRole", "compactDeliveryInspector")
         self.delivery_focus_stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         focus_layout.addWidget(self.delivery_focus_stack)
-        delivery_layout.addWidget(self.delivery_focus_card, 1)
+        self.delivery_rail_stack.addWidget(self.delivery_focus_card)
+        rail_inspector_layout.addWidget(self.delivery_rail_stack)
+        delivery_layout.addWidget(self.delivery_rail_inspector, 1)
 
         self.delivery_gate_card = self._build_delivery_gate_card()
         self.delivery_focus_stack.addWidget(self.delivery_gate_card)
@@ -410,6 +442,11 @@ class ReportCenterPage(QWidget):
             "details": self.inner_inspector,
             "batch": self.batch_card,
         }
+        self.delivery_rail_sections = {
+            "summary": self.summary_row,
+            "delivery": self.delivery_focus_card,
+        }
+        self._show_delivery_rail_mode("summary")
         self._show_delivery_focus("gate")
         delivery_layout.addStretch(1)
         self.delivery_rail.setMinimumWidth(280)
@@ -2340,12 +2377,27 @@ class ReportCenterPage(QWidget):
             button.style().unpolish(button)
             button.style().polish(button)
 
+    def _show_delivery_rail_mode(self, section: str) -> None:
+        if not hasattr(self, "delivery_rail_sections"):
+            return
+        card = self.delivery_rail_sections.get(section)
+        if card is None:
+            return
+        self.delivery_rail_stack.setCurrentWidget(card)
+        for key, button in self.delivery_rail_mode_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == section)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
     def _show_delivery_focus(self, section: str) -> None:
         if not hasattr(self, "delivery_focus_sections"):
             return
         card = self.delivery_focus_sections.get(section)
         if card is None:
             return
+        self._show_delivery_rail_mode("delivery")
         self.delivery_focus_stack.setCurrentWidget(card)
         for key, button in self.delivery_focus_buttons.items():
             button.blockSignals(True)
