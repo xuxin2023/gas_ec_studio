@@ -27,6 +27,7 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         page = ReportCenterPage(controller)
         page.refresh()
 
+        assert page.property("pageSurface") is True
         assert page.delivery_rail.property("cardRole") == "rail"
         assert page.report_command_deck.property("cardRole") == "cockpit"
         assert page.report_command_deck.property("deckRole") == "reportCommandDeck"

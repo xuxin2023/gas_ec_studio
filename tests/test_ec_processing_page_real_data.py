@@ -60,6 +60,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         page = ECProcessingPage(controller)
         page.refresh()
 
+        assert page.property("pageSurface") is True
         assert "尚未生成真实 RP 结果" in page.run_summary_label.text()
         assert page.run_bar.property("cardRole") == "command"
         assert page.rp_closure_deck.property("cardRole") == "cockpit"

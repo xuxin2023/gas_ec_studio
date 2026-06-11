@@ -55,6 +55,7 @@ REPORT_SECTIONS = [
 class ReportCenterPage(QWidget):
     def __init__(self, controller: StudioController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setProperty("pageSurface", True)
         self.controller = controller
         self.report_items: dict[str, QTreeWidgetItem] = {}
 

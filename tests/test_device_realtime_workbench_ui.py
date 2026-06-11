@@ -27,6 +27,7 @@ def test_device_center_uses_field_operations_deck() -> None:
     try:
         page.refresh()
 
+        assert page.property("pageSurface") is True
         assert page.status_card.property("cardRole") == "cockpit"
         assert page.field_readiness_card.property("cardRole") == "panel"
         assert page.quick_card.property("cardRole") == "command"
@@ -96,6 +97,7 @@ def test_realtime_page_uses_session_cockpit_deck() -> None:
     try:
         page.refresh()
 
+        assert page.property("pageSurface") is True
         assert page.control_card.property("cardRole") == "command"
         assert page.capture_target_panel.property("cardRole") == "tile"
         assert page.capture_metric_panel.property("cardRole") == "tile"

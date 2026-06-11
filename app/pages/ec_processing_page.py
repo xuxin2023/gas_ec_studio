@@ -59,6 +59,7 @@ WORKFLOW_LENSES = [
 class ECProcessingPage(QWidget):
     def __init__(self, controller: StudioController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setProperty("pageSurface", True)
         self.controller = controller
         self.step_indexes: dict[str, int] = {}
         self.step_items: dict[str, QTreeWidgetItem] = {}
@@ -390,6 +391,8 @@ class ECProcessingPage(QWidget):
         self.desktop_rail_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.desktop_rail_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         rail_body = QWidget()
+        rail_body.setMinimumWidth(0)
+        rail_body.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.desktop_rail_body = rail_body
         body_layout = QVBoxLayout(rail_body)
         body_layout.setContentsMargins(0, 0, 0, 0)
@@ -409,12 +412,16 @@ class ECProcessingPage(QWidget):
     def _build_workflow_lens_panel(self) -> CardFrame:
         card = CardFrame(role="panel")
         card.setProperty("deckRole", "workflowLensCompact")
+        card.setMinimumWidth(0)
         card.setMaximumHeight(190)
+        card.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_sm)
         title = section_title("工作流分层", "项目、核心、高级和交付四段导航。")
+        title.setMinimumWidth(0)
         title.setMaximumWidth(300)
+        title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         layout.addWidget(title)
 
         lens_grid = QGridLayout()

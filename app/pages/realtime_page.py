@@ -30,6 +30,7 @@ from app.theme import CardFrame, PLOT_SERIES_COLORS, TOKENS, chip, configure_plo
 class RealtimePage(QWidget):
     def __init__(self, controller: StudioController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setProperty("pageSurface", True)
         self.controller = controller
         self.display_paused = False
         self.metric_buttons: dict[str, QToolButton] = {}
