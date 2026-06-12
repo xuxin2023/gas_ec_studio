@@ -32,6 +32,9 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QToolButton[viewSwitch="true"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="rail"] QToolButton[viewSwitch="true"]:checked' in stylesheet
     assert 'QFrame#card[cardRole="command"] QToolButton[viewSwitch="true"]:checked' in stylesheet
+    assert 'QLabel[methodFieldLabel="true"]' in stylesheet
+    assert 'QComboBox[methodFieldInput="true"]' in stylesheet
+    assert 'QDoubleSpinBox[methodFieldInput="true"]' in stylesheet
     assert 'QPushButton[variant="danger"]' in stylesheet and "#fff1f1" in stylesheet
     assert "QTreeWidget#workflowTree" in stylesheet
     assert "QPlainTextEdit" in stylesheet

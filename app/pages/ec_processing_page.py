@@ -938,9 +938,13 @@ class ECProcessingPage(QWidget):
             if not hasattr(self, "method_field_labels"):
                 self.method_field_labels: list[QLabel] = []
             self.method_field_labels.append(label)
+            widget.setProperty("methodFieldInput", True)
             widget.setMinimumWidth(96)
             widget.setMaximumHeight(28)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            if not hasattr(self, "method_field_inputs"):
+                self.method_field_inputs: list[QWidget] = []
+            self.method_field_inputs.append(widget)
             grid.addWidget(label, row, column)
             grid.addWidget(widget, row, column + 1)
         grid.setColumnMinimumWidth(0, 112)

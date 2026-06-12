@@ -277,6 +277,14 @@ def build_stylesheet() -> str:
         letter-spacing: 0.5px;
         font-weight: 700;
     }}
+    QLabel[methodFieldLabel="true"] {{
+        font-family: {TOKENS.font_family_mono};
+        color: #31586c;
+        background: rgba(255, 255, 255, 0.58);
+        border: 1px solid rgba(180, 205, 218, 0.64);
+        border-radius: 7px;
+        padding: 1px 6px;
+    }}
     QLabel[heroStatus="true"] {{
         min-width: 160px;
         padding: 7px 10px;
@@ -455,6 +463,15 @@ def build_stylesheet() -> str:
         border: 1px solid {TOKENS.color_accent};
         background: #ffffff;
         color: {TOKENS.color_text};
+    }}
+    QComboBox[methodFieldInput="true"],
+    QSpinBox[methodFieldInput="true"],
+    QDoubleSpinBox[methodFieldInput="true"] {{
+        min-height: 28px;
+        border-radius: 8px;
+        padding: 3px 8px;
+        background: #ffffff;
+        border-color: #bdd2dd;
     }}
     QTextEdit, QPlainTextEdit {{
         min-height: 100px;

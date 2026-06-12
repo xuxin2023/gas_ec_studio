@@ -135,6 +135,8 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert all(label.property("methodFieldLabel") is True for label in page.method_field_labels)
         assert page.method_field_labels[0].objectName() == "metricLabel"
         assert min(label.minimumWidth() for label in page.method_field_labels) >= 112
+        assert len(page.method_field_inputs) == len(page.method_field_labels)
+        assert all(widget.property("methodFieldInput") is True for widget in page.method_field_inputs)
         assert page.method_family_buttons["footprint"].isChecked() is True
         assert all(
             page.content_stack.widget(index).horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
