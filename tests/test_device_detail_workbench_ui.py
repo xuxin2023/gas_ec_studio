@@ -47,6 +47,12 @@ def test_device_detail_uses_device_operations_rail(monkeypatch, tmp_path: Path) 
             assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)
             assert all(value.property("compactMetric") is True for value in page.summary_values.values())
             assert page.device_ops_rail.property("cardRole") == "rail"
+            assert page.device_ops_action_bar.property("deckRole") == "deviceOpsActionBar"
+            assert page.device_ops_action_button.property("railAction") is True
+            assert page.device_ops_risk_button.property("railAction") is True
+            assert page.device_ops_action_button.property("targetAction") == "trace_config"
+            assert page.device_ops_risk_button.property("targetAction") == "trace_config"
+            assert page.device_ops_risk_button.property("actionTone") == "warning"
             assert page.device_ops_grid.count() == 5
             assert set(page.device_ops_values) == {"link", "telemetry", "primary", "trace", "diagnostics"}
             assert page.device_ops_values["link"][0].property("compactMetric") is True
@@ -55,12 +61,15 @@ def test_device_detail_uses_device_operations_rail(monkeypatch, tmp_path: Path) 
             assert page.device_ops_values["telemetry"][0].text().endswith("Hz")
             assert page.device_ops_values["primary"][0].text() == "ygas_irga"
             assert page.device_ops_next_value.text() in {"读取一帧", "启用主分析仪", "进入实时采集", "复核配置"}
+            page.device_ops_action_button.click()
+            assert page.tabs.currentIndex() == 1
 
             controller.disconnect_device(uid)
             page.refresh()
 
             assert page.device_ops_values["link"][0].text() == "离线"
             assert page.device_ops_next_value.text() == "连接设备"
+            assert page.device_ops_action_button.property("targetAction") == "connect"
         finally:
             page.deleteLater()
     finally:
@@ -99,6 +108,7 @@ def test_device_detail_viewport_layout_keeps_summary_and_ops_stable(monkeypatch,
                 assert_contained(page, page.summary_card, page)
                 assert_contained(page, page.tabs, page)
                 assert_contained(page, page.device_ops_rail, page)
+                assert_contained(page.device_ops_rail, page.device_ops_action_bar, page)
 
                 for card in page.summary_metric_cards:
                     assert_contained(page.summary_card, card, page)
@@ -110,6 +120,7 @@ def test_device_detail_viewport_layout_keeps_summary_and_ops_stable(monkeypatch,
                     if value.parentWidget() is not None
                 ]
                 ops_tiles.append(page.device_ops_next_value.parentWidget())
+                ops_tiles.append(page.device_ops_action_bar)
                 for tile in ops_tiles:
                     assert_contained(page.device_ops_rail, tile, page)
                 assert_no_visual_overlap(ops_tiles, page)

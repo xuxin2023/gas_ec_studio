@@ -264,15 +264,36 @@ class DeviceDetailPage(QWidget):
         card = CardFrame(muted=True, role="rail")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
         layout.addWidget(section_title("设备作战台", "单台分析仪的链路、遥测、配置来源和下一步动作保持常驻。"))
         self.device_ops_chip = chip("待选择", "warning")
         layout.addWidget(self.device_ops_chip)
+
+        self.device_ops_action_bar = CardFrame(muted=True, role="console")
+        self.device_ops_action_bar.setProperty("deckRole", "deviceOpsActionBar")
+        self.device_ops_action_bar.setMinimumHeight(38)
+        self.device_ops_action_bar.setMaximumHeight(38)
+        self.device_ops_action_bar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        action_layout = QHBoxLayout(self.device_ops_action_bar)
+        action_layout.setContentsMargins(TOKENS.spacing_sm, 4, TOKENS.spacing_sm, 4)
+        action_layout.setSpacing(TOKENS.spacing_xs)
+        self.device_ops_action_button = QToolButton()
+        self.device_ops_action_button.setText("下一动作")
+        self.device_ops_action_button.setProperty("railAction", True)
+        self.device_ops_action_button.clicked.connect(self._activate_device_ops_action)
+        self.device_ops_risk_button = QToolButton()
+        self.device_ops_risk_button.setText("查看风险")
+        self.device_ops_risk_button.setProperty("railAction", True)
+        self.device_ops_risk_button.clicked.connect(self._activate_device_ops_risk)
+        action_layout.addWidget(self.device_ops_action_button)
+        action_layout.addWidget(self.device_ops_risk_button)
+        layout.addWidget(self.device_ops_action_bar)
+
         self.device_ops_values: dict[str, tuple[QLabel, QLabel]] = {}
         self.device_ops_grid = QGridLayout()
         self.device_ops_grid.setContentsMargins(0, 0, 0, 0)
-        self.device_ops_grid.setHorizontalSpacing(TOKENS.spacing_sm)
-        self.device_ops_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.device_ops_grid.setHorizontalSpacing(0)
+        self.device_ops_grid.setVerticalSpacing(TOKENS.spacing_xs)
         for index, (key, title) in enumerate(
             (
             ("link", "链路"),
@@ -282,13 +303,13 @@ class DeviceDetailPage(QWidget):
             ("diagnostics", "诊断"),
             )
         ):
-            row = index // 2
-            column = index % 2
-            column_span = 2 if key == "diagnostics" else 1
-            self.device_ops_grid.addWidget(self._device_ops_tile(key, title), row, column, 1, column_span)
+            self.device_ops_grid.addWidget(self._device_ops_tile(key, title), index, 0)
         layout.addLayout(self.device_ops_grid)
 
         next_card = CardFrame(muted=True, role="tile")
+        next_card.setMinimumHeight(86)
+        next_card.setMaximumHeight(92)
+        next_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         next_layout = QVBoxLayout(next_card)
         next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         next_layout.setSpacing(TOKENS.spacing_xs)
@@ -310,21 +331,31 @@ class DeviceDetailPage(QWidget):
 
     def _device_ops_tile(self, key: str, title: str) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        card.setMinimumHeight(28)
+        card.setMaximumHeight(30)
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
         layout.setSpacing(TOKENS.spacing_xs)
         label = QLabel(title)
         label.setObjectName("metricLabel")
+        label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        label.setMinimumWidth(50)
+        label.setMaximumWidth(58)
         value = QLabel("--")
         value.setObjectName("metricValue")
         value.setProperty("compactMetric", True)
-        value.setWordWrap(True)
+        value.setWordWrap(False)
+        value.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        value.setMinimumWidth(70)
         note = QLabel("--")
         note.setObjectName("subtitle")
-        note.setWordWrap(True)
+        note.setWordWrap(False)
+        note.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         layout.addWidget(label)
         layout.addWidget(value)
-        layout.addWidget(note)
+        layout.addWidget(note, 1)
         self.device_ops_values[key] = (value, note)
         return card
 
@@ -336,8 +367,24 @@ class DeviceDetailPage(QWidget):
             for value, note in self.device_ops_values.values():
                 value.setText("--")
                 note.setText("请先从设备中心选择一台设备。")
+                value.setToolTip("")
+                note.setToolTip("")
             self.device_ops_next_value.setText("选择设备")
             self.device_ops_next_note.setText("回到设备中心选择目标，再进入配置、采集或诊断。")
+            self._configure_device_ops_action_button(
+                self.device_ops_action_button,
+                "设备中心",
+                "返回设备中心选择目标分析仪。",
+                "device_center",
+                "warning",
+            )
+            self._configure_device_ops_action_button(
+                self.device_ops_risk_button,
+                "待选择",
+                "选择设备后才会生成链路和诊断风险。",
+                "",
+                "warning",
+            )
             return
 
         runtime = entry.runtime
@@ -358,53 +405,140 @@ class DeviceDetailPage(QWidget):
             chip_text, tone = "待连接", "warning"
         self._set_device_ops_chip(chip_text, tone)
 
-        self.device_ops_values["link"][0].setText("在线" if runtime.connected else "离线")
-        self.device_ops_values["link"][1].setText(
-            f"{entry.config.port} · ID {entry.config.device_id} · MODE{runtime.mode} · {entry.config.baudrate} bps"
+        self._set_device_ops_row(
+            "link",
+            "在线" if runtime.connected else "离线",
+            f"{entry.config.port} · ID {entry.config.device_id} · MODE{runtime.mode} · {entry.config.baudrate} bps",
         )
 
-        self.device_ops_values["telemetry"][0].setText(f"{runtime.ftd_hz} Hz")
         last_frame_text = runtime.last_frame_time.strftime("%H:%M:%S") if runtime.last_frame_time else "暂无有效帧"
         signal_text = "有数值帧" if latest_numeric is not None else "等待数值帧"
-        self.device_ops_values["telemetry"][1].setText(
-            f"{last_frame_text} · {signal_text} · raw={raw_frame_count}"
+        self._set_device_ops_row(
+            "telemetry",
+            f"{runtime.ftd_hz} Hz",
+            f"{last_frame_text} · {signal_text} · raw={raw_frame_count}",
         )
 
         primary_enabled = "enabled" if primary_cfg.get("enabled", True) else "disabled"
         primary_profile = str(primary_cfg.get("profile_id") or profile.get("profile_id") or entry.config.analyzer_profile)
         primary_calibration = str(primary_cfg.get("calibration_profile_id") or "--")
-        self.device_ops_values["primary"][0].setText(primary_profile)
-        self.device_ops_values["primary"][1].setText(f"{primary_enabled} · calibration={primary_calibration}")
+        self._set_device_ops_row("primary", primary_profile, f"{primary_enabled} · calibration={primary_calibration}")
 
         trace_enabled = "enabled" if trace_cfg.get("enabled", False) else "disabled"
         trace_gas = str(trace_cfg.get("gas") or "ch4").upper()
         trace_profile = str(trace_cfg.get("coefficient_profile_id") or "--")
-        self.device_ops_values["trace"][0].setText(f"{trace_gas} {trace_enabled}")
-        self.device_ops_values["trace"][1].setText(f"profile={trace_profile}")
+        self._set_device_ops_row("trace", f"{trace_gas} {trace_enabled}", f"profile={trace_profile}")
 
         frame_status = "parsed" if latest_frame and getattr(latest_frame, "parsed", None) else "raw-only" if latest_frame else "no-frame"
-        self.device_ops_values["diagnostics"][0].setText(frame_status)
-        self.device_ops_values["diagnostics"][1].setText(
-            f"transactions={transaction_count} · suggestions={suggestion_count} · view={self.controller.view_mode}"
+        self._set_device_ops_row(
+            "diagnostics",
+            frame_status,
+            f"transactions={transaction_count} · suggestions={suggestion_count} · view={self.controller.view_mode}",
         )
 
         if not runtime.connected:
             next_value = "连接设备"
             next_note = "先建立链路，再读取一帧确认协议和数值字段。"
+            action_value, action_target, action_tone = "连接", "connect", "warning"
+            risk_value, risk_target, risk_tone = "配置", "config", "accent"
         elif latest_numeric is None:
             next_value = "读取一帧"
             next_note = "设备在线但还没有数值帧，建议先做单帧读取或进入实时采集。"
+            action_value, action_target, action_tone = "读帧", "read_frame", "accent"
+            risk_value, risk_target, risk_tone = "诊断", "diagnostics", "warning"
         elif primary_enabled != "enabled":
             next_value = "启用主分析仪"
             next_note = "主 CO2/H2O 诊断未启用时，后续通量质量门控会缺少设备级依据。"
+            action_value, action_target, action_tone = "主分析仪", "primary_config", "danger"
+            risk_value, risk_target, risk_tone = "主 QC", "primary_config", "danger"
         elif trace_enabled == "enabled":
             next_value = "进入实时采集"
             next_note = "主分析仪与微量气体路径已显式配置，可查看实时趋势并继续批处理。"
+            action_value, action_target, action_tone = "实时采集", "realtime", "success"
+            risk_value, risk_target, risk_tone = ("诊断", "diagnostics", "warning") if suggestion_count else ("稳定", "diagnostics", "success")
         else:
             next_value = "复核配置"
             next_note = "基础采集已就绪，可按需要补微量气体或进入实时采集。"
+            action_value, action_target, action_tone = "复核", "trace_config", "accent"
+            risk_value, risk_target, risk_tone = "微量气体", "trace_config", "warning"
         self.device_ops_next_value.setText(next_value)
         self.device_ops_next_note.setText(next_note)
+        self._configure_device_ops_action_button(
+            self.device_ops_action_button,
+            action_value,
+            next_note,
+            action_target,
+            action_tone,
+        )
+        self._configure_device_ops_action_button(
+            self.device_ops_risk_button,
+            risk_value,
+            "跳转到最需要复核的设备配置或诊断区域。",
+            risk_target,
+            risk_tone,
+        )
+
+    def _set_device_ops_row(self, key: str, value: str, note: str) -> None:
+        value_label, note_label = self.device_ops_values[key]
+        display_value = self._compact_device_ops_text(value, 16)
+        display_note = self._compact_device_ops_text(note, 14)
+        tooltip = f"{value}\n{note}"
+        value_label.setText(display_value)
+        note_label.setText(display_note)
+        value_label.setToolTip(tooltip)
+        note_label.setToolTip(tooltip)
+
+    def _compact_device_ops_text(self, text: str, limit: int) -> str:
+        cleaned = " ".join(str(text).split())
+        if len(cleaned) <= limit:
+            return cleaned
+        return f"{cleaned[: max(1, limit - 1)]}…"
+
+    def _configure_device_ops_action_button(
+        self,
+        button: QToolButton,
+        value: str,
+        note: str,
+        target: str,
+        tone: str,
+    ) -> None:
+        button.setText(self._compact_device_ops_text(value, 8))
+        button.setToolTip(note)
+        button.setProperty("targetAction", target)
+        button.setProperty("actionTone", tone)
+        button.setEnabled(bool(target))
+        button.style().unpolish(button)
+        button.style().polish(button)
+
+    def _activate_device_ops_action(self) -> None:
+        self._activate_device_ops_target(self.device_ops_action_button)
+
+    def _activate_device_ops_risk(self) -> None:
+        self._activate_device_ops_target(self.device_ops_risk_button)
+
+    def _activate_device_ops_target(self, button: QToolButton) -> None:
+        target = str(button.property("targetAction") or "")
+        if target == "device_center":
+            self.back_requested.emit()
+            return
+        if target == "connect":
+            self._with_selected(self.controller.connect_device)
+            self.refresh()
+            return
+        if target == "read_frame":
+            self._with_selected(self.controller.read_frame_once)
+            self.refresh()
+            return
+        if target == "realtime":
+            self.open_realtime_requested.emit()
+            return
+        if target in {"config", "primary_config", "trace_config"}:
+            self.tabs.setCurrentIndex(1)
+            return
+        if target == "diagnostics":
+            self.controller.set_view_mode("engineer")
+            self.tabs.setCurrentIndex(3)
+            return
 
     def _set_device_ops_chip(self, text: str, tone: str) -> None:
         self.device_ops_chip.setText(text)
