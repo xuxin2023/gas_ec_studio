@@ -121,6 +121,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert all(button.property("railAction") is True for button in page.preview_command_buttons.values())
         assert page.preview_deck_card.property("cardRole") == "rail"
         assert page.preview_deck_card.property("deckRole") == "reportPreviewDeck"
+        assert page.preview_deck_card.property("activePane") == "table"
+        assert page.preview_pane_switcher.property("deckRole") == "previewPaneSwitcher"
+        assert all(button.property("previewPaneSwitch") is True for button in page.preview_content_switches.values())
+        assert page.preview_pane_hint_label.text()
         assert page.preview_delivery_trail_card.property("cardRole") == "console"
         assert page.preview_delivery_trail_card.maximumHeight() == 88
         assert page.preview_delivery_trail_value.property("compactMetric") is True
@@ -143,6 +147,7 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_table.isHidden() is False
         page._show_preview_content_mode("insight")
         assert page.preview_content_card.property("activePane") == "insight"
+        assert page.preview_deck_card.property("activePane") == "insight"
         assert page.preview_insight_card.isHidden() is False
         assert page.preview_table.isHidden() is True
         assert len(page.preview_metric_cards) == 4
@@ -277,7 +282,7 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             for button in page.preview_command_buttons.values():
                 assert_contained(page.preview_command_strip, button, page)
             for button in page.preview_content_switches.values():
-                assert_contained(page.preview_content_card, button, page)
+                assert_contained(page.preview_deck_card, button, page)
             gate_widgets = [page.delivery_gate_hero_card, page.delivery_gate_scroll]
             for widget in gate_widgets:
                 assert_contained(page.delivery_gate_card, widget, page)
@@ -411,6 +416,7 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.report_tree_active_chip.text().startswith("运行")
         assert page.preview_content_card.property("plotStatus") == "series"
         assert page.preview_content_card.property("activePane") == "plot"
+        assert page.preview_deck_card.property("activePane") == "plot"
         assert page.preview_plot.isHidden() is False
         assert page.preview_content_switches["plot"].isChecked() is True
         assert page.preview_table.maximumHeight() == 128

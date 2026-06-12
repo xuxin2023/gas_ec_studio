@@ -590,6 +590,30 @@ def build_stylesheet() -> str:
         color: {TOKENS.color_accent};
         font-weight: 800;
     }}
+    QToolButton[previewPaneSwitch="true"] {{
+        min-height: 28px;
+        min-width: 58px;
+        border-radius: 14px;
+        padding: 0 12px;
+        background: rgba(255, 255, 255, 0.84);
+        border: 1px solid #b9d3dc;
+        color: #31586a;
+    }}
+    QToolButton[previewPaneSwitch="true"]:hover {{
+        background: #f8fcfd;
+        border-color: #7eb3bd;
+        color: {TOKENS.color_text};
+    }}
+    QToolButton[previewPaneSwitch="true"]:checked {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 {TOKENS.color_accent},
+            stop: 1 #0f8990
+        );
+        border: 1px solid {TOKENS.color_accent_hover};
+        color: #ffffff;
+        font-weight: 800;
+    }}
     QListWidget, QTableWidget, QTreeWidget {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,

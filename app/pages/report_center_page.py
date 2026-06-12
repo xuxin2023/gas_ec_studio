@@ -155,12 +155,25 @@ class ReportCenterPage(QWidget):
         preview_deck_layout = QVBoxLayout(self.preview_deck_card)
         preview_deck_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         preview_deck_layout.setSpacing(TOKENS.spacing_md)
-        preview_deck_layout.addWidget(
+        preview_deck_header = QHBoxLayout()
+        preview_deck_header.setContentsMargins(0, 0, 0, 0)
+        preview_deck_header.setSpacing(TOKENS.spacing_sm)
+        preview_deck_header.addWidget(
             section_title(
                 "报告预览台",
-                "KPI、图表和支撑表格集中在一起，让中间区像交付驾驶舱一样阅读。",
-            )
+                "首屏直接切换 KPI 下方的图表、表格与结论，减少长页面来回滚动。",
+            ),
+            1,
         )
+        self.preview_content_switches: dict[str, QToolButton] = {}
+        self.preview_pane_switcher = self._build_preview_pane_switcher()
+        preview_deck_header.addWidget(self.preview_pane_switcher)
+        preview_deck_layout.addLayout(preview_deck_header)
+        self.preview_pane_hint_label = QLabel("--")
+        self.preview_pane_hint_label.setObjectName("subtitle")
+        self.preview_pane_hint_label.setMaximumHeight(18)
+        self.preview_pane_hint_label.setWordWrap(False)
+        preview_deck_layout.addWidget(self.preview_pane_hint_label)
 
         self.preview_metrics_row = QWidget()
         metrics_layout = QGridLayout(self.preview_metrics_row)
@@ -276,24 +289,6 @@ class ReportCenterPage(QWidget):
         content_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         content_layout.setSpacing(TOKENS.spacing_sm)
         content_layout.setAlignment(Qt.AlignTop)
-        self.preview_content_switches: dict[str, QToolButton] = {}
-        preview_switch_row = QHBoxLayout()
-        preview_switch_row.setContentsMargins(0, 0, 0, 0)
-        preview_switch_row.setSpacing(TOKENS.spacing_xs)
-        preview_switch_row.addStretch(1)
-        for mode, text in (
-            ("plot", "图表"),
-            ("table", "表格"),
-            ("insight", "结论"),
-        ):
-            button = QToolButton()
-            button.setText(text)
-            button.setCheckable(True)
-            button.setProperty("viewSwitch", True)
-            button.clicked.connect(lambda _checked=False, key=mode: self._show_preview_content_mode(key))
-            self.preview_content_switches[mode] = button
-            preview_switch_row.addWidget(button)
-        content_layout.addLayout(preview_switch_row)
         content_layout.addWidget(section_title("图表或表格预览", "让结果预览像报告，而不是文件清单。"))
         self.preview_plot = pg.PlotWidget()
         self.preview_plot.setMinimumHeight(150)
@@ -798,6 +793,31 @@ class ReportCenterPage(QWidget):
         layout.setColumnStretch(3, 0)
         return strip
 
+    def _build_preview_pane_switcher(self) -> QWidget:
+        switcher = QWidget()
+        switcher.setProperty("deckRole", "previewPaneSwitcher")
+        switcher.setMaximumHeight(32)
+        switcher.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        layout = QHBoxLayout(switcher)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(TOKENS.spacing_xs)
+        for mode, text in (
+            ("plot", "图表"),
+            ("table", "表格"),
+            ("insight", "结论"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.setProperty("previewPaneSwitch", True)
+            button.setMinimumWidth(58)
+            button.setMaximumHeight(28)
+            button.clicked.connect(lambda _checked=False, key=mode: self._show_preview_content_mode(key))
+            self.preview_content_switches[mode] = button
+            layout.addWidget(button)
+        return switcher
+
     def _preview_command_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("commandKey", key)
@@ -1214,8 +1234,18 @@ class ReportCenterPage(QWidget):
         self.preview_table_note.setVisible(mode == "table")
         self.preview_insight_card.setVisible(mode == "insight")
         self.preview_content_card.setProperty("activePane", mode)
+        self.preview_deck_card.setProperty("activePane", mode)
+        pane_notes = {
+            "plot": "当前显示图表趋势；切到表格可核对字段，切到结论可快速汇报。",
+            "table": "当前显示支撑表格；切到图表看趋势，切到结论看摘要。",
+            "insight": "当前显示关键结论；切到表格可追溯证据，切到图表看趋势。",
+        }
+        if hasattr(self, "preview_pane_hint_label"):
+            self.preview_pane_hint_label.setText(_ui_safe_text(pane_notes[mode]))
         self.preview_content_card.style().unpolish(self.preview_content_card)
         self.preview_content_card.style().polish(self.preview_content_card)
+        self.preview_deck_card.style().unpolish(self.preview_deck_card)
+        self.preview_deck_card.style().polish(self.preview_deck_card)
         for key, button in self.preview_content_switches.items():
             button.blockSignals(True)
             button.setChecked(key == mode)
