@@ -77,22 +77,27 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_next_card.isHidden() is True
         assert page.delivery_gate_next_note.isHidden() is True
         assert page.preview_header_card.property("cardRole") == "cockpit"
+        assert page.preview_header_card.property("deckRole") == "reportPreviewHeader"
+        assert page.preview_header_card.maximumHeight() == 118
         assert page.preview_deck_card.property("cardRole") == "rail"
         assert page.preview_deck_card.property("deckRole") == "reportPreviewDeck"
         assert page.preview_delivery_trail_card.property("cardRole") == "console"
-        assert page.preview_delivery_trail_card.maximumHeight() == 108
+        assert page.preview_delivery_trail_card.maximumHeight() == 88
         assert page.preview_delivery_trail_value.property("compactMetric") is True
         assert page.preview_delivery_trail_chip.property("chipTone") == "accent"
         assert page.preview_content_card.property("cardRole") == "panel"
         assert page.preview_content_card.property("deckRole") == "compactPreviewPane"
-        assert page.preview_content_card.maximumHeight() == 420
+        assert page.preview_content_card.property("density") == "desktop"
+        assert page.preview_content_card.property("plotStatus") == "tableOnly"
+        assert page.preview_content_card.maximumHeight() == 360
         assert page.expert_review_card.property("deckRole") == "expertReviewStrip"
         assert page.expert_review_card.isHidden() is True
-        assert page.preview_plot.maximumHeight() == 220
-        assert page.preview_table.maximumHeight() == 150
+        assert page.preview_plot.isHidden() is True
+        assert page.preview_plot.maximumHeight() == 0
+        assert page.preview_table.maximumHeight() == 180
         assert len(page.preview_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.preview_metric_cards)
-        assert all(card.maximumHeight() == 96 for card in page.preview_metric_cards)
+        assert all(card.maximumHeight() == 74 for card in page.preview_metric_cards)
         assert all(value.property("compactMetric") is True for value in page.preview_metric_values)
         assert page.recent_status_value.toolTip()
         assert len(page.recent_status_value.text()) <= 9
@@ -316,6 +321,9 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.report_command_values["methods"].text() == "已汇总"
         assert page.report_command_values["export"].text() == "已导出"
         assert page.report_command_tiles["network"].property("commandTone") == "success"
+        assert page.preview_content_card.property("plotStatus") == "series"
+        assert page.preview_plot.isHidden() is False
+        assert page.preview_table.maximumHeight() == 128
         page._show_delivery_focus("details")
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.inspector_detail_values["export.status"].text() == "已导出"

@@ -108,17 +108,22 @@ class ReportCenterPage(QWidget):
         workbench.addWidget(center_scroll)
 
         self.preview_header_card = CardFrame(role="cockpit")
+        self.preview_header_card.setProperty("deckRole", "reportPreviewHeader")
+        self.preview_header_card.setMaximumHeight(118)
+        self.preview_header_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         preview_header_layout = QVBoxLayout(self.preview_header_card)
-        preview_header_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
-        preview_header_layout.setSpacing(TOKENS.spacing_sm)
+        preview_header_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
+        preview_header_layout.setSpacing(TOKENS.spacing_xs)
         self.preview_mode_chip = chip("工程诊断", "accent")
         preview_header_layout.addWidget(self.preview_mode_chip)
         self.preview_title_label = QLabel("--")
         self.preview_title_label.setObjectName("pageTitle")
+        self.preview_title_label.setMaximumHeight(34)
         self.preview_title_label.setWordWrap(True)
         preview_header_layout.addWidget(self.preview_title_label)
         self.preview_source_label = QLabel("--")
         self.preview_source_label.setObjectName("subtitle")
+        self.preview_source_label.setMaximumHeight(34)
         self.preview_source_label.setWordWrap(True)
         preview_header_layout.addWidget(self.preview_source_label)
         center_layout.addWidget(self.preview_header_card)
@@ -146,11 +151,11 @@ class ReportCenterPage(QWidget):
         self.preview_metric_cards: list[CardFrame] = []
         for index in range(4):
             card = CardFrame(muted=True, role="tile")
-            card.setMinimumHeight(74)
-            card.setMaximumHeight(96)
+            card.setMinimumHeight(58)
+            card.setMaximumHeight(74)
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
-            card_layout.setSpacing(TOKENS.spacing_xs)
+            card_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+            card_layout.setSpacing(1)
             title = QLabel("--")
             title.setObjectName("metricLabel")
             value = QLabel("--")
@@ -166,7 +171,7 @@ class ReportCenterPage(QWidget):
         preview_deck_layout.addWidget(self.preview_metrics_row)
 
         self.preview_delivery_trail_card = CardFrame(muted=True, role="console")
-        self.preview_delivery_trail_card.setMaximumHeight(108)
+        self.preview_delivery_trail_card.setMaximumHeight(88)
         self.preview_delivery_trail_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         trail_layout = QVBoxLayout(self.preview_delivery_trail_card)
         trail_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
@@ -243,7 +248,8 @@ class ReportCenterPage(QWidget):
 
         self.preview_content_card = CardFrame(role="panel")
         self.preview_content_card.setProperty("deckRole", "compactPreviewPane")
-        self.preview_content_card.setMaximumHeight(420)
+        self.preview_content_card.setProperty("density", "desktop")
+        self.preview_content_card.setMaximumHeight(360)
         self.preview_content_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         content_layout = QVBoxLayout(self.preview_content_card)
         content_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -251,13 +257,13 @@ class ReportCenterPage(QWidget):
         content_layout.setAlignment(Qt.AlignTop)
         content_layout.addWidget(section_title("图表或表格预览", "让结果预览像报告，而不是文件清单。"))
         self.preview_plot = pg.PlotWidget()
-        self.preview_plot.setMinimumHeight(190)
-        self.preview_plot.setMaximumHeight(260)
+        self.preview_plot.setMinimumHeight(150)
+        self.preview_plot.setMaximumHeight(210)
         configure_plot_theme(self.preview_plot, left_label="指标", bottom_label="序列")
         self.preview_curve = self.preview_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.2))
         content_layout.addWidget(self.preview_plot)
         self.preview_table = QTableWidget(0, 3)
-        self.preview_table.setMaximumHeight(150)
+        self.preview_table.setMaximumHeight(128)
         self.preview_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.preview_table.verticalHeader().setVisible(False)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -1056,15 +1062,25 @@ class ReportCenterPage(QWidget):
         plot_series = list(report.get("plot_series", []))
         xs = np.arange(1, len(plot_series) + 1, dtype=float)
         ys = np.array(plot_series, dtype=float) if plot_series else np.array([], dtype=float)
-        self.preview_curve.setData(xs, ys)
+        has_plot_data = bool(plot_series) and (is_benchmark_cockpit or len(plot_series) > 1)
+        self.preview_curve.setData(xs if has_plot_data else [], ys if has_plot_data else [])
+        self.preview_plot.setVisible(has_plot_data)
+        self.preview_content_card.setProperty("plotStatus", "series" if has_plot_data else "tableOnly")
+        self.preview_content_card.style().unpolish(self.preview_content_card)
+        self.preview_content_card.style().polish(self.preview_content_card)
         compact_plot = len(plot_series) <= 1
-        if is_expert_review:
+        if not has_plot_data:
+            self.preview_plot.setMinimumHeight(0)
+            self.preview_plot.setMaximumHeight(0)
+        elif is_expert_review:
             self.preview_plot.setMinimumHeight(145)
             self.preview_plot.setMaximumHeight(190)
         else:
-            self.preview_plot.setMinimumHeight(170 if compact_plot else 210)
-            self.preview_plot.setMaximumHeight(220 if compact_plot else 280)
-        if is_benchmark_cockpit:
+            self.preview_plot.setMinimumHeight(140 if compact_plot else 170)
+            self.preview_plot.setMaximumHeight(180 if compact_plot else 220)
+        if not has_plot_data:
+            self.preview_plot_note.setText("暂无可绘制序列，优先查看表格与交付详情。")
+        elif is_benchmark_cockpit:
             self.preview_plot_note.setText("逐窗口通过/失败（1=通过，0=失败）")
         else:
             self.preview_plot_note.setText(self._plot_note_for_mode(view_mode))
@@ -1080,7 +1096,7 @@ class ReportCenterPage(QWidget):
         self.preview_table.setColumnCount(len(headers))
         self.preview_table.setHorizontalHeaderLabels([_ui_safe_text(header) for header in headers])
         self.preview_table.setRowCount(len(rows))
-        self.preview_table.setMaximumHeight(132 if is_expert_review else 150)
+        self.preview_table.setMaximumHeight(180 if not has_plot_data else (132 if is_expert_review else 128))
         for row_index, row in enumerate(rows):
             for col, value in enumerate(row):
                 item = QTableWidgetItem(_ui_safe_text(value))
