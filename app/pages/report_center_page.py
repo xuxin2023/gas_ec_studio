@@ -367,9 +367,10 @@ class ReportCenterPage(QWidget):
         self.delivery_rail_action_bar.setProperty("deckRole", "deliveryRailActionBar")
         self.delivery_rail_action_bar.setMaximumHeight(38)
         self.delivery_rail_action_bar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        action_layout = QHBoxLayout(self.delivery_rail_action_bar)
-        action_layout.setContentsMargins(TOKENS.spacing_sm, 4, TOKENS.spacing_sm, 4)
-        action_layout.setSpacing(TOKENS.spacing_xs)
+        action_layout = QGridLayout(self.delivery_rail_action_bar)
+        action_layout.setContentsMargins(TOKENS.spacing_sm, 3, TOKENS.spacing_sm, 3)
+        action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        action_layout.setVerticalSpacing(2)
         self.delivery_rail_action_button = QToolButton()
         self.delivery_rail_action_button.setText("下一动作")
         self.delivery_rail_action_button.setProperty("railAction", True)
@@ -378,8 +379,24 @@ class ReportCenterPage(QWidget):
         self.delivery_rail_risk_button.setText("查看风险")
         self.delivery_rail_risk_button.setProperty("railAction", True)
         self.delivery_rail_risk_button.clicked.connect(self._activate_delivery_rail_risk)
-        action_layout.addWidget(self.delivery_rail_action_button)
-        action_layout.addWidget(self.delivery_rail_risk_button)
+        self.delivery_rail_export_button = QToolButton()
+        self.delivery_rail_export_button.setText("导出")
+        self.delivery_rail_export_button.setProperty("railAction", True)
+        self.delivery_rail_export_button.clicked.connect(lambda: self._activate_delivery_rail_target(self.delivery_rail_export_button))
+        self.delivery_rail_evidence_button = QToolButton()
+        self.delivery_rail_evidence_button.setText("证据")
+        self.delivery_rail_evidence_button.setProperty("railAction", True)
+        self.delivery_rail_evidence_button.clicked.connect(lambda: self._activate_delivery_rail_target(self.delivery_rail_evidence_button))
+        for index, button in enumerate((
+            self.delivery_rail_action_button,
+            self.delivery_rail_risk_button,
+            self.delivery_rail_export_button,
+            self.delivery_rail_evidence_button,
+        )):
+            button.setMinimumWidth(54)
+            button.setMaximumHeight(26)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            action_layout.addWidget(button, 0, index)
         rail_inspector_layout.addWidget(self.delivery_rail_action_bar)
 
         self.delivery_rail_stack = QStackedWidget()
@@ -2371,8 +2388,8 @@ class ReportCenterPage(QWidget):
         }.get(next_action, "details")
         self._configure_delivery_rail_action_button(
             self.delivery_rail_action_button,
-            next_action,
-            next_note,
+            "下一步",
+            f"{next_action}: {next_note}",
             action_target,
             "success" if success_count >= 6 else ("accent" if report_ready or success_count >= 3 else "warning"),
         )
@@ -2395,7 +2412,7 @@ class ReportCenterPage(QWidget):
             risk_target = "benchmark"
             risk_note = str(benchmark.get("note", "基准对标需要复核。"))
         remaining = max(0, 6 - success_count)
-        risk_value = "无风险" if remaining == 0 else f"复核 {remaining}"
+        risk_value = "就绪" if remaining == 0 else "风险"
         risk_tone = "success" if remaining == 0 else ("warning" if success_count >= 3 else "danger")
         self._configure_delivery_rail_action_button(
             self.delivery_rail_risk_button,
@@ -2403,6 +2420,33 @@ class ReportCenterPage(QWidget):
             risk_note,
             risk_target,
             risk_tone,
+        )
+        export_button_text = "已导出" if export_done else "导出"
+        export_tone = "success" if export_done else ("accent" if report_ready else "warning")
+        export_note = (
+            "交付包已导出；点击可重新导出当前报告和 manifest。"
+            if export_done
+            else ("写出当前报告、manifest、网络校验和证据文件。" if report_ready else "请先运行处理或生成报告。")
+        )
+        self._configure_delivery_rail_action_button(
+            self.delivery_rail_export_button,
+            export_button_text,
+            export_note,
+            "export_report",
+            export_tone,
+        )
+        evidence_tone = "success" if manifest_ready else ("accent" if report_ready else "warning")
+        evidence_note = (
+            "导出报告证据包，用于审阅、追踪和交付复核。"
+            if report_ready
+            else "暂无可导出的报告证据，请先生成报告。"
+        )
+        self._configure_delivery_rail_action_button(
+            self.delivery_rail_evidence_button,
+            "证据",
+            evidence_note,
+            "evidence",
+            evidence_tone,
         )
 
     def _configure_delivery_rail_action_button(
@@ -2437,6 +2481,9 @@ class ReportCenterPage(QWidget):
             self.refresh()
         elif target == "export_report":
             self._export_current_report()
+            self.refresh()
+        elif target == "evidence":
+            self._export_evidence()
             self.refresh()
         elif target == "network":
             self._show_delivery_focus("details")

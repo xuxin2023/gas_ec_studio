@@ -43,9 +43,15 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_action_bar.maximumHeight() == 38
         assert page.delivery_rail_action_button.property("railAction") is True
         assert page.delivery_rail_risk_button.property("railAction") is True
+        assert page.delivery_rail_export_button.property("railAction") is True
+        assert page.delivery_rail_evidence_button.property("railAction") is True
         assert page.delivery_rail_action_button.property("targetAction") == "run_processing"
         assert page.delivery_rail_risk_button.property("targetAction") == "report"
         assert page.delivery_rail_risk_button.property("actionTone") == "danger"
+        assert page.delivery_rail_export_button.property("targetAction") == "export_report"
+        assert page.delivery_rail_export_button.property("actionTone") == "warning"
+        assert page.delivery_rail_evidence_button.property("targetAction") == "evidence"
+        assert page.delivery_rail_evidence_button.property("actionTone") == "warning"
         page.delivery_rail_risk_button.click()
         assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
         assert page.filter_bar.maximumHeight() == 104
@@ -229,6 +235,13 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             page._show_delivery_rail_mode("summary")
             app.processEvents()
             assert_contained(page.delivery_rail, page.delivery_rail_action_bar, page)
+            for button in (
+                page.delivery_rail_action_button,
+                page.delivery_rail_risk_button,
+                page.delivery_rail_export_button,
+                page.delivery_rail_evidence_button,
+            ):
+                assert_contained(page.delivery_rail_action_bar, button, page)
             summary_cards = list(page.summary_cards.values())
             assert len(summary_cards) == 4
             for card in summary_cards:
@@ -351,6 +364,11 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_rail_action_button.property("targetAction") == "details"
         assert page.delivery_rail_risk_button.property("targetAction") == "details"
         assert page.delivery_rail_risk_button.property("actionTone") == "success"
+        assert page.delivery_rail_export_button.property("targetAction") == "export_report"
+        assert page.delivery_rail_export_button.property("actionTone") == "success"
+        assert page.delivery_rail_export_button.text() == "已导出"
+        assert page.delivery_rail_evidence_button.property("targetAction") == "evidence"
+        assert page.delivery_rail_evidence_button.property("actionTone") == "success"
         page.delivery_rail_risk_button.click()
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.inspector_stack.currentWidget() is page.usage_card
