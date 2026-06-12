@@ -108,6 +108,17 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_header_card.property("cardRole") == "cockpit"
         assert page.preview_header_card.property("deckRole") == "reportPreviewHeader"
         assert page.preview_header_card.maximumHeight() == 118
+        assert page.preview_command_strip.property("cardRole") == "console"
+        assert page.preview_command_strip.property("deckRole") == "reportPreviewCommandStrip"
+        assert page.preview_command_strip.maximumHeight() == 86
+        assert set(page.preview_command_tiles) == {"report", "gate", "export"}
+        assert page.preview_command_values["report"].text() == "待生成"
+        assert page.preview_command_values["gate"].text() == page.delivery_gate_chip.text()
+        assert page.preview_command_values["export"].text() == "待运行"
+        assert page.preview_command_buttons["generate"].property("targetAction") == "generate_report"
+        assert page.preview_command_buttons["export"].property("targetAction") == "export_report"
+        assert page.preview_command_buttons["evidence"].property("targetAction") == "evidence"
+        assert all(button.property("railAction") is True for button in page.preview_command_buttons.values())
         assert page.preview_deck_card.property("cardRole") == "rail"
         assert page.preview_deck_card.property("deckRole") == "reportPreviewDeck"
         assert page.preview_delivery_trail_card.property("cardRole") == "console"
@@ -250,6 +261,11 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
 
             page._show_delivery_focus("gate")
             app.processEvents()
+            assert_contained(page, page.preview_command_strip, page)
+            for tile in page.preview_command_tiles.values():
+                assert_contained(page.preview_command_strip, tile, page)
+            for button in page.preview_command_buttons.values():
+                assert_contained(page.preview_command_strip, button, page)
             gate_widgets = [page.delivery_gate_hero_card, page.delivery_gate_scroll]
             for widget in gate_widgets:
                 assert_contained(page.delivery_gate_card, widget, page)
@@ -360,6 +376,14 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.report_command_values["methods"].text() == "已汇总"
         assert page.report_command_values["export"].text() == "已导出"
         assert page.report_command_tiles["network"].property("commandTone") == "success"
+        assert page.preview_command_values["report"].text() == "可预览"
+        assert page.preview_command_values["gate"].text() == page.delivery_gate_chip.text()
+        assert page.preview_command_values["export"].text() == "已导出"
+        assert page.preview_command_buttons["generate"].property("targetAction") == "generate_report"
+        assert page.preview_command_buttons["export"].property("targetAction") == "export_report"
+        assert page.preview_command_buttons["export"].property("actionTone") == "success"
+        assert page.preview_command_buttons["evidence"].property("targetAction") == "evidence"
+        assert page.preview_command_buttons["evidence"].property("actionTone") == "success"
         assert page.delivery_rail_status_chip.text().startswith("可交付")
         assert page.delivery_rail_action_button.property("targetAction") == "details"
         assert page.delivery_rail_risk_button.property("targetAction") == "details"

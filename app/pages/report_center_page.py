@@ -60,6 +60,10 @@ class ReportCenterPage(QWidget):
         self.controller = controller
         self.report_items: dict[str, QTreeWidgetItem] = {}
         self.delivery_rail_mode_buttons: dict[str, QToolButton] = {}
+        self.preview_command_tiles: dict[str, CardFrame] = {}
+        self.preview_command_values: dict[str, QLabel] = {}
+        self.preview_command_notes: dict[str, QLabel] = {}
+        self.preview_command_buttons: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -141,6 +145,9 @@ class ReportCenterPage(QWidget):
         self.preview_source_label.setWordWrap(True)
         preview_header_layout.addWidget(self.preview_source_label)
         center_layout.addWidget(self.preview_header_card)
+
+        self.preview_command_strip = self._build_preview_command_strip()
+        center_layout.addWidget(self.preview_command_strip)
 
         self.preview_deck_card = CardFrame(muted=True, role="rail")
         self.preview_deck_card.setProperty("deckRole", "reportPreviewDeck")
@@ -708,6 +715,83 @@ class ReportCenterPage(QWidget):
         self.report_command_values[key] = value
         self.report_command_notes[key] = note
         self.report_command_chips[key] = status_chip
+        return tile
+
+    def _build_preview_command_strip(self) -> CardFrame:
+        strip = CardFrame(muted=True, role="console")
+        strip.setProperty("deckRole", "reportPreviewCommandStrip")
+        strip.setMaximumHeight(86)
+        strip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(strip)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        layout.setVerticalSpacing(TOKENS.spacing_xs)
+
+        for column, (key, title) in enumerate(
+            (
+                ("report", "当前报告"),
+                ("gate", "交付门槛"),
+                ("export", "导出状态"),
+            )
+        ):
+            layout.addWidget(self._preview_command_tile(key, title), 0, column)
+
+        action_panel = QWidget()
+        action_layout = QGridLayout(action_panel)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        action_layout.setVerticalSpacing(2)
+        for row, (key, text, target) in enumerate(
+            (
+                ("generate", "生成", "generate_report"),
+                ("export", "导出", "export_report"),
+                ("evidence", "证据", "evidence"),
+            )
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setProperty("railAction", True)
+            button.setProperty("targetAction", target)
+            button.clicked.connect(lambda _checked=False, item=button: self._activate_delivery_rail_target(item))
+            button.setMinimumWidth(58)
+            button.setMaximumHeight(24)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            self.preview_command_buttons[key] = button
+            action_layout.addWidget(button, row, 0)
+        layout.addWidget(action_panel, 0, 3)
+        layout.setColumnStretch(0, 1)
+        layout.setColumnStretch(1, 1)
+        layout.setColumnStretch(2, 1)
+        layout.setColumnStretch(3, 0)
+        return strip
+
+    def _preview_command_tile(self, key: str, title: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("commandKey", key)
+        tile.setMaximumHeight(64)
+        tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(tile)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setSpacing(0)
+        label = QLabel(title)
+        label.setObjectName("metricLabel")
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setProperty("compactMetric", True)
+        value.setWordWrap(False)
+        value.setMinimumWidth(0)
+        value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        note = QLabel("--")
+        note.setObjectName("subtitle")
+        note.setWordWrap(False)
+        note.setMinimumWidth(0)
+        note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        layout.addWidget(label)
+        layout.addWidget(value)
+        layout.addWidget(note)
+        self.preview_command_tiles[key] = tile
+        self.preview_command_values[key] = value
+        self.preview_command_notes[key] = note
         return tile
 
     def _build_summary_row(self) -> QWidget:
@@ -2287,6 +2371,17 @@ class ReportCenterPage(QWidget):
         self.report_command_deck.setProperty("commandStatus", deck_tone)
         self.report_command_deck.style().unpolish(self.report_command_deck)
         self.report_command_deck.style().polish(self.report_command_deck)
+        self._refresh_preview_command_strip(
+            report_title=report_title,
+            selected_report=selected_report,
+            report_ready=report_ready,
+            gate_text=gate_text,
+            gate_tone=gate_tone,
+            export_status=export_status,
+            exportable_count=exportable_count,
+            export_done=export_done,
+            manifest_ready=bool(self._first_file_value(file_values, ("manifest", "export_manifest"))) or "浜や粯鍖呭凡瀵煎嚭" in export_status,
+        )
 
     def _set_report_command_tile(self, key: str, value: str, note: str, tone: str) -> None:
         value_label = self.report_command_values[key]
@@ -2298,6 +2393,69 @@ class ReportCenterPage(QWidget):
         note_label.setToolTip(_ui_safe_text(note))
         status_text = {"success": "通过", "accent": "可用", "warning": "待复核"}.get(tone, "待复核")
         self._set_chip(self.report_command_chips[key], status_text, tone)
+        tile.setProperty("commandTone", tone)
+        tile.style().unpolish(tile)
+        tile.style().polish(tile)
+
+    def _refresh_preview_command_strip(
+        self,
+        *,
+        report_title: str,
+        selected_report: str,
+        report_ready: bool,
+        gate_text: str,
+        gate_tone: str,
+        export_status: str,
+        exportable_count: int,
+        export_done: bool,
+        manifest_ready: bool,
+    ) -> None:
+        if not self.preview_command_tiles:
+            return
+        report_value = "可预览" if report_ready else "待生成"
+        report_note = f"{selected_report} · {report_title}" if selected_report else report_title
+        export_value = "已导出" if export_done else ("可导出" if exportable_count > 0 else "待运行")
+        export_tone = "success" if export_done else ("accent" if exportable_count > 0 else "warning")
+        self._set_preview_command_tile("report", report_value, report_note, "success" if report_ready else "warning")
+        self._set_preview_command_tile("gate", gate_text, self.delivery_gate_next_value.text(), gate_tone)
+        self._set_preview_command_tile("export", export_value, export_status, export_tone)
+        strip_tone = "success" if gate_tone == "success" and export_done else ("accent" if report_ready else "warning")
+        self.preview_command_strip.setProperty("commandTone", strip_tone)
+        self.preview_command_strip.style().unpolish(self.preview_command_strip)
+        self.preview_command_strip.style().polish(self.preview_command_strip)
+        self._configure_delivery_rail_action_button(
+            self.preview_command_buttons["generate"],
+            "生成",
+            "重新生成报告中心内容，并同步交付门槛。",
+            "generate_report",
+            "success" if report_ready else "accent",
+        )
+        self._configure_delivery_rail_action_button(
+            self.preview_command_buttons["export"],
+            "导出",
+            "写出当前报告、manifest、网络校验和交付包。",
+            "export_report",
+            export_tone,
+        )
+        self._configure_delivery_rail_action_button(
+            self.preview_command_buttons["evidence"],
+            "证据",
+            "导出报告证据包，用于审阅、追踪和交付复核。",
+            "evidence",
+            "success" if manifest_ready else ("accent" if report_ready else "warning"),
+        )
+
+    def _set_preview_command_tile(self, key: str, value: str, note: str, tone: str) -> None:
+        value_label = self.preview_command_values[key]
+        note_label = self.preview_command_notes[key]
+        tile = self.preview_command_tiles[key]
+        display_value = _ui_safe_text(value)
+        display_note = _ui_safe_text(note)
+        value_label.setText(display_value if len(display_value) <= 18 else f"{display_value[:17]}...")
+        note_label.setText(display_note if len(display_note) <= 28 else f"{display_note[:27]}...")
+        value_label.setToolTip(display_note)
+        note_label.setToolTip(display_note)
+        tile.setToolTip(display_note)
         tile.setProperty("commandTone", tone)
         tile.style().unpolish(tile)
         tile.style().polish(tile)
