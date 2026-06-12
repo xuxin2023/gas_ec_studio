@@ -126,6 +126,11 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.method_result_note_card.property("cardRole") == "console"
         assert page.method_result_chip.property("chipTone") == "accent"
         assert page.method_family_stack.count() == 3
+        assert page.method_family_card.property("deckRole") == "methodFamilyCockpit"
+        assert page.method_family_stack.property("stackRole") == "methodFamilyStack"
+        assert set(page.method_console_tiles) == {"footprint", "uncertainty", "spectral"}
+        assert all(tile.property("methodTile") is True for tile in page.method_console_tiles.values())
+        assert all(tile.property("cardRole") == "tile" for tile in page.method_console_tiles.values())
         assert page.method_family_buttons["footprint"].isChecked() is True
         assert all(
             page.content_stack.widget(index).horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
@@ -232,6 +237,10 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert "footprint=kljun" in page.coverage_values["methods"].text()
         assert "footprint=kljun" in page.method_snapshot_label.text()
         assert "uncertainty=mann_lenschow" in page.method_snapshot_label.text()
+        assert page.method_console_values["footprint"].text() == "kljun"
+        assert page.method_console_values["uncertainty"].text() == "mann_lenschow"
+        assert page.method_console_values["spectral"].text() == "massman"
+        assert page.method_console_tiles["footprint"].property("evidenceTone") in {"success", "danger"}
         assert page.method_family_gate_chip.text() in {"就绪", "复核"}
         page._show_method_family("spectral")
         assert page.method_family_stack.currentWidget() is page.spectral_card
@@ -252,6 +261,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         page._refresh_uncertainty_preview()
         assert "z_m > canopy_height_m" in page.method_validation_label.text()
         assert page.method_family_gate_chip.text() == "复核"
+        assert page.method_console_tiles["footprint"].property("evidenceTone") == "danger"
         assert page.step_items["uncertainty"].text(1) == "复核"
         assert page.step_items["output"].text(1) == "复核"
         assert page.step_items["uncertainty"].data(1, Qt.UserRole) == "danger"

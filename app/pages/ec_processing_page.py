@@ -760,6 +760,36 @@ class ECProcessingPage(QWidget):
         layout.addWidget(tile, row, column, 1, column_span)
         return value_label, note_label
 
+    def _build_method_console_tile(self, layout: QGridLayout, column: int, key: str, title: str) -> None:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("methodTile", True)
+        tile.setProperty("methodKey", key)
+        tile.setProperty("evidenceTone", "warning")
+        tile.setMaximumHeight(58)
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        tile_layout.setSpacing(0)
+        title_label = QLabel(title)
+        title_label.setObjectName("metricLabel")
+        value_label = QLabel("--")
+        value_label.setObjectName("metricValue")
+        value_label.setProperty("compactMetric", True)
+        value_label.setWordWrap(False)
+        value_label.setMinimumWidth(0)
+        value_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        note_label = QLabel("--")
+        note_label.setObjectName("subtitle")
+        note_label.setWordWrap(False)
+        note_label.setMinimumWidth(0)
+        note_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        tile_layout.addWidget(title_label)
+        tile_layout.addWidget(value_label)
+        tile_layout.addWidget(note_label)
+        layout.addWidget(tile, 0, column)
+        self.method_console_tiles[key] = tile
+        self.method_console_values[key] = value_label
+        self.method_console_notes[key] = note_label
+
     def _select_workflow_lens(self, lens_key: str) -> None:
         self._show_desktop_rail_mode("workflow")
         steps = next((items for key, _title, _subtitle, items in WORKFLOW_LENSES if key == lens_key), [])
@@ -867,6 +897,27 @@ class ECProcessingPage(QWidget):
         self.method_family_gate_chip.style().unpolish(self.method_family_gate_chip)
         self.method_family_gate_chip.style().polish(self.method_family_gate_chip)
 
+    def _set_method_console_tile(self, key: str, value: str, note: str, tone: str) -> None:
+        if not hasattr(self, "method_console_values"):
+            return
+        value_label = self.method_console_values.get(key)
+        note_label = self.method_console_notes.get(key)
+        tile = self.method_console_tiles.get(key)
+        display_value = self._compact_text(value, 18)
+        display_note = self._compact_text(note, 34)
+        tooltip = f"{value}\n{note}"
+        if value_label is not None:
+            value_label.setText(display_value)
+            value_label.setToolTip(tooltip)
+        if note_label is not None:
+            note_label.setText(display_note)
+            note_label.setToolTip(tooltip)
+        if tile is not None:
+            tile.setToolTip(tooltip)
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
     def _compact_method_form(self, fields: list[tuple[str, QWidget]]) -> QGridLayout:
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
@@ -909,31 +960,44 @@ class ECProcessingPage(QWidget):
         compare = self._current_combo_text("method_compare_combo", "disabled")
 
         issues: list[str] = []
+        footprint_issues: list[str] = []
+        uncertainty_issues: list[str] = []
+        spectral_issues: list[str] = []
+
+        def add_issue(message: str, family: str) -> None:
+            issues.append(message)
+            if family == "footprint":
+                footprint_issues.append(message)
+            elif family == "uncertainty":
+                uncertainty_issues.append(message)
+            elif family == "spectral":
+                spectral_issues.append(message)
+
         z_m = self.footprint_zm_spin.value()
         canopy = self.footprint_canopy_spin.value()
         z0 = self.footprint_z0_spin.value()
         if footprint_enabled == "enabled":
             if z_m <= canopy:
-                issues.append("z_m > canopy_height_m should be reviewed for above-canopy footprint runs.")
+                add_issue("z_m > canopy_height_m should be reviewed for above-canopy footprint runs.", "footprint")
             if z0 >= z_m:
-                issues.append("z0 must stay below z_m for footprint scaling.")
+                add_issue("z0 must stay below z_m for footprint scaling.", "footprint")
             if self.footprint_grid_combo.currentText().strip() == "enabled" and (
                 self.footprint_grid_x_spin.value() < 16 or self.footprint_grid_y_spin.value() < 15
             ):
-                issues.append("2D footprint grid is very coarse; use at least 16x15 for delivery review.")
+                add_issue("2D footprint grid is very coarse; use at least 16x15 for delivery review.", "footprint")
 
         confidence = self.uncertainty_confidence_spin.value()
         if confidence < 0.80:
-            issues.append("confidence_level below 0.80 is allowed but should be justified in the run notes.")
+            add_issue("confidence_level below 0.80 is allowed but should be justified in the run notes.", "uncertainty")
 
         if spectral_enabled == "enabled":
             if self.spectral_response_spin.value() > 2.0:
-                issues.append("response_time_s is high; spectral attenuation may dominate the correction.")
+                add_issue("response_time_s is high; spectral attenuation may dominate the correction.", "spectral")
             if spectral_method == "fratini" and cospectrum != "fcc_auto":
-                issues.append("Fratini should use fcc_auto measured_cospectrum when FCC output is available.")
+                add_issue("Fratini should use fcc_auto measured_cospectrum when FCC output is available.", "spectral")
 
         if compare == "enabled" and self.method_compare_threshold_spin.value() > 1.0:
-            issues.append("method_compare deviation_threshold above 1.0 weakens parity review.")
+            add_issue("method_compare deviation_threshold above 1.0 weakens parity review.", "spectral")
 
         snapshot = (
             f"footprint={footprint_method}({footprint_enabled}, z_m={z_m:.2f}, canopy={canopy:.2f}) | "
@@ -942,12 +1006,53 @@ class ECProcessingPage(QWidget):
             f"compare={compare}(threshold={self.method_compare_threshold_spin.value():.2f})"
         )
         self.method_snapshot_label.setText(snapshot)
+        self.method_snapshot_label.setToolTip(snapshot)
+
+        footprint_hard_issue = any("z_m" in item or "z0" in item for item in footprint_issues)
+        if footprint_enabled != "enabled":
+            footprint_tone = "accent"
+        elif footprint_hard_issue:
+            footprint_tone = "danger"
+        elif footprint_issues:
+            footprint_tone = "warning"
+        else:
+            footprint_tone = "success"
+        uncertainty_tone = "warning" if uncertainty_issues else "success"
+        if spectral_enabled != "enabled":
+            spectral_tone = "accent"
+        elif spectral_issues:
+            spectral_tone = "warning"
+        else:
+            spectral_tone = "success"
+        self._set_method_console_tile(
+            "footprint",
+            footprint_method if footprint_enabled == "enabled" else "disabled",
+            f"z_m={z_m:.2f} / canopy={canopy:.2f} / grid={self.footprint_grid_x_spin.value()}x{self.footprint_grid_y_spin.value()}",
+            footprint_tone,
+        )
+        self._set_method_console_tile(
+            "uncertainty",
+            uncertainty_method,
+            f"confidence={confidence:.2f} / tau={self.uncertainty_timescale_spin.value():.1f}s",
+            uncertainty_tone,
+        )
+        self._set_method_console_tile(
+            "spectral",
+            spectral_method if spectral_enabled == "enabled" else "disabled",
+            f"cospectrum={cospectrum} / response={self.spectral_response_spin.value():.3f}s",
+            spectral_tone,
+        )
+
         if issues:
             self._set_method_gate_chip("复核", "warning")
-            self.method_validation_label.setText(" | ".join(issues[:4]))
+            validation_text = " | ".join(issues[:4])
+            self.method_validation_label.setText(validation_text)
+            self.method_validation_label.setToolTip(" | ".join(issues))
         else:
             self._set_method_gate_chip("就绪", "success")
-            self.method_validation_label.setText("Ranges ok; UI snapshot keys match pipeline config names.")
+            validation_text = "Ranges ok; UI snapshot keys match pipeline config names."
+            self.method_validation_label.setText(validation_text)
+            self.method_validation_label.setToolTip(validation_text)
 
     def _refresh_output_coverage_panel(self) -> None:
         if not self.coverage_values:
@@ -2080,11 +2185,12 @@ class ECProcessingPage(QWidget):
             compact_heading.setMaximumHeight(0)
 
         self.method_family_card = CardFrame(muted=True, role="cockpit")
+        self.method_family_card.setProperty("deckRole", "methodFamilyCockpit")
         self.method_family_card.setMinimumWidth(0)
         self.method_family_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         method_shell_layout = QVBoxLayout(self.method_family_card)
         method_shell_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        method_shell_layout.setSpacing(TOKENS.spacing_sm)
+        method_shell_layout.setSpacing(TOKENS.spacing_xs)
         method_header = QHBoxLayout()
         method_header.setSpacing(TOKENS.spacing_sm)
         method_header.addWidget(section_title("方法控制台", "切换足迹、不确定度和谱修正方法族，复核实时配置快照后再运行 RP pipeline。"))
@@ -2096,7 +2202,7 @@ class ECProcessingPage(QWidget):
         if method_heading is not None:
             method_heading.setVisible(False)
             method_heading.setMaximumHeight(0)
-        compact_method_heading = QLabel("Method Console")
+        compact_method_heading = QLabel("方法控制台")
         compact_method_heading.setObjectName("sectionTitle")
         compact_method_heading.setMaximumHeight(24)
         method_header.insertWidget(0, compact_method_heading)
@@ -2120,17 +2226,36 @@ class ECProcessingPage(QWidget):
         method_switch_row.addStretch(1)
         method_shell_layout.addLayout(method_switch_row)
 
+        method_tile_grid = QGridLayout()
+        method_tile_grid.setContentsMargins(0, 0, 0, 0)
+        method_tile_grid.setHorizontalSpacing(TOKENS.spacing_xs)
+        method_tile_grid.setVerticalSpacing(0)
+        self.method_console_tiles: dict[str, CardFrame] = {}
+        self.method_console_values: dict[str, QLabel] = {}
+        self.method_console_notes: dict[str, QLabel] = {}
+        self._build_method_console_tile(method_tile_grid, 0, "footprint", "足迹")
+        self._build_method_console_tile(method_tile_grid, 1, "uncertainty", "随机误差")
+        self._build_method_console_tile(method_tile_grid, 2, "spectral", "谱修正")
+        for column in range(3):
+            method_tile_grid.setColumnStretch(column, 1)
+        method_shell_layout.addLayout(method_tile_grid)
+
         self.method_family_stack = QStackedWidget()
+        self.method_family_stack.setProperty("stackRole", "methodFamilyStack")
         self.method_family_stack.setMinimumWidth(0)
         self.method_family_stack.setMaximumHeight(280)
         self.method_family_stack.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         method_shell_layout.addWidget(self.method_family_stack)
         self.method_snapshot_label = QLabel("--")
         self.method_snapshot_label.setObjectName("subtitle")
-        self.method_snapshot_label.setWordWrap(True)
+        self.method_snapshot_label.setWordWrap(False)
+        self.method_snapshot_label.setMaximumHeight(22)
+        self.method_snapshot_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.method_validation_label = QLabel("--")
         self.method_validation_label.setObjectName("subtitle")
-        self.method_validation_label.setWordWrap(True)
+        self.method_validation_label.setWordWrap(False)
+        self.method_validation_label.setMaximumHeight(22)
+        self.method_validation_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         method_shell_layout.addWidget(self.method_snapshot_label)
         method_shell_layout.addWidget(self.method_validation_label)
         param_layout.addWidget(self.method_family_card)
