@@ -137,6 +137,10 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert min(label.minimumWidth() for label in page.method_field_labels) >= 112
         assert len(page.method_field_inputs) == len(page.method_field_labels)
         assert all(widget.property("methodFieldInput") is True for widget in page.method_field_inputs)
+        assert set(page.method_group_pills) == {"footprint", "uncertainty", "spectral"}
+        assert [label.text() for label in page.method_group_pills["footprint"]] == ["开关/模型", "几何/稳定度", "网格"]
+        assert [label.text() for label in page.method_group_pills["spectral"]] == ["开关/模型", "路径/响应", "共谱注入"]
+        assert all(label.property("methodGroupPill") is True for labels in page.method_group_pills.values() for label in labels)
         assert page.method_family_buttons["footprint"].isChecked() is True
         assert all(
             page.content_stack.widget(index).horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff

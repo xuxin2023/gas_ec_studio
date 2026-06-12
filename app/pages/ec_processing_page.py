@@ -790,6 +790,26 @@ class ECProcessingPage(QWidget):
         self.method_console_values[key] = value_label
         self.method_console_notes[key] = note_label
 
+    def _add_method_group_strip(self, layout: QVBoxLayout, family: str, groups: tuple[str, ...]) -> None:
+        strip = QWidget()
+        strip.setProperty("methodGroupStrip", True)
+        strip.setMaximumHeight(28)
+        strip_layout = QHBoxLayout(strip)
+        strip_layout.setContentsMargins(0, 0, 0, 0)
+        strip_layout.setSpacing(TOKENS.spacing_xs)
+        if not hasattr(self, "method_group_pills"):
+            self.method_group_pills: dict[str, list[QLabel]] = {}
+        self.method_group_pills[family] = []
+        for text in groups:
+            label = QLabel(text)
+            label.setProperty("methodGroupPill", True)
+            label.setMaximumHeight(24)
+            label.setToolTip(text)
+            self.method_group_pills[family].append(label)
+            strip_layout.addWidget(label)
+        strip_layout.addStretch(1)
+        layout.addWidget(strip)
+
     def _select_workflow_lens(self, lens_key: str) -> None:
         self._show_desktop_rail_mode("workflow")
         steps = next((items for key, _title, _subtitle, items in WORKFLOW_LENSES if key == lens_key), [])
@@ -2280,6 +2300,7 @@ class ECProcessingPage(QWidget):
         footprint_title = footprint_layout.itemAt(0).widget()
         if footprint_title is not None:
             footprint_title.setMaximumHeight(38)
+        self._add_method_group_strip(footprint_layout, "footprint", ("开关/模型", "几何/稳定度", "网格"))
         self.footprint_enable_combo = QComboBox()
         self.footprint_enable_combo.addItems(["enabled", "disabled"])
         self.footprint_method_combo = QComboBox()
@@ -2327,6 +2348,7 @@ class ECProcessingPage(QWidget):
         uncertainty_title = uncertainty_layout.itemAt(0).widget()
         if uncertainty_title is not None:
             uncertainty_title.setMaximumHeight(38)
+        self._add_method_group_strip(uncertainty_layout, "uncertainty", ("方法", "置信区间"))
         self.uncertainty_mode_combo = QComboBox()
         self.uncertainty_mode_combo.addItems(["mann_lenschow", "finkelstein_sims", "composite_empirical"])
         self.uncertainty_timescale_spin = self._double_spin(0.5, 120.0, 1, suffix=" s")
@@ -2358,6 +2380,7 @@ class ECProcessingPage(QWidget):
         spectral_title = spectral_layout.itemAt(0).widget()
         if spectral_title is not None:
             spectral_title.setMaximumHeight(38)
+        self._add_method_group_strip(spectral_layout, "spectral", ("开关/模型", "路径/响应", "共谱注入"))
         self.spectral_enable_combo = QComboBox()
         self.spectral_enable_combo.addItems(["enabled", "disabled"])
         self.spectral_method_combo = QComboBox()

@@ -285,6 +285,15 @@ def build_stylesheet() -> str:
         border-radius: 7px;
         padding: 1px 6px;
     }}
+    QLabel[methodGroupPill="true"] {{
+        color: #0f6675;
+        background: rgba(220, 245, 244, 0.68);
+        border: 1px solid #add7da;
+        border-radius: 10px;
+        padding: 3px 9px;
+        font-size: {TOKENS.font_xs}px;
+        font-weight: 700;
+    }}
     QLabel[heroStatus="true"] {{
         min-width: 160px;
         padding: 7px 10px;
