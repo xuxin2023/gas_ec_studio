@@ -37,6 +37,10 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.desktop_rail_status_values["step"].text()
         assert page.desktop_rail_status_values["run"].text() == "empty"
         assert page.desktop_rail_status_values["closure"].text() == page.coverage_gate_chip.text()
+        assert page.desktop_rail_action_button.property("railAction") is True
+        assert page.desktop_rail_risk_button.property("railAction") is True
+        assert page.desktop_rail_action_button.text()
+        assert page.desktop_rail_risk_button.text()
         assert page.desktop_rail_stack.count() == 3
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True

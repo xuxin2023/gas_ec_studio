@@ -543,6 +543,19 @@ def build_stylesheet() -> str:
         color: {TOKENS.color_accent};
         border-color: #a7ccd5;
     }}
+    QToolButton[railAction="true"] {{
+        min-height: 28px;
+        border-radius: {TOKENS.radius_sm}px;
+        padding: 0 8px;
+        color: #0e5f6e;
+        background: rgba(255, 255, 255, 0.9);
+        border-color: #b8d4de;
+    }}
+    QToolButton[railAction="true"][actionTone="danger"] {{
+        color: {TOKENS.color_error};
+        background: #fff1f1;
+        border-color: #efc1c1;
+    }}
     QToolButton[viewSwitch="true"] {{
         min-width: 42px;
         border-radius: 17px;

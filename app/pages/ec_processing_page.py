@@ -480,6 +480,9 @@ class ECProcessingPage(QWidget):
         mode_row.addStretch(1)
         inspector_layout.addLayout(mode_row)
 
+        self.desktop_rail_status_strip = self._build_desktop_rail_status_strip()
+        inspector_layout.addWidget(self.desktop_rail_status_strip)
+
         self.desktop_rail_stack = QStackedWidget()
         self.desktop_rail_stack.setMinimumWidth(0)
         self.desktop_rail_stack.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
@@ -494,8 +497,6 @@ class ECProcessingPage(QWidget):
         for card in self.desktop_rail_sections.values():
             self.desktop_rail_stack.addWidget(card)
         inspector_layout.addWidget(self.desktop_rail_stack)
-        self.desktop_rail_status_strip = self._build_desktop_rail_status_strip()
-        inspector_layout.addWidget(self.desktop_rail_status_strip)
         inspector_layout.addStretch(1)
         self._show_desktop_rail_mode("workflow")
         body_layout.addWidget(self.desktop_rail_inspector)
@@ -507,7 +508,7 @@ class ECProcessingPage(QWidget):
     def _build_desktop_rail_status_strip(self) -> CardFrame:
         card = CardFrame(muted=True, role="rail")
         card.setProperty("deckRole", "ecRailStatusStrip")
-        card.setMaximumHeight(156)
+        card.setMaximumHeight(166)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_xs)
@@ -515,6 +516,21 @@ class ECProcessingPage(QWidget):
         header = QLabel("状态针盘")
         header.setObjectName("metricLabel")
         layout.addWidget(header)
+
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.setSpacing(TOKENS.spacing_xs)
+        self.desktop_rail_action_button = QToolButton()
+        self.desktop_rail_action_button.setText("转到下一动作")
+        self.desktop_rail_action_button.setProperty("railAction", True)
+        self.desktop_rail_action_button.clicked.connect(self._activate_desktop_rail_action)
+        self.desktop_rail_risk_button = QToolButton()
+        self.desktop_rail_risk_button.setText("查看风险")
+        self.desktop_rail_risk_button.setProperty("railAction", True)
+        self.desktop_rail_risk_button.clicked.connect(self._activate_desktop_rail_risk)
+        action_row.addWidget(self.desktop_rail_action_button)
+        action_row.addWidget(self.desktop_rail_risk_button)
+        layout.addLayout(action_row)
 
         self.desktop_rail_status_tiles: dict[str, CardFrame] = {}
         self.desktop_rail_status_values: dict[str, QLabel] = {}
@@ -525,7 +541,7 @@ class ECProcessingPage(QWidget):
             ("closure", "闭合度"),
         ):
             tile = CardFrame(muted=True, role="tile")
-            tile.setMaximumHeight(36)
+            tile.setMaximumHeight(32)
             tile_layout = QHBoxLayout(tile)
             tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
             tile_layout.setSpacing(TOKENS.spacing_xs)
@@ -551,7 +567,7 @@ class ECProcessingPage(QWidget):
         card = CardFrame(role="panel")
         card.setProperty("deckRole", "workflowLensCompact")
         card.setMinimumWidth(0)
-        card.setMaximumHeight(190)
+        card.setMaximumHeight(170)
         card.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -593,7 +609,7 @@ class ECProcessingPage(QWidget):
         self.workflow_lens_active_note = QLabel("--")
         self.workflow_lens_active_note.setObjectName("subtitle")
         self.workflow_lens_active_note.setWordWrap(True)
-        self.workflow_lens_active_note.setMaximumHeight(44)
+        self.workflow_lens_active_note.setMaximumHeight(32)
         layout.addWidget(self.workflow_lens_active_note)
         return card
 
@@ -880,6 +896,24 @@ class ECProcessingPage(QWidget):
             button.blockSignals(False)
             button.style().unpolish(button)
             button.style().polish(button)
+
+    def _activate_desktop_rail_action(self) -> None:
+        self._activate_desktop_rail_target(getattr(self, "desktop_rail_action_button", None))
+
+    def _activate_desktop_rail_risk(self) -> None:
+        self._activate_desktop_rail_target(getattr(self, "desktop_rail_risk_button", None))
+
+    def _activate_desktop_rail_target(self, button: QToolButton | None) -> None:
+        if button is None:
+            return
+        target = str(button.property("targetStep") or "")
+        if target == "coverage":
+            self._show_rail_focus("coverage")
+            return
+        item = self.step_items.get(target)
+        if item is not None:
+            self.step_tree.setCurrentItem(item)
+            self._show_desktop_rail_mode("workflow")
 
     def _show_method_family(self, family: str) -> None:
         if not hasattr(self, "method_family_sections"):
@@ -1179,6 +1213,8 @@ class ECProcessingPage(QWidget):
         if not hasattr(self, "desktop_rail_status_values"):
             return
         summary = dict(self.controller.ec_processing_workspace.get("summary", {}) or {})
+        statuses = self._step_tree_status_model()
+        step_titles = dict((key, title) for key, title, _subtitle in EC_STEPS)
         step_title = dict((key, title) for key, title, _subtitle in EC_STEPS).get(
             self.controller.ec_nav_step,
             "当前步骤",
@@ -1199,10 +1235,50 @@ class ECProcessingPage(QWidget):
             if hasattr(self, "coverage_gate_chip")
             else "warning"
         )
+        risk_steps = [(key, data) for key, data in statuses.items() if data[1] == "danger"]
+        if risk_steps:
+            risk_key, (_risk_label, _risk_tone, risk_note) = risk_steps[0]
+            action_value = "处理复核"
+            action_note = f"{step_titles.get(risk_key, risk_key)}: {risk_note}"
+            action_tone = "danger"
+            action_target = risk_key
+            risk_value = f"复核 {len(risk_steps)}"
+            risk_target = risk_key
+            risk_tone = "danger"
+            risk_display_note = action_note
+        elif current is None:
+            action_value = "运行入口"
+            action_note = "确认窗口、方法和输出后运行处理。"
+            action_tone = "warning"
+            action_target = self.controller.ec_nav_step or "window_sampling"
+            risk_value = "无风险"
+            risk_target = "output"
+            risk_tone = "success"
+            risk_display_note = "当前没有阻断型复核项。"
+        elif closure_tone == "success":
+            action_value = "交付出口"
+            action_note = "进入输出页复核 manifest、network export 和报告中心。"
+            action_tone = "success"
+            action_target = "output"
+            risk_value = "无风险"
+            risk_target = "output"
+            risk_tone = "success"
+            risk_display_note = "运行闭合项未发现阻断风险。"
+        else:
+            action_value = "查看闭合"
+            action_note = closure_note
+            action_tone = closure_tone
+            action_target = "coverage"
+            risk_value = "待复核"
+            risk_target = "coverage"
+            risk_tone = closure_tone
+            risk_display_note = closure_note
 
         self._set_desktop_rail_status_tile("step", step_title, self.controller.ec_nav_step, "accent")
         self._set_desktop_rail_status_tile("run", run_value, run_note, status_tone)
         self._set_desktop_rail_status_tile("closure", closure_value, closure_note, closure_tone)
+        self._configure_desktop_rail_action_button(self.desktop_rail_action_button, action_value, action_note, action_target, action_tone)
+        self._configure_desktop_rail_action_button(self.desktop_rail_risk_button, risk_value, risk_display_note, risk_target, risk_tone)
 
     def _set_desktop_rail_status_tile(self, key: str, value: str, note: str, tone: str) -> None:
         value_label = self.desktop_rail_status_values[key]
@@ -1218,6 +1294,22 @@ class ECProcessingPage(QWidget):
         tile.setProperty("evidenceTone", tone)
         tile.style().unpolish(tile)
         tile.style().polish(tile)
+
+    def _configure_desktop_rail_action_button(
+        self,
+        button: QToolButton,
+        value: str,
+        note: str,
+        target: str,
+        tone: str,
+    ) -> None:
+        button.setText(self._compact_text(value, 8))
+        button.setToolTip(note)
+        button.setProperty("targetStep", target)
+        button.setProperty("actionTone", tone)
+        button.setEnabled(bool(target))
+        button.style().unpolish(button)
+        button.style().polish(button)
 
     def _refresh_step_tree_statuses(self) -> None:
         if not hasattr(self, "step_nav_summary_value"):
@@ -1267,6 +1359,7 @@ class ECProcessingPage(QWidget):
         self.step_nav_summary_card.setProperty("evidenceTone", summary_tone)
         self.step_nav_summary_card.style().unpolish(self.step_nav_summary_card)
         self.step_nav_summary_card.style().polish(self.step_nav_summary_card)
+        self._refresh_desktop_rail_status_strip()
 
     def _refresh_step_active_chip(self, key: str) -> None:
         if not hasattr(self, "step_active_chip"):

@@ -106,6 +106,11 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.desktop_rail_stack.count() == 3
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
+        assert set(page.desktop_rail_status_tiles) == {"step", "run", "closure"}
+        assert page.desktop_rail_action_button.property("railAction") is True
+        assert page.desktop_rail_risk_button.property("railAction") is True
+        assert page.desktop_rail_action_button.text() != "--"
+        assert page.desktop_rail_risk_button.text() != "--"
         assert page.cockpit_card.property("cardRole") == "cockpit"
         assert page.cockpit_card.property("deckRole") == "processingCockpitDeck"
         assert page.rail_focus_card.property("cardRole") == "panel"
@@ -115,7 +120,8 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.readiness_card.property("cardRole") == "panel"
         assert page.workflow_lens_card.property("cardRole") == "panel"
         assert page.workflow_lens_card.property("deckRole") == "workflowLensCompact"
-        assert page.workflow_lens_card.maximumHeight() == 190
+        assert page.workflow_lens_card.maximumHeight() == 170
+        assert page.workflow_lens_active_note.maximumHeight() == 32
         assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.method_family_card.property("cardRole") == "cockpit"
         assert page.method_support_card.property("cardRole") == "panel"
@@ -272,6 +278,11 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert "z_m > canopy_height_m" in page.method_validation_label.text()
         assert page.method_family_gate_chip.text() == "复核"
         assert page.method_console_tiles["footprint"].property("evidenceTone") == "danger"
+        assert page.desktop_rail_risk_button.property("actionTone") == "danger"
+        assert page.desktop_rail_risk_button.property("targetStep") == "uncertainty"
+        page.desktop_rail_risk_button.click()
+        assert controller.ec_nav_step == "uncertainty"
+        assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
         assert page.step_items["uncertainty"].text(1) == "复核"
         assert page.step_items["output"].text(1) == "复核"
         assert page.step_items["uncertainty"].data(1, Qt.UserRole) == "danger"
@@ -419,7 +430,9 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
                 assert_contained(page.rp_closure_deck, tile, page)
             assert_no_visual_overlap(closure_tiles, page)
 
-            assert_contained(page.desktop_rail_scroll.viewport(), page.workflow_lens_card, page)
+            assert_contained(page.desktop_rail_scroll.viewport(), page.desktop_rail_status_strip, page)
+            assert_contained(page.desktop_rail_scroll.viewport(), page.desktop_rail_action_button, page)
+            assert_contained(page.desktop_rail_scroll.viewport(), page.desktop_rail_risk_button, page)
             content_viewport = page.content_stack.currentWidget().viewport()
             viewport_rect = widget_bounds(content_viewport, page)
             timeline_rect = widget_bounds(page.window_timeline_card, page)
