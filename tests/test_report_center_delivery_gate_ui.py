@@ -4,7 +4,7 @@ import os
 
 from PySide6.QtWidgets import QApplication
 
-from app.pages.report_center_page import ReportCenterPage
+from app.pages.report_center_page import REPORT_SECTIONS, ReportCenterPage
 from app.studio import StudioController
 from app.theme import apply_app_theme
 from tests.ui_geometry_helpers import assert_contained, assert_no_visible_competitor_name, assert_no_visual_overlap
@@ -28,7 +28,16 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         page.refresh()
 
         assert page.property("pageSurface") is True
+        assert page.tree_card.property("cardRole") == "rail"
+        assert page.report_tree.indentation() == 0
+        assert page.report_tree.rootIsDecorated() is False
+        assert page.report_tree.uniformRowHeights() is True
+        assert page.report_tree.topLevelItemCount() == len(REPORT_SECTIONS)
+        assert page.report_tree_count_chip.text() == f"{len(REPORT_SECTIONS)} 项"
+        assert page.report_tree_active_chip.text().startswith("运行")
         assert page.delivery_rail.property("cardRole") == "rail"
+        assert page.delivery_rail_status_chip.property("closureStage") is True
+        assert page.delivery_rail_status_chip.text().startswith("待生成")
         assert page.filter_bar.maximumHeight() == 104
         assert page.project_combo.minimumWidth() >= 108
         assert page.batch_combo.minimumWidth() >= 108
@@ -321,6 +330,8 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.report_command_values["methods"].text() == "已汇总"
         assert page.report_command_values["export"].text() == "已导出"
         assert page.report_command_tiles["network"].property("commandTone") == "success"
+        assert page.delivery_rail_status_chip.text().startswith("可交付")
+        assert page.report_tree_active_chip.text().startswith("运行")
         assert page.preview_content_card.property("plotStatus") == "series"
         assert page.preview_plot.isHidden() is False
         assert page.preview_table.maximumHeight() == 128

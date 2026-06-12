@@ -84,12 +84,26 @@ class ReportCenterPage(QWidget):
         self.tree_card = CardFrame(muted=True, role="rail")
         tree_layout = QVBoxLayout(self.tree_card)
         tree_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        tree_layout.setSpacing(TOKENS.spacing_md)
-        tree_layout.addWidget(section_title("报告目录", "按使用场景组织目录，让预览更像真正的报告中心。"))
+        tree_layout.setSpacing(TOKENS.spacing_sm)
+        tree_header = QHBoxLayout()
+        tree_header.setContentsMargins(0, 0, 0, 0)
+        tree_header.setSpacing(TOKENS.spacing_xs)
+        tree_header.addWidget(section_title("报告目录", "按场景组织，快速跳转。"), 1)
+        self.report_tree_count_chip = chip("0 项", "accent")
+        self.report_tree_count_chip.setMinimumHeight(22)
+        self.report_tree_count_chip.setMaximumHeight(24)
+        self.report_tree_active_chip = chip("运行摘要", "success")
+        self.report_tree_active_chip.setMinimumHeight(22)
+        self.report_tree_active_chip.setMaximumHeight(24)
+        tree_header.addWidget(self.report_tree_count_chip)
+        tree_header.addWidget(self.report_tree_active_chip)
+        tree_layout.addLayout(tree_header)
         self.report_tree = QTreeWidget()
         self.report_tree.setObjectName("workflowTree")
         self.report_tree.setHeaderHidden(True)
-        self.report_tree.setIndentation(10)
+        self.report_tree.setIndentation(0)
+        self.report_tree.setRootIsDecorated(False)
+        self.report_tree.setUniformRowHeights(True)
         self.report_tree.itemSelectionChanged.connect(self._on_report_changed)
         tree_layout.addWidget(self.report_tree, 1)
         self.tree_card.setMinimumWidth(210)
@@ -311,12 +325,18 @@ class ReportCenterPage(QWidget):
         delivery_layout = QVBoxLayout(self.delivery_rail)
         delivery_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
         delivery_layout.setSpacing(TOKENS.spacing_sm)
-        delivery_title = section_title(
-            "交付驾驶舱",
-            "浏览报告时持续显示交付门槛、导出状态、方法溯源和批次差异。",
-        )
+        delivery_header = QHBoxLayout()
+        delivery_header.setContentsMargins(0, 0, 0, 0)
+        delivery_header.setSpacing(TOKENS.spacing_xs)
+        delivery_title = section_title("交付驾驶舱", "门槛、导出、方法和批次固定在右侧。")
         delivery_title.setMaximumHeight(42)
-        delivery_layout.addWidget(delivery_title)
+        delivery_header.addWidget(delivery_title, 1)
+        self.delivery_rail_status_chip = chip("待生成", "warning")
+        self.delivery_rail_status_chip.setProperty("closureStage", True)
+        self.delivery_rail_status_chip.setMinimumHeight(22)
+        self.delivery_rail_status_chip.setMaximumHeight(24)
+        delivery_header.addWidget(self.delivery_rail_status_chip)
+        delivery_layout.addLayout(delivery_header)
 
         self.delivery_rail_inspector = CardFrame(role="panel")
         self.delivery_rail_inspector.setProperty("deckRole", "deliveryRailInspector")
@@ -926,21 +946,22 @@ class ReportCenterPage(QWidget):
         return tile
 
     def _build_tree(self) -> None:
-        root = QTreeWidgetItem(["报告中心目录"])
-        root.setFlags(root.flags() & ~Qt.ItemIsSelectable)
-        self.report_tree.addTopLevelItem(root)
         for key, title, _subtitle in REPORT_SECTIONS:
             item = QTreeWidgetItem([_ui_safe_text(title)])
             item.setData(0, Qt.UserRole, key)
             item.setToolTip(0, _ui_safe_text(title))
-            root.addChild(item)
+            self.report_tree.addTopLevelItem(item)
             self.report_items[key] = item
-        root.setExpanded(True)
+        self.report_tree_count_chip.setText(f"{len(REPORT_SECTIONS)} 项")
 
     def _sync_tree(self, report_key: str) -> None:
         item = self.report_items.get(report_key)
         if item is None:
             return
+        title = _ui_safe_text(item.text(0))
+        display = title if len(title) <= 6 else f"{title[:5]}…"
+        self.report_tree_active_chip.setText(display)
+        self.report_tree_active_chip.setToolTip(title)
         if self.report_tree.currentItem() is not item:
             self.report_tree.blockSignals(True)
             self.report_tree.setCurrentItem(item)
@@ -2131,6 +2152,7 @@ class ReportCenterPage(QWidget):
         else:
             gate_text, gate_tone = "待生成", "warning"
         self._set_chip(self.delivery_gate_chip, gate_text, gate_tone)
+        self._set_chip(self.delivery_rail_status_chip, f"{gate_text} · {success_count}/6", gate_tone)
         self.delivery_gate_card.setProperty(
             "gateStatus",
             "ready" if gate_tone == "success" else ("review" if gate_tone == "accent" else "blocked"),
