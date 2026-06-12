@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -181,16 +182,25 @@ class SpectralQCPage(QWidget):
 
     def _build_run_bar(self) -> CardFrame:
         card = CardFrame(role="command")
-        card.setMinimumHeight(188)
-        card.setMaximumHeight(212)
+        card.setMinimumHeight(164)
+        card.setMaximumHeight(178)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_sm)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
-        header.addWidget(section_title("运行条", "先选数据来源和时间范围，再决定是做完整谱分析还是快速 QC 摘要。"))
+        header_title_box = QVBoxLayout()
+        header_title_box.setContentsMargins(0, 0, 0, 0)
+        header_title_box.setSpacing(0)
+        header_title = QLabel("谱分析控制台")
+        header_title.setObjectName("sectionTitle")
+        header_note = QLabel("数据目标、谱分析动作、运行状态和 KPI 摘要固定在首屏。")
+        header_note.setObjectName("subtitle")
+        header_title_box.addWidget(header_title)
+        header_title_box.addWidget(header_note)
+        header.addLayout(header_title_box)
         header.addStretch(1)
         self.spectral_run_chip = chip("谱分析控制台", "accent")
         header.addWidget(self.spectral_run_chip)
@@ -198,7 +208,7 @@ class SpectralQCPage(QWidget):
 
         deck = QHBoxLayout()
         deck.setContentsMargins(0, 0, 0, 0)
-        deck.setSpacing(TOKENS.spacing_md)
+        deck.setSpacing(TOKENS.spacing_sm)
 
         self.data_source_combo = QComboBox()
         self.data_source_combo.setEditable(True)
@@ -208,10 +218,13 @@ class SpectralQCPage(QWidget):
         self.time_range_combo.addItems(["最近 24 小时", "今天", "最近 7 天", "自定义时间窗"])
 
         self.spectral_source_panel = CardFrame(muted=True, role="tile")
+        self.spectral_source_panel.setMinimumHeight(86)
+        self.spectral_source_panel.setMaximumHeight(96)
+        self.spectral_source_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         source_layout = QGridLayout(self.spectral_source_panel)
-        source_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        source_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
         source_layout.setHorizontalSpacing(TOKENS.spacing_sm)
-        source_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        source_layout.setVerticalSpacing(2)
         source_title = QLabel("分析目标")
         source_title.setObjectName("metricLabel")
         source_layout.addWidget(source_title, 0, 0, 1, 2)
@@ -228,27 +241,59 @@ class SpectralQCPage(QWidget):
         deck.addWidget(self.spectral_source_panel, 3)
 
         buttons = [
-            ("运行谱分析", True, lambda: self._run_analysis(qc_only=False)),
-            ("仅生成 QC 摘要", False, lambda: self._run_analysis(qc_only=True)),
-            ("导出证据包", False, self._export_evidence),
-            ("保存为模板", False, self._save_template),
-            ("恢复默认", False, self._restore_default),
+            ("运行", "success", lambda: self._run_analysis(qc_only=False)),
+            ("摘要", "", lambda: self._run_analysis(qc_only=True)),
+            ("导出", "", self._export_evidence),
+            ("模板", "", self._save_template),
+            ("默认", "", self._restore_default),
         ]
         self.spectral_action_panel = CardFrame(muted=True, role="tile")
+        self.spectral_action_panel.setProperty("deckRole", "spectralActionDock")
+        self.spectral_action_panel.setMinimumHeight(86)
+        self.spectral_action_panel.setMaximumHeight(96)
+        self.spectral_action_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         action_layout = QGridLayout(self.spectral_action_panel)
-        action_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
-        action_layout.setHorizontalSpacing(TOKENS.spacing_sm)
-        action_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        action_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+        action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        action_layout.setVerticalSpacing(2)
         action_title = QLabel("谱分析动作")
         action_title.setObjectName("metricLabel")
         action_layout.addWidget(action_title, 0, 0, 1, 3)
-        for index, (text, primary, callback) in enumerate(buttons):
-            button = QPushButton(text)
-            if primary:
-                button.setProperty("variant", "primary")
+        self.spectral_action_buttons: dict[str, QToolButton] = {}
+        for index, (text, tone, callback) in enumerate(buttons):
+            button = QToolButton()
+            button.setText(text)
+            button.setProperty("railAction", True)
+            if tone:
+                button.setProperty("actionTone", tone)
+            button.setMinimumWidth(58)
+            button.setMaximumHeight(28)
             button.clicked.connect(callback)
             action_layout.addWidget(button, 1 + index // 3, index % 3)
+            self.spectral_action_buttons[text] = button
         deck.addWidget(self.spectral_action_panel, 4)
+
+        self.spectral_status_panel = CardFrame(muted=True, role="tile")
+        self.spectral_status_panel.setProperty("deckRole", "spectralRunStatusDock")
+        self.spectral_status_panel.setMinimumHeight(86)
+        self.spectral_status_panel.setMaximumHeight(96)
+        self.spectral_status_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        status_layout = QVBoxLayout(self.spectral_status_panel)
+        status_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+        status_layout.setSpacing(TOKENS.spacing_xs)
+        status_title = QLabel("运行状态")
+        status_title.setObjectName("metricLabel")
+        self.spectral_status_value = QLabel("--")
+        self.spectral_status_value.setObjectName("metricValue")
+        self.spectral_status_value.setProperty("compactMetric", True)
+        self.spectral_status_note = QLabel("--")
+        self.spectral_status_note.setObjectName("subtitle")
+        self.spectral_status_note.setWordWrap(False)
+        status_layout.addWidget(status_title)
+        status_layout.addWidget(self.spectral_status_value)
+        status_layout.addWidget(self.spectral_status_note)
+        deck.addWidget(self.spectral_status_panel, 3)
+
         self.summary_row = self._build_summary_row()
         deck.addWidget(self.summary_row, 3)
         layout.addLayout(deck)
@@ -328,13 +373,13 @@ class SpectralQCPage(QWidget):
         wrapper = QWidget()
         wrapper.setObjectName("spectralSummaryDeck")
         wrapper.setProperty("deckRole", "spectralCockpitKpis")
-        wrapper.setMinimumWidth(360)
-        wrapper.setMinimumHeight(122)
-        wrapper.setMaximumHeight(136)
+        wrapper.setMinimumWidth(300)
+        wrapper.setMinimumHeight(86)
+        wrapper.setMaximumHeight(96)
         layout = QGridLayout(wrapper)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setHorizontalSpacing(TOKENS.spacing_sm)
-        layout.setVerticalSpacing(TOKENS.spacing_sm)
+        layout.setVerticalSpacing(TOKENS.spacing_xs)
 
         self.lag_confidence_value = QLabel("--")
         self.high_freq_risk_value = QLabel("--")
@@ -343,18 +388,18 @@ class SpectralQCPage(QWidget):
         self.summary_chips: dict[str, QLabel] = {}
         self.summary_metric_cards: list[CardFrame] = []
         cards = [
-            ("lag_confidence", "lag 可信度", self.lag_confidence_value),
-            ("high_freq_risk", "高频损失风险", self.high_freq_risk_value),
-            ("good_windows", "QC 优良窗口数", self.good_windows_value),
-            ("attention_windows", "需关注窗口数", self.attention_windows_value),
+            ("lag_confidence", "lag", self.lag_confidence_value),
+            ("high_freq_risk", "损失", self.high_freq_risk_value),
+            ("good_windows", "优良窗", self.good_windows_value),
+            ("attention_windows", "关注窗", self.attention_windows_value),
         ]
         for index, (key, title, value) in enumerate(cards):
             card = CardFrame(muted=True, role="tile")
-            card.setMinimumHeight(56)
-            card.setMaximumHeight(64)
+            card.setMinimumHeight(38)
+            card.setMaximumHeight(44)
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
-            card_layout.setSpacing(TOKENS.spacing_xs)
+            card_layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
+            card_layout.setSpacing(0)
             header = QHBoxLayout()
             header.setContentsMargins(0, 0, 0, 0)
             header.setSpacing(TOKENS.spacing_xs)
@@ -370,7 +415,7 @@ class SpectralQCPage(QWidget):
             card_layout.addLayout(header)
             value.setObjectName("metricValue")
             value.setProperty("compactMetric", True)
-            value.setWordWrap(True)
+            value.setWordWrap(False)
             card_layout.addWidget(value)
             self.summary_metric_cards.append(card)
             layout.addWidget(card, index // 2, index % 2)
@@ -1056,6 +1101,18 @@ class SpectralQCPage(QWidget):
         else:
             deck_text, deck_tone = "待运行", "warning"
         self._set_chip(self.evidence_deck_chip, f"{deck_text} · {success_count}/5", deck_tone)
+        if hasattr(self, "spectral_status_value"):
+            self.spectral_status_value.setText(deck_text)
+            status_note = (
+                f"{run_note} · 窗口 {len(windows)} · 导出 {export_value}"
+                if has_windows
+                else f"{run_note} · {export_status}"
+            )
+            self.spectral_status_note.setText(self._compact_text(status_note, 28))
+            self.spectral_status_note.setToolTip(status_note)
+            self.spectral_status_panel.setProperty("evidenceTone", deck_tone)
+            self.spectral_status_panel.style().unpolish(self.spectral_status_panel)
+            self.spectral_status_panel.style().polish(self.spectral_status_panel)
         self.evidence_deck.setProperty("evidenceStatus", deck_tone)
         self.evidence_deck.style().unpolish(self.evidence_deck)
         self.evidence_deck.style().polish(self.evidence_deck)

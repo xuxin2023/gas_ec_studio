@@ -59,8 +59,17 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         page.refresh()
 
         assert page.run_bar.property("cardRole") == "command"
+        assert page.run_bar.maximumHeight() == 178
         assert page.spectral_source_panel.property("cardRole") == "tile"
         assert page.spectral_action_panel.property("cardRole") == "tile"
+        assert page.spectral_action_panel.property("deckRole") == "spectralActionDock"
+        assert page.spectral_status_panel.property("cardRole") == "tile"
+        assert page.spectral_status_panel.property("deckRole") == "spectralRunStatusDock"
+        assert page.spectral_status_panel.property("evidenceTone") in {"success", "accent", "warning", "danger"}
+        assert page.spectral_action_buttons["运行"].property("railAction") is True
+        assert page.spectral_action_buttons["运行"].property("actionTone") == "success"
+        assert page.spectral_action_buttons["摘要"].property("railAction") is True
+        assert page.spectral_action_buttons["导出"].property("railAction") is True
         assert page.evidence_deck.property("cardRole") == "cockpit"
         assert page.evidence_deck.property("deckRole") == "spectralEvidenceDeck"
         assert page.evidence_deck.maximumHeight() == 96
@@ -73,10 +82,12 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert page.summary_row.objectName() == "spectralSummaryDeck"
         assert page.summary_row.property("deckRole") == "spectralCockpitKpis"
         assert page.summary_row.parentWidget() is page.run_bar
-        assert page.summary_row.maximumHeight() == 136
+        assert page.summary_row.maximumHeight() == 96
         assert len(page.summary_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)
         assert page.lag_confidence_value.property("compactMetric") is True
+        assert page.spectral_status_value.text() in {"待运行", "待复核", "证据闭合"}
+        assert page.spectral_status_note.toolTip()
         assert page.tree_card.property("cardRole") == "rail"
         assert page.footer_bar.property("cardRole") == "rail"
         assert page.footer_bar.maximumHeight() == 78
@@ -144,7 +155,12 @@ def test_spectral_qc_viewport_layout_keeps_evidence_decks_stable(monkeypatch, tm
             assert_contained(page, page.evidence_deck, page)
             assert_contained(page, page.tree_card, page)
 
-            source_panels = [page.spectral_source_panel, page.spectral_action_panel]
+            source_panels = [
+                page.spectral_source_panel,
+                page.spectral_action_panel,
+                page.spectral_status_panel,
+                page.summary_row,
+            ]
             for panel in source_panels:
                 assert_contained(page.run_bar, panel, page)
             assert_no_visual_overlap(source_panels, page)
