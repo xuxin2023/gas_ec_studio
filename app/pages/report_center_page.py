@@ -276,6 +276,24 @@ class ReportCenterPage(QWidget):
         content_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         content_layout.setSpacing(TOKENS.spacing_sm)
         content_layout.setAlignment(Qt.AlignTop)
+        self.preview_content_switches: dict[str, QToolButton] = {}
+        preview_switch_row = QHBoxLayout()
+        preview_switch_row.setContentsMargins(0, 0, 0, 0)
+        preview_switch_row.setSpacing(TOKENS.spacing_xs)
+        preview_switch_row.addStretch(1)
+        for mode, text in (
+            ("plot", "图表"),
+            ("table", "表格"),
+            ("insight", "结论"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, key=mode: self._show_preview_content_mode(key))
+            self.preview_content_switches[mode] = button
+            preview_switch_row.addWidget(button)
+        content_layout.addLayout(preview_switch_row)
         content_layout.addWidget(section_title("图表或表格预览", "让结果预览像报告，而不是文件清单。"))
         self.preview_plot = pg.PlotWidget()
         self.preview_plot.setMinimumHeight(150)
@@ -289,10 +307,25 @@ class ReportCenterPage(QWidget):
         self.preview_table.verticalHeader().setVisible(False)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         content_layout.addWidget(self.preview_table)
+        self.preview_table_note = QLabel("--")
+        self.preview_table_note.setObjectName("subtitle")
+        self.preview_table_note.setWordWrap(False)
+        content_layout.addWidget(self.preview_table_note)
         self.preview_plot_note = QLabel("--")
         self.preview_plot_note.setObjectName("subtitle")
         self.preview_plot_note.setWordWrap(True)
         content_layout.addWidget(self.preview_plot_note)
+        self.preview_insight_card = CardFrame(muted=True, role="tile")
+        self.preview_insight_card.setProperty("deckRole", "reportPreviewInsightPane")
+        self.preview_insight_card.setMaximumHeight(210)
+        insight_layout = QVBoxLayout(self.preview_insight_card)
+        insight_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        insight_layout.setSpacing(TOKENS.spacing_xs)
+        self.preview_insight_content = QVBoxLayout()
+        self.preview_insight_content.setSpacing(TOKENS.spacing_xs)
+        insight_layout.addLayout(self.preview_insight_content)
+        content_layout.addWidget(self.preview_insight_card)
+        self._show_preview_content_mode("table")
         preview_deck_layout.addWidget(self.preview_content_card)
         center_layout.addWidget(self.preview_deck_card)
 
@@ -1171,6 +1204,38 @@ class ReportCenterPage(QWidget):
         label.setText(display)
         label.setToolTip(raw)
 
+    def _show_preview_content_mode(self, mode: str) -> None:
+        if mode not in {"plot", "table", "insight"}:
+            mode = "table"
+        has_plot = hasattr(self, "preview_plot") and self.preview_plot.maximumHeight() > 0
+        self.preview_plot.setVisible(mode == "plot" and has_plot)
+        self.preview_plot_note.setVisible(mode == "plot")
+        self.preview_table.setVisible(mode == "table")
+        self.preview_table_note.setVisible(mode == "table")
+        self.preview_insight_card.setVisible(mode == "insight")
+        self.preview_content_card.setProperty("activePane", mode)
+        self.preview_content_card.style().unpolish(self.preview_content_card)
+        self.preview_content_card.style().polish(self.preview_content_card)
+        for key, button in self.preview_content_switches.items():
+            button.blockSignals(True)
+            button.setChecked(key == mode)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _refresh_preview_insight_panel(self, conclusions: list[str], *, view_mode: str, report_key: str) -> None:
+        if not hasattr(self, "preview_insight_content"):
+            return
+        self._clear_layout(self.preview_insight_content)
+        items = conclusions[:3] or [f"{view_mode}: 暂无关键结论，先查看表格或交付门槛。"]
+        for index, text in enumerate(items, start=1):
+            label = QLabel(_ui_safe_text(f"{index}. {text}"))
+            label.setObjectName("subtitle")
+            label.setWordWrap(True)
+            label.setMaximumHeight(42)
+            self.preview_insight_content.addWidget(label)
+        self.preview_insight_card.setToolTip(_ui_safe_text(f"report={report_key} | conclusions={len(conclusions)}"))
+
     def _refresh_preview(self, report: dict, view_mode: str, filters: dict) -> None:
         self._set_chip(self.preview_mode_chip, view_mode, "accent")
         self.preview_title_label.setText(_ui_safe_text(report.get("title", "Report Preview")))
@@ -1243,6 +1308,7 @@ class ReportCenterPage(QWidget):
         self.preview_table.setHorizontalHeaderLabels([_ui_safe_text(header) for header in headers])
         self.preview_table.setRowCount(len(rows))
         self.preview_table.setMaximumHeight(180 if not has_plot_data else (132 if is_expert_review else 128))
+        self.preview_table_note.setText(_ui_safe_text(f"rows={len(rows)} | columns={len(headers)} | mode={view_mode}"))
         for row_index, row in enumerate(rows):
             for col, value in enumerate(row):
                 item = QTableWidgetItem(_ui_safe_text(value))
@@ -1269,8 +1335,13 @@ class ReportCenterPage(QWidget):
         elif hasattr(self, "_official_bundle_controls_card"):
             self._official_bundle_controls_card.setVisible(False)
 
+        conclusions = self._conclusions_for_mode(report, view_mode)
+        self._refresh_preview_insight_panel(conclusions, view_mode=view_mode, report_key=report_key)
+        default_pane = "plot" if has_plot_data else ("table" if rows else "insight")
+        self._show_preview_content_mode(default_pane)
+
         self._clear_layout(self.conclusion_content)
-        for text in self._conclusions_for_mode(report, view_mode):
+        for text in conclusions:
             label = QLabel(_ui_safe_text(text))
             label.setObjectName("subtitle")
             label.setWordWrap(True)

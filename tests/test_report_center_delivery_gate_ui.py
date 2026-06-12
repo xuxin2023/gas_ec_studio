@@ -135,6 +135,16 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_plot.isHidden() is True
         assert page.preview_plot.maximumHeight() == 0
         assert page.preview_table.maximumHeight() == 180
+        assert page.preview_content_card.property("activePane") == "table"
+        assert set(page.preview_content_switches) == {"plot", "table", "insight"}
+        assert page.preview_content_switches["table"].isChecked() is True
+        assert page.preview_insight_card.property("deckRole") == "reportPreviewInsightPane"
+        assert page.preview_insight_card.isHidden() is True
+        assert page.preview_table.isHidden() is False
+        page._show_preview_content_mode("insight")
+        assert page.preview_content_card.property("activePane") == "insight"
+        assert page.preview_insight_card.isHidden() is False
+        assert page.preview_table.isHidden() is True
         assert len(page.preview_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.preview_metric_cards)
         assert all(card.maximumHeight() == 74 for card in page.preview_metric_cards)
@@ -266,6 +276,8 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
                 assert_contained(page.preview_command_strip, tile, page)
             for button in page.preview_command_buttons.values():
                 assert_contained(page.preview_command_strip, button, page)
+            for button in page.preview_content_switches.values():
+                assert_contained(page.preview_content_card, button, page)
             gate_widgets = [page.delivery_gate_hero_card, page.delivery_gate_scroll]
             for widget in gate_widgets:
                 assert_contained(page.delivery_gate_card, widget, page)
@@ -398,8 +410,14 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.inspector_stack.currentWidget() is page.usage_card
         assert page.report_tree_active_chip.text().startswith("运行")
         assert page.preview_content_card.property("plotStatus") == "series"
+        assert page.preview_content_card.property("activePane") == "plot"
         assert page.preview_plot.isHidden() is False
+        assert page.preview_content_switches["plot"].isChecked() is True
         assert page.preview_table.maximumHeight() == 128
+        page._show_preview_content_mode("table")
+        assert page.preview_table.isHidden() is False
+        page._show_preview_content_mode("insight")
+        assert page.preview_insight_card.isHidden() is False
         page._show_delivery_focus("details")
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.inspector_detail_values["export.status"].text() == "已导出"
