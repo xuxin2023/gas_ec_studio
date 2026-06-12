@@ -75,6 +75,7 @@ class ECProcessingPage(QWidget):
         self.step_command_notes: dict[str, dict[str, QLabel]] = {}
         self.step_command_buttons: dict[str, dict[str, QToolButton]] = {}
         self.method_shortcut_buttons: dict[str, QToolButton] = {}
+        self.window_console_switches: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -1767,6 +1768,12 @@ class ECProcessingPage(QWidget):
         intro_note.setWordWrap(True)
         intro_layout.addWidget(intro_title)
         intro_layout.addWidget(intro_note)
+        intro_layout.addWidget(self._build_window_console_switcher())
+        self.window_console_hint_label = QLabel("--")
+        self.window_console_hint_label.setObjectName("subtitle")
+        self.window_console_hint_label.setMaximumHeight(18)
+        self.window_console_hint_label.setWordWrap(False)
+        intro_layout.addWidget(self.window_console_hint_label)
         intro_layout.addStretch(1)
         cockpit_layout.addWidget(intro, 0)
 
@@ -1793,8 +1800,9 @@ class ECProcessingPage(QWidget):
         row.setSpacing(TOKENS.spacing_md)
         layout.addLayout(row)
 
-        param_card = CardFrame()
-        param_layout = QVBoxLayout(param_card)
+        self.window_param_card = CardFrame()
+        self.window_param_card.setProperty("deckRole", "windowConsoleParamsPane")
+        param_layout = QVBoxLayout(self.window_param_card)
         param_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         param_layout.setSpacing(TOKENS.spacing_md)
         param_layout.addWidget(section_title("参数设置", "窗口越清晰，后续 lag、去趋势和检验的解释越容易统一。"))
@@ -1810,10 +1818,11 @@ class ECProcessingPage(QWidget):
         form.addRow("窗口长度", self.window_minutes_spin)
         form.addRow("采样频率", self.window_sample_hz_spin)
         param_layout.addLayout(form)
-        row.addWidget(param_card, 3)
+        row.addWidget(self.window_param_card, 3)
 
-        preview_card = CardFrame(muted=True)
-        preview_layout = QVBoxLayout(preview_card)
+        self.window_preview_card = CardFrame(muted=True)
+        self.window_preview_card.setProperty("deckRole", "windowConsolePreviewPane")
+        preview_layout = QVBoxLayout(self.window_preview_card)
         preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         preview_layout.setSpacing(TOKENS.spacing_md)
         preview_layout.addWidget(section_title("中间结果", "先把窗口规模换算成直观采样量，便于操作员理解。"))
@@ -1824,7 +1833,7 @@ class ECProcessingPage(QWidget):
         self.window_preview_note.setObjectName("subtitle")
         self.window_preview_note.setWordWrap(True)
         preview_layout.addWidget(self.window_preview_note)
-        row.addWidget(preview_card, 2)
+        row.addWidget(self.window_preview_card, 2)
 
         timeline_card = CardFrame(muted=True, role="panel")
         timeline_card.setProperty("deckRole", "windowTimelinePanel")
@@ -1853,6 +1862,59 @@ class ECProcessingPage(QWidget):
         self.window_plan_note.setMaximumHeight(36)
         timeline_layout.addWidget(self.window_plan_note)
         layout.insertWidget(3, timeline_card)
+        self.window_console_cards = {
+            "params": self.window_param_card,
+            "preview": self.window_preview_card,
+            "timeline": self.window_timeline_card,
+        }
+        self._show_window_console_pane("params")
+
+    def _build_window_console_switcher(self) -> QWidget:
+        switcher = QWidget()
+        switcher.setProperty("deckRole", "windowConsoleSwitcher")
+        switcher.setMaximumHeight(28)
+        layout = QHBoxLayout(switcher)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(TOKENS.spacing_xs)
+        for pane, text in (
+            ("params", "参数"),
+            ("preview", "预览"),
+            ("timeline", "时间轴"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.setProperty("windowConsoleSwitch", True)
+            button.setMinimumWidth(48)
+            button.setMaximumHeight(26)
+            button.clicked.connect(lambda _checked=False, key=pane: self._show_window_console_pane(key))
+            self.window_console_switches[pane] = button
+            layout.addWidget(button)
+        return switcher
+
+    def _show_window_console_pane(self, pane: str) -> None:
+        if pane not in {"params", "preview", "timeline"}:
+            pane = "params"
+        for key, card in getattr(self, "window_console_cards", {}).items():
+            card.setVisible(key == pane)
+        pane_notes = {
+            "params": "当前显示窗口参数；切到预览可看采样量，切到时间轴看批次节奏。",
+            "preview": "当前显示采样规模；切到参数可调窗口，切到时间轴看批次轮廓。",
+            "timeline": "当前显示时间轴；切到参数可调窗口，切到预览看采样量。",
+        }
+        if hasattr(self, "window_console_hint_label"):
+            self.window_console_hint_label.setText(pane_notes[pane])
+        if hasattr(self, "window_cockpit_card"):
+            self.window_cockpit_card.setProperty("activePane", pane)
+            self.window_cockpit_card.style().unpolish(self.window_cockpit_card)
+            self.window_cockpit_card.style().polish(self.window_cockpit_card)
+        for key, button in self.window_console_switches.items():
+            button.blockSignals(True)
+            button.setChecked(key == pane)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def _window_cockpit_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")

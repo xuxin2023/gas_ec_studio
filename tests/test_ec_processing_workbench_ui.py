@@ -62,6 +62,21 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.step_command_values["window_sampling"]["closure"].text() == page.coverage_gate_chip.text()
         assert page.step_command_buttons["window_sampling"]["run"].property("targetStep") == "run_processing"
         assert page.step_command_buttons["window_sampling"]["coverage"].property("targetStep") == "coverage"
+        assert page.window_cockpit_card.property("activePane") == "params"
+        assert set(page.window_console_switches) == {"params", "preview", "timeline"}
+        assert all(button.property("windowConsoleSwitch") is True for button in page.window_console_switches.values())
+        assert page.window_console_switches["params"].isChecked() is True
+        assert page.window_param_card.isHidden() is False
+        assert page.window_preview_card.isHidden() is True
+        assert page.window_timeline_card.isHidden() is True
+        page._show_window_console_pane("preview")
+        assert page.window_cockpit_card.property("activePane") == "preview"
+        assert page.window_param_card.isHidden() is True
+        assert page.window_preview_card.isHidden() is False
+        assert page.window_timeline_card.isHidden() is True
+        page._show_window_console_pane("timeline")
+        assert page.window_cockpit_card.property("activePane") == "timeline"
+        assert page.window_timeline_card.isHidden() is False
         assert page.desktop_rail_stack.count() == 3
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
