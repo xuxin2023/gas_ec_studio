@@ -74,6 +74,7 @@ class ECProcessingPage(QWidget):
         self.step_command_values: dict[str, dict[str, QLabel]] = {}
         self.step_command_notes: dict[str, dict[str, QLabel]] = {}
         self.step_command_buttons: dict[str, dict[str, QToolButton]] = {}
+        self.method_shortcut_buttons: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -485,6 +486,8 @@ class ECProcessingPage(QWidget):
         mode_row.addStretch(1)
         inspector_layout.addLayout(mode_row)
 
+        self.method_shortcut_card = self._build_method_shortcut_panel()
+        inspector_layout.addWidget(self.method_shortcut_card)
         self.desktop_rail_status_strip = self._build_desktop_rail_status_strip()
         inspector_layout.addWidget(self.desktop_rail_status_strip)
 
@@ -583,6 +586,54 @@ class ECProcessingPage(QWidget):
             self.desktop_rail_status_values[key] = value_label
             self.desktop_rail_status_notes[key] = note_label
             layout.addWidget(tile)
+        return card
+
+    def _build_method_shortcut_panel(self) -> CardFrame:
+        card = CardFrame(muted=True, role="console")
+        card.setProperty("deckRole", "ecMethodShortcutDeck")
+        card.setMaximumHeight(118)
+        card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        title = QLabel("方法族捷径")
+        title.setObjectName("metricLabel")
+        self.method_shortcut_chip = chip("首屏", "accent")
+        self.method_shortcut_chip.setMaximumHeight(22)
+        header.addWidget(title)
+        header.addStretch(1)
+        header.addWidget(self.method_shortcut_chip)
+        layout.addLayout(header)
+
+        row = QGridLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setHorizontalSpacing(TOKENS.spacing_xs)
+        row.setVerticalSpacing(TOKENS.spacing_xs)
+        for column, (family, text) in enumerate(
+            (
+                ("footprint", "足迹"),
+                ("uncertainty", "随机误差"),
+                ("spectral", "谱修正"),
+            )
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.setProperty("methodShortcut", True)
+            button.setMinimumWidth(66)
+            button.setMaximumHeight(28)
+            button.clicked.connect(lambda _checked=False, key=family: self._activate_method_shortcut(key))
+            self.method_shortcut_buttons[family] = button
+            row.addWidget(button, 0, column)
+        layout.addLayout(row)
+        self.method_shortcut_note = QLabel("--")
+        self.method_shortcut_note.setObjectName("subtitle")
+        self.method_shortcut_note.setWordWrap(False)
+        self.method_shortcut_note.setMaximumHeight(18)
+        layout.addWidget(self.method_shortcut_note)
         return card
 
     def _build_workflow_lens_panel(self) -> CardFrame:
@@ -919,6 +970,54 @@ class ECProcessingPage(QWidget):
             button.style().unpolish(button)
             button.style().polish(button)
 
+    def _activate_method_shortcut(self, family: str) -> None:
+        item = self.step_items.get("uncertainty")
+        if item is not None:
+            self.step_tree.setCurrentItem(item)
+        else:
+            self.controller.set_ec_nav_step("uncertainty")
+            self._sync_step_from_controller()
+        self._show_method_family(family)
+        self._show_desktop_rail_mode("cockpit")
+
+    def _refresh_method_shortcut_panel(
+        self,
+        *,
+        active_family: str,
+        footprint_method: str,
+        uncertainty_method: str,
+        spectral_method: str,
+        issue_count: int,
+    ) -> None:
+        if not hasattr(self, "method_shortcut_buttons"):
+            return
+        methods = {
+            "footprint": footprint_method,
+            "uncertainty": uncertainty_method,
+            "spectral": spectral_method,
+        }
+        for family, button in self.method_shortcut_buttons.items():
+            method = methods.get(family, "--")
+            button.setToolTip(f"{family}: {method}")
+            button.blockSignals(True)
+            button.setChecked(family == active_family)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+        tone = "warning" if issue_count else "success"
+        if hasattr(self, "method_shortcut_chip"):
+            self.method_shortcut_chip.setText("复核" if issue_count else "就绪")
+            self.method_shortcut_chip.setProperty("chipTone", tone)
+            self.method_shortcut_chip.style().unpolish(self.method_shortcut_chip)
+            self.method_shortcut_chip.style().polish(self.method_shortcut_chip)
+        if hasattr(self, "method_shortcut_note"):
+            self.method_shortcut_note.setText(
+                self._compact_text(
+                    f"{footprint_method} / {uncertainty_method} / {spectral_method} · issues={issue_count}",
+                    48,
+                )
+            )
+
     def _activate_desktop_rail_action(self) -> None:
         self._activate_desktop_rail_target(getattr(self, "desktop_rail_action_button", None))
 
@@ -948,6 +1047,12 @@ class ECProcessingPage(QWidget):
             return
         self.method_family_stack.setCurrentWidget(card)
         for key, button in self.method_family_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == family)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+        for key, button in getattr(self, "method_shortcut_buttons", {}).items():
             button.blockSignals(True)
             button.setChecked(key == family)
             button.blockSignals(False)
@@ -1129,6 +1234,18 @@ class ECProcessingPage(QWidget):
             spectral_method if spectral_enabled == "enabled" else "disabled",
             f"cospectrum={cospectrum} / response={self.spectral_response_spin.value():.3f}s",
             spectral_tone,
+        )
+        active_family = "footprint"
+        for family, card in getattr(self, "method_family_sections", {}).items():
+            if getattr(self, "method_family_stack", None) is not None and self.method_family_stack.currentWidget() is card:
+                active_family = family
+                break
+        self._refresh_method_shortcut_panel(
+            active_family=active_family,
+            footprint_method=footprint_method if footprint_enabled == "enabled" else "disabled",
+            uncertainty_method=uncertainty_method,
+            spectral_method=spectral_method if spectral_enabled == "enabled" else "disabled",
+            issue_count=len(issues),
         )
 
         if issues:

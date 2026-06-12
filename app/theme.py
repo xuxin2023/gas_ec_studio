@@ -614,6 +614,30 @@ def build_stylesheet() -> str:
         color: #ffffff;
         font-weight: 800;
     }}
+    QToolButton[methodShortcut="true"] {{
+        min-height: 28px;
+        min-width: 66px;
+        border-radius: 14px;
+        padding: 0 8px;
+        background: #f7fbfd;
+        border: 1px solid #bed6df;
+        color: #31586a;
+    }}
+    QToolButton[methodShortcut="true"]:hover {{
+        background: #ffffff;
+        border-color: #7eb3bd;
+        color: {TOKENS.color_text};
+    }}
+    QToolButton[methodShortcut="true"]:checked {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #0c6d78,
+            stop: 1 #33a0a0
+        );
+        border: 1px solid #075a69;
+        color: #ffffff;
+        font-weight: 800;
+    }}
     QListWidget, QTableWidget, QTreeWidget {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,

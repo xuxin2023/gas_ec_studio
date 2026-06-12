@@ -32,6 +32,10 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.desktop_rail_inspector.property("deckRole") == "ecRailInspector"
         assert page.desktop_rail_inspector.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Fixed
         assert page.desktop_rail_status_strip.property("deckRole") == "ecRailStatusStrip"
+        assert page.method_shortcut_card.property("deckRole") == "ecMethodShortcutDeck"
+        assert set(page.method_shortcut_buttons) == {"footprint", "uncertainty", "spectral"}
+        assert all(button.property("methodShortcut") is True for button in page.method_shortcut_buttons.values())
+        assert page.method_shortcut_note.text()
         assert page.desktop_rail_stack.maximumHeight() == 210
         assert set(page.desktop_rail_status_values) == {"step", "run", "closure"}
         assert page.desktop_rail_status_values["step"].text()
@@ -76,6 +80,12 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         page._show_desktop_rail_mode("cockpit")
         assert page.desktop_rail_stack.currentWidget() is page.cockpit_card
         assert page.desktop_rail_stack.maximumHeight() == 420
+        page.method_shortcut_buttons["spectral"].click()
+        assert controller.ec_nav_step == "uncertainty"
+        assert page.content_stack.currentIndex() == page.step_indexes["uncertainty"]
+        assert page.method_family_stack.currentWidget() is page.spectral_card
+        assert page.method_shortcut_buttons["spectral"].isChecked() is True
+        assert page.desktop_rail_stack.currentWidget() is page.cockpit_card
         assert set(page.coverage_values) == {
             "metadata",
             "processing",
