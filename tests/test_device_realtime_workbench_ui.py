@@ -139,10 +139,20 @@ def test_realtime_page_uses_session_cockpit_deck() -> None:
 
         assert page.property("pageSurface") is True
         assert page.control_card.property("cardRole") == "command"
+        assert page.control_card.maximumHeight() == 160
         assert page.capture_target_panel.property("cardRole") == "tile"
         assert page.capture_metric_panel.property("cardRole") == "tile"
         assert page.capture_action_panel.property("cardRole") == "tile"
+        assert page.capture_action_panel.property("deckRole") == "realtimeActionDock"
+        assert page.capture_status_panel.property("cardRole") == "tile"
+        assert page.capture_status_panel.property("deckRole") == "realtimeStatusDock"
+        assert page.capture_status_panel.property("evidenceTone") in {"success", "warning", "danger"}
         assert page.capture_command_chip.text() == "实时控制台"
+        assert page.start_button.property("railAction") is True
+        assert page.start_button.property("actionTone") == "success"
+        assert page.mark_button.property("railAction") is True
+        assert page.mark_button.property("actionTone") == "danger"
+        assert page.restore_button.property("railAction") is True
         assert page.summary_card.property("cardRole") == "cockpit"
         assert page.summary_card.property("deckRole") == "realtimeSummaryDeck"
         assert page.summary_card.maximumHeight() == 116
@@ -157,6 +167,9 @@ def test_realtime_page_uses_session_cockpit_deck() -> None:
         assert page.session_state_chip.text() in {"待连接", "需关注", "采集中", "等待帧"}
         assert page.session_device_value.text() != "--"
         assert "buffer=" in page.session_window_note.text()
+        assert page.capture_status_value.text() in {"在线", "离线"}
+        assert "valid" in page.capture_status_note.text()
+        assert page.capture_status_note.toolTip()
     finally:
         page.deleteLater()
         controller.shutdown()
@@ -180,7 +193,12 @@ def test_realtime_page_viewport_layout_keeps_cockpit_stable() -> None:
                 assert_contained(page, card, page)
             assert_no_visual_overlap(page_cards, page)
 
-            control_panels = [page.capture_target_panel, page.capture_metric_panel, page.capture_action_panel]
+            control_panels = [
+                page.capture_target_panel,
+                page.capture_metric_panel,
+                page.capture_action_panel,
+                page.capture_status_panel,
+            ]
             for panel in control_panels:
                 assert_contained(page.control_card, panel, page)
             assert_no_visual_overlap(control_panels, page)

@@ -117,6 +117,20 @@ class RealtimePage(QWidget):
         self.session_health_note.setText(
             f"valid={valid_rate:.2f}/s，residual={residual_rate:.2f}/s，anomaly={anomaly_count}"
         )
+        if hasattr(self, "capture_status_value"):
+            self.capture_status_value.setText("在线" if connected else "离线")
+            self.capture_status_note.setText(
+                f"{row_count} 帧 · valid {valid_rate:.2f}/s · residual {residual_rate:.2f}/s"
+            )
+            self.capture_status_note.setToolTip(
+                f"设备：{entry.config.label}\n端口：{entry.config.port}\n"
+                f"窗口：{self.window_combo.currentText()}\n"
+                f"buffer={row_count}; valid={valid_rate:.2f}/s; residual={residual_rate:.2f}/s; anomaly={anomaly_count}"
+            )
+            tone = "danger" if anomaly_count > 0 or residual_rate > valid_rate else "success" if connected and row_count else "warning"
+            self.capture_status_panel.setProperty("evidenceTone", tone)
+            self.capture_status_panel.style().unpolish(self.capture_status_panel)
+            self.capture_status_panel.style().polish(self.capture_status_panel)
 
     def _set_session_chip(self, text: str, tone: str) -> None:
         self.session_state_chip.setText(text)
@@ -126,16 +140,25 @@ class RealtimePage(QWidget):
 
     def _build_control_bar(self) -> CardFrame:
         card = CardFrame(role="command")
-        card.setMinimumHeight(154)
-        card.setMaximumHeight(172)
+        card.setMinimumHeight(148)
+        card.setMaximumHeight(160)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
-        layout.setSpacing(TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
-        header.addWidget(section_title("控制条", "设备、时间窗和指标都在这一层完成，不需要离开当前页。"))
+        header_title_box = QVBoxLayout()
+        header_title_box.setContentsMargins(0, 0, 0, 0)
+        header_title_box.setSpacing(0)
+        header_title = QLabel("采集控制台")
+        header_title.setObjectName("sectionTitle")
+        header_note = QLabel("目标、曲线、动作和状态在同一层完成，第一屏不离开现场。")
+        header_note.setObjectName("subtitle")
+        header_title_box.addWidget(header_title)
+        header_title_box.addWidget(header_note)
+        header.addLayout(header_title_box)
         header.addStretch(1)
         self.capture_command_chip = chip("实时控制台", "accent")
         header.addWidget(self.capture_command_chip)
@@ -143,7 +166,7 @@ class RealtimePage(QWidget):
 
         deck = QHBoxLayout()
         deck.setContentsMargins(0, 0, 0, 0)
-        deck.setSpacing(TOKENS.spacing_md)
+        deck.setSpacing(TOKENS.spacing_sm)
 
         self.device_combo = QComboBox()
         self.device_combo.currentIndexChanged.connect(self._on_device_changed)
@@ -153,10 +176,13 @@ class RealtimePage(QWidget):
         self.window_combo.currentIndexChanged.connect(lambda _index: self.refresh())
 
         self.capture_target_panel = CardFrame(muted=True, role="tile")
+        self.capture_target_panel.setMinimumHeight(72)
+        self.capture_target_panel.setMaximumHeight(84)
+        self.capture_target_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         target_layout = QGridLayout(self.capture_target_panel)
-        target_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        target_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
         target_layout.setHorizontalSpacing(TOKENS.spacing_sm)
-        target_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        target_layout.setVerticalSpacing(2)
         target_title = QLabel("采集目标")
         target_title.setObjectName("metricLabel")
         target_layout.addWidget(target_title, 0, 0, 1, 2)
@@ -170,7 +196,7 @@ class RealtimePage(QWidget):
         target_layout.addWidget(self.window_combo, 2, 1)
         target_layout.setColumnStretch(0, 1)
         target_layout.setColumnStretch(1, 1)
-        deck.addWidget(self.capture_target_panel, 3)
+        deck.addWidget(self.capture_target_panel, 4)
 
         metrics_wrapper = QWidget()
         metrics_layout = QHBoxLayout(metrics_wrapper)
@@ -185,8 +211,11 @@ class RealtimePage(QWidget):
             self.metric_buttons[key] = button
             metrics_layout.addWidget(button)
         self.capture_metric_panel = CardFrame(muted=True, role="tile")
+        self.capture_metric_panel.setMinimumHeight(72)
+        self.capture_metric_panel.setMaximumHeight(84)
+        self.capture_metric_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         metric_layout = QVBoxLayout(self.capture_metric_panel)
-        metric_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        metric_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
         metric_layout.setSpacing(TOKENS.spacing_xs)
         metric_title = QLabel("曲线指标")
         metric_title.setObjectName("metricLabel")
@@ -195,32 +224,78 @@ class RealtimePage(QWidget):
         metric_layout.addStretch(1)
         deck.addWidget(self.capture_metric_panel, 2)
 
-        self.start_button = QPushButton("开始")
-        self.start_button.setProperty("variant", "primary")
+        self.start_button = QToolButton()
+        self.start_button.setText("开始")
+        self.start_button.setProperty("railAction", True)
+        self.start_button.setProperty("actionTone", "success")
         self.start_button.clicked.connect(self._start_capture)
-        self.pause_button = QPushButton("暂停")
+        self.pause_button = QToolButton()
+        self.pause_button.setText("暂停")
+        self.pause_button.setProperty("railAction", True)
         self.pause_button.setCheckable(True)
         self.pause_button.clicked.connect(self._toggle_pause)
-        mark_button = QPushButton("标记异常")
-        mark_button.clicked.connect(self._mark_anomaly)
-        export_button = QPushButton("导出片段")
-        export_button.clicked.connect(self._export_segment)
-        clear_button = QPushButton("清空显示")
-        clear_button.clicked.connect(self._clear_selected_buffer)
-        restore_button = QPushButton("恢复视图")
-        restore_button.clicked.connect(self._reset_view)
+        self.mark_button = QToolButton()
+        self.mark_button.setText("异常")
+        self.mark_button.setProperty("railAction", True)
+        self.mark_button.setProperty("actionTone", "danger")
+        self.mark_button.clicked.connect(self._mark_anomaly)
+        self.export_button = QToolButton()
+        self.export_button.setText("导出")
+        self.export_button.setProperty("railAction", True)
+        self.export_button.clicked.connect(self._export_segment)
+        self.clear_button = QToolButton()
+        self.clear_button.setText("清屏")
+        self.clear_button.setProperty("railAction", True)
+        self.clear_button.clicked.connect(self._clear_selected_buffer)
+        self.restore_button = QToolButton()
+        self.restore_button.setText("复位")
+        self.restore_button.setProperty("railAction", True)
+        self.restore_button.clicked.connect(self._reset_view)
         self.capture_action_panel = CardFrame(muted=True, role="tile")
+        self.capture_action_panel.setProperty("deckRole", "realtimeActionDock")
+        self.capture_action_panel.setMinimumHeight(86)
+        self.capture_action_panel.setMaximumHeight(96)
+        self.capture_action_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         action_layout = QGridLayout(self.capture_action_panel)
-        action_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
-        action_layout.setHorizontalSpacing(TOKENS.spacing_sm)
-        action_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        action_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+        action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        action_layout.setVerticalSpacing(2)
         action_title = QLabel("采集动作")
         action_title.setObjectName("metricLabel")
-        action_layout.addWidget(action_title, 0, 0, 1, 6)
-        for index, button in enumerate((self.start_button, self.pause_button, mark_button, export_button, clear_button, restore_button)):
-            button.setMinimumWidth(0)
-            action_layout.addWidget(button, 1, index)
+        action_layout.addWidget(action_title, 0, 0, 1, 3)
+        for index, button in enumerate((
+            self.start_button,
+            self.pause_button,
+            self.mark_button,
+            self.export_button,
+            self.clear_button,
+            self.restore_button,
+        )):
+            button.setMinimumWidth(54)
+            button.setMaximumHeight(28)
+            action_layout.addWidget(button, 1 + index // 3, index % 3)
         deck.addWidget(self.capture_action_panel, 4)
+
+        self.capture_status_panel = CardFrame(muted=True, role="tile")
+        self.capture_status_panel.setProperty("deckRole", "realtimeStatusDock")
+        self.capture_status_panel.setMinimumHeight(72)
+        self.capture_status_panel.setMaximumHeight(84)
+        self.capture_status_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        status_layout = QVBoxLayout(self.capture_status_panel)
+        status_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+        status_layout.setSpacing(TOKENS.spacing_xs)
+        status_title = QLabel("链路状态")
+        status_title.setObjectName("metricLabel")
+        self.capture_status_value = QLabel("--")
+        self.capture_status_value.setObjectName("metricValue")
+        self.capture_status_value.setProperty("compactMetric", True)
+        self.capture_status_note = QLabel("--")
+        self.capture_status_note.setObjectName("subtitle")
+        self.capture_status_note.setWordWrap(False)
+        status_layout.addWidget(status_title)
+        status_layout.addWidget(self.capture_status_value)
+        status_layout.addWidget(self.capture_status_note)
+        deck.addWidget(self.capture_status_panel, 3)
         layout.addLayout(deck)
         return card
 
