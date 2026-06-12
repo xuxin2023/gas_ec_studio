@@ -69,6 +69,11 @@ class ECProcessingPage(QWidget):
         self.workflow_lens_notes: dict[str, QLabel] = {}
         self.desktop_rail_mode_buttons: dict[str, QToolButton] = {}
         self.coverage_values: dict[str, QLabel] = {}
+        self.step_command_strips: dict[str, CardFrame] = {}
+        self.step_command_tiles: dict[str, dict[str, CardFrame]] = {}
+        self.step_command_values: dict[str, dict[str, QLabel]] = {}
+        self.step_command_notes: dict[str, dict[str, QLabel]] = {}
+        self.step_command_buttons: dict[str, dict[str, QToolButton]] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -1316,6 +1321,16 @@ class ECProcessingPage(QWidget):
             "coverage",
             closure_tone,
         )
+        self._refresh_step_command_strips(
+            step_titles=step_titles,
+            run_value=run_value,
+            run_note=run_note,
+            run_tone=status_tone,
+            closure_value=closure_value,
+            closure_note=closure_note,
+            closure_tone=closure_tone,
+            run_button_tone=run_tone,
+        )
 
     def _set_desktop_rail_status_tile(self, key: str, value: str, note: str, tone: str) -> None:
         value_label = self.desktop_rail_status_values[key]
@@ -1331,6 +1346,74 @@ class ECProcessingPage(QWidget):
         tile.setProperty("evidenceTone", tone)
         tile.style().unpolish(tile)
         tile.style().polish(tile)
+
+    def _refresh_step_command_strips(
+        self,
+        *,
+        step_titles: dict[str, str],
+        run_value: str,
+        run_note: str,
+        run_tone: str,
+        closure_value: str,
+        closure_note: str,
+        closure_tone: str,
+        run_button_tone: str,
+    ) -> None:
+        if not self.step_command_strips:
+            return
+        statuses = self._step_tree_status_model()
+        active_key = self.controller.ec_nav_step
+        for step_key, strip in self.step_command_strips.items():
+            step_title = step_titles.get(step_key, step_key)
+            status_label, step_tone, step_note = statuses.get(step_key, ("--", "warning", "--"))
+            self._set_step_command_tile(step_key, "step", step_title, status_label, step_note, step_tone)
+            self._set_step_command_tile(step_key, "run", run_value, "RP run", run_note, run_tone)
+            self._set_step_command_tile(step_key, "closure", closure_value, "delivery gate", closure_note, closure_tone)
+            strip_tone = "accent" if step_key == active_key else step_tone
+            strip.setProperty("evidenceTone", strip_tone)
+            strip.style().unpolish(strip)
+            strip.style().polish(strip)
+            buttons = self.step_command_buttons.get(step_key, {})
+            run_button = buttons.get("run")
+            if run_button is not None:
+                self._configure_desktop_rail_action_button(
+                    run_button,
+                    "运行",
+                    "保存当前配置并正式运行 RP 处理。",
+                    "run_processing",
+                    run_button_tone,
+                )
+            coverage_button = buttons.get("coverage")
+            if coverage_button is not None:
+                self._configure_desktop_rail_action_button(
+                    coverage_button,
+                    "覆盖",
+                    closure_note,
+                    "coverage",
+                    closure_tone,
+                )
+
+    def _set_step_command_tile(self, step_key: str, metric_key: str, value: str, note: str, tooltip: str, tone: str) -> None:
+        values = self.step_command_values.get(step_key, {})
+        notes = self.step_command_notes.get(step_key, {})
+        tiles = self.step_command_tiles.get(step_key, {})
+        value_label = values.get(metric_key)
+        note_label = notes.get(metric_key)
+        tile = tiles.get(metric_key)
+        display_value = self._compact_text(value, 18)
+        display_note = self._compact_text(note, 26)
+        full_tooltip = f"{value}\n{tooltip}"
+        if value_label is not None:
+            value_label.setText(display_value)
+            value_label.setToolTip(full_tooltip)
+        if note_label is not None:
+            note_label.setText(display_note)
+            note_label.setToolTip(full_tooltip)
+        if tile is not None:
+            tile.setToolTip(full_tooltip)
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
 
     def _configure_desktop_rail_action_button(
         self,
@@ -1451,6 +1534,7 @@ class ECProcessingPage(QWidget):
             page_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
             page_layout.setSpacing(TOKENS.spacing_md)
             page_layout.addWidget(section_title(title, subtitle))
+            page_layout.addWidget(self._build_step_command_strip(key, title))
             builder = getattr(self, f"_build_{key}_page")
             builder(page_layout)
             page_layout.addStretch(1)
@@ -1460,6 +1544,90 @@ class ECProcessingPage(QWidget):
             scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             scroll.setWidget(container)
             self.step_indexes[key] = self.content_stack.addWidget(scroll)
+
+    def _build_step_command_strip(self, step_key: str, title: str) -> CardFrame:
+        strip = CardFrame(muted=True, role="tile")
+        strip.setProperty("deckRole", "ecStepCommandStrip")
+        strip.setProperty("stepKey", step_key)
+        strip.setMaximumHeight(88)
+        strip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(strip)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        layout.setVerticalSpacing(TOKENS.spacing_xs)
+
+        self.step_command_tiles[step_key] = {}
+        self.step_command_values[step_key] = {}
+        self.step_command_notes[step_key] = {}
+        for column, (metric_key, metric_title) in enumerate(
+            (
+                ("step", "当前步骤"),
+                ("run", "运行状态"),
+                ("closure", "闭合建议"),
+            )
+        ):
+            layout.addWidget(self._step_command_tile(step_key, metric_key, metric_title, title), 0, column)
+
+        action_panel = QWidget()
+        action_layout = QGridLayout(action_panel)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        action_layout.setVerticalSpacing(2)
+        run_button = QToolButton()
+        run_button.setText("运行")
+        run_button.setProperty("railAction", True)
+        run_button.setProperty("targetStep", "run_processing")
+        run_button.clicked.connect(lambda _checked=False, button=run_button: self._activate_desktop_rail_target(button))
+        coverage_button = QToolButton()
+        coverage_button.setText("覆盖")
+        coverage_button.setProperty("railAction", True)
+        coverage_button.setProperty("targetStep", "coverage")
+        coverage_button.clicked.connect(lambda _checked=False, button=coverage_button: self._activate_desktop_rail_target(button))
+        for row, button in enumerate((run_button, coverage_button)):
+            button.setMinimumWidth(58)
+            button.setMaximumHeight(24)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            action_layout.addWidget(button, row, 0)
+        self.step_command_buttons[step_key] = {
+            "run": run_button,
+            "coverage": coverage_button,
+        }
+        layout.addWidget(action_panel, 0, 3)
+        layout.setColumnStretch(0, 1)
+        layout.setColumnStretch(1, 1)
+        layout.setColumnStretch(2, 1)
+        layout.setColumnStretch(3, 0)
+        self.step_command_strips[step_key] = strip
+        return strip
+
+    def _step_command_tile(self, step_key: str, metric_key: str, title: str, initial_value: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("evidenceTone", "warning")
+        tile.setMaximumHeight(64)
+        tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        tile_layout.setSpacing(0)
+        title_label = QLabel(title)
+        title_label.setObjectName("metricLabel")
+        value_label = QLabel(initial_value)
+        value_label.setObjectName("metricValue")
+        value_label.setProperty("compactMetric", True)
+        value_label.setWordWrap(False)
+        value_label.setMinimumWidth(0)
+        value_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        note_label = QLabel("--")
+        note_label.setObjectName("subtitle")
+        note_label.setWordWrap(False)
+        note_label.setMinimumWidth(0)
+        note_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        tile_layout.addWidget(title_label)
+        tile_layout.addWidget(value_label)
+        tile_layout.addWidget(note_label)
+        self.step_command_tiles[step_key][metric_key] = tile
+        self.step_command_values[step_key][metric_key] = value_label
+        self.step_command_notes[step_key][metric_key] = note_label
+        return tile
 
     def _build_window_sampling_page(self, layout: QVBoxLayout) -> None:
         self.window_cockpit_card = CardFrame(role="cockpit")
@@ -1567,7 +1735,7 @@ class ECProcessingPage(QWidget):
         self.window_plan_note.setWordWrap(True)
         self.window_plan_note.setMaximumHeight(36)
         timeline_layout.addWidget(self.window_plan_note)
-        layout.insertWidget(2, timeline_card)
+        layout.insertWidget(3, timeline_card)
 
     def _window_cockpit_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")

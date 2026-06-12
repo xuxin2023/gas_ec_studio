@@ -50,6 +50,14 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.desktop_rail_run_button.property("targetStep") == "run_processing"
         assert page.desktop_rail_coverage_button.property("targetStep") == "coverage"
         assert page.desktop_rail_coverage_button.toolTip()
+        assert set(page.step_command_strips) == set(page.step_indexes)
+        active_strip = page.step_command_strips["window_sampling"]
+        assert active_strip.property("deckRole") == "ecStepCommandStrip"
+        assert page.step_command_values["window_sampling"]["step"].text()
+        assert page.step_command_values["window_sampling"]["run"].text() == "empty"
+        assert page.step_command_values["window_sampling"]["closure"].text() == page.coverage_gate_chip.text()
+        assert page.step_command_buttons["window_sampling"]["run"].property("targetStep") == "run_processing"
+        assert page.step_command_buttons["window_sampling"]["coverage"].property("targetStep") == "coverage"
         assert page.desktop_rail_stack.count() == 3
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
@@ -62,6 +70,8 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.desktop_rail_stack.currentWidget() is page.rail_focus_card
         assert page.desktop_rail_stack.maximumHeight() == 470
         page.desktop_rail_coverage_button.click()
+        assert page.rail_focus_stack.currentWidget() is page.output_coverage_card
+        page.step_command_buttons["window_sampling"]["coverage"].click()
         assert page.rail_focus_stack.currentWidget() is page.output_coverage_card
         page._show_desktop_rail_mode("cockpit")
         assert page.desktop_rail_stack.currentWidget() is page.cockpit_card
