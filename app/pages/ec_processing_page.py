@@ -517,19 +517,36 @@ class ECProcessingPage(QWidget):
         header.setObjectName("metricLabel")
         layout.addWidget(header)
 
-        action_row = QHBoxLayout()
+        action_row = QGridLayout()
         action_row.setContentsMargins(0, 0, 0, 0)
-        action_row.setSpacing(TOKENS.spacing_xs)
+        action_row.setHorizontalSpacing(TOKENS.spacing_xs)
+        action_row.setVerticalSpacing(2)
         self.desktop_rail_action_button = QToolButton()
-        self.desktop_rail_action_button.setText("转到下一动作")
+        self.desktop_rail_action_button.setText("下步")
         self.desktop_rail_action_button.setProperty("railAction", True)
         self.desktop_rail_action_button.clicked.connect(self._activate_desktop_rail_action)
         self.desktop_rail_risk_button = QToolButton()
-        self.desktop_rail_risk_button.setText("查看风险")
+        self.desktop_rail_risk_button.setText("风险")
         self.desktop_rail_risk_button.setProperty("railAction", True)
         self.desktop_rail_risk_button.clicked.connect(self._activate_desktop_rail_risk)
-        action_row.addWidget(self.desktop_rail_action_button)
-        action_row.addWidget(self.desktop_rail_risk_button)
+        self.desktop_rail_run_button = QToolButton()
+        self.desktop_rail_run_button.setText("运行")
+        self.desktop_rail_run_button.setProperty("railAction", True)
+        self.desktop_rail_run_button.clicked.connect(lambda: self._activate_desktop_rail_target(self.desktop_rail_run_button))
+        self.desktop_rail_coverage_button = QToolButton()
+        self.desktop_rail_coverage_button.setText("覆盖")
+        self.desktop_rail_coverage_button.setProperty("railAction", True)
+        self.desktop_rail_coverage_button.clicked.connect(lambda: self._activate_desktop_rail_target(self.desktop_rail_coverage_button))
+        for index, button in enumerate((
+            self.desktop_rail_action_button,
+            self.desktop_rail_risk_button,
+            self.desktop_rail_run_button,
+            self.desktop_rail_coverage_button,
+        )):
+            button.setMinimumWidth(52)
+            button.setMaximumHeight(26)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            action_row.addWidget(button, 0, index)
         layout.addLayout(action_row)
 
         self.desktop_rail_status_tiles: dict[str, CardFrame] = {}
@@ -910,6 +927,9 @@ class ECProcessingPage(QWidget):
         if target == "coverage":
             self._show_rail_focus("coverage")
             return
+        if target == "run_processing":
+            self._run_processing(precheck_only=False)
+            return
         item = self.step_items.get(target)
         if item is not None:
             self.step_tree.setCurrentItem(item)
@@ -1274,11 +1294,28 @@ class ECProcessingPage(QWidget):
             risk_tone = closure_tone
             risk_display_note = closure_note
 
+        action_value = "下步"
+        risk_value = "就绪" if risk_tone == "success" else "风险"
         self._set_desktop_rail_status_tile("step", step_title, self.controller.ec_nav_step, "accent")
         self._set_desktop_rail_status_tile("run", run_value, run_note, status_tone)
         self._set_desktop_rail_status_tile("closure", closure_value, closure_note, closure_tone)
         self._configure_desktop_rail_action_button(self.desktop_rail_action_button, action_value, action_note, action_target, action_tone)
         self._configure_desktop_rail_action_button(self.desktop_rail_risk_button, risk_value, risk_display_note, risk_target, risk_tone)
+        run_tone = "success" if current is not None else ("warning" if risk_steps else "accent")
+        self._configure_desktop_rail_action_button(
+            self.desktop_rail_run_button,
+            "运行",
+            "保存当前配置并正式运行 RP 处理。",
+            "run_processing",
+            run_tone,
+        )
+        self._configure_desktop_rail_action_button(
+            self.desktop_rail_coverage_button,
+            "覆盖",
+            closure_note,
+            "coverage",
+            closure_tone,
+        )
 
     def _set_desktop_rail_status_tile(self, key: str, value: str, note: str, tone: str) -> None:
         value_label = self.desktop_rail_status_values[key]
