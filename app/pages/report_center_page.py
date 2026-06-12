@@ -363,6 +363,25 @@ class ReportCenterPage(QWidget):
         rail_mode_row.addStretch(1)
         rail_inspector_layout.addLayout(rail_mode_row)
 
+        self.delivery_rail_action_bar = CardFrame(muted=True, role="console")
+        self.delivery_rail_action_bar.setProperty("deckRole", "deliveryRailActionBar")
+        self.delivery_rail_action_bar.setMaximumHeight(38)
+        self.delivery_rail_action_bar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        action_layout = QHBoxLayout(self.delivery_rail_action_bar)
+        action_layout.setContentsMargins(TOKENS.spacing_sm, 4, TOKENS.spacing_sm, 4)
+        action_layout.setSpacing(TOKENS.spacing_xs)
+        self.delivery_rail_action_button = QToolButton()
+        self.delivery_rail_action_button.setText("下一动作")
+        self.delivery_rail_action_button.setProperty("railAction", True)
+        self.delivery_rail_action_button.clicked.connect(self._activate_delivery_rail_action)
+        self.delivery_rail_risk_button = QToolButton()
+        self.delivery_rail_risk_button.setText("查看风险")
+        self.delivery_rail_risk_button.setProperty("railAction", True)
+        self.delivery_rail_risk_button.clicked.connect(self._activate_delivery_rail_risk)
+        action_layout.addWidget(self.delivery_rail_action_button)
+        action_layout.addWidget(self.delivery_rail_risk_button)
+        rail_inspector_layout.addWidget(self.delivery_rail_action_bar)
+
         self.delivery_rail_stack = QStackedWidget()
         self.delivery_rail_stack.setMinimumWidth(0)
         self.delivery_rail_stack.setProperty("stackRole", "deliveryRailInspectorStack")
@@ -855,14 +874,22 @@ class ReportCenterPage(QWidget):
         hero_layout.addWidget(self.delivery_gate_ready_note)
         layout.addWidget(self.delivery_gate_hero_card)
 
-        grid = QGridLayout()
+        self.delivery_gate_scroll = QScrollArea()
+        self.delivery_gate_scroll.setObjectName("deliveryGateMatrixScroll")
+        self.delivery_gate_scroll.setWidgetResizable(True)
+        self.delivery_gate_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.delivery_gate_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.delivery_gate_scroll.setMaximumHeight(74)
+        self.delivery_gate_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.delivery_gate_grid_body = QWidget()
+        self.delivery_gate_grid_body.setMinimumWidth(0)
+        self.delivery_gate_grid_body.setMinimumHeight(222)
+        grid = QGridLayout(self.delivery_gate_grid_body)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(TOKENS.spacing_xs)
         grid.setVerticalSpacing(TOKENS.spacing_xs)
-        for row in range(3):
-            grid.setRowMinimumHeight(row, 42)
-        for column in range(2):
-            grid.setColumnMinimumWidth(column, 104)
+        for row in range(6):
+            grid.setRowMinimumHeight(row, 32)
         self.delivery_gate_values: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
         self.delivery_gate_tiles: dict[str, CardFrame] = {}
         gate_items = [
@@ -874,8 +901,9 @@ class ReportCenterPage(QWidget):
             ("methods", "方法", "三族方法溯源闭合"),
         ]
         for index, (key, title, hint) in enumerate(gate_items):
-            grid.addWidget(self._delivery_gate_tile(key, title, hint), index // 2, index % 2)
-        layout.addLayout(grid)
+            grid.addWidget(self._delivery_gate_tile(key, title, hint), index, 0)
+        self.delivery_gate_scroll.setWidget(self.delivery_gate_grid_body)
+        layout.addWidget(self.delivery_gate_scroll)
 
         self.delivery_gate_next_card = CardFrame(muted=True, role="tile")
         self.delivery_gate_next_card.setMaximumHeight(0)
@@ -904,18 +932,16 @@ class ReportCenterPage(QWidget):
     def _delivery_gate_tile(self, key: str, title: str, hint: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("gateKey", key)
-        tile.setMinimumHeight(38)
-        tile.setMaximumHeight(42)
-        layout = QVBoxLayout(tile)
-        layout.setContentsMargins(TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs)
-        layout.setSpacing(1)
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(TOKENS.spacing_xs)
+        tile.setMinimumHeight(30)
+        tile.setMaximumHeight(32)
+        layout = QHBoxLayout(tile)
+        layout.setContentsMargins(TOKENS.spacing_xs, 2, TOKENS.spacing_xs, 2)
+        layout.setSpacing(TOKENS.spacing_xs)
         title_label = QLabel(_ui_safe_text(title))
         title_label.setObjectName("metricLabel")
-        title_label.setMinimumWidth(0)
-        title_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        title_label.setMinimumWidth(32)
+        title_label.setMaximumWidth(42)
+        title_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         status_chip = chip("检查", "warning")
         status_chip.setProperty("closureStage", True)
         status_chip.setAlignment(Qt.AlignCenter)
@@ -931,16 +957,14 @@ class ReportCenterPage(QWidget):
         value.setWordWrap(False)
         value.setMaximumHeight(18)
         value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        note = QLabel(_ui_safe_text(hint))
+        note = QLabel(_ui_safe_text(hint), tile)
         note.setObjectName("subtitle")
         note.setWordWrap(True)
         note.setMaximumHeight(36)
         note.setVisible(False)
-        header.addWidget(title_label)
-        header.addStretch(1)
-        header.addWidget(status_chip)
-        layout.addLayout(header)
-        layout.addWidget(value)
+        layout.addWidget(title_label)
+        layout.addWidget(value, 1)
+        layout.addWidget(status_chip)
         self.delivery_gate_values[key] = (value, note, status_chip)
         self.delivery_gate_tiles[key] = tile
         return tile
@@ -2180,6 +2204,17 @@ class ReportCenterPage(QWidget):
             next_action=next_action,
             next_note=next_note,
         )
+        self._refresh_delivery_rail_actions(
+            next_action=next_action,
+            next_note=next_note,
+            success_count=success_count,
+            report_ready=report_ready,
+            export_done=export_done,
+            manifest_ready=manifest_ready,
+            network=network,
+            methods=methods,
+            benchmark=benchmark,
+        )
 
     def _refresh_report_command_deck(self, workspace: dict, report: dict, export_status: str) -> None:
         reports = dict(workspace.get("reports", {}) or {})
@@ -2311,6 +2346,117 @@ class ReportCenterPage(QWidget):
         if not benchmark_ready:
             return "检查基准对标", "参考对标尚未激活或缺少通过率摘要。"
         return "交付归档", "交付链路已闭合，可以归档或打包给审阅者。"
+
+    def _refresh_delivery_rail_actions(
+        self,
+        *,
+        next_action: str,
+        next_note: str,
+        success_count: int,
+        report_ready: bool,
+        export_done: bool,
+        manifest_ready: bool,
+        network: dict,
+        methods: dict,
+        benchmark: dict,
+    ) -> None:
+        action_target = {
+            "运行处理": "run_processing",
+            "生成报告": "generate_report",
+            "导出交付包": "export_report",
+            "补网络字段": "network",
+            "检查方法溯源": "methods",
+            "检查基准对标": "benchmark",
+            "交付归档": "details",
+        }.get(next_action, "details")
+        self._configure_delivery_rail_action_button(
+            self.delivery_rail_action_button,
+            next_action,
+            next_note,
+            action_target,
+            "success" if success_count >= 6 else ("accent" if report_ready or success_count >= 3 else "warning"),
+        )
+
+        risk_target = "details"
+        risk_note = "六项交付检查已闭合。"
+        if not report_ready:
+            risk_target = "report"
+            risk_note = "当前报告尚未形成可预览内容。"
+        elif not export_done or not manifest_ready:
+            risk_target = "export"
+            risk_note = "导出状态或 manifest 尚未闭合。"
+        elif network.get("tone") != "success":
+            risk_target = "network"
+            risk_note = str(network.get("note", "网络导出字段需要复核。"))
+        elif methods.get("tone") != "success":
+            risk_target = "methods"
+            risk_note = str(methods.get("note", "方法溯源需要复核。"))
+        elif benchmark.get("tone") != "success":
+            risk_target = "benchmark"
+            risk_note = str(benchmark.get("note", "基准对标需要复核。"))
+        remaining = max(0, 6 - success_count)
+        risk_value = "无风险" if remaining == 0 else f"复核 {remaining}"
+        risk_tone = "success" if remaining == 0 else ("warning" if success_count >= 3 else "danger")
+        self._configure_delivery_rail_action_button(
+            self.delivery_rail_risk_button,
+            risk_value,
+            risk_note,
+            risk_target,
+            risk_tone,
+        )
+
+    def _configure_delivery_rail_action_button(
+        self,
+        button: QToolButton,
+        value: str,
+        note: str,
+        target: str,
+        tone: str,
+    ) -> None:
+        safe_value = _ui_safe_text(value)
+        button.setText(safe_value if len(safe_value) <= 8 else f"{safe_value[:7]}...")
+        button.setToolTip(_ui_safe_text(note))
+        button.setProperty("targetAction", target)
+        button.setProperty("actionTone", tone)
+        button.setEnabled(bool(target))
+        button.style().unpolish(button)
+        button.style().polish(button)
+
+    def _activate_delivery_rail_action(self) -> None:
+        self._activate_delivery_rail_target(self.delivery_rail_action_button)
+
+    def _activate_delivery_rail_risk(self) -> None:
+        self._activate_delivery_rail_target(self.delivery_rail_risk_button)
+
+    def _activate_delivery_rail_target(self, button: QToolButton) -> None:
+        target = str(button.property("targetAction") or "")
+        if target == "run_processing":
+            self._run_ec_processing_from_report_center()
+        elif target == "generate_report":
+            self._generate_report()
+            self.refresh()
+        elif target == "export_report":
+            self._export_current_report()
+            self.refresh()
+        elif target == "network":
+            self._show_delivery_focus("details")
+            self._show_inspector_section("file")
+        elif target == "methods":
+            self.controller.set_report_nav_section("method_provenance")
+            self.refresh()
+            self._show_delivery_focus("gate")
+        elif target == "benchmark":
+            self.controller.set_report_nav_section("benchmark_cockpit")
+            self.refresh()
+            self._show_delivery_focus("gate")
+        elif target == "export":
+            self._show_delivery_focus("details")
+            self._show_inspector_section("export")
+        elif target == "details":
+            self._show_delivery_focus("details")
+            self._show_inspector_section("usage")
+        else:
+            self._show_delivery_focus("gate")
 
     def _delivery_file_values(self, reports: dict) -> dict[str, str]:
         values: dict[str, str] = {}

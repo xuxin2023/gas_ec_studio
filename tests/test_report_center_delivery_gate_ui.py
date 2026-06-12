@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from app.pages.report_center_page import REPORT_SECTIONS, ReportCenterPage
@@ -38,6 +39,15 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail.property("cardRole") == "rail"
         assert page.delivery_rail_status_chip.property("closureStage") is True
         assert page.delivery_rail_status_chip.text().startswith("待生成")
+        assert page.delivery_rail_action_bar.property("deckRole") == "deliveryRailActionBar"
+        assert page.delivery_rail_action_bar.maximumHeight() == 38
+        assert page.delivery_rail_action_button.property("railAction") is True
+        assert page.delivery_rail_risk_button.property("railAction") is True
+        assert page.delivery_rail_action_button.property("targetAction") == "run_processing"
+        assert page.delivery_rail_risk_button.property("targetAction") == "report"
+        assert page.delivery_rail_risk_button.property("actionTone") == "danger"
+        page.delivery_rail_risk_button.click()
+        assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
         assert page.filter_bar.maximumHeight() == 104
         assert page.project_combo.minimumWidth() >= 108
         assert page.batch_combo.minimumWidth() >= 108
@@ -74,9 +84,13 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_progress_badge.property("chipTone") in {"warning", "accent", "success"}
         assert page.delivery_focus_stack.property("stackRole") == "compactDeliveryInspector"
         assert page.delivery_gate_hero_card.maximumHeight() == 36
+        assert page.delivery_gate_scroll.objectName() == "deliveryGateMatrixScroll"
+        assert page.delivery_gate_scroll.maximumHeight() == 74
+        assert page.delivery_gate_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+        assert page.delivery_gate_scroll.widget() is page.delivery_gate_grid_body
         assert page.delivery_gate_ready_value.property("compactMetric") is True
         assert page.delivery_gate_ready_note.isHidden() is True
-        assert all(tile.maximumHeight() == 42 for tile in page.delivery_gate_tiles.values())
+        assert all(tile.maximumHeight() == 32 for tile in page.delivery_gate_tiles.values())
         assert page.delivery_gate_values["report"][0].property("compactMetric") is True
         assert page.delivery_gate_values["report"][1].isHidden() is True
         assert page.delivery_gate_values["report"][2].isHidden() is False
@@ -214,6 +228,7 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
 
             page._show_delivery_rail_mode("summary")
             app.processEvents()
+            assert_contained(page.delivery_rail, page.delivery_rail_action_bar, page)
             summary_cards = list(page.summary_cards.values())
             assert len(summary_cards) == 4
             for card in summary_cards:
@@ -222,13 +237,15 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
 
             page._show_delivery_focus("gate")
             app.processEvents()
-            gate_widgets = [
-                page.delivery_gate_hero_card,
-                *page.delivery_gate_tiles.values(),
-            ]
+            gate_widgets = [page.delivery_gate_hero_card, page.delivery_gate_scroll]
             for widget in gate_widgets:
                 assert_contained(page.delivery_gate_card, widget, page)
-            assert_no_visual_overlap(gate_widgets, page)
+            for widget in (page.delivery_gate_tiles["report"], page.delivery_gate_tiles["export"]):
+                assert_contained(page.delivery_gate_scroll.viewport(), widget, page)
+            for widget in page.delivery_gate_tiles.values():
+                assert_contained(page.delivery_gate_grid_body, widget, page)
+            assert_no_visual_overlap([page.delivery_gate_hero_card, page.delivery_gate_scroll], page)
+            assert_no_visual_overlap(list(page.delivery_gate_tiles.values()), page)
 
             assert_no_visible_competitor_name(page)
     finally:
@@ -331,6 +348,12 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.report_command_values["export"].text() == "已导出"
         assert page.report_command_tiles["network"].property("commandTone") == "success"
         assert page.delivery_rail_status_chip.text().startswith("可交付")
+        assert page.delivery_rail_action_button.property("targetAction") == "details"
+        assert page.delivery_rail_risk_button.property("targetAction") == "details"
+        assert page.delivery_rail_risk_button.property("actionTone") == "success"
+        page.delivery_rail_risk_button.click()
+        assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+        assert page.inspector_stack.currentWidget() is page.usage_card
         assert page.report_tree_active_chip.text().startswith("运行")
         assert page.preview_content_card.property("plotStatus") == "series"
         assert page.preview_plot.isHidden() is False
