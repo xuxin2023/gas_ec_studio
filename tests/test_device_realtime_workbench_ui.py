@@ -31,7 +31,14 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert page.status_card.property("cardRole") == "cockpit"
         assert page.status_card.maximumHeight() == 90
         assert page.field_readiness_card.property("cardRole") == "panel"
-        assert page.field_readiness_card.maximumHeight() == 136
+        assert page.field_readiness_card.maximumHeight() == 142
+        assert page.field_action_card.property("deckRole") == "deviceCenterActionDock"
+        assert page.fleet_next_button.property("railAction") is True
+        assert page.fleet_detail_button.property("railAction") is True
+        assert page.fleet_realtime_button.property("railAction") is True
+        assert page.fleet_log_button.property("railAction") is True
+        assert page.fleet_next_button.text() == "下一步"
+        assert page.fleet_realtime_button.text() == "实时"
         assert page.quick_card.property("cardRole") == "command"
         assert page.quick_card.maximumHeight() == 154
         assert page.quick_stack.property("stackRole") == "deviceQuickInspectorStack"
@@ -87,6 +94,30 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert all(value.property("compactMetric") is True for value, _note in page.readiness_values.values())
         assert page.readiness_values["fleet"][0].text() in {"可采", "待检查"}
         assert page.readiness_values["next"][0].text() in {"连接设备", "进入采集", "处理异常", "选择设备"}
+
+        selected = controller.selected_device()
+        assert selected is not None
+        uid = selected.config.uid
+        detail_hits: list[str] = []
+        realtime_hits: list[str] = []
+        page.open_detail_requested.connect(detail_hits.append)
+        page.open_realtime_requested.connect(lambda: realtime_hits.append("realtime"))
+
+        page.fleet_detail_button.click()
+        assert detail_hits == [uid]
+
+        page.fleet_realtime_button.click()
+        assert realtime_hits == ["realtime"]
+
+        controller.disconnect_device(uid)
+        page.refresh()
+        assert page.fleet_next_button.property("targetAction") == "connect"
+        page.fleet_next_button.click()
+        assert controller.selected_device() is not None
+        assert controller.selected_device().runtime.connected is True
+
+        page.fleet_log_button.click()
+        assert page.operations_stack.currentWidget() in {page.operator_evidence_card, page.activity_card}
         assert page.device_grid.itemAt(0).widget().isVisibleTo(page) is True
         controller.set_view_mode("engineer")
         assert page.operator_mission_card.isVisibleTo(page) is False
@@ -119,6 +150,14 @@ def test_device_center_top_decks_fit_common_desktop_viewports() -> None:
             assert page.quick_card.height() <= page.quick_card.maximumHeight()
             assert page.quick_add_panel.height() <= page.quick_add_panel.maximumHeight()
             assert page.quick_actions_panel.height() <= page.quick_actions_panel.maximumHeight()
+            assert_contained(page, page.field_action_card, page)
+            for button in (
+                page.fleet_next_button,
+                page.fleet_detail_button,
+                page.fleet_realtime_button,
+                page.fleet_log_button,
+            ):
+                assert_contained(page.field_action_card, button, page)
             assert widget_bounds(page.operations_deck_card, page).top() < height
             if height >= 900:
                 assert_contained(page, page.operations_deck_card, page)

@@ -172,13 +172,13 @@ class DeviceCenterPage(QWidget):
     def _build_field_readiness(self) -> CardFrame:
         card = CardFrame(role="panel")
         card.setMinimumWidth(0)
-        card.setMaximumHeight(136)
+        card.setMaximumHeight(142)
         card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QGridLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
         layout.setHorizontalSpacing(TOKENS.spacing_sm)
         layout.setVerticalSpacing(TOKENS.spacing_sm)
-        layout.addWidget(section_title("现场就绪驾驶舱", "把设备舰队、当前目标、协议链路和下一步动作压缩到一行，减少来回找状态。"), 0, 0, 1, 4)
+        layout.addWidget(section_title("现场就绪驾驶舱", "把设备舰队、当前目标、协议链路和下一步动作压缩到一行，减少来回找状态。"), 0, 0, 1, 5)
         self.readiness_values: dict[str, tuple[QLabel, QLabel]] = {}
         for index, (key, title) in enumerate(
             (
@@ -190,7 +190,7 @@ class DeviceCenterPage(QWidget):
         ):
             tile = CardFrame(muted=True, role="tile")
             tile.setMinimumWidth(0)
-            tile.setMaximumHeight(64)
+            tile.setMaximumHeight(66)
             tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             tile_layout = QVBoxLayout(tile)
             tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
@@ -217,7 +217,46 @@ class DeviceCenterPage(QWidget):
             self.readiness_values[key] = (value, note)
             layout.addWidget(tile, 1, index)
             layout.setColumnStretch(index, 1)
+        self.field_action_card = self._build_field_action_dock()
+        layout.addWidget(self.field_action_card, 1, 4)
+        layout.setColumnStretch(4, 1)
         return card
+
+    def _build_field_action_dock(self) -> CardFrame:
+        card = CardFrame(muted=True, role="tile")
+        card.setProperty("deckRole", "deviceCenterActionDock")
+        card.setMinimumWidth(0)
+        card.setMaximumHeight(66)
+        card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_sm, 3, TOKENS.spacing_sm, 3)
+        layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(2)
+        self.fleet_next_button = self._field_action_button("下一步")
+        self.fleet_next_button.clicked.connect(self._activate_fleet_next_action)
+        self.fleet_detail_button = self._field_action_button("详情")
+        self.fleet_detail_button.clicked.connect(lambda: self._safe_call(self._open_detail))
+        self.fleet_realtime_button = self._field_action_button("实时")
+        self.fleet_realtime_button.clicked.connect(self.open_realtime_requested.emit)
+        self.fleet_log_button = self._field_action_button("证据")
+        self.fleet_log_button.clicked.connect(self._activate_fleet_log_action)
+        for index, button in enumerate((
+            self.fleet_next_button,
+            self.fleet_detail_button,
+            self.fleet_realtime_button,
+            self.fleet_log_button,
+        )):
+            layout.addWidget(button, index // 2, index % 2)
+        return card
+
+    def _field_action_button(self, text: str) -> QToolButton:
+        button = QToolButton()
+        button.setText(text)
+        button.setProperty("railAction", True)
+        button.setMinimumWidth(0)
+        button.setMaximumHeight(26)
+        button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        return button
 
     def _refresh_field_readiness(self, summary: dict, selected) -> None:
         fleet_value, fleet_note = self.readiness_values["fleet"]
@@ -230,7 +269,7 @@ class DeviceCenterPage(QWidget):
         abnormal = int(summary.get("abnormal_devices", 0) or 0)
         sampling = int(summary.get("sampling_devices", 0) or 0)
         fleet_value.setText("可采" if total and abnormal == 0 and online > 0 else "待检查")
-        fleet_note.setText(f"online={online}/{total}，sampling={sampling}，abnormal={abnormal}")
+        fleet_note.setText(f"on {online}/{total} · 采 {sampling} · 异 {abnormal}")
 
         if selected is None:
             target_value.setText("未选择")
@@ -239,6 +278,7 @@ class DeviceCenterPage(QWidget):
             protocol_note.setText("等待设备目标。")
             next_value.setText("选择设备")
             next_note.setText("从设备面板选择目标，或使用快捷新增。")
+            self._refresh_field_action_dock(summary, selected, next_value.text(), next_note.text())
             return
 
         runtime = selected.runtime
@@ -246,15 +286,67 @@ class DeviceCenterPage(QWidget):
         target_note.setText(f"{selected.config.port} · ID {selected.config.device_id} · MODE{runtime.mode}")
         protocol_value.setText("主动输出" if runtime.active_send else "按需读取")
         protocol_note.setText(f"{selected.config.analyzer_profile} · {selected.config.baudrate} bps · {runtime.last_message}")
-        if abnormal > 0:
-            next_value.setText("处理异常")
-            next_note.setText("先查看右侧检查器和现场动态，再决定是否继续采集。")
-        elif runtime.connected:
-            next_value.setText("进入采集")
-            next_note.setText("设备已连接，可进入实时采集页检查趋势和原始帧。")
-        else:
+        if not runtime.connected:
             next_value.setText("连接设备")
             next_note.setText("先连接当前目标，再读取一帧确认协议链路。")
+        elif abnormal > 0:
+            next_value.setText("处理异常")
+            next_note.setText("先查看右侧检查器和现场动态，再决定是否继续采集。")
+        else:
+            next_value.setText("进入采集")
+            next_note.setText("设备已连接，可进入实时采集页检查趋势和原始帧。")
+        self._refresh_field_action_dock(summary, selected, next_value.text(), next_note.text())
+
+    def _refresh_field_action_dock(self, summary: dict, selected, next_text: str, next_note: str) -> None:
+        if not hasattr(self, "fleet_next_button"):
+            return
+        abnormal = int(summary.get("abnormal_devices", 0) or 0)
+        if selected is None:
+            target_action = "add"
+            tone = "warning"
+        elif not selected.runtime.connected:
+            target_action = "connect"
+            tone = "accent"
+        elif abnormal > 0:
+            target_action = "activity"
+            tone = "danger"
+        else:
+            target_action = "realtime"
+            tone = "success"
+
+        self.fleet_next_button.setText("下一步")
+        self.fleet_next_button.setToolTip(f"{next_text}: {next_note}")
+        self.fleet_next_button.setProperty("targetAction", target_action)
+        self.fleet_next_button.setProperty("actionTone", tone)
+        self.fleet_next_button.style().unpolish(self.fleet_next_button)
+        self.fleet_next_button.style().polish(self.fleet_next_button)
+
+        has_selected = selected is not None
+        self.fleet_detail_button.setEnabled(has_selected)
+        self.fleet_detail_button.setToolTip("打开当前设备详情。" if has_selected else "先选择或新增一台设备。")
+        self.fleet_realtime_button.setToolTip("进入实时采集页复核曲线与原始帧。")
+        log_text = "日志" if abnormal else "证据"
+        log_target = "activity" if abnormal else "evidence"
+        self.fleet_log_button.setText(log_text)
+        self.fleet_log_button.setProperty("targetPanel", log_target)
+        self.fleet_log_button.setToolTip("查看最近事务和现场事件。" if abnormal else "查看运行证据矩阵。")
+
+    def _activate_fleet_next_action(self) -> None:
+        target = str(self.fleet_next_button.property("targetAction") or "add")
+        selected = self.controller.selected_device()
+        if target == "add":
+            self._show_quick_mode("add")
+        elif target == "connect" and selected is not None:
+            self._safe_call(lambda: self.controller.connect_device(selected.config.uid))
+        elif target == "realtime":
+            self.open_realtime_requested.emit()
+        elif target == "activity":
+            self._show_operations_mode("activity")
+        self.refresh()
+
+    def _activate_fleet_log_action(self) -> None:
+        target = str(self.fleet_log_button.property("targetPanel") or "evidence")
+        self._show_operations_mode("activity" if target == "activity" else "evidence")
 
     def _build_quick_actions(self) -> CardFrame:
         card = CardFrame(role="command")
