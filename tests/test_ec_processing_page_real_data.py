@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from app.main_window import StudioMainWindow
-from app.pages.ec_processing_page import ECProcessingPage
+from app.pages.ec_processing_page import EC_STEPS, ECProcessingPage
 from app.studio import StudioController
 from models.hf_models import FrameQuality, NormalizedHFFrame
 from tests.ui_geometry_helpers import (
@@ -82,9 +82,15 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.rp_closure_values["network"].text() == "FLUXNET"
         assert page.tree_card.property("cardRole") == "rail"
         assert page.step_nav_summary_card.property("deckRole") == "ecStepNavigationStatus"
-        assert page.step_nav_summary_card.maximumHeight() == 58
+        assert page.step_nav_summary_card.maximumHeight() == 42
         assert page.step_nav_summary_value.text().startswith("就绪")
+        assert page.step_count_chip.text() == f"{len(EC_STEPS)} 步"
+        assert page.step_active_chip.text().startswith("窗口")
         assert page.step_tree.columnCount() == 2
+        assert page.step_tree.indentation() == 0
+        assert page.step_tree.rootIsDecorated() is False
+        assert page.step_tree.uniformRowHeights() is True
+        assert page.step_tree.topLevelItemCount() == len(EC_STEPS)
         assert page.step_tree.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.step_items["window_sampling"].text(1) == "就绪"
         assert page.step_items["lag"].text(1) == "待跑"

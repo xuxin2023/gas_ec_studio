@@ -92,14 +92,26 @@ class ECProcessingPage(QWidget):
         self.tree_card = CardFrame(muted=True, role="rail")
         tree_layout = QVBoxLayout(self.tree_card)
         tree_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        tree_layout.setSpacing(TOKENS.spacing_md)
-        tree_layout.addWidget(section_title("处理树", "按步骤理解配置与结果，中间结果始终和参数同屏出现。"))
+        tree_layout.setSpacing(TOKENS.spacing_sm)
+        step_header = QHBoxLayout()
+        step_header.setContentsMargins(0, 0, 0, 0)
+        step_header.setSpacing(TOKENS.spacing_xs)
+        step_header.addWidget(section_title("处理流程", "按步骤导航，状态同屏。"), 1)
+        self.step_count_chip = chip("0 步", "accent")
+        self.step_count_chip.setMinimumHeight(22)
+        self.step_count_chip.setMaximumHeight(24)
+        self.step_active_chip = chip("窗口", "success")
+        self.step_active_chip.setMinimumHeight(22)
+        self.step_active_chip.setMaximumHeight(24)
+        step_header.addWidget(self.step_count_chip)
+        step_header.addWidget(self.step_active_chip)
+        tree_layout.addLayout(step_header)
         self.step_nav_summary_card = CardFrame(muted=True, role="tile")
         self.step_nav_summary_card.setProperty("deckRole", "ecStepNavigationStatus")
-        self.step_nav_summary_card.setMaximumHeight(58)
-        summary_layout = QVBoxLayout(self.step_nav_summary_card)
+        self.step_nav_summary_card.setMaximumHeight(42)
+        summary_layout = QHBoxLayout(self.step_nav_summary_card)
         summary_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
-        summary_layout.setSpacing(1)
+        summary_layout.setSpacing(TOKENS.spacing_xs)
         summary_title = QLabel("步骤状态")
         summary_title.setObjectName("metricLabel")
         self.step_nav_summary_value = QLabel("--")
@@ -109,7 +121,7 @@ class ECProcessingPage(QWidget):
         self.step_nav_summary_value.setWordWrap(False)
         self.step_nav_summary_value.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         summary_layout.addWidget(summary_title)
-        summary_layout.addWidget(self.step_nav_summary_value)
+        summary_layout.addWidget(self.step_nav_summary_value, 1)
         tree_layout.addWidget(self.step_nav_summary_card)
 
         self.step_tree = QTreeWidget()
@@ -118,7 +130,9 @@ class ECProcessingPage(QWidget):
         self.step_tree.setColumnWidth(0, 122)
         self.step_tree.setColumnWidth(1, 52)
         self.step_tree.setHeaderHidden(True)
-        self.step_tree.setIndentation(6)
+        self.step_tree.setIndentation(0)
+        self.step_tree.setRootIsDecorated(False)
+        self.step_tree.setUniformRowHeights(True)
         self.step_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.step_tree.itemSelectionChanged.connect(self._on_step_changed)
         tree_layout.addWidget(self.step_tree, 1)
@@ -1111,9 +1125,22 @@ class ECProcessingPage(QWidget):
             f"就绪 {counts['ready']} / 待运行 {counts['pending']} / 复核 {counts['risk']}"
         )
         summary_tone = "danger" if counts["risk"] else ("warning" if counts["pending"] else "success")
+        self.step_count_chip.setText(f"{len(EC_STEPS)} 步")
+        self._refresh_step_active_chip(self.controller.ec_nav_step)
+        self.step_active_chip.setProperty("chipTone", summary_tone)
+        self.step_active_chip.style().unpolish(self.step_active_chip)
+        self.step_active_chip.style().polish(self.step_active_chip)
         self.step_nav_summary_card.setProperty("evidenceTone", summary_tone)
         self.step_nav_summary_card.style().unpolish(self.step_nav_summary_card)
         self.step_nav_summary_card.style().polish(self.step_nav_summary_card)
+
+    def _refresh_step_active_chip(self, key: str) -> None:
+        if not hasattr(self, "step_active_chip"):
+            return
+        title = dict((step_key, title) for step_key, title, _subtitle in EC_STEPS).get(key, "当前步骤")
+        display = title if len(title) <= 4 else f"{title[:3]}…"
+        self.step_active_chip.setText(display)
+        self.step_active_chip.setToolTip(title)
 
     def _step_tree_status_model(self) -> dict[str, tuple[str, str, str]]:
         current = self._current_window()
@@ -1143,18 +1170,14 @@ class ECProcessingPage(QWidget):
         return statuses
 
     def _build_tree(self) -> None:
-        root = QTreeWidgetItem(["处理流程"])
-        root.setFlags(root.flags() & ~Qt.ItemIsSelectable)
-        self.step_tree.addTopLevelItem(root)
         for key, title, _subtitle in EC_STEPS:
-            item = QTreeWidgetItem([title])
+            item = QTreeWidgetItem([title, "--"])
             item.setData(0, Qt.UserRole, key)
-            item.setText(1, "--")
             item.setTextAlignment(1, Qt.AlignRight | Qt.AlignVCenter)
             item.setToolTip(0, title)
-            root.addChild(item)
+            self.step_tree.addTopLevelItem(item)
             self.step_items[key] = item
-        root.setExpanded(True)
+        self.step_count_chip.setText(f"{len(EC_STEPS)} 步")
         self._refresh_step_tree_statuses()
 
     def _build_pages(self) -> None:
@@ -2537,6 +2560,7 @@ class ECProcessingPage(QWidget):
             return
         self.content_stack.setCurrentIndex(self.step_indexes[key])
         self.controller.set_ec_nav_step(key)
+        self._refresh_step_active_chip(str(key))
         self._refresh_run_bar()
 
     def _sync_step_from_controller(self) -> None:
@@ -2549,6 +2573,7 @@ class ECProcessingPage(QWidget):
             self.step_tree.setCurrentItem(item)
             self.step_tree.blockSignals(False)
         self.content_stack.setCurrentIndex(self.step_indexes[key])
+        self._refresh_step_active_chip(str(key))
         self._refresh_workflow_lens()
         self._refresh_desktop_rail_status_strip()
 
