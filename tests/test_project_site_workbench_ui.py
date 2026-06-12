@@ -21,7 +21,7 @@ def _app() -> QApplication:
 
 
 def test_project_site_uses_station_closure_rail(monkeypatch, tmp_path: Path) -> None:
-    _app()
+    app = _app()
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
     controller = StudioController(workspace_root=tmp_path)
     page = ProjectSitePage(controller)
@@ -31,6 +31,13 @@ def test_project_site_uses_station_closure_rail(monkeypatch, tmp_path: Path) -> 
         assert page.top_bar.property("cardRole") == "command"
         assert page.tree_card.property("cardRole") == "rail"
         assert page.site_ops_rail.property("cardRole") == "rail"
+        assert page.site_ops_action_bar.property("cardRole") == "console"
+        assert page.section_items["metadata"].text(0) == "元数据"
+        assert page.site_ops_next_action_button.property("railAction") is True
+        assert page.site_ops_save_button.property("railAction") is True
+        assert page.site_ops_check_button.property("railAction") is True
+        assert page.site_ops_chain_button.property("railAction") is True
+        assert page.site_ops_metadata_button.property("railAction") is True
         assert set(page.site_ops_values) == {
             "readiness",
             "geometry",
@@ -46,10 +53,26 @@ def test_project_site_uses_station_closure_rail(monkeypatch, tmp_path: Path) -> 
         page.tube_length_spin.setValue(9.5)
         page.tube_diameter_spin.setValue(4.0)
         page.flow_spin.setValue(5.2)
-        page._refresh_top_bar()
+        app.processEvents()
 
         assert page.site_ops_values["chain"][0].text() == "5.2 L/min"
         assert "9.5 m / 4.0 mm" in page.site_ops_values["chain"][1].text()
+
+        page.site_ops_chain_button.click()
+        assert controller.project_nav_section == "sampling_chain"
+        assert page.content_stack.currentIndex() == page.section_indexes["sampling_chain"]
+        assert "采样链路" in page.site_ops_last_action_note.text()
+
+        page.site_ops_metadata_button.click()
+        assert controller.project_nav_section == "metadata"
+        assert page.content_stack.currentIndex() == page.section_indexes["metadata"]
+        assert "元数据" in page.site_ops_last_action_note.text()
+
+        page.site_ops_check_button.click()
+        assert "完整性检查完成" in page.site_ops_last_action_note.text()
+
+        page.site_ops_next_action_button.click()
+        assert "已保存" in page.site_ops_last_action_note.text()
     finally:
         page.deleteLater()
         controller.shutdown()
@@ -85,6 +108,14 @@ def test_project_site_viewport_layout_keeps_directory_and_closure_rail_stable(
             for tile in page.site_ops_tiles:
                 assert_contained(page.site_ops_rail, tile, page)
             assert_no_visual_overlap(page.site_ops_tiles, page)
+            for button in (
+                page.site_ops_next_action_button,
+                page.site_ops_save_button,
+                page.site_ops_check_button,
+                page.site_ops_chain_button,
+                page.site_ops_metadata_button,
+            ):
+                assert_contained(page.site_ops_rail, button, page)
             assert_no_visible_competitor_name(page)
     finally:
         page.close()

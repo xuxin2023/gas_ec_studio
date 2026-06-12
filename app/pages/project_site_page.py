@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -37,7 +38,7 @@ PROJECT_SECTIONS = [
     ("timing", "时间与采样", "定义时钟来源、采样频率与窗口划分方式。"),
     ("output_template", "输出模板", "统一导出字段、命名规则和报告抬头。"),
     ("runtime_template", "运行模板", "把预检查、归档与回放策略固化为现场模板。"),
-    ("metadata", "Metadata", "?? Station?Instruments?Raw File?Biomet?Dynamic Metadata ? alternative profiles?"),
+    ("metadata", "元数据", "统一维护站点、仪器、原始文件、Biomet、动态元数据和可切换 profile。"),
 ]
 
 
@@ -87,8 +88,8 @@ class ProjectSitePage(QWidget):
         body.addWidget(self.content_stack, 1)
 
         self.site_ops_rail = self._build_site_ops_rail()
-        self.site_ops_rail.setMinimumWidth(300)
-        self.site_ops_rail.setMaximumWidth(360)
+        self.site_ops_rail.setMinimumWidth(320)
+        self.site_ops_rail.setMaximumWidth(380)
         body.addWidget(self.site_ops_rail, 0)
 
         self._build_directory()
@@ -281,16 +282,54 @@ class ProjectSitePage(QWidget):
         card = CardFrame(muted=True, role="rail")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
-        layout.addWidget(section_title("站点闭合台", "核心元数据、几何、采样链路和交付状态保持常驻，避免在长表单里迷路。"))
+        layout.setSpacing(TOKENS.spacing_sm)
+        layout.addWidget(section_title("现场闭合控制轨", "把站点上下文、采样链路、元数据和交付状态压缩到可操作的右侧轨道。"))
         self.site_ops_chip = chip("待检查", "warning")
         layout.addWidget(self.site_ops_chip)
+
+        self.site_ops_action_bar = CardFrame(muted=True, role="console")
+        self.site_ops_action_bar.setProperty("deckRole", "projectSiteActionDock")
+        self.site_ops_action_bar.setMaximumHeight(82)
+        action_layout = QGridLayout(self.site_ops_action_bar)
+        action_layout.setContentsMargins(TOKENS.spacing_sm, 3, TOKENS.spacing_sm, 3)
+        action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        action_layout.setVerticalSpacing(2)
+        action_label = QLabel("现场动作")
+        action_label.setObjectName("metricLabel")
+        action_layout.addWidget(action_label, 0, 0, 1, 3)
+
+        self.site_ops_next_action_button = self._site_ops_action_button("下一动作", "按当前缺口跳到最需要处理的配置区段。")
+        self.site_ops_next_action_button.clicked.connect(self._activate_site_ops_next_action)
+        self.site_ops_save_button = self._site_ops_action_button("保存", "保存当前项目与站点配置快照。")
+        self.site_ops_save_button.clicked.connect(self._save_site_ops_snapshot)
+        self.site_ops_check_button = self._site_ops_action_button("检查", "执行完整性检查并更新闭合提示。")
+        self.site_ops_check_button.clicked.connect(self._run_site_ops_completeness_check)
+        self.site_ops_chain_button = self._site_ops_action_button("采样链路", "跳转到采样链路区段。")
+        self.site_ops_chain_button.clicked.connect(lambda: self._activate_site_ops_target("sampling_chain"))
+        self.site_ops_metadata_button = self._site_ops_action_button("元数据", "跳转到元数据区段。")
+        self.site_ops_metadata_button.clicked.connect(lambda: self._activate_site_ops_target("metadata"))
+        for index, button in enumerate((
+            self.site_ops_next_action_button,
+            self.site_ops_save_button,
+            self.site_ops_check_button,
+            self.site_ops_chain_button,
+            self.site_ops_metadata_button,
+        )):
+            action_layout.addWidget(button, 1 + index // 3, index % 3)
+        layout.addWidget(self.site_ops_action_bar)
+
+        self.site_ops_last_action_note = QLabel("尚未执行现场动作。")
+        self.site_ops_last_action_note.setObjectName("subtitle")
+        self.site_ops_last_action_note.setWordWrap(False)
+        self.site_ops_last_action_note.setMaximumHeight(24)
+        layout.addWidget(self.site_ops_last_action_note)
+
         self.site_ops_values: dict[str, tuple[QLabel, QLabel]] = {}
         self.site_ops_tiles: list[CardFrame] = []
         self.site_ops_grid = QGridLayout()
         self.site_ops_grid.setContentsMargins(0, 0, 0, 0)
-        self.site_ops_grid.setHorizontalSpacing(TOKENS.spacing_sm)
-        self.site_ops_grid.setVerticalSpacing(TOKENS.spacing_sm)
+        self.site_ops_grid.setHorizontalSpacing(0)
+        self.site_ops_grid.setVerticalSpacing(TOKENS.spacing_xs)
         for index, (key, title) in enumerate((
             ("readiness", "完整性"),
             ("geometry", "站点几何"),
@@ -301,18 +340,20 @@ class ProjectSitePage(QWidget):
         )):
             tile = self._site_ops_tile(key, title)
             self.site_ops_tiles.append(tile)
-            self.site_ops_grid.addWidget(tile, index // 2, index % 2)
+            self.site_ops_grid.addWidget(tile, index, 0)
         layout.addLayout(self.site_ops_grid)
 
         next_card = CardFrame(muted=True, role="tile")
+        next_card.setMinimumHeight(78)
         next_layout = QVBoxLayout(next_card)
-        next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
         next_layout.setSpacing(TOKENS.spacing_xs)
-        next_card.setMaximumHeight(104)
+        next_card.setMaximumHeight(88)
         next_label = QLabel("下一步")
         next_label.setObjectName("metricLabel")
         self.site_ops_next_value = QLabel("--")
         self.site_ops_next_value.setObjectName("metricValue")
+        self.site_ops_next_value.setProperty("compactMetric", True)
         self.site_ops_next_value.setWordWrap(True)
         self.site_ops_next_note = QLabel("--")
         self.site_ops_next_note.setObjectName("subtitle")
@@ -324,23 +365,40 @@ class ProjectSitePage(QWidget):
         layout.addStretch(1)
         return card
 
+    def _site_ops_action_button(self, text: str, tooltip: str) -> QToolButton:
+        button = QToolButton()
+        button.setText(text)
+        button.setToolTip(tooltip)
+        button.setProperty("railAction", True)
+        button.setMinimumWidth(0)
+        button.setMaximumHeight(26)
+        button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        return button
+
     def _site_ops_tile(self, key: str, title: str) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
-        card.setMaximumHeight(86)
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
+        card.setMinimumHeight(26)
+        card.setMaximumHeight(28)
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
         layout.setSpacing(TOKENS.spacing_xs)
         label = QLabel(title)
         label.setObjectName("metricLabel")
+        label.setMinimumWidth(58)
+        label.setMaximumWidth(64)
         value = QLabel("--")
         value.setObjectName("metricValue")
-        value.setWordWrap(True)
+        value.setProperty("compactMetric", True)
+        value.setWordWrap(False)
+        value.setMinimumWidth(74)
         note = QLabel("--")
         note.setObjectName("subtitle")
-        note.setWordWrap(True)
+        note.setWordWrap(False)
+        note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         layout.addWidget(label)
         layout.addWidget(value)
-        layout.addWidget(note)
+        layout.addWidget(note, 1)
         self.site_ops_values[key] = (value, note)
         return card
 
@@ -1077,29 +1135,48 @@ class ProjectSitePage(QWidget):
             self.orientation_spin,
         ):
             widget.valueChanged.connect(self._refresh_layout_diagram)
+            widget.valueChanged.connect(self._refresh_top_bar)
         for widget in (self.analyzer_mount_edit, self.sonic_mount_edit, self.reference_sensor_edit):
             widget.textChanged.connect(self._refresh_layout_diagram)
+            widget.textChanged.connect(self._refresh_top_bar)
 
         for widget in (self.tube_length_spin, self.tube_diameter_spin, self.flow_spin):
             widget.valueChanged.connect(self._refresh_chain_preview)
+            widget.valueChanged.connect(self._refresh_top_bar)
         for widget in (self.tube_material_edit, self.pump_model_edit, self.filter_model_edit):
             widget.textChanged.connect(self._refresh_chain_preview)
+            widget.textChanged.connect(self._refresh_top_bar)
         self.heat_traced_combo.currentIndexChanged.connect(self._refresh_chain_preview)
+        self.heat_traced_combo.currentIndexChanged.connect(self._refresh_top_bar)
         self.insulated_combo.currentIndexChanged.connect(self._refresh_chain_preview)
+        self.insulated_combo.currentIndexChanged.connect(self._refresh_top_bar)
 
         self.sample_hz_spin.valueChanged.connect(self._refresh_timing_preview)
+        self.sample_hz_spin.valueChanged.connect(self._refresh_top_bar)
         self.block_minutes_spin.valueChanged.connect(self._refresh_timing_preview)
+        self.block_minutes_spin.valueChanged.connect(self._refresh_top_bar)
         self.clock_source_combo.currentIndexChanged.connect(self._refresh_timing_preview)
+        self.clock_source_combo.currentIndexChanged.connect(self._refresh_top_bar)
         self.start_rule_combo.currentIndexChanged.connect(self._refresh_timing_preview)
+        self.start_rule_combo.currentIndexChanged.connect(self._refresh_top_bar)
 
         self.include_diagnostics_combo.currentIndexChanged.connect(self._refresh_output_preview)
+        self.include_diagnostics_combo.currentIndexChanged.connect(self._refresh_top_bar)
         self.include_qc_combo.currentIndexChanged.connect(self._refresh_output_preview)
+        self.include_qc_combo.currentIndexChanged.connect(self._refresh_top_bar)
+        self.output_template_name_edit.textChanged.connect(self._refresh_top_bar)
         self.file_pattern_edit.textChanged.connect(self._refresh_output_preview)
+        self.file_pattern_edit.textChanged.connect(self._refresh_top_bar)
         self.report_header_edit.textChanged.connect(self._refresh_output_preview)
+        self.report_header_edit.textChanged.connect(self._refresh_top_bar)
 
         self.precheck_mode_combo.currentIndexChanged.connect(self._refresh_runtime_preview)
+        self.precheck_mode_combo.currentIndexChanged.connect(self._refresh_top_bar)
         self.auto_archive_combo.currentIndexChanged.connect(self._refresh_runtime_preview)
+        self.auto_archive_combo.currentIndexChanged.connect(self._refresh_top_bar)
         self.replay_ready_combo.currentIndexChanged.connect(self._refresh_runtime_preview)
+        self.replay_ready_combo.currentIndexChanged.connect(self._refresh_top_bar)
+        self.runtime_template_name_edit.textChanged.connect(self._refresh_top_bar)
 
         if hasattr(self, "metadata_status_label"):
             for widget in (
@@ -1297,8 +1374,11 @@ class ProjectSitePage(QWidget):
         runtime = workspace["runtime_template"]
         metadata = workspace.get("metadata", {}) or {}
 
-        self.site_ops_values["readiness"][0].setText(f"{score} 分")
-        self.site_ops_values["readiness"][1].setText(f"当前区段：{section_title_text} · 状态：{overview.get('status') or '草拟'}")
+        self._set_site_ops_row(
+            "readiness",
+            f"{score} 分",
+            f"当前：{section_title_text} · {overview.get('status') or '草拟'}",
+        )
 
         canopy_height = float(site_info.get("canopy_height_m", 0.0) or 0.0)
         mast_height = float(layout_cfg.get("mast_height_m", 0.0) or 0.0)
@@ -1306,9 +1386,10 @@ class ProjectSitePage(QWidget):
         analyzer_height = float(layout_cfg.get("analyzer_height_m", 0.0) or 0.0)
         height_delta = float(layout_cfg.get("height_delta_m", 0.0) or 0.0)
         orientation = int(layout_cfg.get("orientation_deg", 0) or 0)
-        self.site_ops_values["geometry"][0].setText(f"{canopy_height:.1f} m 冠层")
-        self.site_ops_values["geometry"][1].setText(
-            f"塔 {mast_height:.1f} m · 声风 {sonic_height:.1f} m · 分析仪 {analyzer_height:.1f} m · Δ{height_delta:.2f} m · {orientation}°"
+        self._set_site_ops_row(
+            "geometry",
+            f"{canopy_height:.1f} m 冠层",
+            f"塔 {mast_height:.1f} m · 声风 {sonic_height:.1f} m · Δ{height_delta:.2f} m · {orientation}°",
         )
 
         tube_length = float(chain.get("tube_length_m", 0.0) or 0.0)
@@ -1320,17 +1401,19 @@ class ProjectSitePage(QWidget):
         if chain.get("insulated"):
             chain_flags.append("保温")
         chain_flag_text = " / ".join(chain_flags) if chain_flags else "未设温控"
-        self.site_ops_values["chain"][0].setText(f"{flow_lpm:.1f} L/min")
-        self.site_ops_values["chain"][1].setText(
-            f"{tube_length:.1f} m / {tube_diameter:.1f} mm · {chain.get('pump_model') or '泵待填'} · {chain_flag_text}"
+        self._set_site_ops_row(
+            "chain",
+            f"{flow_lpm:.1f} L/min",
+            f"{tube_length:.1f} m / {tube_diameter:.1f} mm · {chain_flag_text}",
         )
 
         sample_hz = float(timing.get("sample_hz", 0.0) or 0.0)
         block_minutes = float(timing.get("block_minutes", 0.0) or 0.0)
         samples_per_window = int(sample_hz * block_minutes * 60)
-        self.site_ops_values["timing"][0].setText(f"{sample_hz:g} Hz")
-        self.site_ops_values["timing"][1].setText(
-            f"{block_minutes:g} min · {samples_per_window:,} 点/窗口 · {timing.get('clock_source') or '时钟待定'}"
+        self._set_site_ops_row(
+            "timing",
+            f"{sample_hz:g} Hz",
+            f"{block_minutes:g} min · {samples_per_window:,} 点/窗口",
         )
 
         delivery_parts = []
@@ -1338,9 +1421,10 @@ class ProjectSitePage(QWidget):
         delivery_parts.append("QC" if output.get("include_qc") else "无 QC")
         delivery_value = " + ".join(delivery_parts)
         runtime_mode = runtime.get("precheck_mode") or "预检待定"
-        self.site_ops_values["delivery"][0].setText(delivery_value)
-        self.site_ops_values["delivery"][1].setText(
-            f"{output.get('template_name') or '模板待填'} · {runtime_mode} · {output.get('file_pattern') or '{site}_{date}_{window}.csv'}"
+        self._set_site_ops_row(
+            "delivery",
+            delivery_value,
+            f"{output.get('template_name') or '模板待填'} · {runtime_mode}",
         )
 
         station_meta = metadata.get("station", {}) or {}
@@ -1355,38 +1439,94 @@ class ProjectSitePage(QWidget):
             bool(raw_settings.get("sample_hz")),
         ]
         ready_metadata = sum(1 for item in metadata_checks if item)
-        self.site_ops_values["metadata"][0].setText(f"{ready_metadata}/{len(metadata_checks)} ready")
         alternative_metadata = metadata.get("alternative_metadata", {}) or {}
         active_profile = alternative_metadata.get("active_profile") if isinstance(alternative_metadata, dict) else ""
-        self.site_ops_values["metadata"][1].setText(
-            f"profile={active_profile or 'active'} · raw={raw_description.get('source_type') or 'hf_frame'}"
+        self._set_site_ops_row(
+            "metadata",
+            f"{ready_metadata}/{len(metadata_checks)} ready",
+            f"profile={active_profile or 'active'} · raw={raw_description.get('source_type') or 'hf_frame'}",
         )
 
         if score < 70:
             chip_text, tone = "待补齐", "warning"
             next_value = "补齐项目身份"
             next_note = "优先补项目、站点、归档根目录和基础高度，后续处理才有可靠上下文。"
+            next_target = "overview"
         elif not tube_length or not flow_lpm:
             chip_text, tone = "链路待核", "warning"
             next_value = "复核采样链路"
             next_note = "管路长度、流量和温控会影响滞后与谱修正，建议在运行前闭合。"
+            next_target = "sampling_chain"
         elif not output.get("template_name"):
             chip_text, tone = "交付待定", "accent"
             next_value = "确认导出模板"
             next_note = "补齐模板名和文件命名规则，便于报告中心和批处理复用。"
+            next_target = "output_template"
         else:
             chip_text, tone = "可进入处理", "success"
             next_value = "保存并运行"
             next_note = "站点上下文已具备进入处理页的基础条件，建议先保存再执行预检。"
+            next_target = "save"
         self._set_site_ops_chip(chip_text, tone)
         self.site_ops_next_value.setText(next_value)
         self.site_ops_next_note.setText(next_note)
+        self._set_site_ops_next_action(next_value, next_target, tone, next_note)
+
+    def _set_site_ops_row(self, key: str, value: str, note: str) -> None:
+        value_label, note_label = self.site_ops_values[key]
+        value_label.setText(value)
+        note_label.setText(note)
+        tooltip = f"{value}\n{note}"
+        value_label.setToolTip(tooltip)
+        note_label.setToolTip(tooltip)
+
+    def _set_site_ops_next_action(self, text: str, target: str, tone: str, note: str) -> None:
+        if not hasattr(self, "site_ops_next_action_button"):
+            return
+        button_text = "保存快照" if target == "save" else text
+        self.site_ops_next_action_button.setText(button_text)
+        self.site_ops_next_action_button.setToolTip(f"{text}: {note}")
+        self.site_ops_next_action_button.setProperty("targetSection", target)
+        self.site_ops_next_action_button.setProperty("actionTone", tone)
+        self.site_ops_next_action_button.style().unpolish(self.site_ops_next_action_button)
+        self.site_ops_next_action_button.style().polish(self.site_ops_next_action_button)
 
     def _set_site_ops_chip(self, text: str, tone: str) -> None:
         self.site_ops_chip.setText(text)
         self.site_ops_chip.setProperty("chipTone", tone)
         self.site_ops_chip.style().unpolish(self.site_ops_chip)
         self.site_ops_chip.style().polish(self.site_ops_chip)
+
+    def _activate_site_ops_target(self, section_key: str) -> None:
+        item = self.section_items.get(section_key)
+        if item is None:
+            return
+        self.section_tree.setCurrentItem(item)
+        self.controller.set_project_nav_section(section_key)
+        self.content_stack.setCurrentIndex(self.section_indexes[section_key])
+        self.site_ops_last_action_note.setText(f"已定位到：{item.text(0)}。")
+        self._refresh_top_bar()
+
+    def _activate_site_ops_next_action(self) -> None:
+        target = str(self.site_ops_next_action_button.property("targetSection") or "overview")
+        if target == "save":
+            self._save_site_ops_snapshot()
+            return
+        self._activate_site_ops_target(target)
+
+    def _save_site_ops_snapshot(self) -> None:
+        if not self._save(show_message=False):
+            return
+        self.site_ops_last_action_note.setText("已保存当前项目与站点配置快照。")
+        self._refresh_top_bar()
+
+    def _run_site_ops_completeness_check(self) -> None:
+        if not self._save(show_message=False):
+            return
+        report = self.controller.project_completeness_report()
+        missing_count = len(report.get("missing_items", []))
+        self.site_ops_last_action_note.setText(f"完整性检查完成：{report.get('score', 0)} 分 · 缺失 {missing_count} 项。")
+        self._refresh_top_bar()
 
     def _refresh_layout_diagram(self, *_args) -> None:
         self.layout_diagram_labels["sonic"].setText(
