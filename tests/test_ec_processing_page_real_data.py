@@ -131,6 +131,10 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert set(page.method_console_tiles) == {"footprint", "uncertainty", "spectral"}
         assert all(tile.property("methodTile") is True for tile in page.method_console_tiles.values())
         assert all(tile.property("cardRole") == "tile" for tile in page.method_console_tiles.values())
+        assert len(page.method_field_labels) >= 20
+        assert all(label.property("methodFieldLabel") is True for label in page.method_field_labels)
+        assert page.method_field_labels[0].objectName() == "metricLabel"
+        assert min(label.minimumWidth() for label in page.method_field_labels) >= 112
         assert page.method_family_buttons["footprint"].isChecked() is True
         assert all(
             page.content_stack.widget(index).horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
@@ -525,6 +529,7 @@ def test_ec_processing_method_console_controls_are_visible_in_main_shell(monkeyp
         assert stack_rect.top() < viewport_rect.bottom()
         assert_contained(scroll.viewport(), page.footprint_enable_combo, page)
         assert_contained(scroll.viewport(), page.footprint_method_combo, page)
+        assert_contained(scroll.viewport(), page.method_field_labels[0], page)
         assert page.content_stack.width() >= 620
         assert page.desktop_rail.minimumWidth() == 280
     finally:
