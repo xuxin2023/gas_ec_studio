@@ -304,7 +304,8 @@ class ECProcessingPage(QWidget):
     def _build_run_bar(self) -> CardFrame:
         card = CardFrame(role="command")
         card.setProperty("deckRole", "runCommandRibbon")
-        card.setMaximumHeight(82)
+        card.setProperty("runCommandDock", True)
+        card.setMaximumHeight(74)
         card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout = QGridLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_xs, TOKENS.spacing_lg, TOKENS.spacing_xs)
@@ -312,21 +313,21 @@ class ECProcessingPage(QWidget):
         layout.setVerticalSpacing(1)
 
         intro = section_title("运行条", "先选择数据来源与时间范围，再决定正式运行还是仅做预检查。")
-        intro.setMaximumWidth(230)
-        intro.setMaximumHeight(54)
+        intro.setMaximumWidth(210)
+        intro.setMaximumHeight(48)
         layout.addWidget(intro, 0, 0, 2, 1)
 
         self.data_source_combo = QComboBox()
         self.data_source_combo.setEditable(True)
         self.data_source_combo.addItems(["当前项目高频目录", "最近归档批次", "回放文件夹"])
         self.data_source_combo.setMinimumWidth(170)
-        self.data_source_combo.setMaximumHeight(30)
+        self.data_source_combo.setMaximumHeight(28)
         self.data_source_combo.setProperty("runRibbonField", True)
         self.time_range_combo = QComboBox()
         self.time_range_combo.setEditable(True)
         self.time_range_combo.addItems(["最近 24 小时", "今天", "最近 7 天", "自定义时间窗"])
         self.time_range_combo.setMinimumWidth(150)
-        self.time_range_combo.setMaximumHeight(30)
+        self.time_range_combo.setMaximumHeight(28)
         self.time_range_combo.setProperty("runRibbonField", True)
         layout.addWidget(QLabel("数据来源"), 0, 1)
         layout.addWidget(self.data_source_combo, 0, 2)
@@ -353,7 +354,7 @@ class ECProcessingPage(QWidget):
         restore_button.clicked.connect(self._restore_default)
         for column, button in enumerate((run_button, precheck_button, save_template_button, restore_button), start=3):
             button.setMinimumWidth(0)
-            button.setMaximumHeight(30)
+            button.setMaximumHeight(28)
             button.setProperty("runRibbonAction", True)
             layout.addWidget(button, 1, column)
         layout.setColumnStretch(0, 2)
@@ -1800,13 +1801,14 @@ class ECProcessingPage(QWidget):
     def _build_step_command_strip(self, step_key: str, title: str) -> CardFrame:
         strip = CardFrame(muted=True, role="tile")
         strip.setProperty("deckRole", "ecStepCommandStrip")
+        strip.setProperty("stepCommandDock", True)
         strip.setProperty("stepKey", step_key)
-        strip.setMaximumHeight(88)
+        strip.setMaximumHeight(68)
         strip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout = QGridLayout(strip)
-        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
         layout.setHorizontalSpacing(TOKENS.spacing_sm)
-        layout.setVerticalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(0)
 
         self.step_command_tiles[step_key] = {}
         self.step_command_values[step_key] = {}
@@ -1821,25 +1823,28 @@ class ECProcessingPage(QWidget):
             layout.addWidget(self._step_command_tile(step_key, metric_key, metric_title, title), 0, column)
 
         action_panel = QWidget()
+        action_panel.setProperty("stepCommandActions", True)
         action_layout = QGridLayout(action_panel)
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
-        action_layout.setVerticalSpacing(2)
+        action_layout.setVerticalSpacing(0)
         run_button = QToolButton()
         run_button.setText("运行")
         run_button.setProperty("railAction", True)
+        run_button.setProperty("stepCommandAction", True)
         run_button.setProperty("targetStep", "run_processing")
         run_button.clicked.connect(lambda _checked=False, button=run_button: self._activate_desktop_rail_target(button))
         coverage_button = QToolButton()
         coverage_button.setText("覆盖")
         coverage_button.setProperty("railAction", True)
+        coverage_button.setProperty("stepCommandAction", True)
         coverage_button.setProperty("targetStep", "coverage")
         coverage_button.clicked.connect(lambda _checked=False, button=coverage_button: self._activate_desktop_rail_target(button))
-        for row, button in enumerate((run_button, coverage_button)):
-            button.setMinimumWidth(58)
+        for column, button in enumerate((run_button, coverage_button)):
+            button.setMinimumWidth(50)
             button.setMaximumHeight(24)
             button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-            action_layout.addWidget(button, row, 0)
+            action_layout.addWidget(button, 0, column)
         self.step_command_buttons[step_key] = {
             "run": run_button,
             "coverage": coverage_button,
@@ -1854,11 +1859,12 @@ class ECProcessingPage(QWidget):
 
     def _step_command_tile(self, step_key: str, metric_key: str, title: str, initial_value: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("stepCommandTile", True)
         tile.setProperty("evidenceTone", "warning")
-        tile.setMaximumHeight(64)
+        tile.setMaximumHeight(54)
         tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         tile_layout = QVBoxLayout(tile)
-        tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        tile_layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
         tile_layout.setSpacing(0)
         title_label = QLabel(title)
         title_label.setObjectName("metricLabel")
@@ -1872,6 +1878,7 @@ class ECProcessingPage(QWidget):
         note_label.setObjectName("subtitle")
         note_label.setWordWrap(False)
         note_label.setMinimumWidth(0)
+        note_label.setMaximumHeight(14)
         note_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         tile_layout.addWidget(title_label)
         tile_layout.addWidget(value_label)

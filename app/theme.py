@@ -720,10 +720,38 @@ def build_stylesheet() -> str:
         background: rgba(255, 255, 255, 0.86);
         border: 1px solid #b8d4dd;
     }}
+    QFrame#card[runCommandDock="true"] {{
+        border-radius: 18px;
+        border: 1px solid #a8cbd4;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #edf9fa,
+            stop: 0.45 #ffffff,
+            stop: 1 #e7f5f1
+        );
+    }}
     QPushButton[runRibbonAction="true"] {{
         min-height: 28px;
         border-radius: 14px;
         padding: 0 12px;
+    }}
+    QFrame#cardMuted[stepCommandDock="true"] {{
+        border-radius: 15px;
+        border: 1px solid #bfd8df;
+        background: rgba(244, 251, 252, 0.86);
+    }}
+    QFrame#cardMuted[stepCommandTile="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.70);
+    }}
+    QToolButton[stepCommandAction="true"] {{
+        min-height: 24px;
+        border-radius: 12px;
+        padding: 0 8px;
+        background: #f7fcfd;
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
     }}
     QFrame#cardMuted[closureCompactTile="true"] {{
         border-radius: 14px;

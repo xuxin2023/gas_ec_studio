@@ -27,6 +27,10 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
     try:
         page.refresh()
 
+        assert page.run_bar.property("runCommandDock") is True
+        assert page.run_bar.maximumHeight() == 74
+        assert page.data_source_combo.maximumHeight() == 28
+        assert page.time_range_combo.maximumHeight() == 28
         assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.rail_focus_card.property("cardRole") == "panel"
         assert page.desktop_rail_inspector.property("deckRole") == "ecRailInspector"
@@ -65,9 +69,19 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert set(page.step_command_strips) == set(page.step_indexes)
         active_strip = page.step_command_strips["window_sampling"]
         assert active_strip.property("deckRole") == "ecStepCommandStrip"
+        assert active_strip.property("stepCommandDock") is True
+        assert active_strip.maximumHeight() == 68
         assert page.step_command_values["window_sampling"]["step"].text()
         assert page.step_command_values["window_sampling"]["run"].text() == "empty"
         assert page.step_command_values["window_sampling"]["closure"].text() == page.coverage_gate_chip.text()
+        assert all(
+            tile.property("stepCommandTile") is True
+            for tile in page.step_command_tiles["window_sampling"].values()
+        )
+        assert all(
+            button.property("stepCommandAction") is True
+            for button in page.step_command_buttons["window_sampling"].values()
+        )
         assert page.step_command_buttons["window_sampling"]["run"].property("targetStep") == "run_processing"
         assert page.step_command_buttons["window_sampling"]["coverage"].property("targetStep") == "coverage"
         assert page.window_cockpit_card.property("activePane") == "params"

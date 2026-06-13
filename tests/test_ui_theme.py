@@ -49,10 +49,14 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QLabel[methodGroupPill="true"]' in stylesheet
     assert 'QComboBox[methodFieldInput="true"]' in stylesheet
     assert 'QDoubleSpinBox[methodFieldInput="true"]' in stylesheet
+    assert 'QFrame#card[runCommandDock="true"]' in stylesheet
     assert 'QToolButton[railAction="true"]' in stylesheet
     assert 'QToolButton[railAction="true"][actionTone="danger"]' in stylesheet
     assert 'QToolButton[railMissionAction="true"]' in stylesheet
     assert 'QFrame#cardMuted[railMissionTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[stepCommandDock="true"]' in stylesheet
+    assert 'QFrame#cardMuted[stepCommandTile="true"]' in stylesheet
+    assert 'QToolButton[stepCommandAction="true"]' in stylesheet
     assert 'QPushButton[variant="danger"]' in stylesheet and "#fff1f1" in stylesheet
     assert "QTreeWidget#workflowTree" in stylesheet
     assert "QPlainTextEdit" in stylesheet
