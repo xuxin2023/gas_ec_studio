@@ -1156,6 +1156,28 @@ def build_stylesheet() -> str:
             stop: 1 #e7f5f1
         );
     }}
+    QFrame#card[realtimeCommandDock="true"][realtimeCaptureConsole="true"] {{
+        border-color: #9fcbd4;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #edf9fa,
+            stop: 0.42 #ffffff,
+            stop: 0.72 #f7fbf3,
+            stop: 1 #e5f4ef
+        );
+    }}
+    QLabel[captureConsoleTitle="true"] {{
+        color: #073f49;
+        letter-spacing: 0.4px;
+    }}
+    QLabel[captureConsoleSubtitle="true"] {{
+        color: #4f6f76;
+    }}
+    QLabel#chip[captureConsoleChip="true"] {{
+        border: 1px solid #8dc7d0;
+        background: #d6f2f5;
+        color: #073f49;
+    }}
     QFrame#cardMuted[realtimeTargetDock="true"],
     QFrame#cardMuted[realtimeMetricDock="true"],
     QFrame#cardMuted[realtimeActionDock="true"],
@@ -1163,6 +1185,37 @@ def build_stylesheet() -> str:
         border-radius: 14px;
         border: 1px solid #c8dce4;
         background: rgba(255, 255, 255, 0.74);
+    }}
+    QFrame#cardMuted[captureConsoleCell="true"] {{
+        border-radius: 16px;
+        border: 1px solid #b8d4dd;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 0, y2: 1,
+            stop: 0 #ffffff,
+            stop: 1 #f4fbfc
+        );
+    }}
+    QFrame#cardMuted[captureConsoleCell="true"][captureCellRole="target"] {{
+        border-left: 4px solid #2f8ea1;
+    }}
+    QFrame#cardMuted[captureConsoleCell="true"][captureCellRole="signal"] {{
+        border-left: 4px solid #7dbb91;
+    }}
+    QFrame#cardMuted[captureConsoleCell="true"][captureCellRole="command"] {{
+        border-left: 4px solid #d5a642;
+    }}
+    QFrame#cardMuted[captureConsoleCell="true"][captureCellRole="link"] {{
+        border-left: 4px solid #5f9daa;
+    }}
+    QLabel[captureStageTag="true"] {{
+        padding: 1px 8px;
+        border-radius: 8px;
+        background: rgba(232, 248, 250, 0.92);
+        color: #0e5f6e;
+        font-weight: 700;
+    }}
+    QWidget[captureMetricStrip="true"] {{
+        background: transparent;
     }}
     QFrame#cardMuted[realtimeStatusDock="true"][evidenceTone="success"] {{
         border-color: #8ecfba;
@@ -1197,6 +1250,23 @@ def build_stylesheet() -> str:
         border: 1px solid #b8d4dd;
         color: #0e5f6e;
     }}
+    QToolButton[realtimeActionButton="true"][capturePrimaryAction="true"] {{
+        background: #0e5f6e;
+        border-color: #0a4b56;
+        color: #ffffff;
+        font-weight: 700;
+    }}
+    QToolButton[realtimeActionButton="true"][captureDangerAction="true"] {{
+        background: #fff1f1;
+        border-color: #e09a96;
+        color: #8a2e28;
+        font-weight: 700;
+    }}
+    QToolButton[realtimeActionButton="true"][captureSecondaryAction="true"] {{
+        background: #ffffff;
+        border-color: #c8dce4;
+        color: #315f68;
+    }}
     QFrame#card[realtimeSummaryDock="true"] {{
         border-radius: 18px;
         border: 1px solid #c8d9ca;
@@ -1205,6 +1275,15 @@ def build_stylesheet() -> str:
             stop: 0 #fff9e9,
             stop: 0.50 #ffffff,
             stop: 1 #e7f5f1
+        );
+    }}
+    QFrame#card[realtimeSummaryDock="true"][realtimeTelemetryRibbon="true"] {{
+        border-color: #bed5c5;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #fff8e8,
+            stop: 0.45 #ffffff,
+            stop: 1 #edf8ef
         );
     }}
     QFrame#cardMuted[realtimeSessionTile="true"],
@@ -1218,10 +1297,28 @@ def build_stylesheet() -> str:
         border: 1px solid #c8dce4;
         background: rgba(255, 255, 255, 0.88);
     }}
+    QFrame#card[realtimePlotPanel="true"][realtimeSignalScope="true"] {{
+        border-color: #b9d6de;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 0, y2: 1,
+            stop: 0 #ffffff,
+            stop: 1 #f3fafb
+        );
+    }}
+    QLabel[realtimeScopeReadout="true"] {{
+        padding: 4px 10px;
+        border-radius: 10px;
+        background: rgba(232, 248, 250, 0.76);
+        color: #315f68;
+    }}
     QFrame#cardMuted[realtimeEvidenceRail="true"] {{
         border-radius: 18px;
         border: 1px solid #c8dce4;
         background: rgba(247, 252, 253, 0.86);
+    }}
+    QFrame#cardMuted[realtimeEvidenceRail="true"][realtimeEvidenceConsole="true"] {{
+        border-color: #bcd5dd;
+        background: rgba(244, 251, 252, 0.92);
     }}
     QFrame#card[deviceDetailHeaderDock="true"] {{
         border-radius: 18px;

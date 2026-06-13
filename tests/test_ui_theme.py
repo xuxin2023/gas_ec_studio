@@ -124,17 +124,35 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#card[metadataProfileDock="true"]' in stylesheet
     assert 'QPushButton[metadataActionButton="true"]' in stylesheet
     assert 'QFrame#card[realtimeCommandDock="true"]' in stylesheet
+    assert 'QFrame#card[realtimeCommandDock="true"][realtimeCaptureConsole="true"]' in stylesheet
+    assert 'QLabel[captureConsoleTitle="true"]' in stylesheet
+    assert 'QLabel[captureConsoleSubtitle="true"]' in stylesheet
+    assert 'QLabel#chip[captureConsoleChip="true"]' in stylesheet
     assert 'QFrame#cardMuted[realtimeTargetDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[realtimeMetricDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[realtimeActionDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[realtimeStatusDock="true"]' in stylesheet
+    assert 'QFrame#cardMuted[captureConsoleCell="true"]' in stylesheet
+    assert 'QFrame#cardMuted[captureConsoleCell="true"][captureCellRole="target"]' in stylesheet
+    assert 'QFrame#cardMuted[captureConsoleCell="true"][captureCellRole="signal"]' in stylesheet
+    assert 'QFrame#cardMuted[captureConsoleCell="true"][captureCellRole="command"]' in stylesheet
+    assert 'QFrame#cardMuted[captureConsoleCell="true"][captureCellRole="link"]' in stylesheet
+    assert 'QLabel[captureStageTag="true"]' in stylesheet
+    assert 'QWidget[captureMetricStrip="true"]' in stylesheet
     assert 'QToolButton[realtimeMetricToggle="true"]' in stylesheet
     assert 'QToolButton[realtimeActionButton="true"]' in stylesheet
+    assert 'QToolButton[realtimeActionButton="true"][capturePrimaryAction="true"]' in stylesheet
+    assert 'QToolButton[realtimeActionButton="true"][captureDangerAction="true"]' in stylesheet
+    assert 'QToolButton[realtimeActionButton="true"][captureSecondaryAction="true"]' in stylesheet
     assert 'QFrame#card[realtimeSummaryDock="true"]' in stylesheet
+    assert 'QFrame#card[realtimeSummaryDock="true"][realtimeTelemetryRibbon="true"]' in stylesheet
     assert 'QFrame#cardMuted[realtimeSessionTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[realtimeSummaryMetric="true"]' in stylesheet
     assert 'QFrame#card[realtimePlotPanel="true"]' in stylesheet
+    assert 'QFrame#card[realtimePlotPanel="true"][realtimeSignalScope="true"]' in stylesheet
+    assert 'QLabel[realtimeScopeReadout="true"]' in stylesheet
     assert 'QFrame#cardMuted[realtimeEvidenceRail="true"]' in stylesheet
+    assert 'QFrame#cardMuted[realtimeEvidenceRail="true"][realtimeEvidenceConsole="true"]' in stylesheet
     assert 'QFrame#card[deviceDetailHeaderDock="true"]' in stylesheet
     assert 'QPushButton[deviceDetailHeaderButton="true"]' in stylesheet
     assert 'QToolButton[deviceDetailViewSwitch="true"]' in stylesheet
