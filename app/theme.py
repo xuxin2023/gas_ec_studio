@@ -764,6 +764,31 @@ def build_stylesheet() -> str:
         border-radius: 14px;
         padding: 0 12px;
     }}
+    QFrame#card[spectralRunCommandDock="true"] {{
+        border-radius: 18px;
+        border: 1px solid #a8cbd4;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #edf9fa,
+            stop: 0.50 #ffffff,
+            stop: 1 #e8f6ef
+        );
+    }}
+    QFrame#cardMuted[spectralSourceDock="true"],
+    QFrame#cardMuted[spectralActionDock="true"],
+    QFrame#cardMuted[spectralStatusDock="true"] {{
+        border-radius: 14px;
+        border: 1px solid #c3dce3;
+        background: rgba(255, 255, 255, 0.74);
+    }}
+    QWidget[spectralSummaryInline="true"] {{
+        max-height: 72px;
+    }}
+    QFrame#cardMuted[spectralSummaryMetric="true"] {{
+        border-radius: 13px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.76);
+    }}
     QFrame#cardMuted[stepCommandDock="true"] {{
         border-radius: 15px;
         border: 1px solid #bfd8df;

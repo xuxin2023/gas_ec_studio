@@ -59,12 +59,19 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         page.refresh()
 
         assert page.run_bar.property("cardRole") == "command"
-        assert page.run_bar.maximumHeight() == 178
+        assert page.run_bar.property("spectralRunCommandDock") is True
+        assert page.run_bar.maximumHeight() == 136
         assert page.spectral_source_panel.property("cardRole") == "tile"
+        assert page.spectral_source_panel.property("spectralSourceDock") is True
+        assert page.spectral_source_panel.maximumHeight() == 72
         assert page.spectral_action_panel.property("cardRole") == "tile"
         assert page.spectral_action_panel.property("deckRole") == "spectralActionDock"
+        assert page.spectral_action_panel.property("spectralActionDock") is True
+        assert page.spectral_action_panel.maximumHeight() == 72
         assert page.spectral_status_panel.property("cardRole") == "tile"
         assert page.spectral_status_panel.property("deckRole") == "spectralRunStatusDock"
+        assert page.spectral_status_panel.property("spectralStatusDock") is True
+        assert page.spectral_status_panel.maximumHeight() == 72
         assert page.spectral_status_panel.property("evidenceTone") in {"success", "accent", "warning", "danger"}
         assert page.spectral_action_buttons["运行"].property("railAction") is True
         assert page.spectral_action_buttons["运行"].property("actionTone") == "success"
@@ -81,10 +88,13 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert page.evidence_values["export"].text() == "待导出"
         assert page.summary_row.objectName() == "spectralSummaryDeck"
         assert page.summary_row.property("deckRole") == "spectralCockpitKpis"
+        assert page.summary_row.property("spectralSummaryInline") is True
         assert page.summary_row.parentWidget() is page.run_bar
-        assert page.summary_row.maximumHeight() == 96
+        assert page.summary_row.maximumHeight() == 72
         assert len(page.summary_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)
+        assert all(card.property("spectralSummaryMetric") is True for card in page.summary_metric_cards)
+        assert all(card.maximumHeight() == 58 for card in page.summary_metric_cards)
         assert page.lag_confidence_value.property("compactMetric") is True
         assert page.spectral_status_value.text() in {"待运行", "待复核", "证据闭合"}
         assert page.spectral_status_note.toolTip()

@@ -56,6 +56,12 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QLabel[runMissionLabel="true"]' in stylesheet
     assert 'QLabel[runMissionValue="true"]' in stylesheet
     assert 'QLabel[runMissionText="true"]' in stylesheet
+    assert 'QFrame#card[spectralRunCommandDock="true"]' in stylesheet
+    assert 'QFrame#cardMuted[spectralSourceDock="true"]' in stylesheet
+    assert 'QFrame#cardMuted[spectralActionDock="true"]' in stylesheet
+    assert 'QFrame#cardMuted[spectralStatusDock="true"]' in stylesheet
+    assert 'QWidget[spectralSummaryInline="true"]' in stylesheet
+    assert 'QFrame#cardMuted[spectralSummaryMetric="true"]' in stylesheet
     assert 'QToolButton[railAction="true"]' in stylesheet
     assert 'QToolButton[railAction="true"][actionTone="danger"]' in stylesheet
     assert 'QToolButton[railMissionAction="true"]' in stylesheet
