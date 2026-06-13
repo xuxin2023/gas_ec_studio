@@ -32,7 +32,10 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.desktop_rail_inspector.property("deckRole") == "ecRailInspector"
         assert page.desktop_rail_inspector.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Fixed
         assert page.desktop_rail_status_strip.property("deckRole") == "ecRailStatusStrip"
+        assert page.desktop_rail_status_strip.property("railMissionDeck") is True
+        assert page.desktop_rail_status_strip.maximumHeight() == 108
         assert page.method_shortcut_card.property("deckRole") == "ecMethodShortcutDeck"
+        assert page.method_shortcut_card.maximumHeight() == 96
         assert set(page.method_shortcut_buttons) == {"footprint", "uncertainty", "spectral"}
         assert all(button.property("methodShortcut") is True for button in page.method_shortcut_buttons.values())
         assert page.method_shortcut_note.text()
@@ -45,6 +48,11 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.desktop_rail_risk_button.property("railAction") is True
         assert page.desktop_rail_run_button.property("railAction") is True
         assert page.desktop_rail_coverage_button.property("railAction") is True
+        assert page.desktop_rail_action_button.property("railMissionAction") is True
+        assert page.desktop_rail_risk_button.property("railMissionAction") is True
+        assert page.desktop_rail_run_button.property("railMissionAction") is True
+        assert page.desktop_rail_coverage_button.property("railMissionAction") is True
+        assert all(tile.property("railMissionTile") is True for tile in page.desktop_rail_status_tiles.values())
         assert page.desktop_rail_action_button.text()
         assert page.desktop_rail_risk_button.text()
         assert page.desktop_rail_action_button.text() == "下步"

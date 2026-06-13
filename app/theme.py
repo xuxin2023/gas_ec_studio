@@ -556,6 +556,18 @@ def build_stylesheet() -> str:
         background: #fff1f1;
         border-color: #efc1c1;
     }}
+    QToolButton[railMissionAction="true"] {{
+        min-height: 24px;
+        border-radius: 12px;
+        padding: 0 7px;
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid #b9d3dc;
+    }}
+    QFrame#cardMuted[railMissionTile="true"] {{
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.66);
+        border: 1px solid #d1e1e8;
+    }}
     QToolButton[viewSwitch="true"] {{
         min-width: 42px;
         border-radius: 17px;

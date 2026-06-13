@@ -590,13 +590,16 @@ class ECProcessingPage(QWidget):
     def _build_desktop_rail_status_strip(self) -> CardFrame:
         card = CardFrame(muted=True, role="rail")
         card.setProperty("deckRole", "ecRailStatusStrip")
-        card.setMaximumHeight(166)
+        card.setProperty("railMissionDeck", True)
+        card.setMaximumHeight(108)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         layout.setSpacing(TOKENS.spacing_xs)
 
         header = QLabel("状态针盘")
         header.setObjectName("metricLabel")
+        header.setProperty("railMissionHeader", True)
+        header.setMaximumHeight(16)
         layout.addWidget(header)
 
         action_row = QGridLayout()
@@ -606,18 +609,22 @@ class ECProcessingPage(QWidget):
         self.desktop_rail_action_button = QToolButton()
         self.desktop_rail_action_button.setText("下步")
         self.desktop_rail_action_button.setProperty("railAction", True)
+        self.desktop_rail_action_button.setProperty("railMissionAction", True)
         self.desktop_rail_action_button.clicked.connect(self._activate_desktop_rail_action)
         self.desktop_rail_risk_button = QToolButton()
         self.desktop_rail_risk_button.setText("风险")
         self.desktop_rail_risk_button.setProperty("railAction", True)
+        self.desktop_rail_risk_button.setProperty("railMissionAction", True)
         self.desktop_rail_risk_button.clicked.connect(self._activate_desktop_rail_risk)
         self.desktop_rail_run_button = QToolButton()
         self.desktop_rail_run_button.setText("运行")
         self.desktop_rail_run_button.setProperty("railAction", True)
+        self.desktop_rail_run_button.setProperty("railMissionAction", True)
         self.desktop_rail_run_button.clicked.connect(lambda: self._activate_desktop_rail_target(self.desktop_rail_run_button))
         self.desktop_rail_coverage_button = QToolButton()
         self.desktop_rail_coverage_button.setText("覆盖")
         self.desktop_rail_coverage_button.setProperty("railAction", True)
+        self.desktop_rail_coverage_button.setProperty("railMissionAction", True)
         self.desktop_rail_coverage_button.clicked.connect(lambda: self._activate_desktop_rail_target(self.desktop_rail_coverage_button))
         for index, button in enumerate((
             self.desktop_rail_action_button,
@@ -626,27 +633,31 @@ class ECProcessingPage(QWidget):
             self.desktop_rail_coverage_button,
         )):
             button.setMinimumWidth(52)
-            button.setMaximumHeight(26)
+            button.setMaximumHeight(24)
             button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             action_row.addWidget(button, 0, index)
         layout.addLayout(action_row)
 
+        status_grid = QGridLayout()
+        status_grid.setContentsMargins(0, 0, 0, 0)
+        status_grid.setHorizontalSpacing(TOKENS.spacing_xs)
+        status_grid.setVerticalSpacing(0)
         self.desktop_rail_status_tiles: dict[str, CardFrame] = {}
         self.desktop_rail_status_values: dict[str, QLabel] = {}
         self.desktop_rail_status_notes: dict[str, QLabel] = {}
-        for key, title in (
+        for column, (key, title) in enumerate((
             ("step", "当前步骤"),
             ("run", "运行状态"),
             ("closure", "闭合度"),
-        ):
+        )):
             tile = CardFrame(muted=True, role="tile")
-            tile.setMaximumHeight(32)
-            tile_layout = QHBoxLayout(tile)
-            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
-            tile_layout.setSpacing(TOKENS.spacing_xs)
+            tile.setProperty("railMissionTile", True)
+            tile.setMaximumHeight(42)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, 1, TOKENS.spacing_sm, 1)
+            tile_layout.setSpacing(0)
             title_label = QLabel(title)
             title_label.setObjectName("metricLabel")
-            title_label.setMinimumWidth(56)
             value_label = QLabel("--")
             value_label.setObjectName("metricValue")
             value_label.setProperty("compactMetric", True)
@@ -655,27 +666,29 @@ class ECProcessingPage(QWidget):
             note_label = QLabel("--")
             note_label.setVisible(False)
             tile_layout.addWidget(title_label)
-            tile_layout.addWidget(value_label, 1)
+            tile_layout.addWidget(value_label)
             self.desktop_rail_status_tiles[key] = tile
             self.desktop_rail_status_values[key] = value_label
             self.desktop_rail_status_notes[key] = note_label
-            layout.addWidget(tile)
+            status_grid.addWidget(tile, 0, column)
+            status_grid.setColumnStretch(column, 1)
+        layout.addLayout(status_grid)
         return card
 
     def _build_method_shortcut_panel(self) -> CardFrame:
         card = CardFrame(muted=True, role="console")
         card.setProperty("deckRole", "ecMethodShortcutDeck")
-        card.setMaximumHeight(118)
+        card.setMaximumHeight(96)
         card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         layout.setSpacing(TOKENS.spacing_xs)
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         title = QLabel("方法族捷径")
         title.setObjectName("metricLabel")
         self.method_shortcut_chip = chip("首屏", "accent")
-        self.method_shortcut_chip.setMaximumHeight(22)
+        self.method_shortcut_chip.setMaximumHeight(20)
         header.addWidget(title)
         header.addStretch(1)
         header.addWidget(self.method_shortcut_chip)
@@ -698,7 +711,7 @@ class ECProcessingPage(QWidget):
             button.setProperty("viewSwitch", True)
             button.setProperty("methodShortcut", True)
             button.setMinimumWidth(66)
-            button.setMaximumHeight(28)
+            button.setMaximumHeight(26)
             button.clicked.connect(lambda _checked=False, key=family: self._activate_method_shortcut(key))
             self.method_shortcut_buttons[family] = button
             row.addWidget(button, 0, column)
@@ -706,7 +719,7 @@ class ECProcessingPage(QWidget):
         self.method_shortcut_note = QLabel("--")
         self.method_shortcut_note.setObjectName("subtitle")
         self.method_shortcut_note.setWordWrap(False)
-        self.method_shortcut_note.setMaximumHeight(18)
+        self.method_shortcut_note.setMaximumHeight(16)
         layout.addWidget(self.method_shortcut_note)
         return card
 
