@@ -944,6 +944,77 @@ def build_stylesheet() -> str:
         border: 1px solid #c8dce4;
         background: rgba(247, 252, 253, 0.86);
     }}
+    QFrame#card[deviceDetailHeaderDock="true"] {{
+        border-radius: 18px;
+        border: 1px solid #bfd8df;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #ffffff,
+            stop: 0.48 #f7fcfd,
+            stop: 1 #e7f5f1
+        );
+    }}
+    QPushButton[deviceDetailHeaderButton="true"],
+    QToolButton[deviceDetailViewSwitch="true"] {{
+        min-height: 30px;
+        border-radius: 14px;
+        padding: 0 12px;
+        border: 1px solid #b8d4dd;
+        background: #f7fcfd;
+        color: #0e3344;
+    }}
+    QToolButton[deviceDetailViewSwitch="true"]:checked {{
+        background: #d6f2f5;
+        border-color: #56aeb9;
+        color: #073f49;
+    }}
+    QFrame#card[deviceDetailSummaryDock="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8d9ca;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #fff9e9,
+            stop: 0.50 #ffffff,
+            stop: 1 #e7f5f1
+        );
+    }}
+    QFrame#cardMuted[deviceDetailSummaryMetric="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.76);
+    }}
+    QFrame#cardMuted[deviceOpsRail="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8dce4;
+        background: rgba(247, 252, 253, 0.86);
+    }}
+    QFrame#cardMuted[deviceOpsActionDock="true"] {{
+        border-radius: 14px;
+        border: 1px solid #bfd8df;
+        background: rgba(244, 251, 252, 0.90);
+    }}
+    QToolButton[deviceOpsRailAction="true"] {{
+        min-height: 24px;
+        border-radius: 12px;
+        padding: 0 8px;
+        background: #f7fcfd;
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
+    }}
+    QFrame#cardMuted[deviceOpsTile="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.70);
+    }}
+    QFrame#cardMuted[deviceOpsNextCard="true"] {{
+        border-radius: 14px;
+        border: 1px solid #c8dce4;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #ffffff,
+            stop: 1 #edf9fa
+        );
+    }}
     QFrame#card[deviceFleetStatusDock="true"] {{
         border-radius: 18px;
         border: 1px solid #c8d9ca;

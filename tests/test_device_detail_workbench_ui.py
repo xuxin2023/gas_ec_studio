@@ -40,21 +40,46 @@ def test_device_detail_uses_device_operations_rail(monkeypatch, tmp_path: Path) 
             page.refresh()
 
             assert page.header_card.property("cardRole") == "command"
+            assert page.header_card.property("deviceDetailHeaderDock") is True
+            assert page.header_card.maximumHeight() == 96
+            assert page.back_button.property("deviceDetailHeaderButton") is True
+            assert page.back_button.maximumHeight() == 30
+            assert page.operator_btn.property("deviceDetailViewSwitch") is True
+            assert page.engineer_btn.property("deviceDetailViewSwitch") is True
+            assert page.operator_btn.maximumHeight() == 30
+            assert page.engineer_btn.maximumHeight() == 30
             assert page.summary_card.property("cardRole") == "cockpit"
             assert page.summary_card.property("deckRole") == "deviceSummaryDeck"
-            assert page.summary_card.maximumHeight() == 132
+            assert page.summary_card.property("deviceDetailSummaryDock") is True
+            assert page.summary_card.maximumHeight() == 118
             assert len(page.summary_metric_cards) == 7
             assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)
+            assert all(card.property("deviceDetailSummaryMetric") is True for card in page.summary_metric_cards)
+            assert all(card.maximumHeight() == 50 for card in page.summary_metric_cards)
             assert all(value.property("compactMetric") is True for value in page.summary_values.values())
             assert page.device_ops_rail.property("cardRole") == "rail"
+            assert page.device_ops_rail.property("deviceOpsRail") is True
             assert page.device_ops_action_bar.property("deckRole") == "deviceOpsActionBar"
+            assert page.device_ops_action_bar.property("deviceOpsActionDock") is True
+            assert page.device_ops_action_bar.maximumHeight() == 36
             assert page.device_ops_action_button.property("railAction") is True
             assert page.device_ops_risk_button.property("railAction") is True
+            assert page.device_ops_action_button.property("deviceOpsRailAction") is True
+            assert page.device_ops_risk_button.property("deviceOpsRailAction") is True
+            assert page.device_ops_action_button.maximumHeight() == 24
+            assert page.device_ops_risk_button.maximumHeight() == 24
             assert page.device_ops_action_button.property("targetAction") == "trace_config"
             assert page.device_ops_risk_button.property("targetAction") == "trace_config"
             assert page.device_ops_risk_button.property("actionTone") == "warning"
             assert page.device_ops_grid.count() == 5
             assert set(page.device_ops_values) == {"link", "telemetry", "primary", "trace", "diagnostics"}
+            assert page.device_ops_next_card.property("deviceOpsNextCard") is True
+            assert page.device_ops_next_card.maximumHeight() == 84
+            assert all(
+                value.parentWidget().property("deviceOpsTile") is True
+                for value, _note in page.device_ops_values.values()
+                if value.parentWidget() is not None
+            )
             assert page.device_ops_values["link"][0].property("compactMetric") is True
             assert page.device_ops_next_value.property("compactMetric") is True
             assert page.device_ops_values["link"][0].text() == "在线"

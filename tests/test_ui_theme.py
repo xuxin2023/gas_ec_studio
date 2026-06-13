@@ -87,6 +87,16 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[realtimeSummaryMetric="true"]' in stylesheet
     assert 'QFrame#card[realtimePlotPanel="true"]' in stylesheet
     assert 'QFrame#cardMuted[realtimeEvidenceRail="true"]' in stylesheet
+    assert 'QFrame#card[deviceDetailHeaderDock="true"]' in stylesheet
+    assert 'QPushButton[deviceDetailHeaderButton="true"]' in stylesheet
+    assert 'QToolButton[deviceDetailViewSwitch="true"]' in stylesheet
+    assert 'QFrame#card[deviceDetailSummaryDock="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deviceDetailSummaryMetric="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deviceOpsRail="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deviceOpsActionDock="true"]' in stylesheet
+    assert 'QToolButton[deviceOpsRailAction="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deviceOpsTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deviceOpsNextCard="true"]' in stylesheet
     assert 'QFrame#card[deviceFleetStatusDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[deviceFleetMetric="true"]' in stylesheet
     assert 'QFrame#card[fieldReadinessDock="true"]' in stylesheet
