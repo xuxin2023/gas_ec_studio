@@ -56,11 +56,13 @@ class DeviceCenterPage(QWidget):
         )
 
         self.status_card = CardFrame(role="cockpit")
-        self.status_card.setMaximumHeight(90)
+        self.status_card.setProperty("deviceFleetStatusDock", True)
+        self.status_card.setMaximumHeight(82)
         self.status_layout = QHBoxLayout(self.status_card)
-        self.status_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
-        self.status_layout.setSpacing(TOKENS.spacing_sm)
+        self.status_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_xs, TOKENS.spacing_lg, TOKENS.spacing_xs)
+        self.status_layout.setSpacing(TOKENS.spacing_xs)
         self.metric_labels: dict[str, QLabel] = {}
+        self.status_metric_cards: list[CardFrame] = []
         for key, title in (
             ("online_devices", "在线设备数"),
             ("abnormal_devices", "异常设备数"),
@@ -157,9 +159,11 @@ class DeviceCenterPage(QWidget):
 
     def _status_metric_card(self, title: str) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
+        card.setProperty("deviceFleetMetric", True)
+        card.setMaximumHeight(58)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
-        layout.setSpacing(4)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+        layout.setSpacing(1)
         title_label = QLabel(title)
         title_label.setObjectName("metricLabel")
         value = QLabel("--")
@@ -167,18 +171,23 @@ class DeviceCenterPage(QWidget):
         value.setWordWrap(True)
         layout.addWidget(title_label)
         layout.addWidget(value)
+        self.status_metric_cards.append(card)
         return card
 
     def _build_field_readiness(self) -> CardFrame:
         card = CardFrame(role="panel")
+        card.setProperty("fieldReadinessDock", True)
         card.setMinimumWidth(0)
-        card.setMaximumHeight(142)
+        card.setMaximumHeight(128)
         card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QGridLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_xs, TOKENS.spacing_lg, TOKENS.spacing_xs)
         layout.setHorizontalSpacing(TOKENS.spacing_sm)
-        layout.setVerticalSpacing(TOKENS.spacing_sm)
-        layout.addWidget(section_title("现场就绪驾驶舱", "把设备舰队、当前目标、协议链路和下一步动作压缩到一行，减少来回找状态。"), 0, 0, 1, 5)
+        layout.setVerticalSpacing(TOKENS.spacing_xs)
+        readiness_title = section_title("现场就绪驾驶舱", "把设备舰队、当前目标、协议链路和下一步动作压缩到一行，减少来回找状态。")
+        readiness_title.setMaximumHeight(32)
+        layout.addWidget(readiness_title, 0, 0, 1, 5)
+        self.readiness_tiles: dict[str, CardFrame] = {}
         self.readiness_values: dict[str, tuple[QLabel, QLabel]] = {}
         for index, (key, title) in enumerate(
             (
@@ -189,12 +198,13 @@ class DeviceCenterPage(QWidget):
             )
         ):
             tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("fieldReadinessTile", True)
             tile.setMinimumWidth(0)
-            tile.setMaximumHeight(66)
+            tile.setMaximumHeight(56)
             tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             tile_layout = QVBoxLayout(tile)
-            tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
-            tile_layout.setSpacing(TOKENS.spacing_xs)
+            tile_layout.setContentsMargins(TOKENS.spacing_md, 2, TOKENS.spacing_md, 2)
+            tile_layout.setSpacing(0)
             title_label = QLabel(title)
             title_label.setObjectName("metricLabel")
             title_label.setMinimumWidth(0)
@@ -214,6 +224,7 @@ class DeviceCenterPage(QWidget):
             tile_layout.addWidget(title_label)
             tile_layout.addWidget(value)
             tile_layout.addWidget(note)
+            self.readiness_tiles[key] = tile
             self.readiness_values[key] = (value, note)
             layout.addWidget(tile, 1, index)
             layout.setColumnStretch(index, 1)
@@ -225,13 +236,14 @@ class DeviceCenterPage(QWidget):
     def _build_field_action_dock(self) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
         card.setProperty("deckRole", "deviceCenterActionDock")
+        card.setProperty("fieldActionDock", True)
         card.setMinimumWidth(0)
-        card.setMaximumHeight(66)
+        card.setMaximumHeight(56)
         card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QGridLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_sm, 3, TOKENS.spacing_sm, 3)
+        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
         layout.setHorizontalSpacing(TOKENS.spacing_xs)
-        layout.setVerticalSpacing(2)
+        layout.setVerticalSpacing(0)
         self.fleet_next_button = self._field_action_button("下一步")
         self.fleet_next_button.clicked.connect(self._activate_fleet_next_action)
         self.fleet_detail_button = self._field_action_button("详情")
@@ -253,8 +265,9 @@ class DeviceCenterPage(QWidget):
         button = QToolButton()
         button.setText(text)
         button.setProperty("railAction", True)
+        button.setProperty("fieldActionButton", True)
         button.setMinimumWidth(0)
-        button.setMaximumHeight(26)
+        button.setMaximumHeight(24)
         button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         return button
 

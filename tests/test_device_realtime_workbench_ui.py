@@ -29,14 +29,25 @@ def test_device_center_uses_field_operations_deck() -> None:
 
         assert page.property("pageSurface") is True
         assert page.status_card.property("cardRole") == "cockpit"
-        assert page.status_card.maximumHeight() == 90
+        assert page.status_card.property("deviceFleetStatusDock") is True
+        assert page.status_card.maximumHeight() == 82
+        assert len(page.status_metric_cards) == 5
+        assert all(card.property("deviceFleetMetric") is True for card in page.status_metric_cards)
+        assert all(card.maximumHeight() == 58 for card in page.status_metric_cards)
         assert page.field_readiness_card.property("cardRole") == "panel"
-        assert page.field_readiness_card.maximumHeight() == 142
+        assert page.field_readiness_card.property("fieldReadinessDock") is True
+        assert page.field_readiness_card.maximumHeight() == 128
         assert page.field_action_card.property("deckRole") == "deviceCenterActionDock"
+        assert page.field_action_card.property("fieldActionDock") is True
+        assert page.field_action_card.maximumHeight() == 56
         assert page.fleet_next_button.property("railAction") is True
         assert page.fleet_detail_button.property("railAction") is True
         assert page.fleet_realtime_button.property("railAction") is True
         assert page.fleet_log_button.property("railAction") is True
+        assert page.fleet_next_button.property("fieldActionButton") is True
+        assert page.fleet_detail_button.property("fieldActionButton") is True
+        assert page.fleet_realtime_button.property("fieldActionButton") is True
+        assert page.fleet_log_button.property("fieldActionButton") is True
         assert page.fleet_next_button.text() == "下一步"
         assert page.fleet_realtime_button.text() == "实时"
         assert page.quick_card.property("cardRole") == "command"
@@ -91,6 +102,8 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert page.operator_evidence_tiles["processing_gate"][1].text().startswith("windows=")
         assert page.activity_card.property("cardRole") == "rail"
         assert set(page.readiness_values) == {"fleet", "target", "protocol", "next"}
+        assert all(tile.property("fieldReadinessTile") is True for tile in page.readiness_tiles.values())
+        assert all(tile.maximumHeight() == 56 for tile in page.readiness_tiles.values())
         assert all(value.property("compactMetric") is True for value, _note in page.readiness_values.values())
         assert page.readiness_values["fleet"][0].text() in {"可采", "待检查"}
         assert page.readiness_values["next"][0].text() in {"连接设备", "进入采集", "处理异常", "选择设备"}
