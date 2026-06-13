@@ -70,6 +70,17 @@ def test_project_site_uses_station_closure_rail(monkeypatch, tmp_path: Path) -> 
         assert all(tile.maximumHeight() == 26 for tile in page.site_ops_tiles)
         assert page.site_ops_next_card.property("projectSiteNextCard") is True
         assert page.site_ops_next_card.maximumHeight() == 80
+        assert page.metadata_cockpit_card.property("metadataCockpitDock") is True
+        assert page.metadata_cockpit_card.maximumHeight() == 88
+        assert set(page.metadata_summary_values) == {"station", "instrument", "raw", "dynamic", "profile"}
+        assert len(page.metadata_summary_tiles) == 5
+        assert all(tile.property("metadataSummaryTile") is True for tile in page.metadata_summary_tiles)
+        assert all(tile.maximumHeight() == 56 for tile in page.metadata_summary_tiles)
+        assert all(card.property("metadataEditorPanel") is True for card in page.metadata_editor_cards)
+        assert page.metadata_profile_card.property("metadataProfileDock") is True
+        assert len(page.metadata_profile_buttons) == 3
+        assert all(button.property("metadataActionButton") is True for button in page.metadata_profile_buttons)
+        assert all(button.maximumHeight() == 26 for button in page.metadata_profile_buttons)
         assert page.site_ops_values["readiness"][0].text().endswith(" 分")
         assert page.site_ops_next_value.text() in {"补齐项目身份", "复核采样链路", "确认导出模板", "保存并运行"}
         assert "???" not in "\n".join(label.text() for label in page.findChildren(QLabel))

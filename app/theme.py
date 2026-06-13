@@ -867,6 +867,48 @@ def build_stylesheet() -> str:
         border: 1px solid #b8d4dd;
         color: #0e5f6e;
     }}
+    QFrame#card[metadataEditorShell="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8dce4;
+        background: rgba(255, 255, 255, 0.88);
+    }}
+    QFrame#card[metadataCockpitDock="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8d9ca;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #fff9e9,
+            stop: 0.50 #ffffff,
+            stop: 1 #e7f5f1
+        );
+    }}
+    QFrame#cardMuted[metadataSummaryTile="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.76);
+    }}
+    QFrame#cardMuted[metadataEditorPanel="true"] {{
+        border-radius: 14px;
+        border: 1px solid #d2e3e9;
+        background: rgba(247, 252, 253, 0.74);
+    }}
+    QFrame#card[metadataProfileDock="true"] {{
+        border-radius: 16px;
+        border: 1px solid #bfd8df;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #ffffff,
+            stop: 1 #edf9fa
+        );
+    }}
+    QPushButton[metadataActionButton="true"] {{
+        min-height: 26px;
+        border-radius: 13px;
+        padding: 0 10px;
+        border: 1px solid #b8d4dd;
+        background: #f7fcfd;
+        color: #0e5f6e;
+    }}
     QFrame#card[realtimeCommandDock="true"] {{
         border-radius: 18px;
         border: 1px solid #bfd8df;

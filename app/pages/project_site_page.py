@@ -829,12 +829,52 @@ class ProjectSitePage(QWidget):
 
     def _build_metadata_page(self, layout: QVBoxLayout) -> None:
         card = CardFrame()
+        card.setProperty("metadataEditorShell", True)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         card_layout.setSpacing(TOKENS.spacing_md)
         card_layout.addWidget(section_title("Metadata Editor", "集中维护站点、仪器、原始文件、Biomet 与动态元数据。"))
 
+        self.metadata_cockpit_card = CardFrame(role="cockpit")
+        self.metadata_cockpit_card.setProperty("metadataCockpitDock", True)
+        self.metadata_cockpit_card.setMaximumHeight(88)
+        cockpit_layout = QHBoxLayout(self.metadata_cockpit_card)
+        cockpit_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_xs, TOKENS.spacing_lg, TOKENS.spacing_xs)
+        cockpit_layout.setSpacing(TOKENS.spacing_sm)
+        self.metadata_summary_values: dict[str, QLabel] = {}
+        self.metadata_summary_tiles: list[CardFrame] = []
+        for key, title in (
+            ("station", "Station"),
+            ("instrument", "Instrument"),
+            ("raw", "Raw file"),
+            ("dynamic", "Dynamic"),
+            ("profile", "Profile"),
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("metadataSummaryTile", True)
+            tile.setMaximumHeight(56)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+            tile_layout.setSpacing(1)
+            label = QLabel(title)
+            label.setObjectName("metricLabel")
+            value = QLabel("--")
+            value.setObjectName("metricValue")
+            value.setProperty("compactMetric", True)
+            value.setWordWrap(False)
+            value.setMinimumWidth(0)
+            value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            tile_layout.addWidget(label)
+            tile_layout.addWidget(value)
+            self.metadata_summary_values[key] = value
+            self.metadata_summary_tiles.append(tile)
+            cockpit_layout.addWidget(tile, 1)
+        card_layout.addWidget(self.metadata_cockpit_card)
+
+        self.metadata_editor_cards: list[CardFrame] = []
         station_card = CardFrame(muted=True)
+        station_card.setProperty("metadataEditorPanel", True)
+        self.metadata_editor_cards.append(station_card)
         station_layout = QFormLayout(station_card)
         station_layout.setHorizontalSpacing(TOKENS.spacing_md)
         station_layout.setVerticalSpacing(TOKENS.spacing_md)
@@ -854,6 +894,8 @@ class ProjectSitePage(QWidget):
         card_layout.addWidget(station_card)
 
         instruments_card = CardFrame(muted=True)
+        instruments_card.setProperty("metadataEditorPanel", True)
+        self.metadata_editor_cards.append(instruments_card)
         instruments_layout = QFormLayout(instruments_card)
         instruments_layout.setHorizontalSpacing(TOKENS.spacing_md)
         instruments_layout.setVerticalSpacing(TOKENS.spacing_md)
@@ -883,6 +925,8 @@ class ProjectSitePage(QWidget):
         card_layout.addWidget(instruments_card)
 
         raw_card = CardFrame(muted=True)
+        raw_card.setProperty("metadataEditorPanel", True)
+        self.metadata_editor_cards.append(raw_card)
         raw_layout = QFormLayout(raw_card)
         raw_layout.setHorizontalSpacing(TOKENS.spacing_md)
         raw_layout.setVerticalSpacing(TOKENS.spacing_md)
@@ -905,6 +949,8 @@ class ProjectSitePage(QWidget):
         card_layout.addWidget(raw_card)
 
         raw_settings_card = CardFrame(muted=True)
+        raw_settings_card.setProperty("metadataEditorPanel", True)
+        self.metadata_editor_cards.append(raw_settings_card)
         raw_settings_layout = QFormLayout(raw_settings_card)
         raw_settings_layout.setHorizontalSpacing(TOKENS.spacing_md)
         raw_settings_layout.setVerticalSpacing(TOKENS.spacing_md)
@@ -924,6 +970,8 @@ class ProjectSitePage(QWidget):
         card_layout.addWidget(raw_settings_card)
 
         biomet_card = CardFrame(muted=True)
+        biomet_card.setProperty("metadataEditorPanel", True)
+        self.metadata_editor_cards.append(biomet_card)
         biomet_layout = QFormLayout(biomet_card)
         biomet_layout.setHorizontalSpacing(TOKENS.spacing_md)
         biomet_layout.setVerticalSpacing(TOKENS.spacing_md)
@@ -933,8 +981,12 @@ class ProjectSitePage(QWidget):
         biomet_path_row = QHBoxLayout()
         biomet_path_row.addWidget(self.biomet_source_path_edit, 1)
         biomet_file_button = QPushButton("Select file")
+        biomet_file_button.setProperty("metadataActionButton", True)
+        biomet_file_button.setMaximumHeight(26)
         biomet_file_button.clicked.connect(lambda: self._choose_biomet_path(directory=False))
         biomet_dir_button = QPushButton("Select directory")
+        biomet_dir_button.setProperty("metadataActionButton", True)
+        biomet_dir_button.setMaximumHeight(26)
         biomet_dir_button.clicked.connect(lambda: self._choose_biomet_path(directory=True))
         biomet_path_row.addWidget(biomet_file_button)
         biomet_path_row.addWidget(biomet_dir_button)
@@ -955,6 +1007,8 @@ class ProjectSitePage(QWidget):
         card_layout.addWidget(biomet_card)
 
         dynamic_card = CardFrame(muted=True)
+        dynamic_card.setProperty("metadataEditorPanel", True)
+        self.metadata_editor_cards.append(dynamic_card)
         dynamic_layout = QFormLayout(dynamic_card)
         dynamic_layout.setHorizontalSpacing(TOKENS.spacing_md)
         dynamic_layout.setVerticalSpacing(TOKENS.spacing_md)
@@ -962,6 +1016,8 @@ class ProjectSitePage(QWidget):
         dynamic_path_row = QHBoxLayout()
         dynamic_path_row.addWidget(self.dynamic_csv_path_edit, 1)
         dynamic_import_button = QPushButton("Import CSV")
+        dynamic_import_button.setProperty("metadataActionButton", True)
+        dynamic_import_button.setMaximumHeight(26)
         dynamic_import_button.clicked.connect(self._import_dynamic_csv)
         dynamic_path_row.addWidget(dynamic_import_button)
         self.dynamic_start_column_edit = QLineEdit()
@@ -976,18 +1032,28 @@ class ProjectSitePage(QWidget):
         card_layout.addWidget(dynamic_card)
 
         profile_card = CardFrame()
+        profile_card.setProperty("metadataProfileDock", True)
+        self.metadata_profile_card = profile_card
         profile_layout = QFormLayout(profile_card)
         profile_layout.setHorizontalSpacing(TOKENS.spacing_md)
         profile_layout.setVerticalSpacing(TOKENS.spacing_md)
         self.metadata_profile_combo = QComboBox()
         self.metadata_profile_combo.setEditable(True)
         profile_buttons = QHBoxLayout()
+        self.metadata_profile_buttons: list[QPushButton] = []
         profile_save_button = QPushButton("Save profile")
+        profile_save_button.setProperty("metadataActionButton", True)
+        profile_save_button.setMaximumHeight(26)
         profile_save_button.clicked.connect(self._save_metadata_profile)
         profile_load_button = QPushButton("Load profile")
+        profile_load_button.setProperty("metadataActionButton", True)
+        profile_load_button.setMaximumHeight(26)
         profile_load_button.clicked.connect(self._load_metadata_profile)
         profile_refresh_button = QPushButton("Refresh list")
+        profile_refresh_button.setProperty("metadataActionButton", True)
+        profile_refresh_button.setMaximumHeight(26)
         profile_refresh_button.clicked.connect(self._refresh_metadata_profiles)
+        self.metadata_profile_buttons.extend((profile_save_button, profile_load_button, profile_refresh_button))
         profile_buttons.addWidget(profile_save_button)
         profile_buttons.addWidget(profile_load_button)
         profile_buttons.addWidget(profile_refresh_button)
@@ -1080,9 +1146,47 @@ class ProjectSitePage(QWidget):
         except json.JSONDecodeError:
             mapping_count = 0
         dynamic_count = len(getattr(self, '_dynamic_metadata_records', []))
+        active_profile = self.metadata_profile_combo.currentText().strip() or "--"
         self.metadata_status_label.setText(
-            f"column mappings={mapping_count}, dynamic records={dynamic_count}, profile={self.metadata_profile_combo.currentText().strip() or '--'}"
+            f"column mappings={mapping_count}, dynamic records={dynamic_count}, profile={active_profile}"
         )
+        if hasattr(self, "metadata_summary_values"):
+            station_ready = sum(
+                1
+                for value in (
+                    self.station_latitude_spin.value(),
+                    self.station_longitude_spin.value(),
+                    self.station_file_duration_spin.value(),
+                )
+                if value
+            )
+            instrument_ready = sum(
+                1
+                for text in (
+                    self.sonic_model_meta_edit.text().strip(),
+                    self.analyzer_model_meta_edit.text().strip(),
+                    self.sonic_serial_meta_edit.text().strip(),
+                    self.analyzer_serial_meta_edit.text().strip(),
+                )
+                if text
+            )
+            raw_ready = sum(
+                1
+                for ok in (
+                    bool(self.raw_source_name_edit.text().strip()),
+                    bool(self.raw_timestamp_column_edit.text().strip()),
+                    bool(self.raw_sample_hz_spin.value()),
+                    mapping_count > 0,
+                )
+                if ok
+            )
+            profile_display = active_profile if len(active_profile) <= 14 else f"{active_profile[:13]}..."
+            self.metadata_summary_values["station"].setText(f"{station_ready}/3")
+            self.metadata_summary_values["instrument"].setText(f"{instrument_ready}/4")
+            self.metadata_summary_values["raw"].setText(f"{raw_ready}/4")
+            self.metadata_summary_values["dynamic"].setText(f"{dynamic_count} rec")
+            self.metadata_summary_values["profile"].setText(profile_display)
+            self.metadata_summary_values["profile"].setToolTip(active_profile)
 
     def _choose_biomet_path(self, *, directory: bool) -> None:
         path = QFileDialog.getExistingDirectory(self, "Select biomet directory") if directory else QFileDialog.getOpenFileName(self, "Select biomet file", filter="CSV Files (*.csv);;All Files (*.*)")[0]

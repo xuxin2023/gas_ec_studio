@@ -78,6 +78,13 @@ def test_project_site_page_metadata_persists_to_store(monkeypatch, tmp_path: Pat
             )
         )
         page.metadata_profile_combo.setEditText("field-a")
+        page._refresh_metadata_status()
+
+        assert page.metadata_summary_values["station"].text().endswith("/3")
+        assert page.metadata_summary_values["instrument"].text().endswith("/4")
+        assert page.metadata_summary_values["raw"].text().endswith("/4")
+        assert page.metadata_summary_values["dynamic"].text() == "0 rec"
+        assert page.metadata_summary_values["profile"].text() == "field-a"
 
         assert page._save(show_message=False)
         controller.save_metadata_profile("field-a")

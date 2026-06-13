@@ -75,6 +75,12 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[projectSiteOpsTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[projectSiteNextCard="true"]' in stylesheet
     assert 'QToolButton[projectSiteRailAction="true"]' in stylesheet
+    assert 'QFrame#card[metadataEditorShell="true"]' in stylesheet
+    assert 'QFrame#card[metadataCockpitDock="true"]' in stylesheet
+    assert 'QFrame#cardMuted[metadataSummaryTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[metadataEditorPanel="true"]' in stylesheet
+    assert 'QFrame#card[metadataProfileDock="true"]' in stylesheet
+    assert 'QPushButton[metadataActionButton="true"]' in stylesheet
     assert 'QFrame#card[realtimeCommandDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[realtimeTargetDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[realtimeMetricDock="true"]' in stylesheet
