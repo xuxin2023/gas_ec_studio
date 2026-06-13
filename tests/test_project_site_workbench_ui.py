@@ -29,15 +29,35 @@ def test_project_site_uses_station_closure_rail(monkeypatch, tmp_path: Path) -> 
         page.refresh()
 
         assert page.top_bar.property("cardRole") == "command"
+        assert page.top_bar.property("projectSiteCommandDock") is True
+        assert page.top_bar.maximumHeight() == 86
+        assert len(page.project_summary_metric_cards) == 4
+        assert all(card.property("projectSiteMetric") is True for card in page.project_summary_metric_cards)
+        assert all(card.maximumHeight() == 56 for card in page.project_summary_metric_cards)
+        assert len(page.project_command_buttons) == 5
+        assert all(button.property("projectSiteCommandButton") is True for button in page.project_command_buttons)
+        assert all(button.maximumHeight() == 26 for button in page.project_command_buttons)
         assert page.tree_card.property("cardRole") == "rail"
         assert page.site_ops_rail.property("cardRole") == "rail"
+        assert page.site_ops_rail.property("projectSiteOpsRail") is True
         assert page.site_ops_action_bar.property("cardRole") == "console"
+        assert page.site_ops_action_bar.property("projectSiteActionDock") is True
+        assert page.site_ops_action_bar.maximumHeight() == 72
         assert page.section_items["metadata"].text(0) == "元数据"
         assert page.site_ops_next_action_button.property("railAction") is True
         assert page.site_ops_save_button.property("railAction") is True
         assert page.site_ops_check_button.property("railAction") is True
         assert page.site_ops_chain_button.property("railAction") is True
         assert page.site_ops_metadata_button.property("railAction") is True
+        for button in (
+            page.site_ops_next_action_button,
+            page.site_ops_save_button,
+            page.site_ops_check_button,
+            page.site_ops_chain_button,
+            page.site_ops_metadata_button,
+        ):
+            assert button.property("projectSiteRailAction") is True
+            assert button.maximumHeight() == 24
         assert set(page.site_ops_values) == {
             "readiness",
             "geometry",
@@ -46,6 +66,10 @@ def test_project_site_uses_station_closure_rail(monkeypatch, tmp_path: Path) -> 
             "delivery",
             "metadata",
         }
+        assert all(tile.property("projectSiteOpsTile") is True for tile in page.site_ops_tiles)
+        assert all(tile.maximumHeight() == 26 for tile in page.site_ops_tiles)
+        assert page.site_ops_next_card.property("projectSiteNextCard") is True
+        assert page.site_ops_next_card.maximumHeight() == 80
         assert page.site_ops_values["readiness"][0].text().endswith(" 分")
         assert page.site_ops_next_value.text() in {"补齐项目身份", "复核采样链路", "确认导出模板", "保存并运行"}
         assert "???" not in "\n".join(label.text() for label in page.findChildren(QLabel))

@@ -815,6 +815,58 @@ def build_stylesheet() -> str:
         border: 1px solid #b8d4dd;
         color: #0e5f6e;
     }}
+    QFrame#card[projectSiteCommandDock="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8d9ca;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #fff9e9,
+            stop: 0.48 #ffffff,
+            stop: 1 #e7f5f1
+        );
+    }}
+    QFrame#cardMuted[projectSiteMetric="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.76);
+    }}
+    QPushButton[projectSiteCommandButton="true"] {{
+        min-height: 26px;
+        border-radius: 13px;
+        padding: 0 10px;
+    }}
+    QFrame#cardMuted[projectSiteOpsRail="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8dce4;
+        background: rgba(247, 252, 253, 0.86);
+    }}
+    QFrame#cardMuted[projectSiteActionDock="true"] {{
+        border-radius: 14px;
+        border: 1px solid #bfd8df;
+        background: rgba(244, 251, 252, 0.90);
+    }}
+    QFrame#cardMuted[projectSiteOpsTile="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.70);
+    }}
+    QFrame#cardMuted[projectSiteNextCard="true"] {{
+        border-radius: 14px;
+        border: 1px solid #c8dce4;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #ffffff,
+            stop: 1 #edf9fa
+        );
+    }}
+    QToolButton[projectSiteRailAction="true"] {{
+        min-height: 24px;
+        border-radius: 12px;
+        padding: 0 7px;
+        background: #f7fcfd;
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
+    }}
     QFrame#card[deviceFleetStatusDock="true"] {{
         border-radius: 18px;
         border: 1px solid #c8d9ca;

@@ -231,45 +231,61 @@ class ProjectSitePage(QWidget):
 
     def _build_top_bar(self) -> CardFrame:
         card = CardFrame(role="command")
+        card.setProperty("projectSiteCommandDock", True)
+        card.setMaximumHeight(86)
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_xs, TOKENS.spacing_lg, TOKENS.spacing_xs)
+        layout.setSpacing(TOKENS.spacing_sm)
 
         summary_row = QHBoxLayout()
-        summary_row.setSpacing(TOKENS.spacing_md)
+        summary_row.setSpacing(TOKENS.spacing_sm)
         self.current_project_value = QLabel("--")
         self.current_site_value = QLabel("--")
         self.current_status_chip = chip("草拟", "warning")
         self.integrity_value = QLabel("--")
+        self.project_summary_metric_cards: list[CardFrame] = []
         for title, widget in (
             ("当前项目", self.current_project_value),
             ("当前站点", self.current_site_value),
             ("状态", self.current_status_chip),
             ("完整性", self.integrity_value),
         ):
-            summary_row.addWidget(self._metric_box(title, widget), 1)
+            metric_card = self._metric_box(title, widget, compact=True)
+            self.project_summary_metric_cards.append(metric_card)
+            summary_row.addWidget(metric_card, 1)
         layout.addLayout(summary_row, 1)
 
         button_column = QVBoxLayout()
-        button_column.setSpacing(TOKENS.spacing_sm)
+        button_column.setSpacing(TOKENS.spacing_xs)
+        self.project_command_buttons: list[QPushButton] = []
 
         row1 = QHBoxLayout()
+        row1.setSpacing(TOKENS.spacing_xs)
         new_button = QPushButton("新建")
         new_button.clicked.connect(self._new_workspace)
         copy_button = QPushButton("复制")
         copy_button.clicked.connect(self._duplicate_workspace)
         template_button = QPushButton("导入模板")
         template_button.clicked.connect(self._import_template)
+        for button in (new_button, copy_button, template_button):
+            button.setProperty("projectSiteCommandButton", True)
+            button.setMaximumHeight(26)
+            self.project_command_buttons.append(button)
         row1.addWidget(new_button)
         row1.addWidget(copy_button)
         row1.addWidget(template_button)
 
         row2 = QHBoxLayout()
+        row2.setSpacing(TOKENS.spacing_xs)
         save_button = QPushButton("保存")
         save_button.setProperty("variant", "primary")
         save_button.clicked.connect(self._save)
         check_button = QPushButton("完整性检查")
         check_button.clicked.connect(self._check_completeness)
+        for button in (save_button, check_button):
+            button.setProperty("projectSiteCommandButton", True)
+            button.setMaximumHeight(26)
+            self.project_command_buttons.append(button)
         row2.addWidget(save_button)
         row2.addWidget(check_button)
 
@@ -280,8 +296,9 @@ class ProjectSitePage(QWidget):
 
     def _build_site_ops_rail(self) -> CardFrame:
         card = CardFrame(muted=True, role="rail")
+        card.setProperty("projectSiteOpsRail", True)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_sm)
         layout.addWidget(section_title("现场闭合控制轨", "把站点上下文、采样链路、元数据和交付状态压缩到可操作的右侧轨道。"))
         self.site_ops_chip = chip("待检查", "warning")
@@ -289,13 +306,15 @@ class ProjectSitePage(QWidget):
 
         self.site_ops_action_bar = CardFrame(muted=True, role="console")
         self.site_ops_action_bar.setProperty("deckRole", "projectSiteActionDock")
-        self.site_ops_action_bar.setMaximumHeight(82)
+        self.site_ops_action_bar.setProperty("projectSiteActionDock", True)
+        self.site_ops_action_bar.setMaximumHeight(72)
         action_layout = QGridLayout(self.site_ops_action_bar)
-        action_layout.setContentsMargins(TOKENS.spacing_sm, 3, TOKENS.spacing_sm, 3)
+        action_layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
         action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
-        action_layout.setVerticalSpacing(2)
+        action_layout.setVerticalSpacing(0)
         action_label = QLabel("现场动作")
         action_label.setObjectName("metricLabel")
+        action_label.setMaximumHeight(16)
         action_layout.addWidget(action_label, 0, 0, 1, 3)
 
         self.site_ops_next_action_button = self._site_ops_action_button("下一动作", "按当前缺口跳到最需要处理的配置区段。")
@@ -344,11 +363,13 @@ class ProjectSitePage(QWidget):
         layout.addLayout(self.site_ops_grid)
 
         next_card = CardFrame(muted=True, role="tile")
-        next_card.setMinimumHeight(78)
+        self.site_ops_next_card = next_card
+        next_card.setProperty("projectSiteNextCard", True)
+        next_card.setMinimumHeight(70)
+        next_card.setMaximumHeight(80)
         next_layout = QVBoxLayout(next_card)
-        next_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
-        next_layout.setSpacing(TOKENS.spacing_xs)
-        next_card.setMaximumHeight(88)
+        next_layout.setContentsMargins(TOKENS.spacing_md, 3, TOKENS.spacing_md, 3)
+        next_layout.setSpacing(1)
         next_label = QLabel("下一步")
         next_label.setObjectName("metricLabel")
         self.site_ops_next_value = QLabel("--")
@@ -370,23 +391,25 @@ class ProjectSitePage(QWidget):
         button.setText(text)
         button.setToolTip(tooltip)
         button.setProperty("railAction", True)
+        button.setProperty("projectSiteRailAction", True)
         button.setMinimumWidth(0)
-        button.setMaximumHeight(26)
+        button.setMaximumHeight(24)
         button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         return button
 
     def _site_ops_tile(self, key: str, title: str) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
-        card.setMinimumHeight(26)
-        card.setMaximumHeight(28)
+        card.setProperty("projectSiteOpsTile", True)
+        card.setMinimumHeight(24)
+        card.setMaximumHeight(26)
         card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
+        layout.setContentsMargins(TOKENS.spacing_sm, 1, TOKENS.spacing_sm, 1)
         layout.setSpacing(TOKENS.spacing_xs)
         label = QLabel(title)
         label.setObjectName("metricLabel")
-        label.setMinimumWidth(58)
-        label.setMaximumWidth(64)
+        label.setMinimumWidth(54)
+        label.setMaximumWidth(62)
         value = QLabel("--")
         value.setObjectName("metricValue")
         value.setProperty("compactMetric", True)
@@ -1586,11 +1609,15 @@ class ProjectSitePage(QWidget):
         replay_text = "保留回放材料" if self._combo_bool(self.replay_ready_combo) else "最小材料保留"
         self.runtime_preview_note.setText(f"{archive_text}，{replay_text}。")
 
-    def _metric_box(self, title: str, widget: QWidget) -> CardFrame:
+    def _metric_box(self, title: str, widget: QWidget, *, compact: bool = False) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
+        if compact:
+            card.setProperty("projectSiteMetric", True)
+            card.setMaximumHeight(56)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
-        layout.setSpacing(TOKENS.spacing_xs)
+        vertical_margin = TOKENS.spacing_xs if compact else TOKENS.spacing_sm
+        layout.setContentsMargins(TOKENS.spacing_md, vertical_margin, TOKENS.spacing_md, vertical_margin)
+        layout.setSpacing(1 if compact else TOKENS.spacing_xs)
         label = QLabel(title)
         label.setObjectName("metricLabel")
         layout.addWidget(label)
