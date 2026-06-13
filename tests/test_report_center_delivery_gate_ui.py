@@ -43,6 +43,7 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.report_tree_active_chip.text().startswith("运行")
         assert page.delivery_rail.property("cardRole") == "rail"
         assert page.delivery_rail.property("deliveryMissionRail") is True
+        assert page.delivery_rail.property("desktopMissionRail") is True
         assert page.delivery_rail.minimumWidth() == 276
         assert page.delivery_rail.maximumWidth() == 340
         assert page.delivery_rail_status_chip.property("closureStage") is True
@@ -93,29 +94,35 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_mode_buttons["summary"].isChecked() is True
         page._show_delivery_rail_mode("delivery")
         assert page.delivery_focus_card.property("cardRole") == "panel"
+        assert page.delivery_focus_card.property("deliveryFocusShell") is True
         assert page.delivery_focus_stack.count() == 3
         assert page.delivery_focus_buttons["gate"].isChecked() is True
         assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
         assert page.delivery_gate_card.property("cardRole") == "cockpit"
         assert page.delivery_gate_card.property("deckRole") == "deliveryGateMatrix"
+        assert page.delivery_gate_card.property("deliveryGateCompact") is True
         assert page.delivery_gate_hero_card.property("cardRole") == "console"
         assert page.delivery_gate_hero_card.property("deckRole") == "deliveryReadinessHero"
+        assert page.delivery_gate_hero_card.property("deliveryGateHero") is True
+        assert page.delivery_gate_hero_card.isHidden() is True
         assert page.delivery_gate_progress_badge.objectName() == "chip"
         assert page.delivery_gate_progress_badge.property("chipTone") in {"warning", "accent", "success"}
         assert page.delivery_focus_stack.property("stackRole") == "compactDeliveryInspector"
-        assert page.delivery_gate_hero_card.maximumHeight() == 36
+        assert page.delivery_gate_hero_card.maximumHeight() == 0
         assert page.delivery_gate_scroll.objectName() == "deliveryGateMatrixScroll"
-        assert page.delivery_gate_scroll.maximumHeight() == 74
+        assert page.delivery_gate_scroll.maximumHeight() == 82
         assert page.delivery_gate_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+        assert page.delivery_gate_scroll.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.delivery_gate_scroll.widget() is page.delivery_gate_grid_body
         assert page.delivery_gate_ready_value.property("compactMetric") is True
         assert page.delivery_gate_ready_note.isHidden() is True
-        assert all(tile.maximumHeight() == 32 for tile in page.delivery_gate_tiles.values())
+        assert all(tile.maximumHeight() == 24 for tile in page.delivery_gate_tiles.values())
+        assert all(tile.property("deliveryGateTile") is True for tile in page.delivery_gate_tiles.values())
         assert page.delivery_gate_values["report"][0].property("compactMetric") is True
         assert page.delivery_gate_values["report"][1].isHidden() is True
         assert page.delivery_gate_values["report"][2].isHidden() is False
         assert page.delivery_gate_values["report"][2].property("closureStage") is True
-        assert page.delivery_gate_values["report"][2].minimumHeight() == 18
+        assert page.delivery_gate_values["report"][2].minimumHeight() == 16
         assert page.delivery_gate_next_value.property("compactMetric") is True
         assert page.delivery_gate_next_card.isHidden() is True
         assert page.delivery_gate_next_note.isHidden() is True
@@ -183,6 +190,7 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.closure_deck_card.property("cardRole") == "rail"
         assert page.closure_deck_chip.text() == "下一步"
         assert page.inner_inspector.property("cardRole") == "panel"
+        assert page.inner_inspector.property("deliveryDetailShell") is True
         assert page.inspector_stack.count() == 4
         assert page.inspector_stack.currentWidget() is page.export_card
         assert page.inspector_switches["export"].isChecked() is True
@@ -230,6 +238,7 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.inspector_switches["export"].isChecked() is False
         page._show_delivery_focus("batch")
         assert page.delivery_focus_stack.currentWidget() is page.batch_card
+        assert page.batch_card.property("deliveryBatchPanel") is True
         assert page.delivery_focus_buttons["batch"].isChecked() is True
         assert page.delivery_rail_stack.currentWidget() is page.delivery_focus_card
         assert page.delivery_rail_mode_buttons["delivery"].isChecked() is True
@@ -238,6 +247,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_focus_buttons["details"].isChecked() is True
         assert page.inner_inspector.property("deckRole") == "deliveryDetailInspector"
         assert page.inspector_stack.property("stackRole") == "deliveryDetailInspectorStack"
+        assert page.export_card.property("deliveryInspectorSection") is True
+        assert page.file_card.property("deliveryInspectorSection") is True
+        assert page.version_card.property("deliveryInspectorSection") is True
+        assert page.usage_card.property("deliveryInspectorSection") is True
         assert set(page.inspector_detail_tiles) == {
             "export.status",
             "export.options",
@@ -306,7 +319,7 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
                 assert_contained(page.preview_command_strip, button, page)
             for button in page.preview_content_switches.values():
                 assert_contained(page.preview_deck_card, button, page)
-            gate_widgets = [page.delivery_gate_hero_card, page.delivery_gate_scroll]
+            gate_widgets = [page.delivery_gate_scroll]
             for widget in gate_widgets:
                 assert_contained(page.delivery_gate_card, widget, page)
             for widget in (page.delivery_gate_tiles["report"], page.delivery_gate_tiles["export"]):

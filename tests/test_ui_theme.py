@@ -81,7 +81,18 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[reportNavRail="true"]' in stylesheet
     assert 'QTreeWidget#workflowTree[reportNavTree="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryMissionRail="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryMissionRail="true"][desktopMissionRail="true"]' in stylesheet
     assert 'QFrame#card[deliveryMissionInspector="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryFocusShell="true"]' in stylesheet
+    assert 'QFrame#card[deliveryGateCompact="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateHero="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateTile="true"] QLabel#chip' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateTile="true"] QLabel#metricValue[compactMetric="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryDetailShell="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryBatchPanel="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryInspectorSection="true"]' in stylesheet
+    assert 'QFrame#cardMuted[batchMetricTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryRailActionDock="true"]' in stylesheet
     assert 'QToolButton[deliveryRailAction="true"]' in stylesheet
     assert 'QFrame#card[projectSiteCommandDock="true"]' in stylesheet

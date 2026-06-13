@@ -880,9 +880,63 @@ def build_stylesheet() -> str:
         border: 1px solid #c4dce4;
         background: rgba(247, 252, 253, 0.86);
     }}
+    QFrame#cardMuted[deliveryMissionRail="true"][desktopMissionRail="true"] {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f9fdfc,
+            stop: 0.54 #edf8f9,
+            stop: 1 #e6f3f6
+        );
+    }}
     QFrame#card[deliveryMissionInspector="true"] {{
         border-radius: 16px;
         border: 1px solid #c8dce4;
+        background: rgba(255, 255, 255, 0.78);
+    }}
+    QFrame#cardMuted[deliveryFocusShell="true"] {{
+        border-radius: 15px;
+        border: 1px solid #c8dce4;
+        background: rgba(255, 255, 255, 0.70);
+    }}
+    QFrame#card[deliveryGateCompact="true"] {{
+        border-radius: 15px;
+        border: 1px solid #c4d8dc;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #fffaf0,
+            stop: 0.62 #ffffff,
+            stop: 1 #edf8f2
+        );
+    }}
+    QFrame#cardMuted[deliveryGateHero="true"] {{
+        border-radius: 12px;
+        border: 1px solid #bdd6dc;
+        background: rgba(248, 252, 253, 0.90);
+    }}
+    QFrame#cardMuted[deliveryGateTile="true"] {{
+        border-radius: 10px;
+        border: 1px solid #d0e1e7;
+        background: rgba(255, 255, 255, 0.78);
+    }}
+    QFrame#cardMuted[deliveryGateTile="true"] QLabel#chip {{
+        font-size: 9px;
+        padding: 0 2px;
+    }}
+    QFrame#cardMuted[deliveryGateTile="true"] QLabel#metricValue[compactMetric="true"] {{
+        font-size: 11px;
+        font-weight: 800;
+        padding: 0;
+    }}
+    QFrame#cardMuted[deliveryDetailShell="true"],
+    QFrame#cardMuted[deliveryBatchPanel="true"],
+    QFrame#cardMuted[deliveryInspectorSection="true"] {{
+        border-radius: 14px;
+        border: 1px solid #d0e1e7;
+        background: rgba(255, 255, 255, 0.76);
+    }}
+    QFrame#cardMuted[batchMetricTile="true"] {{
+        border-radius: 11px;
+        border: 1px solid #d2e3e9;
         background: rgba(255, 255, 255, 0.78);
     }}
     QFrame#cardMuted[deliveryRailActionDock="true"] {{
