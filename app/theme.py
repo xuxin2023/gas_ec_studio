@@ -638,6 +638,30 @@ def build_stylesheet() -> str:
         color: #ffffff;
         font-weight: 800;
     }}
+    QToolButton[methodTaskSwitch="true"] {{
+        min-height: 28px;
+        min-width: 76px;
+        border-radius: 14px;
+        padding: 0 10px;
+        background: rgba(247, 251, 253, 0.88);
+        border: 1px solid #b8d4dd;
+        color: #31586a;
+    }}
+    QToolButton[methodTaskSwitch="true"]:hover {{
+        background: #ffffff;
+        border-color: #7eb3bd;
+        color: {TOKENS.color_text};
+    }}
+    QToolButton[methodTaskSwitch="true"]:checked {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #083f50,
+            stop: 1 #0f8990
+        );
+        border: 1px solid #063847;
+        color: #ffffff;
+        font-weight: 800;
+    }}
     QToolButton[windowConsoleSwitch="true"] {{
         min-height: 26px;
         min-width: 48px;

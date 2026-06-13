@@ -543,12 +543,22 @@ def test_ec_processing_method_console_controls_are_visible_in_main_shell(monkeyp
         stack_rect = widget_bounds(page.method_family_stack, page)
 
         assert page.method_result_card.property("deckRole") == "methodResultCompact"
-        assert page.method_result_card.geometry().y() > page.method_support_card.geometry().y()
+        assert page.method_support_card.property("deckRole") == "methodSupportDeck"
+        assert page.method_console_mode_buttons["family"].isChecked() is True
+        assert page.method_support_card.isHidden() is True
+        assert page.method_result_card.geometry().y() > page.method_family_card.geometry().y()
         assert family_rect.top() < viewport_rect.bottom()
         assert stack_rect.top() < viewport_rect.bottom()
         assert_contained(scroll.viewport(), page.footprint_enable_combo, page)
         assert_contained(scroll.viewport(), page.footprint_method_combo, page)
         assert_contained(scroll.viewport(), page.method_field_labels[0], page)
+        page._show_method_support("primary")
+        app.processEvents()
+        assert page.method_console_mode_buttons["primary"].isChecked() is True
+        assert page.method_support_card.isHidden() is False
+        assert page.method_family_switch_bar.isHidden() is True
+        assert page.method_family_tile_strip.isHidden() is True
+        assert page.method_family_stack.isHidden() is True
         assert page.content_stack.width() >= 620
         assert page.desktop_rail.minimumWidth() == 280
     finally:

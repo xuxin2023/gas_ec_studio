@@ -75,6 +75,7 @@ class ECProcessingPage(QWidget):
         self.step_command_notes: dict[str, dict[str, QLabel]] = {}
         self.step_command_buttons: dict[str, dict[str, QToolButton]] = {}
         self.method_shortcut_buttons: dict[str, QToolButton] = {}
+        self.method_console_mode_buttons: dict[str, QToolButton] = {}
         self.window_console_switches: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
@@ -1047,6 +1048,7 @@ class ECProcessingPage(QWidget):
         if card is None:
             return
         self.method_family_stack.setCurrentWidget(card)
+        self._show_method_console_mode("family")
         for key, button in self.method_family_buttons.items():
             button.blockSignals(True)
             button.setChecked(key == family)
@@ -1060,11 +1062,40 @@ class ECProcessingPage(QWidget):
             button.style().unpolish(button)
             button.style().polish(button)
 
-    def _show_method_support(self, support: str) -> None:
+    def _show_method_console_mode(self, mode: str) -> None:
+        if mode not in {"family", "primary", "compare"}:
+            mode = "family"
+        support_visible = mode in {"primary", "compare"}
+        for widget_name in (
+            "method_family_switch_bar",
+            "method_family_tile_strip",
+            "method_family_stack",
+            "method_snapshot_label",
+            "method_validation_label",
+        ):
+            widget = getattr(self, widget_name, None)
+            if widget is not None:
+                widget.setVisible(not support_visible)
+        support_card = getattr(self, "method_support_card", None)
+        if support_card is not None:
+            support_card.setVisible(support_visible)
+        if support_visible:
+            self._show_method_support(mode, switch_console=False)
+        for key, button in self.method_console_mode_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == mode)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _show_method_support(self, support: str, *, switch_console: bool = True) -> None:
         if not hasattr(self, "method_support_sections"):
             return
         card = self.method_support_sections.get(support)
         if card is None:
+            return
+        if switch_console:
+            self._show_method_console_mode(support)
             return
         self.method_support_stack.setCurrentWidget(card)
         for key, button in self.method_support_buttons.items():
@@ -2713,7 +2744,31 @@ class ECProcessingPage(QWidget):
         compact_method_heading.setMaximumHeight(24)
         method_header.insertWidget(0, compact_method_heading)
 
-        method_switch_row = QHBoxLayout()
+        method_mode_row = QHBoxLayout()
+        method_mode_row.setContentsMargins(0, 0, 0, 0)
+        method_mode_row.setSpacing(TOKENS.spacing_xs)
+        for mode, text in (
+            ("family", "方法族"),
+            ("primary", "分析仪 QC"),
+            ("compare", "方法对比"),
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.setProperty("methodTaskSwitch", True)
+            button.setMinimumWidth(76)
+            button.setMaximumHeight(28)
+            button.clicked.connect(lambda _checked=False, key=mode: self._show_method_console_mode(key))
+            self.method_console_mode_buttons[mode] = button
+            method_mode_row.addWidget(button)
+        method_mode_row.addStretch(1)
+        method_shell_layout.addLayout(method_mode_row)
+
+        self.method_family_switch_bar = QWidget()
+        self.method_family_switch_bar.setProperty("deckRole", "methodFamilySwitchBar")
+        self.method_family_switch_bar.setMaximumHeight(30)
+        method_switch_row = QHBoxLayout(self.method_family_switch_bar)
         method_switch_row.setContentsMargins(0, 0, 0, 0)
         method_switch_row.setSpacing(TOKENS.spacing_xs)
         self.method_family_buttons: dict[str, QToolButton] = {}
@@ -2730,9 +2785,12 @@ class ECProcessingPage(QWidget):
             self.method_family_buttons[family] = button
             method_switch_row.addWidget(button)
         method_switch_row.addStretch(1)
-        method_shell_layout.addLayout(method_switch_row)
+        method_shell_layout.addWidget(self.method_family_switch_bar)
 
-        method_tile_grid = QGridLayout()
+        self.method_family_tile_strip = QWidget()
+        self.method_family_tile_strip.setProperty("deckRole", "methodFamilyTileStrip")
+        self.method_family_tile_strip.setMaximumHeight(64)
+        method_tile_grid = QGridLayout(self.method_family_tile_strip)
         method_tile_grid.setContentsMargins(0, 0, 0, 0)
         method_tile_grid.setHorizontalSpacing(TOKENS.spacing_xs)
         method_tile_grid.setVerticalSpacing(0)
@@ -2744,7 +2802,7 @@ class ECProcessingPage(QWidget):
         self._build_method_console_tile(method_tile_grid, 2, "spectral", "谱修正")
         for column in range(3):
             method_tile_grid.setColumnStretch(column, 1)
-        method_shell_layout.addLayout(method_tile_grid)
+        method_shell_layout.addWidget(self.method_family_tile_strip)
 
         self.method_family_stack = QStackedWidget()
         self.method_family_stack.setProperty("stackRole", "methodFamilyStack")
@@ -2897,7 +2955,9 @@ class ECProcessingPage(QWidget):
         self._show_method_family("footprint")
 
         self.method_support_card = CardFrame(muted=True, role="panel")
+        self.method_support_card.setProperty("deckRole", "methodSupportDeck")
         self.method_support_card.setMinimumWidth(0)
+        self.method_support_card.setMaximumHeight(286)
         self.method_support_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         support_layout = QVBoxLayout(self.method_support_card)
         support_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -2999,7 +3059,8 @@ class ECProcessingPage(QWidget):
             "primary": self.primary_analyzer_card,
             "compare": self.method_compare_card,
         }
-        self._show_method_support("primary")
+        self._show_method_support("primary", switch_console=False)
+        self._show_method_console_mode("family")
         param_layout.addWidget(self.method_support_card)
 
         row.addWidget(param_card)
