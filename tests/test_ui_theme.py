@@ -38,6 +38,9 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QToolButton[methodTaskSwitch="true"]:checked' in stylesheet
     assert 'QToolButton[windowConsoleSwitch="true"]' in stylesheet
     assert 'QToolButton[windowConsoleSwitch="true"]:checked' in stylesheet
+    assert 'QToolButton[closureModeSwitch="true"]' in stylesheet
+    assert 'QToolButton[closureModeSwitch="true"]:checked' in stylesheet
+    assert 'QFrame#cardMuted[closureCompactTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="rail"] QToolButton[viewSwitch="true"]:checked' in stylesheet
     assert 'QFrame#card[cardRole="command"] QToolButton[viewSwitch="true"]:checked' in stylesheet
     assert 'QLabel[methodFieldLabel="true"]' in stylesheet

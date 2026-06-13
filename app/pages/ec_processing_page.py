@@ -77,6 +77,7 @@ class ECProcessingPage(QWidget):
         self.method_shortcut_buttons: dict[str, QToolButton] = {}
         self.method_console_mode_buttons: dict[str, QToolButton] = {}
         self.window_console_switches: dict[str, QToolButton] = {}
+        self.rp_closure_mode_buttons: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -353,11 +354,12 @@ class ECProcessingPage(QWidget):
 
     def _build_rp_closure_deck(self) -> CardFrame:
         card = CardFrame(role="cockpit")
+        self.rp_closure_deck = card
         card.setProperty("deckRole", "rpClosureDeck")
-        card.setMaximumHeight(146)
+        card.setMaximumHeight(92)
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
 
         intro = QVBoxLayout()
         intro.setSpacing(TOKENS.spacing_xs)
@@ -366,9 +368,40 @@ class ECProcessingPage(QWidget):
         intro.addWidget(intro_title)
         self.rp_closure_chip = chip("待运行", "warning")
         intro.addWidget(self.rp_closure_chip)
+        mode_row = QHBoxLayout()
+        mode_row.setContentsMargins(0, 0, 0, 0)
+        mode_row.setSpacing(TOKENS.spacing_xs)
+        for mode, text in (("compact", "压缩"), ("detail", "详情")):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.setProperty("closureModeSwitch", True)
+            button.setMinimumWidth(48)
+            button.setMaximumHeight(24)
+            button.clicked.connect(lambda _checked=False, key=mode: self._show_rp_closure_mode(key))
+            self.rp_closure_mode_buttons[mode] = button
+            mode_row.addWidget(button)
+        mode_row.addStretch(1)
+        intro.addLayout(mode_row)
         layout.addLayout(intro)
 
-        grid = QGridLayout()
+        self.rp_closure_stack = QStackedWidget()
+        self.rp_closure_stack.setMinimumWidth(0)
+        self.rp_closure_stack.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+        self.rp_closure_compact_strip = QWidget()
+        self.rp_closure_compact_strip.setProperty("deckRole", "rpClosureCompactStrip")
+        compact_layout = QGridLayout(self.rp_closure_compact_strip)
+        compact_layout.setContentsMargins(0, 0, 0, 0)
+        compact_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        compact_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        self.rp_closure_compact_tiles: dict[str, CardFrame] = {}
+        self.rp_closure_compact_values: dict[str, QLabel] = {}
+
+        detail_widget = QWidget()
+        detail_widget.setProperty("deckRole", "rpClosureDetailGrid")
+        grid = QGridLayout(detail_widget)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(TOKENS.spacing_sm)
         grid.setVerticalSpacing(TOKENS.spacing_xs)
@@ -386,9 +419,39 @@ class ECProcessingPage(QWidget):
                 ("network", "网络"),
             )
         ):
+            compact_layout.addWidget(self._rp_closure_compact_tile(key, title), 0, index)
             grid.addWidget(self._rp_closure_tile(key, title), index // 3, index % 3)
-        layout.addLayout(grid, 1)
+            compact_layout.setColumnStretch(index, 1)
+        self.rp_closure_stack.addWidget(self.rp_closure_compact_strip)
+        self.rp_closure_stack.addWidget(detail_widget)
+        layout.addWidget(self.rp_closure_stack, 1)
+        self._show_rp_closure_mode("compact")
         return card
+
+    def _rp_closure_compact_tile(self, key: str, title: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("closureCompactTile", True)
+        tile.setProperty("evidenceKey", key)
+        tile.setMinimumWidth(0)
+        tile.setMaximumHeight(48)
+        tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        tile_layout.setSpacing(0)
+        title_label = QLabel(title)
+        title_label.setObjectName("metricLabel")
+        title_label.setWordWrap(False)
+        value_label = QLabel("--")
+        value_label.setObjectName("metricValue")
+        value_label.setProperty("compactMetric", True)
+        value_label.setWordWrap(False)
+        value_label.setMinimumWidth(0)
+        value_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        tile_layout.addWidget(title_label)
+        tile_layout.addWidget(value_label)
+        self.rp_closure_compact_tiles[key] = tile
+        self.rp_closure_compact_values[key] = value_label
+        return tile
 
     def _rp_closure_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
@@ -971,6 +1034,24 @@ class ECProcessingPage(QWidget):
             button.blockSignals(False)
             button.style().unpolish(button)
             button.style().polish(button)
+
+    def _show_rp_closure_mode(self, mode: str) -> None:
+        if mode not in {"compact", "detail"}:
+            mode = "compact"
+        if not hasattr(self, "rp_closure_stack"):
+            return
+        index = 1 if mode == "detail" else 0
+        self.rp_closure_stack.setCurrentIndex(index)
+        self.rp_closure_deck.setMaximumHeight(146 if mode == "detail" else 92)
+        self.rp_closure_deck.setProperty("closureMode", mode)
+        for key, button in self.rp_closure_mode_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == mode)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+        self.rp_closure_deck.style().unpolish(self.rp_closure_deck)
+        self.rp_closure_deck.style().polish(self.rp_closure_deck)
 
     def _activate_method_shortcut(self, family: str) -> None:
         item = self.step_items.get("uncertainty")
@@ -3761,6 +3842,16 @@ class ECProcessingPage(QWidget):
         tile.setProperty("evidenceTone", tone)
         tile.style().unpolish(tile)
         tile.style().polish(tile)
+        compact_value = getattr(self, "rp_closure_compact_values", {}).get(key)
+        compact_tile = getattr(self, "rp_closure_compact_tiles", {}).get(key)
+        if compact_value is not None:
+            compact_value.setText(display_value)
+            compact_value.setToolTip(tooltip)
+        if compact_tile is not None:
+            compact_tile.setToolTip(tooltip)
+            compact_tile.setProperty("evidenceTone", tone)
+            compact_tile.style().unpolish(compact_tile)
+            compact_tile.style().polish(compact_tile)
 
     def _set_generic_chip(self, label: QLabel, text: str, tone: str) -> None:
         label.setText(text)

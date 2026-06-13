@@ -70,16 +70,26 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.run_bar.property("cardRole") == "command"
         assert page.rp_closure_deck.property("cardRole") == "cockpit"
         assert page.rp_closure_deck.property("deckRole") == "rpClosureDeck"
-        assert page.rp_closure_deck.maximumHeight() == 146
+        assert page.rp_closure_deck.maximumHeight() == 92
+        assert page.rp_closure_deck.property("closureMode") == "compact"
+        assert page.rp_closure_mode_buttons["compact"].isChecked() is True
+        assert page.rp_closure_stack.currentWidget() is page.rp_closure_compact_strip
         assert page.rp_closure_chip.text().startswith("待运行")
         assert set(page.rp_closure_tiles) == {"run", "flux", "uncertainty", "methods", "benchmark", "network"}
+        assert set(page.rp_closure_compact_tiles) == set(page.rp_closure_tiles)
         assert all(tile.property("cardRole") == "tile" for tile in page.rp_closure_tiles.values())
+        assert all(tile.property("closureCompactTile") is True for tile in page.rp_closure_compact_tiles.values())
         assert all(value.property("compactMetric") is True for value in page.rp_closure_values.values())
         assert all(chip.property("closureStage") is True for chip in page.rp_closure_chips.values())
         assert all(chip.minimumHeight() == 22 for chip in page.rp_closure_chips.values())
         assert page.rp_closure_values["run"].text() == "待运行"
         assert page.rp_closure_values["flux"].text() == "待生成"
         assert page.rp_closure_values["network"].text() == "FLUXNET"
+        assert page.rp_closure_compact_values["run"].text() == page.rp_closure_values["run"].text()
+        page._show_rp_closure_mode("detail")
+        assert page.rp_closure_deck.maximumHeight() == 146
+        assert page.rp_closure_deck.property("closureMode") == "detail"
+        assert page.rp_closure_mode_buttons["detail"].isChecked() is True
         assert page.tree_card.property("cardRole") == "rail"
         assert page.step_nav_summary_card.property("deckRole") == "ecStepNavigationStatus"
         assert page.step_nav_summary_card.maximumHeight() == 42
@@ -393,6 +403,8 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.rp_closure_values["flux"].text() != "待生成"
         assert page.rp_closure_values["uncertainty"].text().startswith("±")
         assert page.rp_closure_tiles["run"].property("evidenceTone") == "success"
+        assert page.rp_closure_compact_values["run"].text() == page.rp_closure_values["run"].text()
+        assert page.rp_closure_compact_tiles["run"].property("evidenceTone") == "success"
         assert page.cockpit_delivery_value.text() == "FLUXNET"
         assert "windows=" in page.cockpit_result_note.text()
         assert page.window_readiness_value.text() != "36,000"
@@ -425,10 +437,18 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             assert_contained(page, page.tree_card, page)
             assert_contained(page, page.desktop_rail, page)
 
-            closure_tiles = list(page.rp_closure_tiles.values())
+            closure_tiles = list(page.rp_closure_compact_tiles.values())
             for tile in closure_tiles:
                 assert_contained(page.rp_closure_deck, tile, page)
             assert_no_visual_overlap(closure_tiles, page)
+            page._show_rp_closure_mode("detail")
+            app.processEvents()
+            detail_tiles = list(page.rp_closure_tiles.values())
+            for tile in detail_tiles:
+                assert_contained(page.rp_closure_deck, tile, page)
+            assert_no_visual_overlap(detail_tiles, page)
+            page._show_rp_closure_mode("compact")
+            app.processEvents()
 
             assert_contained(page.desktop_rail_scroll.viewport(), page.desktop_rail_status_strip, page)
             assert_contained(page.desktop_rail_scroll.viewport(), page.desktop_rail_action_button, page)

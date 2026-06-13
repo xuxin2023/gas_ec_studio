@@ -686,6 +686,42 @@ def build_stylesheet() -> str:
         color: #ffffff;
         font-weight: 800;
     }}
+    QToolButton[closureModeSwitch="true"] {{
+        min-height: 24px;
+        min-width: 48px;
+        border-radius: 12px;
+        padding: 0 8px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid #c4dce4;
+        color: #31586a;
+    }}
+    QToolButton[closureModeSwitch="true"]:checked {{
+        background: #0b6f7f;
+        border: 1px solid #075a69;
+        color: #ffffff;
+        font-weight: 800;
+    }}
+    QFrame#cardMuted[closureCompactTile="true"] {{
+        border-radius: 14px;
+        border: 1px solid #c4dce4;
+        background: rgba(255, 255, 255, 0.62);
+    }}
+    QFrame#cardMuted[closureCompactTile="true"][evidenceTone="success"] {{
+        border-color: #8ecfba;
+        background: rgba(231, 250, 241, 0.86);
+    }}
+    QFrame#cardMuted[closureCompactTile="true"][evidenceTone="accent"] {{
+        border-color: #8dc7d0;
+        background: rgba(232, 248, 250, 0.88);
+    }}
+    QFrame#cardMuted[closureCompactTile="true"][evidenceTone="warning"] {{
+        border-color: #efc980;
+        background: rgba(255, 249, 235, 0.90);
+    }}
+    QFrame#cardMuted[closureCompactTile="true"][evidenceTone="danger"] {{
+        border-color: #e99d9a;
+        background: rgba(255, 240, 240, 0.90);
+    }}
     QListWidget, QTableWidget, QTreeWidget {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,
