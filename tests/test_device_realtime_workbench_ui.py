@@ -191,30 +191,51 @@ def test_realtime_page_uses_session_cockpit_deck() -> None:
 
         assert page.property("pageSurface") is True
         assert page.control_card.property("cardRole") == "command"
-        assert page.control_card.maximumHeight() == 160
+        assert page.control_card.property("realtimeCommandDock") is True
+        assert page.control_card.maximumHeight() == 146
         assert page.capture_target_panel.property("cardRole") == "tile"
+        assert page.capture_target_panel.property("realtimeTargetDock") is True
+        assert page.capture_target_panel.maximumHeight() == 76
         assert page.capture_metric_panel.property("cardRole") == "tile"
+        assert page.capture_metric_panel.property("realtimeMetricDock") is True
+        assert page.capture_metric_panel.maximumHeight() == 76
+        assert set(page.metric_buttons) == {"co2", "h2o", "pressure"}
+        assert all(button.property("realtimeMetricToggle") is True for button in page.metric_buttons.values())
         assert page.capture_action_panel.property("cardRole") == "tile"
         assert page.capture_action_panel.property("deckRole") == "realtimeActionDock"
+        assert page.capture_action_panel.property("realtimeActionDock") is True
+        assert page.capture_action_panel.maximumHeight() == 84
         assert page.capture_status_panel.property("cardRole") == "tile"
         assert page.capture_status_panel.property("deckRole") == "realtimeStatusDock"
+        assert page.capture_status_panel.property("realtimeStatusDock") is True
+        assert page.capture_status_panel.maximumHeight() == 76
         assert page.capture_status_panel.property("evidenceTone") in {"success", "warning", "danger"}
         assert page.capture_command_chip.text() == "实时控制台"
         assert page.start_button.property("railAction") is True
+        assert page.start_button.property("realtimeActionButton") is True
         assert page.start_button.property("actionTone") == "success"
         assert page.mark_button.property("railAction") is True
+        assert page.mark_button.property("realtimeActionButton") is True
         assert page.mark_button.property("actionTone") == "danger"
         assert page.restore_button.property("railAction") is True
+        assert page.restore_button.property("realtimeActionButton") is True
         assert page.summary_card.property("cardRole") == "cockpit"
         assert page.summary_card.property("deckRole") == "realtimeSummaryDeck"
-        assert page.summary_card.maximumHeight() == 116
+        assert page.summary_card.property("realtimeSummaryDock") is True
+        assert page.summary_card.maximumHeight() == 104
+        assert page.session_card.property("realtimeSessionTile") is True
+        assert page.session_card.maximumHeight() == 82
         assert len(page.summary_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)
+        assert all(card.property("realtimeSummaryMetric") is True for card in page.summary_metric_cards)
+        assert all(card.maximumHeight() == 82 for card in page.summary_metric_cards)
         assert all(value.property("compactMetric") is True for value in page.summary_values.values())
         assert page.plot_card.property("cardRole") == "panel"
+        assert page.plot_card.property("realtimePlotPanel") is True
         assert page.bottom_card.property("cardRole") == "rail"
-        assert page.bottom_card.minimumHeight() == 162
-        assert page.bottom_card.maximumHeight() == 180
+        assert page.bottom_card.property("realtimeEvidenceRail") is True
+        assert page.bottom_card.minimumHeight() == 154
+        assert page.bottom_card.maximumHeight() == 170
         assert page.session_device_value.property("compactMetric") is True
         assert page.session_state_chip.text() in {"待连接", "需关注", "采集中", "等待帧"}
         assert page.session_device_value.text() != "--"

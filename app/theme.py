@@ -867,6 +867,83 @@ def build_stylesheet() -> str:
         border: 1px solid #b8d4dd;
         color: #0e5f6e;
     }}
+    QFrame#card[realtimeCommandDock="true"] {{
+        border-radius: 18px;
+        border: 1px solid #bfd8df;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #edf9fa,
+            stop: 0.52 #ffffff,
+            stop: 1 #e7f5f1
+        );
+    }}
+    QFrame#cardMuted[realtimeTargetDock="true"],
+    QFrame#cardMuted[realtimeMetricDock="true"],
+    QFrame#cardMuted[realtimeActionDock="true"],
+    QFrame#cardMuted[realtimeStatusDock="true"] {{
+        border-radius: 14px;
+        border: 1px solid #c8dce4;
+        background: rgba(255, 255, 255, 0.74);
+    }}
+    QFrame#cardMuted[realtimeStatusDock="true"][evidenceTone="success"] {{
+        border-color: #8ecfba;
+        background: rgba(231, 250, 241, 0.88);
+    }}
+    QFrame#cardMuted[realtimeStatusDock="true"][evidenceTone="warning"] {{
+        border-color: #efc980;
+        background: rgba(255, 249, 235, 0.90);
+    }}
+    QFrame#cardMuted[realtimeStatusDock="true"][evidenceTone="danger"] {{
+        border-color: #e99d9a;
+        background: rgba(255, 240, 240, 0.90);
+    }}
+    QToolButton[realtimeMetricToggle="true"] {{
+        min-height: 26px;
+        border-radius: 13px;
+        padding: 0 10px;
+        background: #e8f8fa;
+        border: 1px solid #8dc7d0;
+        color: #0e5f6e;
+    }}
+    QToolButton[realtimeMetricToggle="true"]:checked {{
+        background: #d6f2f5;
+        border-color: #56aeb9;
+        color: #073f49;
+    }}
+    QToolButton[realtimeActionButton="true"] {{
+        min-height: 24px;
+        border-radius: 12px;
+        padding: 0 7px;
+        background: #f7fcfd;
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
+    }}
+    QFrame#card[realtimeSummaryDock="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8d9ca;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #fff9e9,
+            stop: 0.50 #ffffff,
+            stop: 1 #e7f5f1
+        );
+    }}
+    QFrame#cardMuted[realtimeSessionTile="true"],
+    QFrame#cardMuted[realtimeSummaryMetric="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.76);
+    }}
+    QFrame#card[realtimePlotPanel="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8dce4;
+        background: rgba(255, 255, 255, 0.88);
+    }}
+    QFrame#cardMuted[realtimeEvidenceRail="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8dce4;
+        background: rgba(247, 252, 253, 0.86);
+    }}
     QFrame#card[deviceFleetStatusDock="true"] {{
         border-radius: 18px;
         border: 1px solid #c8d9ca;
