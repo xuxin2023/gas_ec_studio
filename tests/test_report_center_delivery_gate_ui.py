@@ -107,11 +107,14 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_next_note.isHidden() is True
         assert page.preview_header_card.property("cardRole") == "cockpit"
         assert page.preview_header_card.property("deckRole") == "reportPreviewHeader"
-        assert page.preview_header_card.maximumHeight() == 118
+        assert page.preview_header_card.property("reportPreviewHeaderDock") is True
+        assert page.preview_header_card.maximumHeight() == 88
         assert page.preview_command_strip.property("cardRole") == "console"
         assert page.preview_command_strip.property("deckRole") == "reportPreviewCommandStrip"
-        assert page.preview_command_strip.maximumHeight() == 86
+        assert page.preview_command_strip.property("previewCommandDock") is True
+        assert page.preview_command_strip.maximumHeight() == 68
         assert set(page.preview_command_tiles) == {"report", "gate", "export"}
+        assert all(tile.property("previewCommandTile") is True for tile in page.preview_command_tiles.values())
         assert page.preview_command_values["report"].text() == "待生成"
         assert page.preview_command_values["gate"].text() == page.delivery_gate_chip.text()
         assert page.preview_command_values["export"].text() == "待运行"
@@ -119,6 +122,7 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_command_buttons["export"].property("targetAction") == "export_report"
         assert page.preview_command_buttons["evidence"].property("targetAction") == "evidence"
         assert all(button.property("railAction") is True for button in page.preview_command_buttons.values())
+        assert all(button.property("previewCommandAction") is True for button in page.preview_command_buttons.values())
         assert page.preview_deck_card.property("cardRole") == "rail"
         assert page.preview_deck_card.property("deckRole") == "reportPreviewDeck"
         assert page.preview_deck_card.property("activePane") == "table"

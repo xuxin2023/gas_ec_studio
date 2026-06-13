@@ -753,6 +753,34 @@ def build_stylesheet() -> str:
         border: 1px solid #b8d4dd;
         color: #0e5f6e;
     }}
+    QFrame#card[reportPreviewHeaderDock="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8d9ca;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #fff9e9,
+            stop: 0.46 #ffffff,
+            stop: 1 #e7f5f1
+        );
+    }}
+    QFrame#cardMuted[previewCommandDock="true"] {{
+        border-radius: 15px;
+        border: 1px solid #bfd8df;
+        background: rgba(244, 251, 252, 0.88);
+    }}
+    QFrame#cardMuted[previewCommandTile="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.72);
+    }}
+    QToolButton[previewCommandAction="true"] {{
+        min-height: 24px;
+        border-radius: 12px;
+        padding: 0 8px;
+        background: #f7fcfd;
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
+    }}
     QFrame#cardMuted[closureCompactTile="true"] {{
         border-radius: 14px;
         border: 1px solid #c4dce4;

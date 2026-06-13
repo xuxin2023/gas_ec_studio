@@ -127,22 +127,24 @@ class ReportCenterPage(QWidget):
 
         self.preview_header_card = CardFrame(role="cockpit")
         self.preview_header_card.setProperty("deckRole", "reportPreviewHeader")
-        self.preview_header_card.setMaximumHeight(118)
+        self.preview_header_card.setProperty("reportPreviewHeaderDock", True)
+        self.preview_header_card.setMaximumHeight(88)
         self.preview_header_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         preview_header_layout = QVBoxLayout(self.preview_header_card)
-        preview_header_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        preview_header_layout.setSpacing(TOKENS.spacing_xs)
+        preview_header_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_xs, TOKENS.spacing_lg, TOKENS.spacing_xs)
+        preview_header_layout.setSpacing(1)
         self.preview_mode_chip = chip("工程诊断", "accent")
+        self.preview_mode_chip.setMaximumHeight(22)
         preview_header_layout.addWidget(self.preview_mode_chip)
         self.preview_title_label = QLabel("--")
         self.preview_title_label.setObjectName("pageTitle")
-        self.preview_title_label.setMaximumHeight(34)
-        self.preview_title_label.setWordWrap(True)
+        self.preview_title_label.setMaximumHeight(28)
+        self.preview_title_label.setWordWrap(False)
         preview_header_layout.addWidget(self.preview_title_label)
         self.preview_source_label = QLabel("--")
         self.preview_source_label.setObjectName("subtitle")
-        self.preview_source_label.setMaximumHeight(34)
-        self.preview_source_label.setWordWrap(True)
+        self.preview_source_label.setMaximumHeight(18)
+        self.preview_source_label.setWordWrap(False)
         preview_header_layout.addWidget(self.preview_source_label)
         center_layout.addWidget(self.preview_header_card)
 
@@ -748,12 +750,13 @@ class ReportCenterPage(QWidget):
     def _build_preview_command_strip(self) -> CardFrame:
         strip = CardFrame(muted=True, role="console")
         strip.setProperty("deckRole", "reportPreviewCommandStrip")
-        strip.setMaximumHeight(86)
+        strip.setProperty("previewCommandDock", True)
+        strip.setMaximumHeight(68)
         strip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout = QGridLayout(strip)
-        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
         layout.setHorizontalSpacing(TOKENS.spacing_sm)
-        layout.setVerticalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(0)
 
         for column, (key, title) in enumerate(
             (
@@ -765,11 +768,12 @@ class ReportCenterPage(QWidget):
             layout.addWidget(self._preview_command_tile(key, title), 0, column)
 
         action_panel = QWidget()
+        action_panel.setProperty("previewCommandActions", True)
         action_layout = QGridLayout(action_panel)
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
-        action_layout.setVerticalSpacing(2)
-        for row, (key, text, target) in enumerate(
+        action_layout.setVerticalSpacing(0)
+        for column, (key, text, target) in enumerate(
             (
                 ("generate", "生成", "generate_report"),
                 ("export", "导出", "export_report"),
@@ -779,13 +783,14 @@ class ReportCenterPage(QWidget):
             button = QToolButton()
             button.setText(text)
             button.setProperty("railAction", True)
+            button.setProperty("previewCommandAction", True)
             button.setProperty("targetAction", target)
             button.clicked.connect(lambda _checked=False, item=button: self._activate_delivery_rail_target(item))
-            button.setMinimumWidth(58)
+            button.setMinimumWidth(48)
             button.setMaximumHeight(24)
             button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             self.preview_command_buttons[key] = button
-            action_layout.addWidget(button, row, 0)
+            action_layout.addWidget(button, 0, column)
         layout.addWidget(action_panel, 0, 3)
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
@@ -820,11 +825,12 @@ class ReportCenterPage(QWidget):
 
     def _preview_command_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("previewCommandTile", True)
         tile.setProperty("commandKey", key)
-        tile.setMaximumHeight(64)
+        tile.setMaximumHeight(54)
         tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(tile)
-        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
         layout.setSpacing(0)
         label = QLabel(title)
         label.setObjectName("metricLabel")
@@ -838,6 +844,7 @@ class ReportCenterPage(QWidget):
         note.setObjectName("subtitle")
         note.setWordWrap(False)
         note.setMinimumWidth(0)
+        note.setMaximumHeight(14)
         note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout.addWidget(label)
         layout.addWidget(value)
