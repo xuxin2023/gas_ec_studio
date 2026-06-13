@@ -25,6 +25,10 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[cardRole="tile"][commandTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"][evidenceTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"][routeAction="true"]' in stylesheet
+    assert 'QFrame#cardMuted[cardRole="rail"][navRailWorkbench="true"]' in stylesheet
+    assert 'QWidget[navBrandBlock="true"]' in stylesheet
+    assert 'QLabel[navRailNote="true"]' in stylesheet
+    assert 'QLabel[navMissionChip="true"]' in stylesheet
     assert 'QLabel[shellTile="true"]' in stylesheet
     assert 'QWidget[shellTelemetryStrip="true"]' in stylesheet
     assert 'QLabel[shellTile="true"][shellTelemetryTile="true"]' in stylesheet
@@ -34,6 +38,9 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QLabel[closureStage="true"][closureBusNode="true"]' in stylesheet
     assert 'QLabel[closureStage="true"][closureTone="accent"]' in stylesheet
     assert 'QPushButton[navButton="true"]' in stylesheet
+    assert 'QPushButton[navButton="true"][navRouteTile="true"]' in stylesheet
+    assert 'QPushButton[navButton="true"][navRouteTile="true"][navPhase="compute"]' in stylesheet
+    assert 'QFrame[navPrincipleCard="true"][navPrincipleCompact="true"]' in stylesheet
     assert 'QToolButton[viewSwitch="true"]' in stylesheet
     assert 'QToolButton[shellModeToggle="true"]' in stylesheet
     assert 'QToolButton[shellModeToggle="true"]:checked' in stylesheet
@@ -256,8 +263,11 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.header.property("shellHeroDock") is True
     assert window.header_status.property("heroStatus") is True
     assert window.navigation.property("cardRole") == "rail"
+    assert window.navigation.property("navRailWorkbench") is True
+    assert window.navigation.nav_mission_chip.property("navMissionChip") is True
     assert window.navigation.principle_footer.property("navPrincipleCard") is True
-    assert window.navigation.principle_footer.maximumHeight() == 150
+    assert window.navigation.principle_footer.property("navPrincipleCompact") is True
+    assert window.navigation.principle_footer.maximumHeight() == 118
     assert window.inspector.property("cardRole") == "rail"
     assert window.log_panel.property("cardRole") == "console"
     assert window.log_panel._expanded is False
@@ -289,6 +299,10 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.operator_btn.property("shellModeToggle") is True
     assert window.engineer_btn.property("shellModeToggle") is True
     assert all(button.property("navButton") is True for button in window.navigation._buttons.values())
+    assert all(button.property("navRouteTile") is True for button in window.navigation._buttons.values())
+    assert window.navigation._buttons["device_center"].property("navPhase") == "field"
+    assert window.navigation._buttons["ec_processing"].property("navPhase") == "compute"
+    assert window.navigation._buttons["report_center"].property("navPhase") == "delivery"
 
     controller.ec_processing_workspace["summary"]["status"] = "ok"
     controller.spectral_qc_workspace["run"]["last_result_status"] = "ok"

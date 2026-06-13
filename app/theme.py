@@ -239,6 +239,34 @@ def build_stylesheet() -> str:
         border: 1px solid #d7e5ec;
         border-radius: {TOKENS.radius_lg}px;
     }}
+    QFrame#cardMuted[cardRole="rail"][navRailWorkbench="true"] {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #fbfefe,
+            stop: 0.54 #edf8fa,
+            stop: 1 #e7f2f6
+        );
+        border-color: #c9dce5;
+    }}
+    QWidget[navBrandBlock="true"] {{
+        padding: 4px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.48);
+    }}
+    QLabel[navRailNote="true"] {{
+        color: #486476;
+        font-size: 12px;
+    }}
+    QLabel[navMissionChip="true"] {{
+        border-radius: 11px;
+        padding: 3px 8px;
+        background: rgba(7, 47, 59, 0.10);
+        border: 1px solid rgba(104, 153, 169, 0.24);
+        color: #0e5f6e;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: 0.5px;
+    }}
     QFrame#cardMuted[cardRole="console"] {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 0,
@@ -476,6 +504,27 @@ def build_stylesheet() -> str:
         color: {TOKENS.color_text_muted};
         font-weight: 700;
     }}
+    QPushButton[navButton="true"][navRouteTile="true"] {{
+        min-height: 46px;
+        padding: 5px 9px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.42);
+        border: 1px solid rgba(191, 216, 223, 0.58);
+        color: #38576a;
+        line-height: 1.12;
+    }}
+    QPushButton[navButton="true"][navRouteTile="true"][navPhase="field"] {{
+        border-left: 3px solid #8ecfd4;
+    }}
+    QPushButton[navButton="true"][navRouteTile="true"][navPhase="site"] {{
+        border-left: 3px solid #a6d5b8;
+    }}
+    QPushButton[navButton="true"][navRouteTile="true"][navPhase="compute"] {{
+        border-left: 3px solid #e3c27a;
+    }}
+    QPushButton[navButton="true"][navRouteTile="true"][navPhase="delivery"] {{
+        border-left: 3px solid #7eb3bd;
+    }}
     QPushButton[navButton="true"]:hover {{
         background: rgba(255, 255, 255, 0.72);
         border-color: #d2e3ea;
@@ -490,6 +539,11 @@ def build_stylesheet() -> str:
         );
         border: 1px solid #a7ccd5;
         color: {TOKENS.color_accent};
+    }}
+    QFrame[navPrincipleCard="true"][navPrincipleCompact="true"] {{
+        border-radius: 14px;
+        border: 1px solid rgba(191, 216, 223, 0.70);
+        background: rgba(255, 255, 255, 0.58);
     }}
     QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {{
         min-height: 38px;

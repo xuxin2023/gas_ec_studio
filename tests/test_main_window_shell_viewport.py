@@ -48,6 +48,11 @@ def test_main_window_shell_fits_common_desktop_viewports(monkeypatch, tmp_path) 
                 assert_contained(root, widget, root)
             assert_no_visual_overlap(visible_shell_widgets, root)
 
+            nav_widgets = [window.navigation.nav_mission_chip, *window.navigation._buttons.values(), window.navigation.principle_footer]
+            for widget in nav_widgets:
+                assert_contained(window.navigation, widget, root)
+            assert_no_visual_overlap(nav_widgets, root)
+
             visible_header_widgets = [
                 window.header_closure_strip,
                 window.header_telemetry_strip,
