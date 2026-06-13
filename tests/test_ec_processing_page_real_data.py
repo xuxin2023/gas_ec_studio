@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from app.main_window import StudioMainWindow
 from app.pages.ec_processing_page import EC_STEPS, ECProcessingPage
@@ -68,6 +68,14 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.property("pageSurface") is True
         assert "尚未生成真实 RP 结果" in page.run_summary_label.text()
         assert page.run_bar.property("cardRole") == "command"
+        assert page.run_bar.property("deckRole") == "runCommandRibbon"
+        assert page.run_bar.maximumHeight() == 82
+        assert page.data_source_combo.property("runRibbonField") is True
+        assert page.time_range_combo.property("runRibbonField") is True
+        assert page.run_summary_label.wordWrap() is False
+        run_actions = [button for button in page.run_bar.findChildren(QPushButton) if button.property("runRibbonAction") is True]
+        assert len(run_actions) == 4
+        assert any(button.property("variant") == "primary" for button in run_actions)
         assert page.rp_closure_deck.property("cardRole") == "cockpit"
         assert page.rp_closure_deck.property("deckRole") == "rpClosureDeck"
         assert page.rp_closure_deck.maximumHeight() == 92

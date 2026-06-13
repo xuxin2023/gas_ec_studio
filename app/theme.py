@@ -701,6 +701,18 @@ def build_stylesheet() -> str:
         color: #ffffff;
         font-weight: 800;
     }}
+    QComboBox[runRibbonField="true"] {{
+        min-height: 28px;
+        border-radius: 13px;
+        padding-left: 10px;
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px solid #b8d4dd;
+    }}
+    QPushButton[runRibbonAction="true"] {{
+        min-height: 28px;
+        border-radius: 14px;
+        padding: 0 12px;
+    }}
     QFrame#cardMuted[closureCompactTile="true"] {{
         border-radius: 14px;
         border: 1px solid #c4dce4;
