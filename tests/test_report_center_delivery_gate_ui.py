@@ -139,12 +139,14 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert all(button.property("previewCommandAction") is True for button in page.preview_command_buttons.values())
         assert page.preview_deck_card.property("cardRole") == "rail"
         assert page.preview_deck_card.property("deckRole") == "reportPreviewDeck"
+        assert page.preview_deck_card.property("reportPreviewWorkbench") is True
         assert page.preview_deck_card.property("activePane") == "table"
         assert page.preview_pane_switcher.property("deckRole") == "previewPaneSwitcher"
         assert all(button.property("previewPaneSwitch") is True for button in page.preview_content_switches.values())
         assert page.preview_pane_hint_label.text()
         assert page.preview_delivery_trail_card.property("cardRole") == "console"
-        assert page.preview_delivery_trail_card.maximumHeight() == 88
+        assert page.preview_delivery_trail_card.property("previewTrailStrip") is True
+        assert page.preview_delivery_trail_card.maximumHeight() == 54
         assert page.preview_delivery_trail_value.property("compactMetric") is True
         assert page.preview_delivery_trail_chip.property("chipTone") == "accent"
         assert page.preview_content_card.property("cardRole") == "panel"
@@ -168,9 +170,12 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_deck_card.property("activePane") == "insight"
         assert page.preview_insight_card.isHidden() is False
         assert page.preview_table.isHidden() is True
+        assert page.preview_metrics_row.property("reportPreviewMetricStrip") is True
+        assert page.preview_metrics_row.maximumHeight() == 62
         assert len(page.preview_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.preview_metric_cards)
-        assert all(card.maximumHeight() == 74 for card in page.preview_metric_cards)
+        assert all(card.property("reportPreviewMetric") is True for card in page.preview_metric_cards)
+        assert all(card.maximumHeight() == 58 for card in page.preview_metric_cards)
         assert all(value.property("compactMetric") is True for value in page.preview_metric_values)
         assert page.recent_status_value.toolTip()
         assert len(page.recent_status_value.text()) <= 9
