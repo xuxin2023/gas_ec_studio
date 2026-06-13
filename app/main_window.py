@@ -140,11 +140,13 @@ class StudioMainWindow(QMainWindow):
 
     def _build_header(self) -> CardFrame:
         card = CardFrame(role="hero")
+        card.setProperty("shellHeroDock", True)
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_sm)
 
         title_holder = QWidget()
+        title_holder.setProperty("shellBrandBlock", True)
         title_holder.setMaximumWidth(300)
         title_holder.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         title_box = QVBoxLayout()
@@ -174,10 +176,11 @@ class StudioMainWindow(QMainWindow):
 
         self.header_closure_strip = QWidget()
         self.header_closure_strip.setProperty("shellClosureStrip", True)
-        self.header_closure_strip.setMaximumWidth(318)
+        self.header_closure_strip.setProperty("shellClosureBus", True)
+        self.header_closure_strip.setMaximumWidth(304)
         closure_layout = QHBoxLayout(self.header_closure_strip)
         closure_layout.setContentsMargins(0, 0, 0, 0)
-        closure_layout.setSpacing(TOKENS.spacing_xs)
+        closure_layout.setSpacing(4)
         self.header_closure_tiles = {
             "device": self._closure_stage("设备", "--"),
             "capture": self._closure_stage("采集", "--"),
@@ -190,10 +193,11 @@ class StudioMainWindow(QMainWindow):
         layout.addWidget(self.header_closure_strip)
 
         self.header_telemetry_strip = QWidget()
-        self.header_telemetry_strip.setMaximumWidth(270)
+        self.header_telemetry_strip.setProperty("shellTelemetryStrip", True)
+        self.header_telemetry_strip.setMaximumWidth(246)
         telemetry = QHBoxLayout(self.header_telemetry_strip)
         telemetry.setContentsMargins(0, 0, 0, 0)
-        telemetry.setSpacing(TOKENS.spacing_sm)
+        telemetry.setSpacing(TOKENS.spacing_xs)
         self.header_online_tile = self._header_tile("在线", "--")
         self.header_sampling_tile = self._header_tile("采集", "--")
         self.header_alarm_tile = self._header_tile("异常", "--")
@@ -211,6 +215,7 @@ class StudioMainWindow(QMainWindow):
         self.operator_btn = QToolButton()
         self.operator_btn.setText("操作员视图")
         self.operator_btn.setProperty("viewSwitch", True)
+        self.operator_btn.setProperty("shellModeToggle", True)
         self.operator_btn.setText("OP")
         self.operator_btn.setToolTip("Operator view")
         self.operator_btn.setCheckable(True)
@@ -219,13 +224,15 @@ class StudioMainWindow(QMainWindow):
         self.engineer_btn = QToolButton()
         self.engineer_btn.setText("工程师视图")
         self.engineer_btn.setProperty("viewSwitch", True)
+        self.engineer_btn.setProperty("shellModeToggle", True)
         self.engineer_btn.setText("ENG")
         self.engineer_btn.setToolTip("Engineer view")
         self.engineer_btn.setCheckable(True)
         self.engineer_btn.clicked.connect(lambda: self.controller.set_view_mode("engineer"))
         for button in (self.operator_btn, self.engineer_btn):
             button.setMinimumWidth(0)
-            button.setMaximumWidth(58)
+            button.setMaximumWidth(54)
+            button.setMaximumHeight(54)
             button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         group.addButton(self.operator_btn)
         group.addButton(self.engineer_btn)
@@ -236,18 +243,22 @@ class StudioMainWindow(QMainWindow):
     def _header_tile(self, label: str, value: str) -> QLabel:
         tile = QLabel(f"{label}\n{value}")
         tile.setProperty("shellTile", True)
+        tile.setProperty("shellTelemetryTile", True)
         tile.setAlignment(Qt.AlignCenter)
         tile.setMinimumWidth(0)
-        tile.setMaximumWidth(64)
+        tile.setMaximumWidth(56)
+        tile.setMaximumHeight(54)
         tile.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         return tile
 
     def _closure_stage(self, label: str, value: str) -> QLabel:
         tile = QLabel(f"{label}\n{value}")
         tile.setProperty("closureStage", True)
+        tile.setProperty("closureBusNode", True)
         tile.setAlignment(Qt.AlignCenter)
         tile.setMinimumWidth(0)
-        tile.setMaximumWidth(56)
+        tile.setMaximumWidth(52)
+        tile.setMaximumHeight(54)
         tile.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         return tile
 

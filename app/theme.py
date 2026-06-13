@@ -151,6 +151,10 @@ def build_stylesheet() -> str:
         );
         border: 1px solid #7eb3bd;
     }}
+    QFrame#card[cardRole="hero"][shellHeroDock="true"] {{
+        border-radius: 20px;
+        border: 1px solid #7cb8c1;
+    }}
     QFrame#card[cardRole="hero"] QLabel#pageTitle {{
         color: #f7fcfd;
         letter-spacing: 0.4px;
@@ -312,6 +316,20 @@ def build_stylesheet() -> str:
         font-weight: 800;
         line-height: 1.25;
     }}
+    QWidget[shellTelemetryStrip="true"] {{
+        padding: 2px;
+        border-radius: 16px;
+        background: rgba(246, 252, 253, 0.34);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+    }}
+    QLabel[shellTile="true"][shellTelemetryTile="true"] {{
+        min-width: 36px;
+        padding: 4px 6px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.76);
+        font-size: 11px;
+        line-height: 1.12;
+    }}
     QLabel[shellTile="true"][shellTone="accent"] {{
         background: {TOKENS.color_accent_soft};
         border-color: #a7ccd5;
@@ -338,6 +356,12 @@ def build_stylesheet() -> str:
         background: rgba(33, 66, 84, 0.08);
         border: 1px solid rgba(33, 66, 84, 0.10);
     }}
+    QWidget[shellClosureStrip="true"][shellClosureBus="true"] {{
+        padding: 3px;
+        border-radius: 17px;
+        background: rgba(7, 47, 59, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.20);
+    }}
     QLabel[closureStage="true"] {{
         min-width: 40px;
         padding: 5px 6px;
@@ -348,6 +372,13 @@ def build_stylesheet() -> str:
         font-size: {TOKENS.font_xs}px;
         font-weight: 800;
         line-height: 1.18;
+    }}
+    QLabel[closureStage="true"][closureBusNode="true"] {{
+        min-width: 42px;
+        padding: 4px 5px;
+        border-radius: 14px;
+        font-size: 11px;
+        line-height: 1.08;
     }}
     QLabel[closureStage="true"][closureTone="success"] {{
         background: #e8f7ee;
@@ -625,6 +656,21 @@ def build_stylesheet() -> str:
         border: 1px solid {TOKENS.color_accent_hover};
         color: #ffffff;
         font-weight: 800;
+    }}
+    QToolButton[shellModeToggle="true"] {{
+        min-height: 52px;
+        min-width: 48px;
+        border-radius: 16px;
+        padding: 0 8px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.48);
+        color: #16495a;
+        font-weight: 800;
+    }}
+    QToolButton[shellModeToggle="true"]:checked {{
+        background: #ffffff;
+        border: 1px solid #9bc9d2;
+        color: #073746;
     }}
     QToolButton[methodShortcut="true"] {{
         min-height: 28px;

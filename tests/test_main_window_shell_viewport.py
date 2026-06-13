@@ -47,6 +47,18 @@ def test_main_window_shell_fits_common_desktop_viewports(monkeypatch, tmp_path) 
             for widget in visible_shell_widgets:
                 assert_contained(root, widget, root)
             assert_no_visual_overlap(visible_shell_widgets, root)
+
+            visible_header_widgets = [
+                window.header_closure_strip,
+                window.header_telemetry_strip,
+                window.operator_btn,
+                window.engineer_btn,
+            ]
+            if window.header_status.isVisible():
+                visible_header_widgets.insert(0, window.header_status)
+            for widget in visible_header_widgets:
+                assert_contained(window.header, widget, root)
+            assert_no_visual_overlap(visible_header_widgets, root)
     finally:
         window.close()
         controller.shutdown()

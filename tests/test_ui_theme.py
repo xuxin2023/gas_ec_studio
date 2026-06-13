@@ -14,6 +14,7 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert "QWidget#appShell" in stylesheet
     assert "qlineargradient" in stylesheet
     assert 'QFrame#card[cardRole="hero"]' in stylesheet
+    assert 'QFrame#card[cardRole="hero"][shellHeroDock="true"]' in stylesheet
     assert 'QFrame#card[cardRole="hero"] QLabel#pageTitle' in stylesheet
     assert 'QFrame#card[cardRole="hero"] QLabel#subtitle[heroStatus="true"]' in stylesheet
     assert 'QFrame#card[cardRole="command"]' in stylesheet
@@ -25,11 +26,17 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[cardRole="tile"][evidenceTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"][routeAction="true"]' in stylesheet
     assert 'QLabel[shellTile="true"]' in stylesheet
+    assert 'QWidget[shellTelemetryStrip="true"]' in stylesheet
+    assert 'QLabel[shellTile="true"][shellTelemetryTile="true"]' in stylesheet
     assert 'QWidget[shellClosureStrip="true"]' in stylesheet
+    assert 'QWidget[shellClosureStrip="true"][shellClosureBus="true"]' in stylesheet
     assert 'QLabel[closureStage="true"]' in stylesheet
+    assert 'QLabel[closureStage="true"][closureBusNode="true"]' in stylesheet
     assert 'QLabel[closureStage="true"][closureTone="accent"]' in stylesheet
     assert 'QPushButton[navButton="true"]' in stylesheet
     assert 'QToolButton[viewSwitch="true"]' in stylesheet
+    assert 'QToolButton[shellModeToggle="true"]' in stylesheet
+    assert 'QToolButton[shellModeToggle="true"]:checked' in stylesheet
     assert 'QToolButton[previewPaneSwitch="true"]' in stylesheet
     assert 'QToolButton[previewPaneSwitch="true"]:checked' in stylesheet
     assert 'QToolButton[methodShortcut="true"]' in stylesheet
@@ -246,6 +253,7 @@ def test_main_window_wires_theme_semantics() -> None:
 
     assert window.centralWidget().objectName() == "appShell"
     assert window.header.property("cardRole") == "hero"
+    assert window.header.property("shellHeroDock") is True
     assert window.header_status.property("heroStatus") is True
     assert window.navigation.property("cardRole") == "rail"
     assert window.navigation.principle_footer.property("navPrincipleCard") is True
@@ -266,14 +274,20 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.log_panel.log_count_chip.text() == "0 条"
     assert window.log_panel.latest_line.text() == "暂无日志。"
     assert window.header_online_tile.property("shellTile") is True
+    assert window.header_online_tile.property("shellTelemetryTile") is True
+    assert window.header_telemetry_strip.property("shellTelemetryStrip") is True
     assert window.header_alarm_tile.property("shellTone") in {"success", "danger"}
     assert window.header_closure_strip.property("shellClosureStrip") is True
+    assert window.header_closure_strip.property("shellClosureBus") is True
     assert set(window.header_closure_tiles) == {"device", "capture", "rp", "spectral", "delivery"}
     assert all(tile.property("closureStage") is True for tile in window.header_closure_tiles.values())
+    assert all(tile.property("closureBusNode") is True for tile in window.header_closure_tiles.values())
     assert window.header_closure_tiles["rp"].text() == "RP\n待运行"
     assert window.header_closure_tiles["delivery"].text() == "交付\n待交付"
     assert window.operator_btn.property("viewSwitch") is True
     assert window.engineer_btn.property("viewSwitch") is True
+    assert window.operator_btn.property("shellModeToggle") is True
+    assert window.engineer_btn.property("shellModeToggle") is True
     assert all(button.property("navButton") is True for button in window.navigation._buttons.values())
 
     controller.ec_processing_workspace["summary"]["status"] = "ok"
