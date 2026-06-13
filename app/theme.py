@@ -674,6 +674,14 @@ def build_stylesheet() -> str:
         color: #ffffff;
         font-weight: 800;
     }}
+    QFrame#cardMuted[methodConsoleCompact="true"] {{
+        border-radius: 16px;
+        border: 1px solid #bfd8df;
+        background: rgba(247, 252, 253, 0.82);
+    }}
+    QWidget[methodStateMirror="true"] {{
+        max-height: 0px;
+    }}
     QToolButton[windowConsoleSwitch="true"] {{
         min-height: 26px;
         min-width: 48px;
@@ -729,6 +737,27 @@ def build_stylesheet() -> str:
             stop: 0.45 #ffffff,
             stop: 1 #e7f5f1
         );
+    }}
+    QFrame#cardMuted[runMissionStrip="true"] {{
+        border-radius: 13px;
+        border: 1px solid #c3dce3;
+        background: rgba(255, 255, 255, 0.72);
+    }}
+    QLabel[runMissionLabel="true"] {{
+        color: #5c7480;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+    }}
+    QLabel[runMissionValue="true"] {{
+        color: #0f2a3a;
+        font-size: 11px;
+        font-weight: 800;
+    }}
+    QLabel[runMissionText="true"] {{
+        color: #31586a;
+        font-size: 11px;
     }}
     QPushButton[runRibbonAction="true"] {{
         min-height: 28px;

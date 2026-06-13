@@ -36,6 +36,8 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QToolButton[methodShortcut="true"]:checked' in stylesheet
     assert 'QToolButton[methodTaskSwitch="true"]' in stylesheet
     assert 'QToolButton[methodTaskSwitch="true"]:checked' in stylesheet
+    assert 'QFrame#cardMuted[methodConsoleCompact="true"]' in stylesheet
+    assert 'QWidget[methodStateMirror="true"]' in stylesheet
     assert 'QToolButton[windowConsoleSwitch="true"]' in stylesheet
     assert 'QToolButton[windowConsoleSwitch="true"]:checked' in stylesheet
     assert 'QToolButton[closureModeSwitch="true"]' in stylesheet
@@ -50,6 +52,10 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QComboBox[methodFieldInput="true"]' in stylesheet
     assert 'QDoubleSpinBox[methodFieldInput="true"]' in stylesheet
     assert 'QFrame#card[runCommandDock="true"]' in stylesheet
+    assert 'QFrame#cardMuted[runMissionStrip="true"]' in stylesheet
+    assert 'QLabel[runMissionLabel="true"]' in stylesheet
+    assert 'QLabel[runMissionValue="true"]' in stylesheet
+    assert 'QLabel[runMissionText="true"]' in stylesheet
     assert 'QToolButton[railAction="true"]' in stylesheet
     assert 'QToolButton[railAction="true"][actionTone="danger"]' in stylesheet
     assert 'QToolButton[railMissionAction="true"]' in stylesheet

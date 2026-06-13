@@ -336,12 +336,35 @@ class ECProcessingPage(QWidget):
 
         self.run_status_chip = chip("标准运行", "accent")
         layout.addWidget(self.run_status_chip, 0, 5)
+
+        self.run_mission_strip = CardFrame(muted=True, role="tile")
+        self.run_mission_strip.setProperty("runMissionStrip", True)
+        self.run_mission_strip.setMaximumHeight(28)
+        mission_layout = QHBoxLayout(self.run_mission_strip)
+        mission_layout.setContentsMargins(TOKENS.spacing_sm, 0, TOKENS.spacing_sm, 0)
+        mission_layout.setSpacing(TOKENS.spacing_xs)
+        self.run_mission_values: dict[str, QLabel] = {}
+        for key, title in (("step", "Step"), ("status", "Run"), ("gate", "Gate")):
+            label = QLabel(title)
+            label.setObjectName("metricLabel")
+            label.setProperty("runMissionLabel", True)
+            value = QLabel("--")
+            value.setObjectName("subtitle")
+            value.setProperty("runMissionValue", True)
+            value.setWordWrap(False)
+            value.setMinimumWidth(36)
+            value.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+            self.run_mission_values[key] = value
+            mission_layout.addWidget(label)
+            mission_layout.addWidget(value)
         self.run_summary_label = QLabel("尚未生成真实 RP 结果。")
         self.run_summary_label.setObjectName("subtitle")
+        self.run_summary_label.setProperty("runMissionText", True)
         self.run_summary_label.setWordWrap(False)
         self.run_summary_label.setMinimumWidth(180)
         self.run_summary_label.setMaximumHeight(22)
-        layout.addWidget(self.run_summary_label, 1, 1, 1, 2)
+        mission_layout.addWidget(self.run_summary_label, 2)
+        layout.addWidget(self.run_mission_strip, 1, 1, 1, 3)
 
         run_button = QPushButton("运行处理")
         run_button.setProperty("variant", "primary")
@@ -352,7 +375,7 @@ class ECProcessingPage(QWidget):
         save_template_button.clicked.connect(self._save_template)
         restore_button = QPushButton("恢复默认")
         restore_button.clicked.connect(self._restore_default)
-        for column, button in enumerate((run_button, precheck_button, save_template_button, restore_button), start=3):
+        for column, button in enumerate((run_button, precheck_button, save_template_button, restore_button), start=4):
             button.setMinimumWidth(0)
             button.setMaximumHeight(28)
             button.setProperty("runRibbonAction", True)
@@ -1179,7 +1202,7 @@ class ECProcessingPage(QWidget):
         ):
             widget = getattr(self, widget_name, None)
             if widget is not None:
-                widget.setVisible(not support_visible)
+                widget.setVisible((not support_visible) and widget_name != "method_family_tile_strip")
         support_card = getattr(self, "method_support_card", None)
         if support_card is not None:
             support_card.setVisible(support_visible)
@@ -2833,10 +2856,11 @@ class ECProcessingPage(QWidget):
 
         self.method_family_card = CardFrame(muted=True, role="cockpit")
         self.method_family_card.setProperty("deckRole", "methodFamilyCockpit")
+        self.method_family_card.setProperty("methodConsoleCompact", True)
         self.method_family_card.setMinimumWidth(0)
         self.method_family_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         method_shell_layout = QVBoxLayout(self.method_family_card)
-        method_shell_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        method_shell_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
         method_shell_layout.setSpacing(TOKENS.spacing_xs)
         method_header = QHBoxLayout()
         method_header.setSpacing(TOKENS.spacing_sm)
@@ -2868,7 +2892,7 @@ class ECProcessingPage(QWidget):
             button.setProperty("viewSwitch", True)
             button.setProperty("methodTaskSwitch", True)
             button.setMinimumWidth(76)
-            button.setMaximumHeight(28)
+            button.setMaximumHeight(24)
             button.clicked.connect(lambda _checked=False, key=mode: self._show_method_console_mode(key))
             self.method_console_mode_buttons[mode] = button
             method_mode_row.addWidget(button)
@@ -2899,7 +2923,8 @@ class ECProcessingPage(QWidget):
 
         self.method_family_tile_strip = QWidget()
         self.method_family_tile_strip.setProperty("deckRole", "methodFamilyTileStrip")
-        self.method_family_tile_strip.setMaximumHeight(64)
+        self.method_family_tile_strip.setProperty("methodStateMirror", True)
+        self.method_family_tile_strip.setMaximumHeight(0)
         method_tile_grid = QGridLayout(self.method_family_tile_strip)
         method_tile_grid.setContentsMargins(0, 0, 0, 0)
         method_tile_grid.setHorizontalSpacing(TOKENS.spacing_xs)
@@ -2939,12 +2964,12 @@ class ECProcessingPage(QWidget):
         self.footprint_card.setMaximumHeight(278)
         self.footprint_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         footprint_layout = QVBoxLayout(self.footprint_card)
-        footprint_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        footprint_layout.setSpacing(TOKENS.spacing_sm)
+        footprint_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        footprint_layout.setSpacing(TOKENS.spacing_xs)
         footprint_layout.addWidget(section_title("足迹方法", "推荐：kljun / z_m=3.0 / canopy_height_m=5.0"))
         footprint_title = footprint_layout.itemAt(0).widget()
         if footprint_title is not None:
-            footprint_title.setMaximumHeight(38)
+            footprint_title.setMaximumHeight(26)
         self._add_method_group_strip(footprint_layout, "footprint", ("开关/模型", "几何/稳定度", "网格"))
         self.footprint_enable_combo = QComboBox()
         self.footprint_enable_combo.addItems(["enabled", "disabled"])
@@ -2987,12 +3012,12 @@ class ECProcessingPage(QWidget):
         self.uncertainty_card.setMaximumHeight(206)
         self.uncertainty_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         uncertainty_layout = QVBoxLayout(self.uncertainty_card)
-        uncertainty_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        uncertainty_layout.setSpacing(TOKENS.spacing_sm)
+        uncertainty_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        uncertainty_layout.setSpacing(TOKENS.spacing_xs)
         uncertainty_layout.addWidget(section_title("不确定度方法", "推荐：mann_lenschow / integral_timescale_s=5.0 / confidence_level=0.95"))
         uncertainty_title = uncertainty_layout.itemAt(0).widget()
         if uncertainty_title is not None:
-            uncertainty_title.setMaximumHeight(38)
+            uncertainty_title.setMaximumHeight(26)
         self._add_method_group_strip(uncertainty_layout, "uncertainty", ("方法", "置信区间"))
         self.uncertainty_mode_combo = QComboBox()
         self.uncertainty_mode_combo.addItems(["mann_lenschow", "finkelstein_sims", "composite_empirical"])
@@ -3019,12 +3044,12 @@ class ECProcessingPage(QWidget):
         self.spectral_card.setMaximumHeight(256)
         self.spectral_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         spectral_layout = QVBoxLayout(self.spectral_card)
-        spectral_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        spectral_layout.setSpacing(TOKENS.spacing_sm)
+        spectral_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        spectral_layout.setSpacing(TOKENS.spacing_xs)
         spectral_layout.addWidget(section_title("谱修正方法", "推荐：massman；Fratini 默认自动尝试 FCC measured cospectrum"))
         spectral_title = spectral_layout.itemAt(0).widget()
         if spectral_title is not None:
-            spectral_title.setMaximumHeight(38)
+            spectral_title.setMaximumHeight(26)
         self._add_method_group_strip(spectral_layout, "spectral", ("开关/模型", "路径/响应", "共谱注入"))
         self.spectral_enable_combo = QComboBox()
         self.spectral_enable_combo.addItems(["enabled", "disabled"])
@@ -3657,6 +3682,12 @@ class ECProcessingPage(QWidget):
         self.run_status_chip.style().unpolish(self.run_status_chip)
         self.run_status_chip.style().polish(self.run_status_chip)
         self.run_summary_label.setText(str(summary.get("message", "尚未生成真实 RP 结果。")))
+        if hasattr(self, "run_mission_values"):
+            gate = getattr(self, "coverage_gate_chip", None)
+            gate_text = gate.text() if gate is not None else "--"
+            self.run_mission_values["step"].setText(step_title)
+            self.run_mission_values["status"].setText(status)
+            self.run_mission_values["gate"].setText(gate_text)
         self._refresh_workflow_lens()
         self._refresh_desktop_rail_status_strip()
 

@@ -69,9 +69,16 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert "尚未生成真实 RP 结果" in page.run_summary_label.text()
         assert page.run_bar.property("cardRole") == "command"
         assert page.run_bar.property("deckRole") == "runCommandRibbon"
-        assert page.run_bar.maximumHeight() == 82
+        assert page.run_bar.maximumHeight() == 74
         assert page.data_source_combo.property("runRibbonField") is True
         assert page.time_range_combo.property("runRibbonField") is True
+        assert page.run_mission_strip.property("runMissionStrip") is True
+        assert page.run_mission_strip.maximumHeight() == 28
+        assert set(page.run_mission_values) == {"step", "status", "gate"}
+        assert page.run_mission_values["status"].text() == "empty"
+        assert page.run_mission_values["gate"].text() == page.coverage_gate_chip.text()
+        assert all(value.property("runMissionValue") is True for value in page.run_mission_values.values())
+        assert page.run_summary_label.property("runMissionText") is True
         assert page.run_summary_label.wordWrap() is False
         run_actions = [button for button in page.run_bar.findChildren(QPushButton) if button.property("runRibbonAction") is True]
         assert len(run_actions) == 4
@@ -142,6 +149,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.workflow_lens_active_note.maximumHeight() == 32
         assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.method_family_card.property("cardRole") == "cockpit"
+        assert page.method_family_card.property("methodConsoleCompact") is True
         assert page.method_support_card.property("cardRole") == "panel"
         assert page.method_support_stack.count() == 2
         assert page.method_support_stack.currentWidget() is page.primary_analyzer_card
@@ -152,6 +160,9 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.method_family_stack.count() == 3
         assert page.method_family_card.property("deckRole") == "methodFamilyCockpit"
         assert page.method_family_stack.property("stackRole") == "methodFamilyStack"
+        assert page.method_family_tile_strip.property("methodStateMirror") is True
+        assert page.method_family_tile_strip.maximumHeight() == 0
+        assert page.method_family_tile_strip.isHidden() is True
         assert set(page.method_console_tiles) == {"footprint", "uncertainty", "spectral"}
         assert all(tile.property("methodTile") is True for tile in page.method_console_tiles.values())
         assert all(tile.property("cardRole") == "tile" for tile in page.method_console_tiles.values())
@@ -560,8 +571,8 @@ def test_ec_processing_method_console_controls_are_visible_in_main_shell(monkeyp
         window.resize(1440, 900)
         window._set_page("ec_processing")
         page = window.ec_processing_page
-        page.step_tree.setCurrentItem(page.step_items["uncertainty"])
         page.refresh()
+        page.step_tree.setCurrentItem(page.step_items["uncertainty"])
         window.show()
         app.processEvents()
 

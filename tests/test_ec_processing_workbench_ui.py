@@ -31,6 +31,11 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.run_bar.maximumHeight() == 74
         assert page.data_source_combo.maximumHeight() == 28
         assert page.time_range_combo.maximumHeight() == 28
+        assert page.run_mission_strip.property("runMissionStrip") is True
+        assert page.run_mission_strip.maximumHeight() == 28
+        assert set(page.run_mission_values) == {"step", "status", "gate"}
+        assert all(value.property("runMissionValue") is True for value in page.run_mission_values.values())
+        assert page.run_summary_label.property("runMissionText") is True
         assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.rail_focus_card.property("cardRole") == "panel"
         assert page.desktop_rail_inspector.property("deckRole") == "ecRailInspector"
@@ -100,6 +105,10 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.window_cockpit_card.property("activePane") == "timeline"
         assert page.window_timeline_card.isHidden() is False
         assert page.desktop_rail_stack.count() == 3
+        assert page.method_family_card.property("methodConsoleCompact") is True
+        assert page.method_family_tile_strip.property("methodStateMirror") is True
+        assert page.method_family_tile_strip.maximumHeight() == 0
+        assert page.method_family_tile_strip.isHidden() is True
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
         assert page.rail_focus_stack.count() == 2
