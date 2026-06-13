@@ -30,21 +30,34 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
 
         assert page.property("pageSurface") is True
         assert page.tree_card.property("cardRole") == "rail"
+        assert page.tree_card.property("reportNavRail") is True
+        assert page.tree_card.minimumWidth() == 200
+        assert page.tree_card.maximumWidth() == 248
         assert page.report_tree.indentation() == 0
+        assert page.report_tree.property("reportNavTree") is True
         assert page.report_tree.rootIsDecorated() is False
         assert page.report_tree.uniformRowHeights() is True
         assert page.report_tree.topLevelItemCount() == len(REPORT_SECTIONS)
         assert page.report_tree_count_chip.text() == f"{len(REPORT_SECTIONS)} 项"
+        assert page.report_tree_count_chip.maximumHeight() == 22
         assert page.report_tree_active_chip.text().startswith("运行")
         assert page.delivery_rail.property("cardRole") == "rail"
+        assert page.delivery_rail.property("deliveryMissionRail") is True
+        assert page.delivery_rail.minimumWidth() == 276
+        assert page.delivery_rail.maximumWidth() == 340
         assert page.delivery_rail_status_chip.property("closureStage") is True
         assert page.delivery_rail_status_chip.text().startswith("待生成")
         assert page.delivery_rail_action_bar.property("deckRole") == "deliveryRailActionBar"
-        assert page.delivery_rail_action_bar.maximumHeight() == 38
+        assert page.delivery_rail_action_bar.property("deliveryRailActionDock") is True
+        assert page.delivery_rail_action_bar.maximumHeight() == 34
         assert page.delivery_rail_action_button.property("railAction") is True
         assert page.delivery_rail_risk_button.property("railAction") is True
         assert page.delivery_rail_export_button.property("railAction") is True
         assert page.delivery_rail_evidence_button.property("railAction") is True
+        assert page.delivery_rail_action_button.property("deliveryRailAction") is True
+        assert page.delivery_rail_risk_button.property("deliveryRailAction") is True
+        assert page.delivery_rail_export_button.property("deliveryRailAction") is True
+        assert page.delivery_rail_evidence_button.property("deliveryRailAction") is True
         assert page.delivery_rail_action_button.property("targetAction") == "run_processing"
         assert page.delivery_rail_risk_button.property("targetAction") == "report"
         assert page.delivery_rail_risk_button.property("actionTone") == "danger"
@@ -70,6 +83,7 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.report_command_values["report"].text() == "待生成"
         assert page.report_command_values["export"].text() == "待运行"
         assert page.delivery_rail_inspector.property("deckRole") == "deliveryRailInspector"
+        assert page.delivery_rail_inspector.property("deliveryMissionInspector") is True
         assert page.delivery_rail_stack.property("stackRole") == "deliveryRailInspectorStack"
         assert page.delivery_rail_stack.count() == 2
         assert page.delivery_rail_stack.currentWidget() is page.delivery_focus_card

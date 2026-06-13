@@ -781,6 +781,40 @@ def build_stylesheet() -> str:
         border: 1px solid #b8d4dd;
         color: #0e5f6e;
     }}
+    QFrame#cardMuted[reportNavRail="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8dce4;
+        background: rgba(247, 252, 253, 0.82);
+    }}
+    QTreeWidget#workflowTree[reportNavTree="true"] {{
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid #d2e3e9;
+        padding: 4px;
+    }}
+    QFrame#cardMuted[deliveryMissionRail="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c4dce4;
+        background: rgba(247, 252, 253, 0.86);
+    }}
+    QFrame#card[deliveryMissionInspector="true"] {{
+        border-radius: 16px;
+        border: 1px solid #c8dce4;
+        background: rgba(255, 255, 255, 0.78);
+    }}
+    QFrame#cardMuted[deliveryRailActionDock="true"] {{
+        border-radius: 14px;
+        border: 1px solid #bfd8df;
+        background: rgba(244, 251, 252, 0.88);
+    }}
+    QToolButton[deliveryRailAction="true"] {{
+        min-height: 24px;
+        border-radius: 12px;
+        padding: 0 7px;
+        background: #f7fcfd;
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
+    }}
     QFrame#cardMuted[closureCompactTile="true"] {{
         border-radius: 14px;
         border: 1px solid #c4dce4;

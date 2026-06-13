@@ -61,6 +61,12 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[previewCommandDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[previewCommandTile="true"]' in stylesheet
     assert 'QToolButton[previewCommandAction="true"]' in stylesheet
+    assert 'QFrame#cardMuted[reportNavRail="true"]' in stylesheet
+    assert 'QTreeWidget#workflowTree[reportNavTree="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryMissionRail="true"]' in stylesheet
+    assert 'QFrame#card[deliveryMissionInspector="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryRailActionDock="true"]' in stylesheet
+    assert 'QToolButton[deliveryRailAction="true"]' in stylesheet
     assert 'QPushButton[variant="danger"]' in stylesheet and "#fff1f1" in stylesheet
     assert "QTreeWidget#workflowTree" in stylesheet
     assert "QPlainTextEdit" in stylesheet
