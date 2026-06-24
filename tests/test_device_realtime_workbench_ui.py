@@ -30,9 +30,20 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert page.property("pageSurface") is True
         assert page.status_card.property("cardRole") == "cockpit"
         assert page.status_card.property("deviceFleetStatusDock") is True
+        assert page.status_card.property("deviceFleetTelemetryStrip") is True
         assert page.status_card.maximumHeight() == 82
         assert len(page.status_metric_cards) == 5
         assert all(card.property("deviceFleetMetric") is True for card in page.status_metric_cards)
+        assert set(page.status_metric_cards_by_key) == {
+            "online_devices",
+            "abnormal_devices",
+            "sampling_devices",
+            "recent_alarm",
+            "last_updated_at",
+        }
+        assert page.status_metric_cards_by_key["online_devices"].property("deviceFleetMetricKey") == "online_devices"
+        assert page.status_metric_cards_by_key["abnormal_devices"].property("fleetMetricTone") in {"success", "danger"}
+        assert page.status_metric_cards_by_key["sampling_devices"].property("fleetMetricTone") in {"accent", "neutral"}
         assert all(card.maximumHeight() == 58 for card in page.status_metric_cards)
         assert page.field_readiness_card.property("cardRole") == "panel"
         assert page.field_readiness_card.property("fieldReadinessDock") is True

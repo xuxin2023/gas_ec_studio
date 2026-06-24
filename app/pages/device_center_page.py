@@ -57,12 +57,14 @@ class DeviceCenterPage(QWidget):
 
         self.status_card = CardFrame(role="cockpit")
         self.status_card.setProperty("deviceFleetStatusDock", True)
+        self.status_card.setProperty("deviceFleetTelemetryStrip", True)
         self.status_card.setMaximumHeight(82)
         self.status_layout = QHBoxLayout(self.status_card)
         self.status_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_xs, TOKENS.spacing_lg, TOKENS.spacing_xs)
         self.status_layout.setSpacing(TOKENS.spacing_xs)
         self.metric_labels: dict[str, QLabel] = {}
         self.status_metric_cards: list[CardFrame] = []
+        self.status_metric_cards_by_key: dict[str, CardFrame] = {}
         for key, title in (
             ("online_devices", "在线设备数"),
             ("abnormal_devices", "异常设备数"),
@@ -70,8 +72,9 @@ class DeviceCenterPage(QWidget):
             ("recent_alarm", "最近告警"),
             ("last_updated_at", "最后更新时间"),
         ):
-            card = self._status_metric_card(title)
+            card = self._status_metric_card(title, key)
             self.metric_labels[key] = card.findChild(QLabel, "metricValue")
+            self.status_metric_cards_by_key[key] = card
             self.status_layout.addWidget(card, 1 if key != "recent_alarm" else 2)
         self.layout.addWidget(self.status_card)
 
@@ -143,6 +146,7 @@ class DeviceCenterPage(QWidget):
         self.metric_labels["sampling_devices"].setText(str(summary["sampling_devices"]))
         self.metric_labels["recent_alarm"].setText(summary["recent_alarm"])
         self.metric_labels["last_updated_at"].setText(summary["last_updated_at"])
+        self._refresh_status_metric_tones(summary)
 
         selected = self.controller.selected_device()
         if selected:
@@ -157,22 +161,47 @@ class DeviceCenterPage(QWidget):
         self._refresh_recent_activity()
         self._sync_operations_mode()
 
-    def _status_metric_card(self, title: str) -> CardFrame:
+    def _status_metric_card(self, title: str, key: str) -> CardFrame:
         card = CardFrame(muted=True, role="tile")
         card.setProperty("deviceFleetMetric", True)
+        card.setProperty("deviceFleetMetricKey", key)
+        card.setProperty("fleetMetricTone", "neutral")
         card.setMaximumHeight(58)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
         layout.setSpacing(1)
         title_label = QLabel(title)
         title_label.setObjectName("metricLabel")
+        title_label.setProperty("fleetMetricLabel", True)
         value = QLabel("--")
         value.setObjectName("metricValue")
+        value.setProperty("fleetMetricValue", True)
+        value.setProperty("compactMetric", True)
         value.setWordWrap(True)
         layout.addWidget(title_label)
         layout.addWidget(value)
         self.status_metric_cards.append(card)
         return card
+
+    def _refresh_status_metric_tones(self, summary: dict) -> None:
+        online = int(summary.get("online_devices", 0) or 0)
+        abnormal = int(summary.get("abnormal_devices", 0) or 0)
+        sampling = int(summary.get("sampling_devices", 0) or 0)
+        recent_alarm = str(summary.get("recent_alarm", "") or "")
+        tones = {
+            "online_devices": "success" if online > 0 else "warning",
+            "abnormal_devices": "danger" if abnormal > 0 else "success",
+            "sampling_devices": "accent" if sampling > 0 else "neutral",
+            "recent_alarm": "success" if ("无" in recent_alarm or "暂无" in recent_alarm) else "warning",
+            "last_updated_at": "neutral",
+        }
+        for key, tone in tones.items():
+            card = self.status_metric_cards_by_key.get(key)
+            if card is None:
+                continue
+            card.setProperty("fleetMetricTone", tone)
+            card.style().unpolish(card)
+            card.style().polish(card)
 
     def _build_field_readiness(self) -> CardFrame:
         card = CardFrame(role="panel")
