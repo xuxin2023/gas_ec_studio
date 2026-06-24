@@ -214,8 +214,8 @@ class ECProcessingPage(QWidget):
         footprint_step = steps.get("footprint", {})
         self._set_combo_text(self.footprint_method_combo, str(footprint_step.get("method", "kljun")))
         self.footprint_enable_combo.setCurrentIndex(0 if footprint_step.get("enabled", True) else 1)
-        self.footprint_zm_spin.setValue(float(footprint_step.get("z_m", 3.0) or 3.0))
-        self.footprint_canopy_spin.setValue(float(footprint_step.get("canopy_height_m", 5.0) or 5.0))
+        self.footprint_zm_spin.setValue(float(footprint_step.get("z_m", 6.0) or 6.0))
+        self.footprint_canopy_spin.setValue(float(footprint_step.get("canopy_height_m", 3.0) or 3.0))
         self.footprint_z0_spin.setValue(float(footprint_step.get("z0", 0.12) or 0.12))
         self.footprint_ol_spin.setValue(float(footprint_step.get("ol", 0.0) or 0.0))
         self.footprint_grid_combo.setCurrentIndex(0 if footprint_step.get("grid_enabled", True) else 1)
@@ -963,9 +963,11 @@ class ECProcessingPage(QWidget):
     def _build_method_console_tile(self, layout: QGridLayout, column: int, key: str, title: str) -> None:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("methodTile", True)
+        tile.setProperty("methodConsoleTile", True)
         tile.setProperty("methodKey", key)
         tile.setProperty("evidenceTone", "warning")
-        tile.setMaximumHeight(58)
+        tile.setProperty("methodTone", "warning")
+        tile.setMaximumHeight(42)
         tile_layout = QVBoxLayout(tile)
         tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         tile_layout.setSpacing(0)
@@ -993,7 +995,8 @@ class ECProcessingPage(QWidget):
     def _add_method_group_strip(self, layout: QVBoxLayout, family: str, groups: tuple[str, ...]) -> None:
         strip = QWidget()
         strip.setProperty("methodGroupStrip", True)
-        strip.setMaximumHeight(28)
+        strip.setMaximumHeight(0)
+        strip.setVisible(False)
         strip_layout = QHBoxLayout(strip)
         strip_layout.setContentsMargins(0, 0, 0, 0)
         strip_layout.setSpacing(TOKENS.spacing_xs)
@@ -1003,7 +1006,7 @@ class ECProcessingPage(QWidget):
         for text in groups:
             label = QLabel(text)
             label.setProperty("methodGroupPill", True)
-            label.setMaximumHeight(24)
+            label.setMaximumHeight(18)
             label.setToolTip(text)
             self.method_group_pills[family].append(label)
             strip_layout.addWidget(label)
@@ -1202,7 +1205,7 @@ class ECProcessingPage(QWidget):
         ):
             widget = getattr(self, widget_name, None)
             if widget is not None:
-                widget.setVisible((not support_visible) and widget_name != "method_family_tile_strip")
+                widget.setVisible(not support_visible)
         support_card = getattr(self, "method_support_card", None)
         if support_card is not None:
             support_card.setVisible(support_visible)
@@ -1258,6 +1261,7 @@ class ECProcessingPage(QWidget):
         if tile is not None:
             tile.setToolTip(tooltip)
             tile.setProperty("evidenceTone", tone)
+            tile.setProperty("methodTone", tone)
             tile.style().unpolish(tile)
             tile.style().polish(tile)
 
@@ -2901,7 +2905,7 @@ class ECProcessingPage(QWidget):
 
         self.method_family_switch_bar = QWidget()
         self.method_family_switch_bar.setProperty("deckRole", "methodFamilySwitchBar")
-        self.method_family_switch_bar.setMaximumHeight(30)
+        self.method_family_switch_bar.setMaximumHeight(24)
         method_switch_row = QHBoxLayout(self.method_family_switch_bar)
         method_switch_row.setContentsMargins(0, 0, 0, 0)
         method_switch_row.setSpacing(TOKENS.spacing_xs)
@@ -2915,6 +2919,7 @@ class ECProcessingPage(QWidget):
             button.setText(text)
             button.setCheckable(True)
             button.setProperty("viewSwitch", True)
+            button.setMaximumHeight(22)
             button.clicked.connect(lambda _checked=False, key=family: self._show_method_family(key))
             self.method_family_buttons[family] = button
             method_switch_row.addWidget(button)
@@ -2924,7 +2929,8 @@ class ECProcessingPage(QWidget):
         self.method_family_tile_strip = QWidget()
         self.method_family_tile_strip.setProperty("deckRole", "methodFamilyTileStrip")
         self.method_family_tile_strip.setProperty("methodStateMirror", True)
-        self.method_family_tile_strip.setMaximumHeight(0)
+        self.method_family_tile_strip.setMaximumHeight(46)
+        self.method_family_tile_strip.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         method_tile_grid = QGridLayout(self.method_family_tile_strip)
         method_tile_grid.setContentsMargins(0, 0, 0, 0)
         method_tile_grid.setHorizontalSpacing(TOKENS.spacing_xs)
@@ -2942,7 +2948,7 @@ class ECProcessingPage(QWidget):
         self.method_family_stack = QStackedWidget()
         self.method_family_stack.setProperty("stackRole", "methodFamilyStack")
         self.method_family_stack.setMinimumWidth(0)
-        self.method_family_stack.setMaximumHeight(280)
+        self.method_family_stack.setMaximumHeight(260)
         self.method_family_stack.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         method_shell_layout.addWidget(self.method_family_stack)
         self.method_snapshot_label = QLabel("--")
@@ -2961,15 +2967,15 @@ class ECProcessingPage(QWidget):
 
         self.footprint_card = CardFrame(muted=True, role="console")
         self.footprint_card.setMinimumWidth(0)
-        self.footprint_card.setMaximumHeight(278)
+        self.footprint_card.setMaximumHeight(248)
         self.footprint_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         footprint_layout = QVBoxLayout(self.footprint_card)
         footprint_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
         footprint_layout.setSpacing(TOKENS.spacing_xs)
-        footprint_layout.addWidget(section_title("足迹方法", "推荐：kljun / z_m=3.0 / canopy_height_m=5.0"))
+        footprint_layout.addWidget(section_title("足迹方法", "推荐：kljun / z_m=6.0 / canopy_height_m=3.0"))
         footprint_title = footprint_layout.itemAt(0).widget()
         if footprint_title is not None:
-            footprint_title.setMaximumHeight(26)
+            footprint_title.setMaximumHeight(18)
         self._add_method_group_strip(footprint_layout, "footprint", ("开关/模型", "几何/稳定度", "网格"))
         self.footprint_enable_combo = QComboBox()
         self.footprint_enable_combo.addItems(["enabled", "disabled"])
@@ -3017,7 +3023,7 @@ class ECProcessingPage(QWidget):
         uncertainty_layout.addWidget(section_title("不确定度方法", "推荐：mann_lenschow / integral_timescale_s=5.0 / confidence_level=0.95"))
         uncertainty_title = uncertainty_layout.itemAt(0).widget()
         if uncertainty_title is not None:
-            uncertainty_title.setMaximumHeight(26)
+            uncertainty_title.setMaximumHeight(18)
         self._add_method_group_strip(uncertainty_layout, "uncertainty", ("方法", "置信区间"))
         self.uncertainty_mode_combo = QComboBox()
         self.uncertainty_mode_combo.addItems(["mann_lenschow", "finkelstein_sims", "composite_empirical"])
@@ -3049,7 +3055,7 @@ class ECProcessingPage(QWidget):
         spectral_layout.addWidget(section_title("谱修正方法", "推荐：massman；Fratini 默认自动尝试 FCC measured cospectrum"))
         spectral_title = spectral_layout.itemAt(0).widget()
         if spectral_title is not None:
-            spectral_title.setMaximumHeight(26)
+            spectral_title.setMaximumHeight(18)
         self._add_method_group_strip(spectral_layout, "spectral", ("开关/模型", "路径/响应", "共谱注入"))
         self.spectral_enable_combo = QComboBox()
         self.spectral_enable_combo.addItems(["enabled", "disabled"])
@@ -3501,7 +3507,7 @@ class ECProcessingPage(QWidget):
                     "title": "Footprint",
                     "method": self.footprint_method_combo.currentText().strip(),
                     "applicable": "适用于源区贡献距离摘要与代表性判断。",
-                    "recommended": "默认推荐 kljun / z_m=3.0 / canopy_height_m=5.0。",
+                    "recommended": "默认推荐 kljun / z_m=6.0 / canopy_height_m=3.0。",
                     "enabled": self.footprint_enable_combo.currentText().strip() == "enabled",
                     "z_m": self.footprint_zm_spin.value(),
                     "canopy_height_m": self.footprint_canopy_spin.value(),

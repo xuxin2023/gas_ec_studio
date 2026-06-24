@@ -65,7 +65,7 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.desktop_rail_action_button.text()
         assert page.desktop_rail_risk_button.text()
         assert page.desktop_rail_action_button.text() == "下步"
-        assert page.desktop_rail_risk_button.text() == "风险"
+        assert page.desktop_rail_risk_button.text() == "就绪"
         assert page.desktop_rail_run_button.text() == "运行"
         assert page.desktop_rail_coverage_button.text() == "覆盖"
         assert page.desktop_rail_run_button.property("targetStep") == "run_processing"
@@ -107,8 +107,11 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.desktop_rail_stack.count() == 3
         assert page.method_family_card.property("methodConsoleCompact") is True
         assert page.method_family_tile_strip.property("methodStateMirror") is True
-        assert page.method_family_tile_strip.maximumHeight() == 0
-        assert page.method_family_tile_strip.isHidden() is True
+        assert page.method_family_tile_strip.maximumHeight() == 46
+        assert page.method_family_tile_strip.isHidden() is False
+        assert set(page.method_console_tiles) == {"footprint", "uncertainty", "spectral"}
+        assert all(tile.property("methodConsoleTile") is True for tile in page.method_console_tiles.values())
+        assert all(tile.property("methodTone") in {"success", "accent", "warning", "danger"} for tile in page.method_console_tiles.values())
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
         assert page.rail_focus_stack.count() == 2
@@ -145,11 +148,14 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert "schema=FLUXNET" in page.coverage_values["network"].text()
 
         page.spectral_enable_combo.setCurrentText("disabled")
+        page._refresh_uncertainty_preview()
         page._refresh_output_coverage_panel()
 
         assert page.coverage_gate_chip.text() == "待补齐"
         assert page.coverage_next_value.text() == "补齐配置"
         assert "当前闭合 5/6" in page.coverage_next_note.text()
+        assert page.method_console_values["spectral"].text() == "disabled"
+        assert page.method_console_tiles["spectral"].property("methodTone") == "accent"
     finally:
         page.deleteLater()
         controller.shutdown()

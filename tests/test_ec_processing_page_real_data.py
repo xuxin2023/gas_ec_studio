@@ -161,10 +161,12 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.method_family_card.property("deckRole") == "methodFamilyCockpit"
         assert page.method_family_stack.property("stackRole") == "methodFamilyStack"
         assert page.method_family_tile_strip.property("methodStateMirror") is True
-        assert page.method_family_tile_strip.maximumHeight() == 0
-        assert page.method_family_tile_strip.isHidden() is True
+        assert page.method_family_tile_strip.maximumHeight() == 46
+        assert page.method_family_tile_strip.isHidden() is False
         assert set(page.method_console_tiles) == {"footprint", "uncertainty", "spectral"}
         assert all(tile.property("methodTile") is True for tile in page.method_console_tiles.values())
+        assert all(tile.property("methodConsoleTile") is True for tile in page.method_console_tiles.values())
+        assert all(tile.property("methodTone") in {"success", "accent", "warning", "danger"} for tile in page.method_console_tiles.values())
         assert all(tile.property("cardRole") == "tile" for tile in page.method_console_tiles.values())
         assert len(page.method_field_labels) >= 20
         assert all(label.property("methodFieldLabel") is True for label in page.method_field_labels)
@@ -286,6 +288,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.method_console_values["uncertainty"].text() == "mann_lenschow"
         assert page.method_console_values["spectral"].text() == "massman"
         assert page.method_console_tiles["footprint"].property("evidenceTone") in {"success", "danger"}
+        assert page.method_console_tiles["footprint"].property("methodTone") in {"success", "danger"}
         assert page.method_family_gate_chip.text() in {"就绪", "复核"}
         page._show_method_family("spectral")
         assert page.method_family_stack.currentWidget() is page.spectral_card
