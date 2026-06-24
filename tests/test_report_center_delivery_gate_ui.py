@@ -77,7 +77,8 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.report_command_deck.maximumHeight() == 146
         assert page.report_command_chip.text().startswith("待生成")
         assert page.delivery_status_radar.property("deliveryStatusRadar") is True
-        assert page.delivery_status_radar.maximumHeight() == 72
+        assert page.delivery_status_radar.maximumHeight() == 0
+        assert page.delivery_status_radar.isHidden() is True
         assert set(page.delivery_status_radar_cards) == {"network", "benchmark", "methods", "export"}
         assert all(
             cell.property("deliveryStatusRadarCell") is True
@@ -87,6 +88,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert all(cell.property("radarTone") in {"success", "accent", "warning"} for cell in page.delivery_status_radar_cards.values())
         assert set(page.report_command_tiles) == {"report", "gate", "network", "benchmark", "methods", "export"}
         assert all(tile.property("cardRole") == "tile" for tile in page.report_command_tiles.values())
+        assert page.delivery_closure_strip.property("deliveryClosureStrip") is True
+        assert page.delivery_closure_strip.maximumHeight() == 60
+        assert all(tile.property("deliveryClosureTile") is True for tile in page.report_command_tiles.values())
+        assert all(tile.maximumHeight() == 58 for tile in page.report_command_tiles.values())
         assert all(value.property("compactMetric") is True for value in page.report_command_values.values())
         assert all(chip.property("closureStage") is True for chip in page.report_command_chips.values())
         assert all(chip.minimumHeight() == 22 for chip in page.report_command_chips.values())

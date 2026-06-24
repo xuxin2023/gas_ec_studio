@@ -706,13 +706,19 @@ class ReportCenterPage(QWidget):
         self.report_command_chip = chip("待生成", "warning")
         intro.addWidget(self.report_command_chip)
         self.delivery_status_radar = self._build_delivery_status_radar()
+        self.delivery_status_radar.setMaximumHeight(0)
+        self.delivery_status_radar.setVisible(False)
         intro.addWidget(self.delivery_status_radar)
         layout.addLayout(intro)
 
-        grid = QGridLayout()
+        self.delivery_closure_strip = QWidget()
+        self.delivery_closure_strip.setProperty("deliveryClosureStrip", True)
+        self.delivery_closure_strip.setMaximumHeight(60)
+        self.delivery_closure_strip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        grid = QGridLayout(self.delivery_closure_strip)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(TOKENS.spacing_sm)
-        grid.setVerticalSpacing(TOKENS.spacing_xs)
+        grid.setHorizontalSpacing(TOKENS.spacing_xs)
+        grid.setVerticalSpacing(0)
         self.report_command_tiles: dict[str, CardFrame] = {}
         self.report_command_values: dict[str, QLabel] = {}
         self.report_command_notes: dict[str, QLabel] = {}
@@ -726,8 +732,9 @@ class ReportCenterPage(QWidget):
             ("export", "导出"),
         ]
         for index, (key, title) in enumerate(items):
-            grid.addWidget(self._report_command_tile(key, title), index // 3, index % 3)
-        layout.addLayout(grid, 1)
+            grid.addWidget(self._report_command_tile(key, title), 0, index)
+            grid.setColumnStretch(index, 1)
+        layout.addWidget(self.delivery_closure_strip, 1)
         return card
 
     def _build_delivery_status_radar(self) -> CardFrame:
@@ -782,8 +789,9 @@ class ReportCenterPage(QWidget):
     def _report_command_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("commandKey", key)
-        tile.setMinimumHeight(58)
-        tile.setMaximumHeight(62)
+        tile.setProperty("deliveryClosureTile", True)
+        tile.setMinimumHeight(54)
+        tile.setMaximumHeight(58)
         layout = QVBoxLayout(tile)
         layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         layout.setSpacing(1)

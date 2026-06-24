@@ -974,6 +974,34 @@ def build_stylesheet() -> str:
         font-weight: 800;
         padding: 0;
     }}
+    QWidget[deliveryClosureStrip="true"] {{
+        max-height: 60px;
+    }}
+    QFrame#cardMuted[deliveryClosureTile="true"] {{
+        border-radius: 13px;
+        border: 1px solid #d1e2e8;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 rgba(255, 255, 255, 0.94),
+            stop: 1 rgba(239, 248, 249, 0.84)
+        );
+    }}
+    QFrame#cardMuted[deliveryClosureTile="true"][commandTone="success"] {{
+        background: #f1fbf5;
+        border-color: #9fd2bb;
+    }}
+    QFrame#cardMuted[deliveryClosureTile="true"][commandTone="accent"] {{
+        background: #eef9fb;
+        border-color: #94c9d3;
+    }}
+    QFrame#cardMuted[deliveryClosureTile="true"][commandTone="warning"] {{
+        background: #fff7e4;
+        border-color: #e6c98e;
+    }}
+    QFrame#cardMuted[deliveryClosureTile="true"] QLabel#metricValue[compactMetric="true"] {{
+        font-size: 12px;
+        font-weight: 800;
+    }}
     QFrame#cardMuted[reportPreviewWorkbench="true"] {{
         border-radius: 18px;
         border: 1px solid #c8dce4;
