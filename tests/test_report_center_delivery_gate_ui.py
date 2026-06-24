@@ -118,25 +118,39 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_hero_card.property("cardRole") == "console"
         assert page.delivery_gate_hero_card.property("deckRole") == "deliveryReadinessHero"
         assert page.delivery_gate_hero_card.property("deliveryGateHero") is True
-        assert page.delivery_gate_hero_card.isHidden() is True
+        assert page.delivery_gate_hero_card.property("deliveryGateLayer") == "summary"
+        assert page.delivery_gate_hero_card.isHidden() is False
         assert page.delivery_gate_progress_badge.objectName() == "chip"
         assert page.delivery_gate_progress_badge.property("chipTone") in {"warning", "accent", "success"}
         assert page.delivery_focus_stack.property("stackRole") == "compactDeliveryInspector"
-        assert page.delivery_gate_hero_card.maximumHeight() == 0
+        assert page.delivery_gate_hero_card.maximumHeight() == 56
         assert page.delivery_gate_scroll.objectName() == "deliveryGateMatrixScroll"
-        assert page.delivery_gate_scroll.maximumHeight() == 82
+        assert page.delivery_gate_scroll.maximumHeight() == 106
         assert page.delivery_gate_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.delivery_gate_scroll.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.delivery_gate_scroll.widget() is page.delivery_gate_grid_body
+        assert page.delivery_gate_grid_body.property("deliveryGateLayeredMatrix") is True
         assert page.delivery_gate_ready_value.property("compactMetric") is True
-        assert page.delivery_gate_ready_note.isHidden() is True
-        assert all(tile.maximumHeight() == 24 for tile in page.delivery_gate_tiles.values())
+        assert page.delivery_gate_ready_note.isHidden() is False
+        assert all(tile.maximumHeight() == 32 for tile in page.delivery_gate_tiles.values())
         assert all(tile.property("deliveryGateTile") is True for tile in page.delivery_gate_tiles.values())
+        assert all(tile.property("deliveryGateLayerTile") is True for tile in page.delivery_gate_tiles.values())
+        assert {
+            key: tile.property("deliveryGateGroup")
+            for key, tile in page.delivery_gate_tiles.items()
+        } == {
+            "report": "artifact",
+            "export": "artifact",
+            "manifest": "artifact",
+            "network": "validation",
+            "benchmark": "validation",
+            "methods": "validation",
+        }
         assert page.delivery_gate_values["report"][0].property("compactMetric") is True
         assert page.delivery_gate_values["report"][1].isHidden() is True
         assert page.delivery_gate_values["report"][2].isHidden() is False
         assert page.delivery_gate_values["report"][2].property("closureStage") is True
-        assert page.delivery_gate_values["report"][2].minimumHeight() == 16
+        assert page.delivery_gate_values["report"][2].minimumHeight() == 18
         assert page.delivery_gate_next_value.property("compactMetric") is True
         assert page.delivery_gate_next_card.isHidden() is True
         assert page.delivery_gate_next_note.isHidden() is True

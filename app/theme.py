@@ -1088,10 +1088,39 @@ def build_stylesheet() -> str:
         border: 1px solid #bdd6dc;
         background: rgba(248, 252, 253, 0.90);
     }}
+    QFrame#cardMuted[deliveryGateHero="true"][deliveryGateLayer="summary"] {{
+        border: 1px solid #b6d6dd;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #f6fbfc,
+            stop: 0.52 #ffffff,
+            stop: 1 #eef7f0
+        );
+    }}
+    QWidget[deliveryGateLayeredMatrix="true"] {{
+        background: transparent;
+    }}
     QFrame#cardMuted[deliveryGateTile="true"] {{
         border-radius: 10px;
         border: 1px solid #d0e1e7;
         background: rgba(255, 255, 255, 0.78);
+    }}
+    QFrame#cardMuted[deliveryGateLayerTile="true"][deliveryGateGroup="artifact"] {{
+        border-left: 3px solid #8bbfca;
+        background: rgba(250, 253, 253, 0.90);
+    }}
+    QFrame#cardMuted[deliveryGateLayerTile="true"][deliveryGateGroup="validation"] {{
+        border-left: 3px solid #e1ad6c;
+        background: rgba(255, 251, 244, 0.88);
+    }}
+    QFrame#cardMuted[deliveryGateLayerTile="true"][gateTone="success"] {{
+        border-color: #9cccb4;
+    }}
+    QFrame#cardMuted[deliveryGateLayerTile="true"][gateTone="accent"] {{
+        border-color: #b9d7df;
+    }}
+    QFrame#cardMuted[deliveryGateLayerTile="true"][gateTone="warning"] {{
+        border-color: #e4c488;
     }}
     QFrame#cardMuted[deliveryGateTile="true"] QLabel#chip {{
         font-size: 9px;
