@@ -405,6 +405,7 @@ class DeviceCenterPage(QWidget):
             "现场快捷检查器",
             "默认聚焦当前目标和高频动作；新增设备作为第二态收起，避免首屏被表单拉长。",
         )
+        title.setProperty("deviceInspectorTitle", True)
         title.setMaximumHeight(36)
         header.addWidget(title, 1)
         self.quick_mode_buttons: dict[str, QToolButton] = {}
@@ -531,11 +532,12 @@ class DeviceCenterPage(QWidget):
     def _install_operations_deck(self) -> None:
         self.operations_deck_card = CardFrame(muted=True, role="rail")
         self.operations_deck_card.setProperty("deckRole", "deviceOperationsInspector")
-        self.operations_deck_card.setMinimumHeight(188)
-        self.operations_deck_card.setMaximumHeight(206)
+        self.operations_deck_card.setProperty("deviceOperationsCompactInspector", True)
+        self.operations_deck_card.setMinimumHeight(166)
+        self.operations_deck_card.setMaximumHeight(184)
         self.operations_deck_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         deck_layout = QVBoxLayout(self.operations_deck_card)
-        deck_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
+        deck_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_xs, TOKENS.spacing_lg, TOKENS.spacing_xs)
         deck_layout.setSpacing(TOKENS.spacing_xs)
 
         header = QHBoxLayout()
@@ -552,6 +554,8 @@ class DeviceCenterPage(QWidget):
             button.setText(text)
             button.setCheckable(True)
             button.setProperty("viewSwitch", True)
+            button.setProperty("deviceInspectorModeSwitch", True)
+            button.setProperty("inspectorMode", mode)
             button.clicked.connect(lambda _checked=False, key=mode: self._show_operations_mode(key))
             self.operations_mode_buttons[mode] = button
             header.addWidget(button)
@@ -559,18 +563,21 @@ class DeviceCenterPage(QWidget):
 
         self.operations_stack = QStackedWidget()
         self.operations_stack.setProperty("stackRole", "deviceOperationsInspectorStack")
-        self.operations_stack.setMaximumHeight(150)
+        self.operations_stack.setProperty("deviceInspectorStack", True)
+        self.operations_stack.setMaximumHeight(124)
         self.operations_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         deck_layout.addWidget(self.operations_stack)
 
-        insert_at = self.layout.indexOf(self.operator_mission_card)
+        insert_at = self.layout.indexOf(self.device_grid_card)
         self.layout.insertWidget(insert_at, self.operations_deck_card)
         self.operations_sections = {
             "mission": self.operator_mission_card,
             "evidence": self.operator_evidence_card,
             "activity": self.activity_card,
         }
-        for widget in self.operations_sections.values():
+        for mode, widget in self.operations_sections.items():
+            widget.setProperty("deviceInspectorSection", True)
+            widget.setProperty("deviceInspectorSectionRole", mode)
             self.layout.removeWidget(widget)
             widget.setParent(None)
             self._compact_operations_section(widget)
@@ -579,10 +586,13 @@ class DeviceCenterPage(QWidget):
         self._show_operations_mode("mission")
 
     def _compact_operations_section(self, widget: QWidget) -> None:
-        widget.setMinimumHeight(132)
-        widget.setMaximumHeight(150)
+        widget.setMinimumHeight(108)
+        widget.setMaximumHeight(124)
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout = widget.layout()
+        if isinstance(layout, (QGridLayout, QHBoxLayout, QVBoxLayout)):
+            layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+            layout.setSpacing(TOKENS.spacing_xs)
         if isinstance(layout, QGridLayout):
             title_item = layout.itemAtPosition(0, 0)
             if title_item is not None and title_item.widget() is not None:
@@ -590,8 +600,8 @@ class DeviceCenterPage(QWidget):
                 title_item.widget().setMaximumHeight(0)
         for child in widget.findChildren(CardFrame):
             if child.property("cardRole") == "tile":
-                child.setMinimumHeight(48)
-                child.setMaximumHeight(58)
+                child.setMinimumHeight(42)
+                child.setMaximumHeight(52)
                 for label in child.findChildren(QLabel):
                     if label.objectName() == "subtitle":
                         label.setVisible(False)

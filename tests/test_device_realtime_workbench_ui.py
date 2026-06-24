@@ -83,8 +83,14 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert page.device_grid_card.maximumHeight() == 184
         assert page.operations_deck_card.property("cardRole") == "rail"
         assert page.operations_deck_card.property("deckRole") == "deviceOperationsInspector"
-        assert page.operations_deck_card.maximumHeight() == 206
+        assert page.operations_deck_card.property("deviceOperationsCompactInspector") is True
+        assert page.operations_deck_card.maximumHeight() == 184
+        assert page.layout.indexOf(page.operations_deck_card) < page.layout.indexOf(page.device_grid_card)
         assert page.operations_stack.property("stackRole") == "deviceOperationsInspectorStack"
+        assert page.operations_stack.property("deviceInspectorStack") is True
+        assert page.operations_stack.maximumHeight() == 124
+        assert all(button.property("deviceInspectorModeSwitch") is True for button in page.operations_mode_buttons.values())
+        assert page.operations_mode_buttons["mission"].property("inspectorMode") == "mission"
         assert page.operations_stack.currentWidget() is page.operator_mission_card
         assert page.operations_mode_buttons["mission"].isChecked() is True
         page._show_operations_mode("evidence")
@@ -93,12 +99,18 @@ def test_device_center_uses_field_operations_deck() -> None:
         page._show_operations_mode("mission")
         assert page.operator_mission_card.property("cardRole") == "cockpit"
         assert page.operator_mission_card.property("deckRole") == "deviceOperatorMissionDeck"
+        assert page.operator_mission_card.property("deviceInspectorSection") is True
+        assert page.operator_mission_card.property("deviceInspectorSectionRole") == "mission"
+        assert page.operator_mission_card.maximumHeight() == 124
         assert set(page.operator_mission_tiles) == {"device", "capture", "processing", "delivery"}
         assert page.operator_mission_card.isVisibleTo(page) is True
         assert page.operator_mission_tiles["device"][0].property("compactMetric") is True
         assert page.operator_mission_tiles["processing"][1].text().startswith("status=")
         assert page.operator_evidence_card.property("cardRole") == "panel"
         assert page.operator_evidence_card.property("deckRole") == "deviceOperatorEvidenceMatrix"
+        assert page.operator_evidence_card.property("deviceInspectorSection") is True
+        assert page.operator_evidence_card.property("deviceInspectorSectionRole") == "evidence"
+        assert page.operator_evidence_card.maximumHeight() == 124
         assert set(page.operator_evidence_tiles) == {
             "latest_frame",
             "protocol_tx",
@@ -112,6 +124,9 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert "帧" in page.operator_evidence_tiles["runtime_buffer"][0].text()
         assert page.operator_evidence_tiles["processing_gate"][1].text().startswith("windows=")
         assert page.activity_card.property("cardRole") == "rail"
+        assert page.activity_card.property("deviceInspectorSection") is True
+        assert page.activity_card.property("deviceInspectorSectionRole") == "activity"
+        assert page.activity_card.maximumHeight() == 124
         assert set(page.readiness_values) == {"fleet", "target", "protocol", "next"}
         assert all(tile.property("fieldReadinessTile") is True for tile in page.readiness_tiles.values())
         assert all(tile.maximumHeight() == 56 for tile in page.readiness_tiles.values())
@@ -166,7 +181,7 @@ def test_device_center_top_decks_fit_common_desktop_viewports() -> None:
             page.refresh()
             app.processEvents()
 
-            top_cards = [page.status_card, page.field_readiness_card, page.quick_card, page.device_grid_card]
+            top_cards = [page.status_card, page.field_readiness_card, page.quick_card, page.operations_deck_card]
             for card in top_cards:
                 assert_contained(page, card, page)
             assert_no_visual_overlap(top_cards, page)
@@ -182,10 +197,8 @@ def test_device_center_top_decks_fit_common_desktop_viewports() -> None:
                 page.fleet_log_button,
             ):
                 assert_contained(page.field_action_card, button, page)
-            assert widget_bounds(page.operations_deck_card, page).top() < height
-            if height >= 900:
-                assert_contained(page, page.operations_deck_card, page)
-                assert_no_visual_overlap(top_cards + [page.operations_deck_card], page)
+            assert widget_bounds(page.operations_deck_card, page).top() < widget_bounds(page.device_grid_card, page).top()
+            assert_contained(page, page.operations_deck_card, page)
             assert_no_visible_competitor_name(page)
     finally:
         page.close()

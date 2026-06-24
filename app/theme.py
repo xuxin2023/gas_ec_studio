@@ -1471,6 +1471,51 @@ def build_stylesheet() -> str:
         border: 1px solid #b8d4dd;
         color: #0e5f6e;
     }}
+    QFrame#cardMuted[deviceOperationsCompactInspector="true"] {{
+        border-radius: 18px;
+        border: 1px solid #bcd5dd;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f4fbfc,
+            stop: 0.50 #ffffff,
+            stop: 1 #eef8f5
+        );
+    }}
+    QWidget[deviceInspectorTitle="true"] {{
+        background: transparent;
+    }}
+    QToolButton[deviceInspectorModeSwitch="true"] {{
+        min-height: 28px;
+        border-radius: 14px;
+        padding: 0 14px;
+        border: 1px solid #b8d4dd;
+        background: #ffffff;
+        color: #315f68;
+        font-weight: 700;
+    }}
+    QToolButton[deviceInspectorModeSwitch="true"]:checked {{
+        background: #d6f2f5;
+        border-color: #56aeb9;
+        color: #073f49;
+    }}
+    QStackedWidget[deviceInspectorStack="true"] {{
+        background: transparent;
+    }}
+    QFrame[deviceInspectorSection="true"] {{
+        border-radius: 14px;
+    }}
+    QFrame[deviceInspectorSection="true"][deviceInspectorSectionRole="mission"] {{
+        border-color: #bed5c5;
+        background: rgba(255, 249, 235, 0.74);
+    }}
+    QFrame[deviceInspectorSection="true"][deviceInspectorSectionRole="evidence"] {{
+        border-color: #b9d6de;
+        background: rgba(244, 251, 252, 0.82);
+    }}
+    QFrame[deviceInspectorSection="true"][deviceInspectorSectionRole="activity"] {{
+        border-color: #c8dce4;
+        background: rgba(247, 252, 253, 0.86);
+    }}
     QFrame#cardMuted[closureCompactTile="true"] {{
         border-radius: 14px;
         border: 1px solid #c4dce4;
