@@ -76,6 +76,15 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.report_command_deck.property("deckRole") == "reportCommandDeck"
         assert page.report_command_deck.maximumHeight() == 146
         assert page.report_command_chip.text().startswith("待生成")
+        assert page.delivery_status_radar.property("deliveryStatusRadar") is True
+        assert page.delivery_status_radar.maximumHeight() == 72
+        assert set(page.delivery_status_radar_cards) == {"network", "benchmark", "methods", "export"}
+        assert all(
+            cell.property("deliveryStatusRadarCell") is True
+            for cell in page.delivery_status_radar_cards.values()
+        )
+        assert all(value.property("compactMetric") is True for value in page.delivery_status_radar_values.values())
+        assert all(cell.property("radarTone") in {"success", "accent", "warning"} for cell in page.delivery_status_radar_cards.values())
         assert set(page.report_command_tiles) == {"report", "gate", "network", "benchmark", "methods", "export"}
         assert all(tile.property("cardRole") == "tile" for tile in page.report_command_tiles.values())
         assert all(value.property("compactMetric") is True for value in page.report_command_values.values())
@@ -428,6 +437,14 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.report_command_values["benchmark"].text() == "ref-001"
         assert page.report_command_values["methods"].text() == "已汇总"
         assert page.report_command_values["export"].text() == "已导出"
+        assert page.delivery_status_radar_values["network"].text() == "FLUXNET"
+        assert page.delivery_status_radar_values["benchmark"].text() == "ref-001"
+        assert page.delivery_status_radar_values["methods"].text() == "已汇总"
+        assert page.delivery_status_radar_values["export"].text() == "已导出"
+        assert page.delivery_status_radar_cards["network"].property("radarTone") == "success"
+        assert page.delivery_status_radar_cards["benchmark"].property("radarTone") == "success"
+        assert page.delivery_status_radar_cards["methods"].property("radarTone") == "success"
+        assert page.delivery_status_radar_cards["export"].property("radarTone") == "success"
         assert page.report_command_tiles["network"].property("commandTone") == "success"
         assert page.preview_command_values["report"].text() == "可预览"
         assert page.preview_command_values["gate"].text() == page.delivery_gate_chip.text()

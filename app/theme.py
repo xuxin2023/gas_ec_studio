@@ -202,21 +202,24 @@ def build_stylesheet() -> str:
     QFrame#cardMuted[cardRole="tile"][expertTone="success"],
     QFrame#cardMuted[cardRole="tile"][gateTone="success"],
     QFrame#cardMuted[cardRole="tile"][commandTone="success"],
-    QFrame#cardMuted[cardRole="tile"][evidenceTone="success"] {{
+    QFrame#cardMuted[cardRole="tile"][evidenceTone="success"],
+    QFrame#cardMuted[cardRole="tile"][radarTone="success"] {{
         background: #f1fbf5;
         border-color: #b7dcc9;
     }}
     QFrame#cardMuted[cardRole="tile"][expertTone="accent"],
     QFrame#cardMuted[cardRole="tile"][gateTone="accent"],
     QFrame#cardMuted[cardRole="tile"][commandTone="accent"],
-    QFrame#cardMuted[cardRole="tile"][evidenceTone="accent"] {{
+    QFrame#cardMuted[cardRole="tile"][evidenceTone="accent"],
+    QFrame#cardMuted[cardRole="tile"][radarTone="accent"] {{
         background: #eef9fb;
         border-color: #a7ccd5;
     }}
     QFrame#cardMuted[cardRole="tile"][expertTone="warning"],
     QFrame#cardMuted[cardRole="tile"][gateTone="warning"],
     QFrame#cardMuted[cardRole="tile"][commandTone="warning"],
-    QFrame#cardMuted[cardRole="tile"][evidenceTone="warning"] {{
+    QFrame#cardMuted[cardRole="tile"][evidenceTone="warning"],
+    QFrame#cardMuted[cardRole="tile"][radarTone="warning"] {{
         background: #fff8e8;
         border-color: #ead1a5;
     }}
@@ -926,6 +929,21 @@ def build_stylesheet() -> str:
         border-radius: 12px;
         border: 1px solid #d2e3e9;
         background: rgba(255, 255, 255, 0.72);
+    }}
+    QFrame#cardMuted[deliveryStatusRadar="true"] {{
+        border-radius: 14px;
+        border: 1px solid #c8dce4;
+        background: rgba(255, 255, 255, 0.64);
+    }}
+    QFrame#cardMuted[deliveryStatusRadarCell="true"] {{
+        border-radius: 10px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.72);
+    }}
+    QFrame#cardMuted[deliveryStatusRadarCell="true"] QLabel#metricValue[compactMetric="true"] {{
+        font-size: 11px;
+        font-weight: 800;
+        padding: 0;
     }}
     QFrame#cardMuted[reportPreviewWorkbench="true"] {{
         border-radius: 18px;

@@ -64,6 +64,9 @@ class ReportCenterPage(QWidget):
         self.preview_command_values: dict[str, QLabel] = {}
         self.preview_command_notes: dict[str, QLabel] = {}
         self.preview_command_buttons: dict[str, QToolButton] = {}
+        self.delivery_status_radar_cards: dict[str, CardFrame] = {}
+        self.delivery_status_radar_values: dict[str, QLabel] = {}
+        self.delivery_status_radar_notes: dict[str, QLabel] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -702,6 +705,8 @@ class ReportCenterPage(QWidget):
         intro.addWidget(section_title("交付总控", "报告、门槛、网络、对标、方法和导出状态固定在首屏。"))
         self.report_command_chip = chip("待生成", "warning")
         intro.addWidget(self.report_command_chip)
+        self.delivery_status_radar = self._build_delivery_status_radar()
+        intro.addWidget(self.delivery_status_radar)
         layout.addLayout(intro)
 
         grid = QGridLayout()
@@ -724,6 +729,55 @@ class ReportCenterPage(QWidget):
             grid.addWidget(self._report_command_tile(key, title), index // 3, index % 3)
         layout.addLayout(grid, 1)
         return card
+
+    def _build_delivery_status_radar(self) -> CardFrame:
+        radar = CardFrame(muted=True, role="console")
+        radar.setProperty("deliveryStatusRadar", True)
+        radar.setMaximumHeight(72)
+        radar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(radar)
+        layout.setContentsMargins(TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs)
+        layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(2)
+        for index, (key, title) in enumerate(
+            (
+                ("network", "网络"),
+                ("benchmark", "对标"),
+                ("methods", "方法"),
+                ("export", "交付"),
+            )
+        ):
+            layout.addWidget(self._delivery_status_radar_cell(key, title), index // 2, index % 2)
+        return radar
+
+    def _delivery_status_radar_cell(self, key: str, title: str) -> CardFrame:
+        cell = CardFrame(muted=True, role="tile")
+        cell.setProperty("deliveryStatusRadarCell", True)
+        cell.setProperty("radarKey", key)
+        cell.setProperty("radarTone", "warning")
+        cell.setMinimumHeight(28)
+        cell.setMaximumHeight(30)
+        layout = QHBoxLayout(cell)
+        layout.setContentsMargins(TOKENS.spacing_xs, 1, TOKENS.spacing_xs, 1)
+        layout.setSpacing(3)
+        label = QLabel(_ui_safe_text(title))
+        label.setObjectName("metricLabel")
+        label.setMaximumWidth(34)
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setProperty("compactMetric", True)
+        value.setWordWrap(False)
+        value.setMinimumWidth(0)
+        value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        note = QLabel("--")
+        note.setObjectName("subtitle")
+        note.setVisible(False)
+        layout.addWidget(label)
+        layout.addWidget(value, 1)
+        self.delivery_status_radar_cards[key] = cell
+        self.delivery_status_radar_values[key] = value
+        self.delivery_status_radar_notes[key] = note
+        return cell
 
     def _report_command_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
@@ -2486,11 +2540,21 @@ class ReportCenterPage(QWidget):
         self._set_report_command_tile("network", network["value"], network["note"], network["tone"])
         self._set_report_command_tile("benchmark", benchmark["value"], benchmark["note"], benchmark["tone"])
         self._set_report_command_tile("methods", methods["value"], methods["note"], methods["tone"])
+        export_value = "已导出" if export_done else ("可导出" if exportable_count > 0 else "待运行")
+        export_tone = "success" if export_done else ("accent" if exportable_count > 0 else "warning")
         self._set_report_command_tile(
             "export",
-            "已导出" if export_done else ("可导出" if exportable_count > 0 else "待运行"),
+            export_value,
             f"report={selected_report} | {export_status}",
-            "success" if export_done else ("accent" if exportable_count > 0 else "warning"),
+            export_tone,
+        )
+        self._refresh_delivery_status_radar(
+            {
+                "network": (network["value"], network["note"], network["tone"]),
+                "benchmark": (benchmark["value"], benchmark["note"], benchmark["tone"]),
+                "methods": (methods["value"], methods["note"], methods["tone"]),
+                "export": (export_value, f"report={selected_report} | {export_status}", export_tone),
+            }
         )
 
         tones = [
@@ -2537,6 +2601,30 @@ class ReportCenterPage(QWidget):
         tile.setProperty("commandTone", tone)
         tile.style().unpolish(tile)
         tile.style().polish(tile)
+
+    def _refresh_delivery_status_radar(self, items: dict[str, tuple[str, str, str]]) -> None:
+        for key, (value, note, tone) in items.items():
+            card = self.delivery_status_radar_cards.get(key)
+            value_label = self.delivery_status_radar_values.get(key)
+            note_label = self.delivery_status_radar_notes.get(key)
+            if card is None or value_label is None or note_label is None:
+                continue
+            display_value = self._compact_radar_value(value)
+            display_note = _ui_safe_text(str(note or "--"))
+            value_label.setText(display_value)
+            value_label.setToolTip(display_note)
+            note_label.setText(display_note)
+            card.setToolTip(display_note)
+            card.setProperty("radarTone", tone)
+            card.style().unpolish(card)
+            card.style().polish(card)
+
+    @staticmethod
+    def _compact_radar_value(value: object, *, max_chars: int = 8) -> str:
+        text = _ui_safe_text(str(value or "--").strip() or "--")
+        if len(text) <= max_chars:
+            return text
+        return f"{text[: max_chars - 1]}..."
 
     def _refresh_preview_command_strip(
         self,
