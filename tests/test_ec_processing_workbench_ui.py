@@ -109,6 +109,11 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.method_family_tile_strip.property("methodStateMirror") is True
         assert page.method_family_tile_strip.maximumHeight() == 46
         assert page.method_family_tile_strip.isHidden() is False
+        assert set(page.method_family_control_strips) == {"footprint", "uncertainty", "spectral"}
+        assert all(strip.property("methodFamilyControlStrip") is True for strip in page.method_family_control_strips.values())
+        assert all(set(tiles) == {"recommended", "current", "gate"} for tiles in page.method_family_control_tiles.values())
+        assert page.method_family_control_values["footprint"]["current"].text()
+        assert page.method_family_control_values["spectral"]["gate"].text() in {"ready", "review", "disabled"}
         assert set(page.method_console_tiles) == {"footprint", "uncertainty", "spectral"}
         assert all(tile.property("methodConsoleTile") is True for tile in page.method_console_tiles.values())
         assert all(tile.property("methodTone") in {"success", "accent", "warning", "danger"} for tile in page.method_console_tiles.values())

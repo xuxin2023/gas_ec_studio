@@ -76,6 +76,10 @@ class ECProcessingPage(QWidget):
         self.step_command_buttons: dict[str, dict[str, QToolButton]] = {}
         self.method_shortcut_buttons: dict[str, QToolButton] = {}
         self.method_console_mode_buttons: dict[str, QToolButton] = {}
+        self.method_family_control_strips: dict[str, QWidget] = {}
+        self.method_family_control_tiles: dict[str, dict[str, CardFrame]] = {}
+        self.method_family_control_values: dict[str, dict[str, QLabel]] = {}
+        self.method_family_control_notes: dict[str, dict[str, QLabel]] = {}
         self.window_console_switches: dict[str, QToolButton] = {}
         self.rp_closure_mode_buttons: dict[str, QToolButton] = {}
 
@@ -992,6 +996,86 @@ class ECProcessingPage(QWidget):
         self.method_console_values[key] = value_label
         self.method_console_notes[key] = note_label
 
+    def _add_method_family_control_strip(self, layout: QVBoxLayout, family: str, recommended: str) -> None:
+        strip = QWidget()
+        strip.setProperty("methodFamilyControlStrip", True)
+        strip.setProperty("methodFamily", family)
+        strip.setMaximumHeight(52)
+        strip.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        strip_layout = QGridLayout(strip)
+        strip_layout.setContentsMargins(0, 0, 0, 0)
+        strip_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        strip_layout.setVerticalSpacing(0)
+        self.method_family_control_strips[family] = strip
+        self.method_family_control_tiles[family] = {}
+        self.method_family_control_values[family] = {}
+        self.method_family_control_notes[family] = {}
+        for column, (key, title, value) in enumerate(
+            (
+                ("recommended", "recommended", recommended),
+                ("current", "current", "--"),
+                ("gate", "gate", "review"),
+            )
+        ):
+            tile = CardFrame(muted=True, role="tile")
+            tile.setProperty("methodFamilyControlTile", True)
+            tile.setProperty("methodFamily", family)
+            tile.setProperty("summaryKey", key)
+            tile.setProperty("methodTone", "accent" if key == "recommended" else "warning")
+            tile.setMaximumHeight(48)
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+            tile_layout.setSpacing(0)
+            title_label = QLabel(title)
+            title_label.setObjectName("metricLabel")
+            title_label.setWordWrap(False)
+            value_label = QLabel(value)
+            value_label.setObjectName("metricValue")
+            value_label.setProperty("compactMetric", True)
+            value_label.setWordWrap(False)
+            value_label.setMinimumWidth(0)
+            value_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            note_label = QLabel("--")
+            note_label.setObjectName("subtitle")
+            note_label.setWordWrap(False)
+            note_label.setMinimumWidth(0)
+            note_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(value_label)
+            tile_layout.addWidget(note_label)
+            strip_layout.addWidget(tile, 0, column)
+            strip_layout.setColumnStretch(column, 1)
+            self.method_family_control_tiles[family][key] = tile
+            self.method_family_control_values[family][key] = value_label
+            self.method_family_control_notes[family][key] = note_label
+        layout.addWidget(strip)
+
+    def _set_method_family_control_tile(
+        self,
+        family: str,
+        key: str,
+        value: str,
+        note: str,
+        tone: str,
+    ) -> None:
+        value_label = self.method_family_control_values.get(family, {}).get(key)
+        note_label = self.method_family_control_notes.get(family, {}).get(key)
+        tile = self.method_family_control_tiles.get(family, {}).get(key)
+        display_value = self._compact_text(value, 18)
+        display_note = self._compact_text(note, 28)
+        tooltip = f"{family}.{key}: {value}\n{note}"
+        if value_label is not None:
+            value_label.setText(display_value)
+            value_label.setToolTip(tooltip)
+        if note_label is not None:
+            note_label.setText(display_note)
+            note_label.setToolTip(tooltip)
+        if tile is not None:
+            tile.setToolTip(tooltip)
+            tile.setProperty("methodTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
     def _add_method_group_strip(self, layout: QVBoxLayout, family: str, groups: tuple[str, ...]) -> None:
         strip = QWidget()
         strip.setProperty("methodGroupStrip", True)
@@ -1380,6 +1464,72 @@ class ECProcessingPage(QWidget):
             spectral_tone = "warning"
         else:
             spectral_tone = "success"
+        footprint_gate = "disabled" if footprint_enabled != "enabled" else ("review" if footprint_tone in {"warning", "danger"} else "ready")
+        uncertainty_gate = "review" if uncertainty_tone == "warning" else "ready"
+        spectral_gate = "disabled" if spectral_enabled != "enabled" else ("review" if spectral_tone == "warning" else "ready")
+        self._set_method_family_control_tile(
+            "footprint",
+            "recommended",
+            "kljun / z_m=6.0",
+            "default canopy_height_m=3.0; use dynamic canopy metadata when present",
+            "accent",
+        )
+        self._set_method_family_control_tile(
+            "footprint",
+            "current",
+            footprint_method if footprint_enabled == "enabled" else "disabled",
+            f"z_m={z_m:.2f}; canopy={canopy:.2f}; z0={z0:.3f}; grid={self.footprint_grid_x_spin.value()}x{self.footprint_grid_y_spin.value()}",
+            footprint_tone,
+        )
+        self._set_method_family_control_tile(
+            "footprint",
+            "gate",
+            footprint_gate,
+            "range check: z_m > canopy_height_m, z0 < z_m, grid >= 16x15",
+            footprint_tone,
+        )
+        self._set_method_family_control_tile(
+            "uncertainty",
+            "recommended",
+            "mann_lenschow / 0.95",
+            "default integral_timescale_s=5.0 with 95% confidence band",
+            "accent",
+        )
+        self._set_method_family_control_tile(
+            "uncertainty",
+            "current",
+            uncertainty_method,
+            f"tau={self.uncertainty_timescale_spin.value():.1f}s; confidence={confidence:.2f}",
+            uncertainty_tone,
+        )
+        self._set_method_family_control_tile(
+            "uncertainty",
+            "gate",
+            uncertainty_gate,
+            "range check: confidence_level >= 0.80 recommended for delivery review",
+            uncertainty_tone,
+        )
+        self._set_method_family_control_tile(
+            "spectral",
+            "recommended",
+            "massman / fcc_auto",
+            "Fratini should auto-inject FCC measured_cospectrum when available",
+            "accent",
+        )
+        self._set_method_family_control_tile(
+            "spectral",
+            "current",
+            spectral_method if spectral_enabled == "enabled" else "disabled",
+            f"response={self.spectral_response_spin.value():.3f}s; path={self.spectral_path_spin.value():.3f}m; cospectrum={cospectrum}",
+            spectral_tone,
+        )
+        self._set_method_family_control_tile(
+            "spectral",
+            "gate",
+            spectral_gate,
+            "range check: response_time_s and Fratini measured_cospectrum path",
+            spectral_tone,
+        )
         self._set_method_console_tile(
             "footprint",
             footprint_method if footprint_enabled == "enabled" else "disabled",
@@ -2948,7 +3098,7 @@ class ECProcessingPage(QWidget):
         self.method_family_stack = QStackedWidget()
         self.method_family_stack.setProperty("stackRole", "methodFamilyStack")
         self.method_family_stack.setMinimumWidth(0)
-        self.method_family_stack.setMaximumHeight(260)
+        self.method_family_stack.setMaximumHeight(312)
         self.method_family_stack.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         method_shell_layout.addWidget(self.method_family_stack)
         self.method_snapshot_label = QLabel("--")
@@ -2967,7 +3117,7 @@ class ECProcessingPage(QWidget):
 
         self.footprint_card = CardFrame(muted=True, role="console")
         self.footprint_card.setMinimumWidth(0)
-        self.footprint_card.setMaximumHeight(248)
+        self.footprint_card.setMaximumHeight(304)
         self.footprint_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         footprint_layout = QVBoxLayout(self.footprint_card)
         footprint_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
@@ -2976,6 +3126,7 @@ class ECProcessingPage(QWidget):
         footprint_title = footprint_layout.itemAt(0).widget()
         if footprint_title is not None:
             footprint_title.setMaximumHeight(18)
+        self._add_method_family_control_strip(footprint_layout, "footprint", "kljun / z_m=6.0 / canopy=3.0")
         self._add_method_group_strip(footprint_layout, "footprint", ("开关/模型", "几何/稳定度", "网格"))
         self.footprint_enable_combo = QComboBox()
         self.footprint_enable_combo.addItems(["enabled", "disabled"])
@@ -3015,7 +3166,7 @@ class ECProcessingPage(QWidget):
 
         self.uncertainty_card = CardFrame(muted=True, role="console")
         self.uncertainty_card.setMinimumWidth(0)
-        self.uncertainty_card.setMaximumHeight(206)
+        self.uncertainty_card.setMaximumHeight(258)
         self.uncertainty_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         uncertainty_layout = QVBoxLayout(self.uncertainty_card)
         uncertainty_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
@@ -3024,6 +3175,7 @@ class ECProcessingPage(QWidget):
         uncertainty_title = uncertainty_layout.itemAt(0).widget()
         if uncertainty_title is not None:
             uncertainty_title.setMaximumHeight(18)
+        self._add_method_family_control_strip(uncertainty_layout, "uncertainty", "mann_lenschow / tau=5.0 / confidence=0.95")
         self._add_method_group_strip(uncertainty_layout, "uncertainty", ("方法", "置信区间"))
         self.uncertainty_mode_combo = QComboBox()
         self.uncertainty_mode_combo.addItems(["mann_lenschow", "finkelstein_sims", "composite_empirical"])
@@ -3047,7 +3199,7 @@ class ECProcessingPage(QWidget):
 
         self.spectral_card = CardFrame(muted=True, role="console")
         self.spectral_card.setMinimumWidth(0)
-        self.spectral_card.setMaximumHeight(256)
+        self.spectral_card.setMaximumHeight(310)
         self.spectral_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         spectral_layout = QVBoxLayout(self.spectral_card)
         spectral_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
@@ -3056,6 +3208,7 @@ class ECProcessingPage(QWidget):
         spectral_title = spectral_layout.itemAt(0).widget()
         if spectral_title is not None:
             spectral_title.setMaximumHeight(18)
+        self._add_method_family_control_strip(spectral_layout, "spectral", "massman / fcc_auto when Fratini")
         self._add_method_group_strip(spectral_layout, "spectral", ("开关/模型", "路径/响应", "共谱注入"))
         self.spectral_enable_combo = QComboBox()
         self.spectral_enable_combo.addItems(["enabled", "disabled"])

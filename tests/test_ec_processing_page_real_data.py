@@ -150,6 +150,19 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.method_family_card.property("cardRole") == "cockpit"
         assert page.method_family_card.property("methodConsoleCompact") is True
+        assert set(page.method_family_control_strips) == {"footprint", "uncertainty", "spectral"}
+        assert all(strip.property("methodFamilyControlStrip") is True for strip in page.method_family_control_strips.values())
+        assert all(strip.maximumHeight() == 52 for strip in page.method_family_control_strips.values())
+        assert set(page.method_family_control_tiles) == {"footprint", "uncertainty", "spectral"}
+        assert all(set(tiles) == {"recommended", "current", "gate"} for tiles in page.method_family_control_tiles.values())
+        assert all(
+            tile.property("methodFamilyControlTile") is True
+            for tiles in page.method_family_control_tiles.values()
+            for tile in tiles.values()
+        )
+        assert page.method_family_control_values["footprint"]["recommended"].text().startswith("kljun")
+        assert page.method_family_control_values["uncertainty"]["recommended"].text().startswith("mann_lenschow")
+        assert page.method_family_control_values["spectral"]["recommended"].text().startswith("massman")
         assert page.method_support_card.property("cardRole") == "panel"
         assert page.method_support_stack.count() == 2
         assert page.method_support_stack.currentWidget() is page.primary_analyzer_card
@@ -310,6 +323,8 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert "z_m > canopy_height_m" in page.method_validation_label.text()
         assert page.method_family_gate_chip.text() == "复核"
         assert page.method_console_tiles["footprint"].property("evidenceTone") == "danger"
+        assert page.method_family_control_values["footprint"]["gate"].text() == "review"
+        assert page.method_family_control_tiles["footprint"]["gate"].property("methodTone") == "danger"
         assert page.desktop_rail_risk_button.property("actionTone") == "danger"
         assert page.desktop_rail_risk_button.property("targetStep") == "uncertainty"
         page.desktop_rail_risk_button.click()

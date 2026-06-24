@@ -69,6 +69,12 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QLabel[methodGroupPill="true"]' in stylesheet
     assert 'QComboBox[methodFieldInput="true"]' in stylesheet
     assert 'QDoubleSpinBox[methodFieldInput="true"]' in stylesheet
+    assert 'QWidget[methodFamilyControlStrip="true"]' in stylesheet
+    assert 'QFrame#cardMuted[methodFamilyControlTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[methodFamilyControlTile="true"][summaryKey="recommended"]' in stylesheet
+    assert 'QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="success"]' in stylesheet
+    assert 'QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="warning"]' in stylesheet
+    assert 'QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="danger"]' in stylesheet
     assert 'QFrame#card[runCommandDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[runMissionStrip="true"]' in stylesheet
     assert 'QLabel[runMissionLabel="true"]' in stylesheet

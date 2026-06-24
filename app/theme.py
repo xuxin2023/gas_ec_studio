@@ -814,6 +814,35 @@ def build_stylesheet() -> str:
         font-size: 13px;
         font-weight: 800;
     }}
+    QWidget[methodFamilyControlStrip="true"] {{
+        max-height: 52px;
+    }}
+    QFrame#cardMuted[methodFamilyControlTile="true"] {{
+        border-radius: 12px;
+        border: 1px solid #c9dfe6;
+        background: rgba(255, 255, 255, 0.84);
+    }}
+    QFrame#cardMuted[methodFamilyControlTile="true"][summaryKey="recommended"] {{
+        background: #f3fbfb;
+        border-color: #afd2da;
+    }}
+    QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="success"] {{
+        background: #f2fbf5;
+        border-color: #9fd2bb;
+    }}
+    QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="warning"] {{
+        background: #fff7e4;
+        border-color: #e6c98e;
+    }}
+    QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="danger"] {{
+        background: #fff0ef;
+        border-color: #e8b3ad;
+    }}
+    QFrame#cardMuted[methodFamilyControlTile="true"] QLabel#metricValue[compactMetric="true"] {{
+        font-size: 12px;
+        font-weight: 800;
+        padding: 0;
+    }}
     QToolButton[windowConsoleSwitch="true"] {{
         min-height: 26px;
         min-width: 48px;
