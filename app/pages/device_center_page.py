@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -108,6 +109,7 @@ class DeviceCenterPage(QWidget):
         self.layout.addWidget(self.operator_evidence_card)
 
         self.activity_card = CardFrame(muted=True, role="rail")
+        self.activity_card.setProperty("deviceActivityInspector", True)
         activity_layout = QHBoxLayout(self.activity_card)
         activity_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg, TOKENS.spacing_lg)
         activity_layout.setSpacing(TOKENS.spacing_md)
@@ -115,15 +117,26 @@ class DeviceCenterPage(QWidget):
         tx_block = QVBoxLayout()
         tx_block.addWidget(section_title("最近事务", "帮助工程师快速回看刚刚下发过哪些关键操作。"))
         self.transaction_table = QTableWidget(0, 4)
+        self.transaction_table.setProperty("deviceInspectorActivityTable", True)
         self.transaction_table.setHorizontalHeaderLabels(["时间", "设备", "事务", "结论"])
         self.transaction_table.horizontalHeader().setStretchLastSection(True)
+        self.transaction_table.horizontalHeader().setMaximumHeight(22)
         self.transaction_table.verticalHeader().setVisible(False)
+        self.transaction_table.verticalHeader().setDefaultSectionSize(20)
         self.transaction_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.transaction_table.setShowGrid(False)
+        self.transaction_table.setMinimumHeight(74)
+        self.transaction_table.setMaximumHeight(88)
         tx_block.addWidget(self.transaction_table)
 
         event_block = QVBoxLayout()
         event_block.addWidget(section_title("现场动态", "最近告警、人工标记和协议异常会汇总到这里。"))
         self.event_list = QListWidget()
+        self.event_list.setProperty("deviceInspectorEventList", True)
+        self.event_list.setWordWrap(True)
+        self.event_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.event_list.setMinimumHeight(74)
+        self.event_list.setMaximumHeight(88)
         event_block.addWidget(self.event_list)
 
         activity_layout.addLayout(tx_block, 3)
@@ -796,6 +809,7 @@ class DeviceCenterPage(QWidget):
     def _build_operator_evidence_card(self) -> CardFrame:
         card = CardFrame(role="panel")
         card.setProperty("deckRole", "deviceOperatorEvidenceMatrix")
+        card.setProperty("deviceEvidenceMatrix", True)
         card.setMinimumHeight(214)
         card.setMaximumHeight(262)
         layout = QGridLayout(card)
@@ -814,6 +828,7 @@ class DeviceCenterPage(QWidget):
         )
 
         self.operator_evidence_tiles: dict[str, tuple[QLabel, QLabel]] = {}
+        self.operator_evidence_tile_cards: dict[str, CardFrame] = {}
         tiles = (
             ("latest_frame", "最新有效帧"),
             ("protocol_tx", "协议事务"),
@@ -825,14 +840,18 @@ class DeviceCenterPage(QWidget):
         for index, (key, title) in enumerate(tiles):
             tile = CardFrame(muted=True, role="tile")
             tile.setProperty("evidenceStage", key)
+            tile.setProperty("deviceEvidenceTile", True)
+            tile.setProperty("evidenceTone", "neutral")
             tile_layout = QVBoxLayout(tile)
             tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
             tile_layout.setSpacing(TOKENS.spacing_xs)
             title_label = QLabel(title)
             title_label.setObjectName("metricLabel")
+            title_label.setProperty("deviceEvidenceLabel", True)
             value = QLabel("--")
             value.setObjectName("metricValue")
             value.setProperty("compactMetric", True)
+            value.setProperty("deviceEvidenceValue", True)
             value.setWordWrap(True)
             note = QLabel("--")
             note.setObjectName("subtitle")
@@ -841,6 +860,7 @@ class DeviceCenterPage(QWidget):
             tile_layout.addWidget(value)
             tile_layout.addWidget(note)
             self.operator_evidence_tiles[key] = (value, note)
+            self.operator_evidence_tile_cards[key] = tile
             layout.addWidget(tile, 1 + index // 3, index % 3)
         return card
 
@@ -900,6 +920,26 @@ class DeviceCenterPage(QWidget):
             f"view={report_workspace.get('view_mode', 'engineering')}，"
             f"latest={report_workspace.get('updated_at', '--')}"
         )
+
+        self._set_evidence_tones(
+            {
+                "latest_frame": "success" if runtime is not None and runtime.last_frame_time is not None else "warning",
+                "protocol_tx": "success" if transactions else "neutral",
+                "site_event": "warning" if events else "success",
+                "runtime_buffer": "accent" if buffer_rows else "warning",
+                "processing_gate": "success" if processing_status == "ok" else "warning",
+                "delivery_gate": "success" if export_status in {"exported", "ready"} else "warning",
+            }
+        )
+
+    def _set_evidence_tones(self, tones: dict[str, str]) -> None:
+        for key, tone in tones.items():
+            tile = self.operator_evidence_tile_cards.get(key)
+            if tile is None:
+                continue
+            tile.setProperty("evidenceTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
 
     def _compact_setup_grid(self, fields: list[tuple[str, QWidget]]) -> QGridLayout:
         grid = QGridLayout()
@@ -1109,7 +1149,7 @@ class DeviceCenterPage(QWidget):
         return card
 
     def _refresh_recent_activity(self) -> None:
-        records = self.controller.recent_transactions(limit=10)
+        records = self.controller.recent_transactions(limit=4)
         self.transaction_table.setRowCount(len(records))
         for row_index, record in enumerate(records):
             values = [
@@ -1119,11 +1159,17 @@ class DeviceCenterPage(QWidget):
                 record.response_summary or record.status.value,
             ]
             for col_index, value in enumerate(values):
-                self.transaction_table.setItem(row_index, col_index, QTableWidgetItem(str(value)))
+                item = QTableWidgetItem(str(value))
+                item.setToolTip(str(value))
+                self.transaction_table.setItem(row_index, col_index, item)
+            self.transaction_table.setRowHeight(row_index, 20)
 
         self.event_list.clear()
-        for event in self.controller.recent_events(limit=12):
-            self.event_list.addItem(f"[{event.created_at:%H:%M:%S}] {event.title} · {event.message}")
+        for event in self.controller.recent_events(limit=4):
+            message = f"[{event.created_at:%H:%M:%S}] {event.title} · {event.message}"
+            item = QListWidgetItem(message)
+            item.setToolTip(message)
+            self.event_list.addItem(item)
 
     def _add_device(self) -> None:
         try:

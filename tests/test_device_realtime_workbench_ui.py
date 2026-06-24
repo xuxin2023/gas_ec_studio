@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from app.pages.device_center_page import DeviceCenterPage
@@ -119,14 +120,32 @@ def test_device_center_uses_field_operations_deck() -> None:
             "processing_gate",
             "delivery_gate",
         }
+        assert set(page.operator_evidence_tile_cards) == set(page.operator_evidence_tiles)
+        assert all(card.property("deviceEvidenceTile") is True for card in page.operator_evidence_tile_cards.values())
+        assert page.operator_evidence_tile_cards["processing_gate"].property("evidenceTone") in {
+            "success",
+            "warning",
+        }
         assert page.operator_evidence_card.isVisibleTo(page) is False
         assert page.operator_evidence_tiles["runtime_buffer"][0].property("compactMetric") is True
         assert "帧" in page.operator_evidence_tiles["runtime_buffer"][0].text()
         assert page.operator_evidence_tiles["processing_gate"][1].text().startswith("windows=")
         assert page.activity_card.property("cardRole") == "rail"
+        assert page.activity_card.property("deviceActivityInspector") is True
         assert page.activity_card.property("deviceInspectorSection") is True
         assert page.activity_card.property("deviceInspectorSectionRole") == "activity"
         assert page.activity_card.maximumHeight() == 124
+        assert page.transaction_table.property("deviceInspectorActivityTable") is True
+        assert page.transaction_table.maximumHeight() == 88
+        assert page.transaction_table.rowCount() <= 4
+        assert page.event_list.property("deviceInspectorEventList") is True
+        assert page.event_list.wordWrap() is True
+        assert page.event_list.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+        assert page.event_list.maximumHeight() == 88
+        assert page.event_list.count() <= 4
+        page._show_operations_mode("activity")
+        assert page.operations_mode_buttons["activity"].isChecked() is True
+        assert page.operations_stack.currentWidget() is page.activity_card
         assert set(page.readiness_values) == {"fleet", "target", "protocol", "next"}
         assert all(tile.property("fieldReadinessTile") is True for tile in page.readiness_tiles.values())
         assert all(tile.maximumHeight() == 56 for tile in page.readiness_tiles.values())

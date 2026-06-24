@@ -181,6 +181,12 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QStackedWidget[deviceInspectorStack="true"]' in stylesheet
     assert 'QFrame[deviceInspectorSection="true"][deviceInspectorSectionRole="mission"]' in stylesheet
     assert 'QFrame[deviceInspectorSection="true"][deviceInspectorSectionRole="activity"]' in stylesheet
+    assert 'QFrame#cardMuted[deviceEvidenceTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deviceEvidenceTile="true"][evidenceTone="success"]' in stylesheet
+    assert 'QLabel[deviceEvidenceLabel="true"]' in stylesheet
+    assert 'QLabel[deviceEvidenceValue="true"]' in stylesheet
+    assert 'QTableWidget[deviceInspectorActivityTable="true"]' in stylesheet
+    assert 'QListWidget[deviceInspectorEventList="true"]' in stylesheet
     assert 'QPushButton[variant="danger"]' in stylesheet and "#fff1f1" in stylesheet
     assert "QTreeWidget#workflowTree" in stylesheet
     assert "QPlainTextEdit" in stylesheet

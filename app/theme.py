@@ -1516,6 +1516,45 @@ def build_stylesheet() -> str:
         border-color: #c8dce4;
         background: rgba(247, 252, 253, 0.86);
     }}
+    QFrame#cardMuted[deviceEvidenceTile="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.76);
+    }}
+    QFrame#cardMuted[deviceEvidenceTile="true"][evidenceTone="success"] {{
+        border-color: #8ecfba;
+        background: rgba(231, 250, 241, 0.86);
+    }}
+    QFrame#cardMuted[deviceEvidenceTile="true"][evidenceTone="accent"] {{
+        border-color: #8dc7d0;
+        background: rgba(232, 248, 250, 0.88);
+    }}
+    QFrame#cardMuted[deviceEvidenceTile="true"][evidenceTone="warning"] {{
+        border-color: #efc980;
+        background: rgba(255, 249, 235, 0.88);
+    }}
+    QLabel[deviceEvidenceLabel="true"] {{
+        color: #315f68;
+        font-weight: 700;
+    }}
+    QLabel[deviceEvidenceValue="true"] {{
+        color: #09293a;
+        font-weight: 800;
+    }}
+    QTableWidget[deviceInspectorActivityTable="true"],
+    QListWidget[deviceInspectorEventList="true"] {{
+        border-radius: 12px;
+        border: 1px solid #c8dce4;
+        background: rgba(255, 255, 255, 0.78);
+    }}
+    QTableWidget[deviceInspectorActivityTable="true"]::item {{
+        padding: 2px 6px;
+    }}
+    QListWidget[deviceInspectorEventList="true"]::item {{
+        padding: 3px 7px;
+        margin: 1px 3px;
+        border-radius: 8px;
+    }}
     QFrame#cardMuted[closureCompactTile="true"] {{
         border-radius: 14px;
         border: 1px solid #c4dce4;
