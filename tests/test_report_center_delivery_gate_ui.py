@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
 from app.pages.report_center_page import REPORT_NAV_PHASES, REPORT_SECTIONS, ReportCenterPage
@@ -743,6 +744,61 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             assert page.delivery_gate_detail_pinned is False
 
             assert_no_visible_competitor_name(page)
+    finally:
+        page.close()
+        page.deleteLater()
+        controller.shutdown()
+
+
+def test_report_center_delivery_overlay_escape_and_detail_routes(monkeypatch, tmp_path) -> None:
+    app = _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    try:
+        page = ReportCenterPage(controller)
+        page.show()
+        page.refresh()
+        page._show_delivery_focus("gate")
+        app.processEvents()
+
+        page.delivery_gate_detail_toggle.click()
+        page.delivery_gate_detail_pin.click()
+        assert page.delivery_gate_detail_drawer.isHidden() is False
+        assert page.delivery_gate_detail_pinned is True
+
+        event = QKeyEvent(QEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier)
+        QApplication.sendEvent(page, event)
+        app.processEvents()
+        assert event.isAccepted() is True
+        assert page.delivery_gate_detail_drawer.isHidden() is True
+        assert page.delivery_gate_detail_toggle.isChecked() is False
+        assert page.delivery_gate_detail_pin.isChecked() is False
+        assert page.delivery_gate_detail_pinned is False
+
+        page._show_delivery_focus("gate")
+        page.delivery_gate_detail_toggle.click()
+        page.delivery_gate_detail_pin.click()
+        page._activate_delivery_mission_node("export")
+        app.processEvents()
+        assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+        assert page.inspector_stack.currentWidget() is page.export_card
+        assert page.delivery_mission_buttons["export"].isChecked() is True
+        assert page.delivery_gate_detail_drawer.isHidden() is True
+        assert page.delivery_gate_detail_toggle.isChecked() is False
+        assert page.delivery_gate_detail_pin.isChecked() is False
+        assert page.delivery_gate_detail_pinned is False
+
+        page._show_delivery_focus("gate")
+        page.delivery_gate_detail_toggle.click()
+        page.delivery_gate_detail_pin.click()
+        page._activate_delivery_bridge_segment("manifest")
+        app.processEvents()
+        assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+        assert page.inspector_stack.currentWidget() is page.file_card
+        assert page.delivery_gate_detail_drawer.isHidden() is True
+        assert page.delivery_gate_detail_toggle.isChecked() is False
+        assert page.delivery_gate_detail_pin.isChecked() is False
+        assert page.delivery_gate_detail_pinned is False
     finally:
         page.close()
         page.deleteLater()

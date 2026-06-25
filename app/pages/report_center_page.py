@@ -808,6 +808,12 @@ class ReportCenterPage(QWidget):
         super().resizeEvent(event)
         self._position_delivery_gate_detail_drawer()
 
+    def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        if event.key() == Qt.Key_Escape and self._close_delivery_overlays(clear_pin=True):
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def refresh(self) -> None:
         workspace = self.controller.report_center_workspace
         filters = workspace["filters"]
@@ -3999,6 +4005,20 @@ class ReportCenterPage(QWidget):
             self._set_delivery_gate_detail_pinned(False)
         self._set_delivery_gate_details_expanded(False)
 
+    def _close_delivery_overlays(self, *, clear_pin: bool = False) -> bool:
+        if not hasattr(self, "delivery_gate_detail_drawer"):
+            return False
+        was_open = self.delivery_gate_detail_toggle.isChecked() or not self.delivery_gate_detail_drawer.isHidden()
+        if was_open:
+            self._close_delivery_gate_detail_drawer(clear_pin=clear_pin)
+        return was_open
+
+    def _open_delivery_detail_section(self, section: str, *, close_gate_drawer: bool = True) -> None:
+        if close_gate_drawer:
+            self._close_delivery_overlays(clear_pin=True)
+        self._show_delivery_focus("details")
+        self._show_inspector_section(section)
+
     def _position_delivery_gate_detail_drawer(self) -> None:
         if not hasattr(self, "delivery_gate_detail_drawer") or not hasattr(self, "delivery_rail"):
             return
@@ -4187,15 +4207,13 @@ class ReportCenterPage(QWidget):
             self._show_preview_content_mode("table")
             return
         if key == "manifest":
-            self._show_delivery_focus("details")
-            self._show_inspector_section("file")
+            self._open_delivery_detail_section("file")
             return
         if key == "validation":
             self._activate_delivery_mission_node("network")
             return
         if key == "package":
-            self._show_delivery_focus("details")
-            self._show_inspector_section("export")
+            self._open_delivery_detail_section("export")
             return
         self._show_delivery_focus("gate")
 
@@ -4234,11 +4252,9 @@ class ReportCenterPage(QWidget):
         if key == "report":
             self._show_preview_content_mode("table")
         elif key == "export":
-            self._show_delivery_focus("details")
-            self._show_inspector_section("export")
+            self._open_delivery_detail_section("export")
         elif key in {"manifest", "network"}:
-            self._show_delivery_focus("details")
-            self._show_inspector_section("file")
+            self._open_delivery_detail_section("file")
         elif key == "benchmark":
             self.controller.set_report_nav_section("benchmark_cockpit")
             self.refresh()
@@ -4269,15 +4285,16 @@ class ReportCenterPage(QWidget):
         elif target == "export_report":
             self._export_current_report()
             self.refresh()
+            self._open_delivery_detail_section("export")
         elif target == "evidence":
             self._export_evidence()
             self.refresh()
+            self._open_delivery_detail_section("file")
         elif target == "compare_batches":
             self._compare_batches()
             self.refresh()
         elif target == "network":
-            self._show_delivery_focus("details")
-            self._show_inspector_section("file")
+            self._open_delivery_detail_section("file")
         elif target == "methods":
             self.controller.set_report_nav_section("method_provenance")
             self.refresh()
@@ -4287,11 +4304,9 @@ class ReportCenterPage(QWidget):
             self.refresh()
             self._show_delivery_focus("gate")
         elif target == "export":
-            self._show_delivery_focus("details")
-            self._show_inspector_section("export")
+            self._open_delivery_detail_section("export")
         elif target == "details":
-            self._show_delivery_focus("details")
-            self._show_inspector_section("usage")
+            self._open_delivery_detail_section("usage")
         else:
             self._show_delivery_focus("gate")
 
