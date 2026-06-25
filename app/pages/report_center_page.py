@@ -769,6 +769,8 @@ class ReportCenterPage(QWidget):
         batch_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_sm)
         batch_layout.setSpacing(TOKENS.spacing_xs)
         batch_layout.addWidget(section_title("批次对比", "统一展示当前批次、对比批次和差异摘要。"))
+        self.delivery_batch_status_header = self._build_delivery_batch_status_header()
+        batch_layout.addWidget(self.delivery_batch_status_header)
         batch_grid = QGridLayout()
         batch_grid.setContentsMargins(0, 0, 0, 0)
         batch_grid.setHorizontalSpacing(TOKENS.spacing_sm)
@@ -4701,19 +4703,141 @@ class ReportCenterPage(QWidget):
             self.batch_diff_value.setText(_ui_safe_text(f"{len(summary)} 项变化"))
 
         self._clear_layout(self.batch_summary_layout)
-        batch_notes = summary[:2] + [str(item) for item in batch_compare.get("risk_summary", [])[:1]]
-        for text in batch_notes:
-            label = QLabel(_ui_safe_text(f"- {text}"))
-            label.setObjectName("subtitle")
-            label.setWordWrap(True)
+        risk_summary = [str(item) for item in batch_compare.get("risk_summary", [])]
+        batch_notes = [("差异", item, "accent") for item in summary[:2]]
+        batch_notes.extend(("风险", item, "warning") for item in risk_summary[:1])
+        risk_count = len(risk_summary)
+        self._refresh_delivery_batch_status_header(
+            current_batch=current_batch,
+            compare_batch=compare_batch,
+            summary_count=len(summary),
+            risk_count=risk_count,
+            metric_deltas=metric_deltas,
+        )
+        for prefix, text, tone in batch_notes:
+            full_text = _ui_safe_text(f"{prefix} | {text}")
+            display_text = full_text if len(full_text) <= 32 else f"{full_text[:31]}..."
+            label = chip(display_text, tone)
+            label.setProperty("batchSummaryNote", True)
+            label.setProperty("batchSummaryTone", tone)
+            label.setToolTip(full_text)
+            label.setWordWrap(False)
+            label.setMinimumHeight(21)
+            label.setMaximumHeight(22)
+            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             self.batch_summary_layout.addWidget(label)
 
-        overflow = max(0, len(summary) + len(batch_compare.get("risk_summary", [])) - len(batch_notes))
+        overflow = max(0, len(summary) + len(risk_summary) - len(batch_notes))
         if overflow:
-            label = QLabel(_ui_safe_text(f"另有 {overflow} 条批次说明，可在报告正文查看。"))
-            label.setObjectName("subtitle")
-            label.setWordWrap(True)
+            full_text = _ui_safe_text(f"另有 {overflow} 条批次说明，可在报告正文查看。")
+            label = chip(full_text, "neutral")
+            label.setProperty("batchSummaryNote", True)
+            label.setProperty("batchSummaryTone", "neutral")
+            label.setToolTip(full_text)
+            label.setWordWrap(False)
+            label.setMinimumHeight(21)
+            label.setMaximumHeight(22)
+            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             self.batch_summary_layout.addWidget(label)
+
+    def _build_delivery_batch_status_header(self) -> CardFrame:
+        header = CardFrame(muted=True, role="console")
+        header.setProperty("deckRole", "deliveryBatchStatusHeader")
+        header.setProperty("deliveryBatchStatusHeader", True)
+        header.setProperty("batchTone", "warning")
+        header.setMinimumHeight(58)
+        header.setMaximumHeight(64)
+        layout = QGridLayout(header)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(0)
+
+        label = QLabel("批次状态")
+        label.setObjectName("metricLabel")
+        label.setProperty("deliveryBatchStatusLabel", True)
+        self.delivery_batch_status_title = QLabel("--")
+        self.delivery_batch_status_title.setObjectName("metricValue")
+        self.delivery_batch_status_title.setProperty("compactMetric", True)
+        self.delivery_batch_status_title.setProperty("deliveryBatchStatusTitle", True)
+        self.delivery_batch_status_title.setWordWrap(False)
+        self.delivery_batch_status_chip = chip("待对比", "warning")
+        self.delivery_batch_status_chip.setProperty("deliveryBatchStatusChip", True)
+        self.delivery_batch_status_chip.setAlignment(Qt.AlignCenter)
+        self.delivery_batch_status_chip.setMinimumWidth(56)
+        self.delivery_batch_status_chip.setMaximumWidth(78)
+        self.delivery_batch_status_note = QLabel("--")
+        self.delivery_batch_status_note.setObjectName("subtitle")
+        self.delivery_batch_status_note.setProperty("deliveryBatchStatusNote", True)
+        self.delivery_batch_status_note.setWordWrap(False)
+        self.delivery_batch_status_note.setMinimumWidth(0)
+        self.delivery_batch_status_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.delivery_batch_status_note.setMaximumHeight(18)
+
+        layout.addWidget(label, 0, 0)
+        layout.addWidget(self.delivery_batch_status_title, 0, 1)
+        layout.addWidget(self.delivery_batch_status_chip, 0, 2)
+        layout.addWidget(self.delivery_batch_status_note, 1, 0, 1, 3)
+        layout.setColumnStretch(1, 1)
+        self._refresh_delivery_batch_status_header(
+            current_batch="--",
+            compare_batch="--",
+            summary_count=0,
+            risk_count=0,
+            metric_deltas={},
+        )
+        return header
+
+    def _refresh_delivery_batch_status_header(
+        self,
+        *,
+        current_batch: str,
+        compare_batch: str,
+        summary_count: int,
+        risk_count: int,
+        metric_deltas: dict,
+    ) -> None:
+        if not hasattr(self, "delivery_batch_status_header"):
+            return
+        has_compare = current_batch != "--" or compare_batch != "--" or summary_count > 0 or bool(metric_deltas)
+        if risk_count > 0:
+            tone = "warning"
+            status = f"{risk_count} 风险"
+        elif summary_count > 0 or metric_deltas:
+            tone = "accent"
+            status = f"{summary_count} 差异"
+        else:
+            tone = "success" if has_compare else "warning"
+            status = "已对齐" if has_compare else "待对比"
+
+        title = current_batch if current_batch != "--" else "当前批次"
+        if compare_batch != "--":
+            title = f"{title} vs {compare_batch}"
+        note_parts = [
+            f"差异 {summary_count} 项",
+            f"风险 {risk_count} 项",
+        ]
+        if metric_deltas:
+            note_parts.append(
+                " / ".join(
+                    [
+                        f"窗口 {int(metric_deltas.get('valid_window_delta', 0.0)):+d}",
+                        f"滞后 {metric_deltas.get('average_lag_delta', 0.0):+.2f}s",
+                        f"QC {metric_deltas.get('good_ratio_delta', 0.0):+.1%}",
+                    ]
+                )
+            )
+        note = "；".join(note_parts)
+        display_note = _ui_safe_text(note)
+        self.delivery_batch_status_title.setText(_ui_safe_text(title))
+        self._set_chip(self.delivery_batch_status_chip, status, tone)
+        self.delivery_batch_status_note.setText(display_note if len(display_note) <= 42 else f"{display_note[:41]}...")
+        self.delivery_batch_status_note.setToolTip(display_note)
+        self.delivery_batch_status_title.setToolTip(display_note)
+        self.delivery_batch_status_header.setToolTip(display_note)
+        self.delivery_batch_status_header.setProperty("batchTone", tone)
+        for widget in (self.delivery_batch_status_header, self.delivery_batch_status_title, self.delivery_batch_status_note):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
 
     def _plot_note_for_mode(self, view_mode: str) -> str:
         notes = {

@@ -4,7 +4,7 @@ import os
 
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from app.pages.report_center_page import REPORT_NAV_PHASES, REPORT_SECTIONS, ReportCenterPage
 from app.studio import StudioController
@@ -568,12 +568,45 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_detail_status_chip.text().endswith("/3")
         assert page.delivery_detail_status_note.property("deliveryDetailStatusNote") is True
         assert page.delivery_detail_status_note.toolTip()
+        controller.report_center_workspace["batch_compare"] = {}
+        page.refresh()
         page._show_delivery_focus("batch")
         assert page.delivery_focus_stack.currentWidget() is page.batch_card
         assert page.batch_card.property("deliveryBatchPanel") is True
+        assert page.delivery_batch_status_header.property("deliveryBatchStatusHeader") is True
+        assert page.delivery_batch_status_header.property("batchTone") == "warning"
+        assert page.delivery_batch_status_title.text() == "当前批次"
+        assert page.delivery_batch_status_chip.property("deliveryBatchStatusChip") is True
+        assert page.delivery_batch_status_chip.text() == "待对比"
+        assert page.delivery_batch_status_note.property("deliveryBatchStatusNote") is True
+        assert page.delivery_batch_status_note.toolTip()
         assert page.delivery_focus_buttons["batch"].isChecked() is True
         assert page.delivery_rail_stack.currentWidget() is page.delivery_focus_card
         assert page.delivery_rail_mode_buttons["delivery"].isChecked() is True
+        controller.report_center_workspace["batch_compare"] = {
+            "current_batch": "batch-001",
+            "compare_batch": "batch-000",
+            "difference_summary": ["有效窗口增加", "QC 比例提高"],
+            "risk_summary": ["滞后漂移需复核"],
+            "metric_deltas": {"valid_window_delta": 2, "average_lag_delta": -0.25, "good_ratio_delta": 0.04},
+        }
+        page.refresh()
+        page._show_delivery_focus("batch")
+        assert page.delivery_batch_status_header.property("batchTone") == "warning"
+        assert page.delivery_batch_status_title.text() == "batch-001 vs batch-000"
+        assert page.delivery_batch_status_chip.text() == "1 风险"
+        assert "窗口 +2" in page.delivery_batch_status_note.toolTip()
+        assert page.batch_diff_value.text().startswith("有效窗口 +2")
+        batch_notes = [
+            label
+            for label in page.batch_card.findChildren(QLabel)
+            if label.property("batchSummaryNote") is True
+        ]
+        assert batch_notes
+        assert all(label.objectName() == "chip" for label in batch_notes)
+        assert all(label.maximumHeight() == 22 for label in batch_notes)
+        assert {label.property("batchSummaryTone") for label in batch_notes} >= {"accent", "warning"}
+        assert all(label.toolTip() for label in batch_notes)
         page._show_delivery_focus("details")
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.delivery_focus_buttons["details"].isChecked() is True

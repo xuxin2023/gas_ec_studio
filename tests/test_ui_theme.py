@@ -260,6 +260,15 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[deliveryDetailStatusHeader="true"] QLabel[deliveryDetailStatusNote="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryDetailStatusHeader="true"] QLabel#chip[deliveryDetailStatusChip="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryBatchPanel="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryBatchStatusHeader="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryBatchStatusHeader="true"][batchTone="success"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryBatchStatusHeader="true"][batchTone="accent"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryBatchStatusHeader="true"][batchTone="warning"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryBatchStatusHeader="true"] QLabel[deliveryBatchStatusTitle="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryBatchStatusHeader="true"] QLabel[deliveryBatchStatusNote="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryBatchStatusHeader="true"] QLabel#chip[deliveryBatchStatusChip="true"]' in stylesheet
+    assert 'QLabel[batchSummaryNote="true"]' in stylesheet
+    assert 'QLabel#chip[batchSummaryNote="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryInspectorSection="true"]' in stylesheet
     assert 'QFrame#cardMuted[batchMetricTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryRailActionDock="true"]' in stylesheet
