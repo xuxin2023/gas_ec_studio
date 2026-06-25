@@ -29,6 +29,12 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QWidget[navBrandBlock="true"]' in stylesheet
     assert 'QLabel[navRailNote="true"]' in stylesheet
     assert 'QLabel[navMissionChip="true"]' in stylesheet
+    assert 'QLabel[navMissionChip="true"][navMissionPhase="compute"]' in stylesheet
+    assert 'QWidget[shellRouteCockpit="true"]' in stylesheet
+    assert 'QLabel[shellRouteProgress="true"]' in stylesheet
+    assert 'QWidget[shellRouteStrip="true"]' in stylesheet
+    assert 'QLabel[shellRouteStep="true"]' in stylesheet
+    assert 'QLabel[shellRouteStep="true"][routeActive="true"]' in stylesheet
     assert 'QLabel[shellTile="true"]' in stylesheet
     assert 'QWidget[shellTelemetryStrip="true"]' in stylesheet
     assert 'QLabel[shellTile="true"][shellTelemetryTile="true"]' in stylesheet
@@ -395,6 +401,12 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.header.property("cardRole") == "hero"
     assert window.header.property("shellHeroDock") is True
     assert window.header_status.property("heroStatus") is True
+    assert window.route_cockpit.property("shellRouteCockpit") is True
+    assert window.route_progress_label.property("shellRouteProgress") is True
+    assert set(window.route_stage_tiles) == {"field", "site", "compute", "delivery"}
+    assert all(tile.property("shellRouteStep") is True for tile in window.route_stage_tiles.values())
+    assert window.route_stage_tiles["field"].property("routeActive") is True
+    assert window.navigation.nav_mission_chip.property("navMissionPhase") == "field"
     assert window.navigation.property("cardRole") == "rail"
     assert window.navigation.property("navRailWorkbench") is True
     assert window.navigation.nav_mission_chip.property("navMissionChip") is True
@@ -440,6 +452,16 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.navigation._buttons["device_center"].property("navPhase") == "field"
     assert window.navigation._buttons["ec_processing"].property("navPhase") == "compute"
     assert window.navigation._buttons["report_center"].property("navPhase") == "delivery"
+
+    window._set_page("ec_processing")
+    assert window.route_stage_tiles["compute"].property("routeActive") is True
+    assert window.navigation.nav_mission_chip.property("navMissionPhase") == "compute"
+    assert window.route_progress_label.text() == "Compute / EC Processing"
+
+    window._set_page("report_center")
+    assert window.route_stage_tiles["delivery"].property("routeActive") is True
+    assert window.navigation.nav_mission_chip.property("navMissionPhase") == "delivery"
+    assert window.route_progress_label.text() == "Deliver / Report Center"
 
     controller.ec_processing_workspace["summary"]["status"] = "ok"
     controller.spectral_qc_workspace["run"]["last_result_status"] = "ok"

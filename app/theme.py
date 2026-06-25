@@ -309,6 +309,61 @@ def build_stylesheet() -> str:
         font-weight: 900;
         letter-spacing: 0.5px;
     }}
+    QLabel[navMissionChip="true"][navMissionPhase="site"] {{
+        background: #edf8ef;
+        border-color: #b9ddc5;
+        color: #256842;
+    }}
+    QLabel[navMissionChip="true"][navMissionPhase="compute"] {{
+        background: #fff4dc;
+        border-color: #e3c27a;
+        color: #8a5b09;
+    }}
+    QLabel[navMissionChip="true"][navMissionPhase="delivery"] {{
+        background: #eaf6f8;
+        border-color: #9fcbd3;
+        color: #0e5f6e;
+    }}
+    QWidget[shellRouteCockpit="true"] {{
+        border-radius: 16px;
+        padding: 4px 8px;
+        background: rgba(255, 255, 255, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+    }}
+    QLabel[shellRouteProgress="true"] {{
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.4px;
+    }}
+    QWidget[shellRouteStrip="true"] {{
+        max-height: 22px;
+    }}
+    QLabel[shellRouteStep="true"] {{
+        min-height: 18px;
+        padding: 1px 7px;
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.60);
+        border: 1px solid rgba(255, 255, 255, 0.32);
+        color: rgba(7, 47, 59, 0.74);
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: 0.5px;
+    }}
+    QLabel[shellRouteStep="true"][routeActive="true"] {{
+        background: #ffffff;
+        border-color: rgba(255, 255, 255, 0.82);
+        color: #073848;
+    }}
+    QLabel[shellRouteStep="true"][routeTone="site"][routeActive="true"] {{
+        color: #256842;
+    }}
+    QLabel[shellRouteStep="true"][routeTone="compute"][routeActive="true"] {{
+        color: #8a5b09;
+    }}
+    QLabel[shellRouteStep="true"][routeTone="delivery"][routeActive="true"] {{
+        color: #0e5f6e;
+    }}
     QFrame#cardMuted[cardRole="console"] {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 0,

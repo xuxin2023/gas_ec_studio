@@ -97,6 +97,13 @@ class NavigationRail(CardFrame):
         if button:
             button.setChecked(True)
 
+    def set_route_context(self, phase_key: str, page_label: str) -> None:
+        phase = phase_key if phase_key in {"field", "site", "compute", "delivery"} else "field"
+        self.nav_mission_chip.setText(f"{phase.upper()} · {page_label}")
+        self.nav_mission_chip.setProperty("navMissionPhase", phase)
+        self.nav_mission_chip.style().unpolish(self.nav_mission_chip)
+        self.nav_mission_chip.style().polish(self.nav_mission_chip)
+
     def _emit_page(self, page_key: str, checked: bool) -> None:
         if checked:
             self.page_changed.emit(page_key)

@@ -54,6 +54,7 @@ def test_main_window_shell_fits_common_desktop_viewports(monkeypatch, tmp_path) 
             assert_no_visual_overlap(nav_widgets, root)
 
             visible_header_widgets = [
+                window.route_cockpit,
                 window.header_closure_strip,
                 window.header_telemetry_strip,
                 window.operator_btn,

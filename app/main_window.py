@@ -49,6 +49,15 @@ class StudioMainWindow(QMainWindow):
         self._inspector_visible: bool | None = None
         self._active_page_key = "device_center"
         self._embedded_inspector_pages = {"device_detail", "project_site", "ec_processing", "report_center"}
+        self._route_context = {
+            "device_center": ("field", "Field", "Device Center", "Connect instruments and verify live status"),
+            "device_detail": ("field", "Field", "Device Detail", "Inspect one analyzer without leaving the field deck"),
+            "realtime": ("field", "Field", "Realtime Capture", "Watch high-frequency acquisition and buffer health"),
+            "project_site": ("site", "Site", "Project Metadata", "Lock station context before flux processing"),
+            "ec_processing": ("compute", "Compute", "EC Processing", "Run flux, footprint, uncertainty and correction methods"),
+            "spectral_qc": ("compute", "Compute", "Spectral QC", "Review cospectra, repair evidence and QC closure"),
+            "report_center": ("delivery", "Deliver", "Report Center", "Package exports, manifests and audit evidence"),
+        }
 
         central = QWidget()
         central.setObjectName("appShell")
@@ -163,6 +172,9 @@ class StudioMainWindow(QMainWindow):
         title_box.addWidget(subtitle)
         title_holder.setLayout(title_box)
         layout.addWidget(title_holder)
+
+        self.route_cockpit = self._build_route_cockpit()
+        layout.addWidget(self.route_cockpit)
         layout.addStretch(1)
 
         self.header_status = QLabel()
@@ -239,6 +251,40 @@ class StudioMainWindow(QMainWindow):
         layout.addWidget(self.operator_btn)
         layout.addWidget(self.engineer_btn)
         return card
+
+    def _build_route_cockpit(self) -> QWidget:
+        cockpit = QWidget()
+        cockpit.setProperty("shellRouteCockpit", True)
+        cockpit.setMinimumWidth(280)
+        cockpit.setMaximumWidth(330)
+        cockpit.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        layout = QVBoxLayout(cockpit)
+        layout.setContentsMargins(8, 5, 8, 5)
+        layout.setSpacing(4)
+
+        self.route_progress_label = QLabel("Field / Device Center")
+        self.route_progress_label.setProperty("shellRouteProgress", True)
+        self.route_progress_label.setMinimumWidth(0)
+        self.route_progress_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Minimum)
+        layout.addWidget(self.route_progress_label)
+
+        strip = QWidget()
+        strip.setProperty("shellRouteStrip", True)
+        strip_layout = QHBoxLayout(strip)
+        strip_layout.setContentsMargins(0, 0, 0, 0)
+        strip_layout.setSpacing(4)
+        self.route_stage_tiles: dict[str, QLabel] = {}
+        for key, label in (("field", "FIELD"), ("site", "SITE"), ("compute", "COMPUTE"), ("delivery", "DELIVER")):
+            tile = QLabel(label)
+            tile.setAlignment(Qt.AlignCenter)
+            tile.setProperty("shellRouteStep", True)
+            tile.setProperty("routeTone", key)
+            tile.setMinimumWidth(0)
+            tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Minimum)
+            self.route_stage_tiles[key] = tile
+            strip_layout.addWidget(tile)
+        layout.addWidget(strip)
+        return cockpit
 
     def _header_tile(self, label: str, value: str) -> QLabel:
         tile = QLabel(f"{label}\n{value}")
@@ -318,6 +364,7 @@ class StudioMainWindow(QMainWindow):
         self.engineer_btn.setChecked(self.controller.view_mode == "engineer")
         self.inspector.refresh(self.controller.context_snapshot())
         self.log_panel.set_lines(self.controller.log_lines())
+        self._refresh_route_cockpit()
         self._apply_responsive_shell()
 
     def _apply_responsive_shell(self, force: bool = False) -> None:
@@ -335,6 +382,20 @@ class StudioMainWindow(QMainWindow):
         else:
             self.inner_splitter.setSizes([980, 300])
             self.vertical_splitter.setSizes([800, 54])
+
+    def _refresh_route_cockpit(self) -> None:
+        phase, phase_label, page_label, detail = self._route_context.get(
+            self._active_page_key,
+            self._route_context["device_center"],
+        )
+        self.route_progress_label.setText(f"{phase_label} / {page_label}")
+        self.route_progress_label.setToolTip(detail)
+        for key, tile in self.route_stage_tiles.items():
+            tile.setProperty("routeActive", key == phase)
+            tile.setProperty("routeTone", key)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+        self.navigation.set_route_context(phase, page_label)
 
     def _refresh_closure_strip(self, summary: dict) -> None:
         if summary["online_devices"] <= 0:
