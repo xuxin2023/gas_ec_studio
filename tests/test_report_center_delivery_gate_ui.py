@@ -47,12 +47,24 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert all(button.property("reportNavPhaseButton") is True for button in page.report_nav_phase_buttons.values())
         assert page.report_nav_phase_buttons["run"].isChecked() is True
         assert page.report_nav_stage_note.property("reportNavStageNote") is True
+        assert page.report_nav_task_map.property("deckRole") == "reportNavTaskMap"
+        assert page.report_nav_task_map.property("reportNavTaskMap") is True
+        assert page.report_nav_task_map.maximumHeight() == 72
+        assert page.report_nav_task_chip.objectName() == "chip"
+        assert page.report_nav_task_value.property("compactMetric") is True
+        assert page.report_nav_task_value.property("reportNavTaskValue") is True
+        assert page.report_nav_task_note.property("reportNavTaskNote") is True
+        assert set(page.report_nav_task_steps) == {"catalog", "preview", "evidence", "delivery"}
+        assert all(step.property("reportNavTaskStep") is True for step in page.report_nav_task_steps.values())
+        assert page.report_nav_task_steps["preview"].property("activeTaskStep") is True
         assert page.report_nav_stage_note.text().startswith("运行")
         page.report_nav_phase_buttons["qc"].click()
         assert controller.report_center_workspace["selected_report"] == "spectral_qc"
         assert page.report_nav_phase_buttons["qc"].isChecked() is True
+        assert page.report_nav_task_steps["evidence"].property("activeTaskStep") is True
         controller.set_report_nav_section("run_summary")
         page.refresh()
+        assert page.report_nav_task_steps["preview"].property("activeTaskStep") is True
         assert page.delivery_rail.property("cardRole") == "rail"
         assert page.delivery_rail.property("deliveryMissionRail") is True
         assert page.delivery_rail.property("desktopMissionRail") is True
@@ -478,6 +490,7 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             assert page.delivery_rail.width() <= page.delivery_rail.maximumWidth()
             assert page.delivery_rail.width() >= page.delivery_rail.minimumWidth()
             assert_contained(page.tree_card, page.report_nav_phase_strip, page)
+            assert_contained(page.tree_card, page.report_nav_task_map, page)
             for button in page.report_nav_phase_buttons.values():
                 assert_contained(page.report_nav_phase_strip, button, page)
             assert_contained(page, page.delivery_rail, page)

@@ -83,6 +83,7 @@ class ReportCenterPage(QWidget):
         self.preview_context_buttons: dict[str, QToolButton] = {}
         self.report_action_buttons: dict[str, QToolButton] = {}
         self.report_nav_phase_buttons: dict[str, QToolButton] = {}
+        self.report_nav_task_steps: dict[str, QLabel] = {}
         self.preview_route_buttons: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
@@ -131,6 +132,8 @@ class ReportCenterPage(QWidget):
         self.report_nav_stage_note.setMaximumHeight(18)
         self.report_nav_stage_note.setWordWrap(False)
         tree_layout.addWidget(self.report_nav_stage_note)
+        self.report_nav_task_map = self._build_report_nav_task_map()
+        tree_layout.addWidget(self.report_nav_task_map)
         self.report_tree = QTreeWidget()
         self.report_tree.setObjectName("workflowTree")
         self.report_tree.setProperty("reportNavTree", True)
@@ -837,6 +840,63 @@ class ReportCenterPage(QWidget):
             self.report_nav_phase_buttons[phase_key] = button
             layout.addWidget(button, index // 2, index % 2)
         return wrapper
+
+    def _build_report_nav_task_map(self) -> CardFrame:
+        card = CardFrame(muted=True, role="console")
+        card.setProperty("deckRole", "reportNavTaskMap")
+        card.setProperty("reportNavTaskMap", True)
+        card.setMaximumHeight(72)
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs, TOKENS.spacing_xs)
+        layout.setSpacing(2)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(TOKENS.spacing_xs)
+        self.report_nav_task_chip = chip("运行", "accent")
+        self.report_nav_task_chip.setMinimumHeight(18)
+        self.report_nav_task_chip.setMaximumHeight(20)
+        header.addWidget(self.report_nav_task_chip)
+        self.report_nav_task_value = QLabel("--")
+        self.report_nav_task_value.setObjectName("metricValue")
+        self.report_nav_task_value.setProperty("compactMetric", True)
+        self.report_nav_task_value.setProperty("reportNavTaskValue", True)
+        self.report_nav_task_value.setWordWrap(False)
+        self.report_nav_task_value.setMaximumHeight(20)
+        self.report_nav_task_value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        header.addWidget(self.report_nav_task_value, 1)
+        layout.addLayout(header)
+
+        self.report_nav_task_note = QLabel("选报告 -> 看预览 -> 查证据 -> 交付")
+        self.report_nav_task_note.setObjectName("subtitle")
+        self.report_nav_task_note.setProperty("reportNavTaskNote", True)
+        self.report_nav_task_note.setWordWrap(False)
+        self.report_nav_task_note.setMaximumHeight(16)
+        layout.addWidget(self.report_nav_task_note)
+
+        steps = QHBoxLayout()
+        steps.setContentsMargins(0, 0, 0, 0)
+        steps.setSpacing(3)
+        for key, text in (
+            ("catalog", "选报告"),
+            ("preview", "看预览"),
+            ("evidence", "查证据"),
+            ("delivery", "交付"),
+        ):
+            step = chip(_ui_safe_text(text), "accent" if key == "preview" else "neutral")
+            step.setAlignment(Qt.AlignCenter)
+            step.setProperty("reportNavTaskStep", True)
+            step.setProperty("taskStep", key)
+            step.setProperty("activeTaskStep", key == "preview")
+            step.setMinimumHeight(18)
+            step.setMaximumHeight(20)
+            step.setMinimumWidth(0)
+            step.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            self.report_nav_task_steps[key] = step
+            steps.addWidget(step, 1)
+        layout.addLayout(steps)
+        return card
 
     def _activate_report_nav_phase(self, phase_key: str) -> None:
         for key, _title, _note, reports in REPORT_NAV_PHASES:
@@ -1715,6 +1775,7 @@ class ReportCenterPage(QWidget):
         if hasattr(self, "report_nav_stage_note"):
             self.report_nav_stage_note.setText(_ui_safe_text(f"{phase_title} · {report_title}"))
             self.report_nav_stage_note.setToolTip(_ui_safe_text(phase_note))
+        self._refresh_report_nav_task_map(report_key, report_title, phase_key, phase_title, phase_note)
         for key, button in self.report_nav_phase_buttons.items():
             button.blockSignals(True)
             button.setChecked(key == phase_key)
@@ -1722,6 +1783,43 @@ class ReportCenterPage(QWidget):
             button.blockSignals(False)
             button.style().unpolish(button)
             button.style().polish(button)
+
+    def _refresh_report_nav_task_map(
+        self,
+        report_key: str,
+        report_title: str,
+        phase_key: str,
+        phase_title: str,
+        phase_note: str,
+    ) -> None:
+        if not hasattr(self, "report_nav_task_map"):
+            return
+        task_step = self._report_nav_task_step_for(report_key, phase_key)
+        step_labels = {
+            "catalog": "选报告",
+            "preview": "看预览",
+            "evidence": "查证据",
+            "delivery": "交付",
+        }
+        tone = "success" if task_step == "delivery" else "accent"
+        self._set_chip(self.report_nav_task_chip, phase_title, tone)
+        display = report_title if len(report_title) <= 10 else f"{report_title[:9]}..."
+        self.report_nav_task_value.setText(_ui_safe_text(display))
+        self.report_nav_task_value.setToolTip(_ui_safe_text(report_title))
+        self.report_nav_task_note.setText(_ui_safe_text(f"{phase_note} / 当前：{step_labels[task_step]}"))
+        for key, label in self.report_nav_task_steps.items():
+            active = key == task_step
+            label.setProperty("activeTaskStep", active)
+            self._set_chip(label, step_labels[key], "accent" if active else "neutral")
+
+    def _report_nav_task_step_for(self, report_key: str, phase_key: str) -> str:
+        if phase_key == "delivery":
+            return "delivery"
+        if phase_key in {"qc", "method"}:
+            return "evidence"
+        if report_key:
+            return "preview"
+        return "catalog"
 
     def _on_report_changed(self) -> None:
         item = self.report_tree.currentItem()
@@ -1987,6 +2085,7 @@ class ReportCenterPage(QWidget):
         self.preview_delivery_trail_note.setText(
             _ui_safe_text(f"来源：{source} · 批次：{batch} · 更新：{updated_at}")
         )
+        self.preview_delivery_trail_note.setProperty("reportKey", report_key)
         self.preview_delivery_trail_note.setToolTip(_ui_safe_text(raw_source))
         self._refresh_preview_delivery_context()
 

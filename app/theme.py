@@ -1364,6 +1364,40 @@ def build_stylesheet() -> str:
         font-size: 10px;
         font-weight: 700;
     }}
+    QFrame#cardMuted[reportNavTaskMap="true"] {{
+        border-radius: 16px;
+        border: 1px solid #cfe3e8;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f9fdfc,
+            stop: 0.58 #eff9f8,
+            stop: 1 #f6fbef
+        );
+    }}
+    QLabel[reportNavTaskValue="true"] {{
+        color: #153847;
+        font-size: 15px;
+        font-weight: 900;
+    }}
+    QLabel[reportNavTaskNote="true"] {{
+        color: #5a7280;
+        font-size: 9px;
+        font-weight: 700;
+    }}
+    QLabel[reportNavTaskStep="true"] {{
+        padding: 2px 4px;
+        border-radius: 9px;
+        border: 1px solid #d7e7eb;
+        background: rgba(255, 255, 255, 0.72);
+        color: #5b7480;
+        font-size: 8px;
+        font-weight: 800;
+    }}
+    QLabel[reportNavTaskStep="true"][activeTaskStep="true"] {{
+        border-color: #7fbec8;
+        background: #e7f8fa;
+        color: #0d6472;
+    }}
     QFrame#cardMuted[deliveryMissionRail="true"] {{
         border-radius: 18px;
         border: 1px solid #c4dce4;

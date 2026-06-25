@@ -414,11 +414,12 @@ def test_report_center_method_compare_surfaces_artifacts(monkeypatch, tmp_path) 
         assert Path(latest_files["method_parity_matrix_artifact"]).exists()
         assert Path(latest_files["footprint_2d_contour_svg"]).exists()
         assert Path(latest_files["performance_profile_artifact"]).exists()
-        assert "report=method_compare" in page.preview_delivery_trail_note.text()
+        assert page.preview_delivery_trail_note.property("reportKey") == "method_compare"
+        assert "report=" not in page.preview_delivery_trail_note.text()
         assert page.expert_review_card.isHidden() is False
         assert page.expert_review_values[0].text() == "3"
-        assert page.preview_plot.maximumHeight() == 190
-        assert page.preview_table.maximumHeight() == 132
+        assert page.preview_plot.maximumHeight() == 132
+        assert page.preview_table.maximumHeight() == 110
         assert page.preview_table.rowCount() >= 3
     finally:
         controller.shutdown()
@@ -456,7 +457,7 @@ def test_report_center_computation_surface_uses_stress_suite_artifact(monkeypatc
         assert "computation_surface" in page.report_items
         assert page.expert_review_card.isHidden() is False
         assert page.expert_review_values[0].text() == "ready"
-        assert page.preview_plot.maximumHeight() == 190
+        assert page.preview_plot.maximumHeight() == 132
         assert page.preview_table.rowCount() >= 7
     finally:
         controller.shutdown()
