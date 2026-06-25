@@ -1672,6 +1672,31 @@ def build_stylesheet() -> str:
             stop: 1 #f6fbef
         );
     }}
+    QFrame#cardMuted[reportNavScopeCard="true"] {{
+        border-radius: 12px;
+        border: 1px solid #cfe3e8;
+        border-left: 4px solid #8bbfca;
+        background: rgba(247, 252, 253, 0.86);
+    }}
+    QFrame#cardMuted[reportNavScopeCard="true"][scopePhase="delivery"],
+    QFrame#cardMuted[reportNavScopeCard="true"][scopePhase="method"] {{
+        border-left-color: #d7ad70;
+        background: rgba(255, 249, 236, 0.88);
+    }}
+    QLabel[reportNavScopeValue="true"] {{
+        color: #153847;
+        font-size: 12px;
+        font-weight: 900;
+    }}
+    QLabel[reportNavScopeNote="true"] {{
+        color: #5a7280;
+        font-size: 9px;
+        font-weight: 700;
+    }}
+    QLabel#chip[reportNavScopeChip="true"] {{
+        font-size: 10px;
+        padding: 1px 6px;
+    }}
     QLabel[reportNavTaskValue="true"] {{
         color: #153847;
         font-size: 15px;

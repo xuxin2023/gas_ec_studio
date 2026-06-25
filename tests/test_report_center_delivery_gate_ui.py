@@ -58,6 +58,21 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert set(page.report_nav_task_steps) == {"catalog", "preview", "evidence", "delivery"}
         assert all(step.property("reportNavTaskStep") is True for step in page.report_nav_task_steps.values())
         assert page.report_nav_task_steps["preview"].property("activeTaskStep") is True
+        assert page.report_nav_scope_card.property("deckRole") == "reportNavScopeCard"
+        assert page.report_nav_scope_card.property("reportNavScopeCard") is True
+        assert page.report_nav_scope_card.property("scopePhase") == "run"
+        assert page.report_nav_scope_card.maximumHeight() == 44
+        assert page.report_nav_scope_chip.property("reportNavScopeChip") is True
+        assert page.report_nav_scope_value.property("reportNavScopeValue") is True
+        assert page.report_nav_scope_value.text().startswith("1/4")
+        assert page.report_nav_scope_note.property("reportNavScopeNote") is True
+        assert page.report_nav_scope_note.toolTip()
+        visible_reports = [
+            page.report_tree.topLevelItem(index).data(0, Qt.UserRole)
+            for index in range(page.report_tree.topLevelItemCount())
+            if not page.report_tree.topLevelItem(index).isHidden()
+        ]
+        assert visible_reports == list(REPORT_NAV_PHASES[0][3])
         assert page.report_nav_stage_note.text().startswith("运行")
         assert page.report_nav_focus_card.property("cardRole") == "console"
         assert page.report_nav_focus_card.property("deckRole") == "reportNavFocusCard"
@@ -81,6 +96,14 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.report_nav_phase_buttons["qc"].isChecked() is True
         assert page.report_nav_focus_card.property("phaseKey") == "qc"
         assert page.report_nav_focus_card.property("phaseProgress") == "1/3"
+        assert page.report_nav_scope_card.property("scopePhase") == "qc"
+        assert page.report_nav_scope_value.text().startswith("1/3")
+        visible_reports = [
+            page.report_tree.topLevelItem(index).data(0, Qt.UserRole)
+            for index in range(page.report_tree.topLevelItemCount())
+            if not page.report_tree.topLevelItem(index).isHidden()
+        ]
+        assert visible_reports == list(REPORT_NAV_PHASES[1][3])
         assert page.report_nav_task_steps["evidence"].property("activeTaskStep") is True
         controller.set_report_nav_section("run_summary")
         page.refresh()

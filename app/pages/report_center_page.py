@@ -141,6 +141,8 @@ class ReportCenterPage(QWidget):
         tree_layout.addWidget(self.report_nav_focus_card)
         self.report_nav_task_map = self._build_report_nav_task_map()
         tree_layout.addWidget(self.report_nav_task_map)
+        self.report_nav_scope_card = self._build_report_nav_scope_card()
+        tree_layout.addWidget(self.report_nav_scope_card)
         self.report_tree = QTreeWidget()
         self.report_tree.setObjectName("workflowTree")
         self.report_tree.setProperty("reportNavTree", True)
@@ -972,6 +974,43 @@ class ReportCenterPage(QWidget):
             self.report_nav_task_steps[key] = step
             steps.addWidget(step, 1)
         layout.addLayout(steps)
+        return card
+
+    def _build_report_nav_scope_card(self) -> CardFrame:
+        card = CardFrame(muted=True, role="console")
+        card.setProperty("deckRole", "reportNavScopeCard")
+        card.setProperty("reportNavScopeCard", True)
+        card.setProperty("scopePhase", "run")
+        card.setMaximumHeight(44)
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_xs, 2, TOKENS.spacing_xs, 2)
+        layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(0)
+
+        self.report_nav_scope_chip = chip("阶段", "accent")
+        self.report_nav_scope_chip.setProperty("reportNavScopeChip", True)
+        self.report_nav_scope_chip.setAlignment(Qt.AlignCenter)
+        self.report_nav_scope_chip.setMaximumHeight(20)
+        self.report_nav_scope_value = QLabel("--")
+        self.report_nav_scope_value.setObjectName("metricValue")
+        self.report_nav_scope_value.setProperty("compactMetric", True)
+        self.report_nav_scope_value.setProperty("reportNavScopeValue", True)
+        self.report_nav_scope_value.setWordWrap(False)
+        self.report_nav_scope_value.setMinimumWidth(0)
+        self.report_nav_scope_value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.report_nav_scope_note = QLabel("--")
+        self.report_nav_scope_note.setObjectName("subtitle")
+        self.report_nav_scope_note.setProperty("reportNavScopeNote", True)
+        self.report_nav_scope_note.setMaximumHeight(15)
+        self.report_nav_scope_note.setWordWrap(False)
+        self.report_nav_scope_note.setMinimumWidth(0)
+        self.report_nav_scope_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+        layout.addWidget(self.report_nav_scope_chip, 0, 0)
+        layout.addWidget(self.report_nav_scope_value, 0, 1)
+        layout.addWidget(self.report_nav_scope_note, 1, 0, 1, 2)
+        layout.setColumnStretch(1, 1)
         return card
 
     def _activate_report_nav_phase(self, phase_key: str) -> None:
@@ -2183,6 +2222,13 @@ class ReportCenterPage(QWidget):
             self.report_nav_focus_card.setProperty("phaseProgress", f"{phase_index}/{phase_count or 1}")
             self.report_nav_focus_card.style().unpolish(self.report_nav_focus_card)
             self.report_nav_focus_card.style().polish(self.report_nav_focus_card)
+            self._refresh_report_nav_scope_card(
+                phase_key=phase_key,
+                phase_title=phase_title,
+                phase_note=phase_note,
+                phase_index=phase_index,
+                phase_count=phase_count,
+            )
         self._refresh_report_nav_task_map(report_key, report_title, phase_key, phase_title, phase_note)
         for key, button in self.report_nav_phase_buttons.items():
             button.blockSignals(True)
@@ -2219,6 +2265,34 @@ class ReportCenterPage(QWidget):
             active = key == task_step
             label.setProperty("activeTaskStep", active)
             self._set_chip(label, step_labels[key], "accent" if active else "neutral")
+
+    def _refresh_report_nav_scope_card(
+        self,
+        *,
+        phase_key: str,
+        phase_title: str,
+        phase_note: str,
+        phase_index: int,
+        phase_count: int,
+    ) -> None:
+        if not hasattr(self, "report_nav_scope_card"):
+            return
+        phase_reports = next((reports for key, _title, _note, reports in REPORT_NAV_PHASES if key == phase_key), ())
+        visible_phase_reports = {key for key in phase_reports if key in self.report_items}
+        for report_key, item in self.report_items.items():
+            item.setHidden(report_key not in visible_phase_reports)
+        progress = f"{phase_index}/{phase_count or 1}"
+        self._set_chip(self.report_nav_scope_chip, phase_title, "accent")
+        self.report_nav_scope_value.setText(_ui_safe_text(f"{progress} · {phase_count or 0} 项"))
+        note = f"当前仅显示{phase_title}阶段报告；{phase_note}。"
+        self.report_nav_scope_note.setText(_ui_safe_text(note if len(note) <= 24 else f"{note[:23]}..."))
+        self.report_nav_scope_note.setToolTip(_ui_safe_text(note))
+        self.report_nav_scope_value.setToolTip(_ui_safe_text(note))
+        self.report_nav_scope_card.setToolTip(_ui_safe_text(note))
+        self.report_nav_scope_card.setProperty("scopePhase", phase_key)
+        for widget in (self.report_nav_scope_card, self.report_nav_scope_value, self.report_nav_scope_note):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
 
     def _report_nav_task_step_for(self, report_key: str, phase_key: str) -> str:
         if phase_key == "delivery":
