@@ -81,11 +81,31 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_next_note.text()
         assert "report=" not in page.delivery_rail_source_note.text()
         assert "Manifest" in page.delivery_rail_source_note.text()
+        assert page.delivery_cockpit_bridge.property("cardRole") == "console"
+        assert page.delivery_cockpit_bridge.property("deckRole") == "deliveryCockpitBridge"
+        assert page.delivery_cockpit_bridge.property("deliveryCockpitBridge") is True
+        assert page.delivery_cockpit_bridge.maximumHeight() == 42
+        assert set(page.delivery_bridge_buttons) == {"report", "manifest", "validation", "package"}
+        assert all(
+            button.property("deliveryBridgeSegment") is True
+            for button in page.delivery_bridge_buttons.values()
+        )
+        assert all(
+            button.property("bridgeTone") in {"success", "accent", "warning", "danger"}
+            for button in page.delivery_bridge_buttons.values()
+        )
+        assert page.delivery_bridge_buttons["report"].property("bridgeStatus") == "WT"
+        assert page.delivery_bridge_buttons["manifest"].property("bridgeTone") == "warning"
+        page.delivery_bridge_buttons["manifest"].click()
+        assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+        assert page.inspector_stack.currentWidget() is page.file_card
+        page._show_delivery_focus("gate")
         assert page.delivery_rail_mode_dock.property("deliveryRailModeDock") is True
         assert all(button.property("deliveryRailModeSwitch") is True for button in page.delivery_rail_mode_buttons.values())
         assert page.delivery_rail_action_bar.property("deckRole") == "deliveryRailActionBar"
         assert page.delivery_rail_action_bar.property("deliveryRailActionDock") is True
         assert page.delivery_rail_action_bar.property("deliveryRailActionMatrix") is True
+        assert page.delivery_rail_action_bar.minimumHeight() == 69
         assert page.delivery_rail_action_bar.maximumHeight() == 72
         assert page.delivery_rail_action_button.property("railAction") is True
         assert page.delivery_rail_risk_button.property("railAction") is True
@@ -518,6 +538,10 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
                 ],
                 page,
             )
+            assert_contained(page.delivery_rail, page.delivery_cockpit_bridge, page)
+            for button in page.delivery_bridge_buttons.values():
+                assert_contained(page.delivery_cockpit_bridge, button, page)
+            assert_no_visual_overlap(list(page.delivery_bridge_buttons.values()), page)
             summary_cards = list(page.summary_cards.values())
             assert len(summary_cards) == 4
             for card in summary_cards:
@@ -719,6 +743,18 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert "report=" not in page.delivery_rail_source_note.text()
         assert "报告已就绪" in page.delivery_rail_source_note.text()
         assert "交付包已导出" in page.delivery_rail_source_note.text()
+        assert all(
+            button.property("bridgeTone") == "success"
+            for button in page.delivery_bridge_buttons.values()
+        )
+        assert all(
+            button.property("bridgeStatus") == "OK"
+            for button in page.delivery_bridge_buttons.values()
+        )
+        assert page.delivery_bridge_buttons["validation"].property("bridgeValue") == "通过"
+        page.delivery_bridge_buttons["package"].click()
+        assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+        assert page.inspector_stack.currentWidget() is page.export_card
         page.delivery_rail_risk_button.click()
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.inspector_stack.currentWidget() is page.usage_card

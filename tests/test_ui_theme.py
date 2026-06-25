@@ -187,6 +187,11 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[deliveryRailConsole="true"][railTone="warning"]' in stylesheet
     assert 'QWidget[deliveryRailModeDock="true"]' in stylesheet
     assert 'QToolButton[deliveryRailModeSwitch="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryCockpitBridge="true"]' in stylesheet
+    assert 'QToolButton[deliveryBridgeSegment="true"]' in stylesheet
+    assert 'QToolButton[deliveryBridgeSegment="true"][bridgeTone="success"]' in stylesheet
+    assert 'QToolButton[deliveryBridgeSegment="true"][bridgeTone="accent"]' in stylesheet
+    assert 'QToolButton[deliveryBridgeSegment="true"][bridgeTone="warning"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryRailActionDock="true"][deliveryRailActionMatrix="true"]' in stylesheet
     assert 'QToolButton[deliveryRailAction="true"][actionTone="success"]' in stylesheet
     assert 'QToolButton[deliveryRailAction="true"][actionTone="accent"]' in stylesheet

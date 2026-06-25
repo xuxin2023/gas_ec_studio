@@ -75,6 +75,7 @@ class ReportCenterPage(QWidget):
         self.delivery_status_radar_values: dict[str, QLabel] = {}
         self.delivery_status_radar_notes: dict[str, QLabel] = {}
         self.delivery_mission_buttons: dict[str, QToolButton] = {}
+        self.delivery_bridge_buttons: dict[str, QToolButton] = {}
         self.delivery_mission_active_key = "report"
         self.preview_context_cards: dict[str, CardFrame] = {}
         self.preview_context_values: dict[str, QLabel] = {}
@@ -535,6 +536,7 @@ class ReportCenterPage(QWidget):
         self.delivery_rail_console = CardFrame(muted=True, role="console")
         self.delivery_rail_console.setProperty("deckRole", "deliveryRailConsole")
         self.delivery_rail_console.setProperty("deliveryRailConsole", True)
+        self.delivery_rail_console.setMinimumHeight(132)
         self.delivery_rail_console.setMaximumHeight(146)
         self.delivery_rail_console.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         rail_console_layout = QGridLayout(self.delivery_rail_console)
@@ -586,6 +588,7 @@ class ReportCenterPage(QWidget):
         self.delivery_rail_action_bar.setProperty("deckRole", "deliveryRailActionBar")
         self.delivery_rail_action_bar.setProperty("deliveryRailActionDock", True)
         self.delivery_rail_action_bar.setProperty("deliveryRailActionMatrix", True)
+        self.delivery_rail_action_bar.setMinimumHeight(69)
         self.delivery_rail_action_bar.setMaximumHeight(72)
         self.delivery_rail_action_bar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         action_layout = QGridLayout(self.delivery_rail_action_bar)
@@ -634,6 +637,9 @@ class ReportCenterPage(QWidget):
         rail_console_layout.setColumnStretch(1, 2)
         rail_console_layout.setColumnStretch(2, 0)
         delivery_layout.addWidget(self.delivery_rail_console)
+
+        self.delivery_cockpit_bridge = self._build_delivery_cockpit_bridge()
+        delivery_layout.addWidget(self.delivery_cockpit_bridge)
 
         self.delivery_mission_map = self._build_delivery_mission_map()
         delivery_layout.addWidget(self.delivery_mission_map)
@@ -1454,6 +1460,36 @@ class ReportCenterPage(QWidget):
             self.delivery_mission_buttons[key] = button
             layout.addWidget(button, index // 3, index % 3)
         return card
+
+    def _build_delivery_cockpit_bridge(self) -> CardFrame:
+        bridge = CardFrame(muted=True, role="console")
+        bridge.setProperty("deckRole", "deliveryCockpitBridge")
+        bridge.setProperty("deliveryCockpitBridge", True)
+        bridge.setMaximumHeight(42)
+        bridge.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QHBoxLayout(bridge)
+        layout.setContentsMargins(TOKENS.spacing_xs, 3, TOKENS.spacing_xs, 3)
+        layout.setSpacing(TOKENS.spacing_xs)
+        for key, title in (
+            ("report", "报告"),
+            ("manifest", "清单"),
+            ("validation", "校验"),
+            ("package", "归档"),
+        ):
+            button = QToolButton()
+            button.setText(_ui_safe_text(f"{title}\nWT"))
+            button.setToolTip(_ui_safe_text("等待交付链路刷新。"))
+            button.setProperty("deliveryBridgeSegment", True)
+            button.setProperty("bridgeKey", key)
+            button.setProperty("bridgeTone", "warning")
+            button.setProperty("bridgeStatus", "WT")
+            button.setMinimumHeight(30)
+            button.setMaximumHeight(34)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.clicked.connect(lambda _checked=False, segment=key: self._activate_delivery_bridge_segment(segment))
+            self.delivery_bridge_buttons[key] = button
+            layout.addWidget(button)
+        return bridge
 
     def _build_summary_row(self) -> QWidget:
         wrapper = QWidget()
@@ -3187,6 +3223,14 @@ class ReportCenterPage(QWidget):
                 "methods": (methods["value"], methods["note"], methods["tone"]),
             }
         )
+        self._refresh_delivery_cockpit_bridge(
+            report_ready=report_ready,
+            manifest_ready=manifest_ready,
+            export_done=export_done,
+            network=network,
+            benchmark=benchmark,
+            methods=methods,
+        )
 
         tones = [
             "success" if report_ready else "warning",
@@ -3330,7 +3374,7 @@ class ReportCenterPage(QWidget):
             export_status=export_status,
             exportable_count=exportable_count,
             export_done=export_done,
-            manifest_ready=bool(self._first_file_value(file_values, ("manifest", "export_manifest"))) or "浜や粯鍖呭凡瀵煎嚭" in export_status,
+            manifest_ready=bool(self._first_file_value(file_values, ("manifest", "export_manifest"))) or "交付包已导出" in export_status,
         )
 
     def _set_report_command_tile(self, key: str, value: str, note: str, tone: str) -> None:
@@ -3384,6 +3428,69 @@ class ReportCenterPage(QWidget):
             button.setProperty("missionValue", compact_value)
             button.setProperty("missionStatus", status)
             button.setChecked(self.delivery_mission_active_key == key)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _refresh_delivery_cockpit_bridge(
+        self,
+        *,
+        report_ready: bool,
+        manifest_ready: bool,
+        export_done: bool,
+        network: dict,
+        benchmark: dict,
+        methods: dict,
+    ) -> None:
+        if not self.delivery_bridge_buttons:
+            return
+        validation_tones = [str(network.get("tone")), str(benchmark.get("tone")), str(methods.get("tone"))]
+        validation_ready_count = sum(1 for tone in validation_tones if tone == "success")
+        if validation_ready_count == len(validation_tones):
+            validation_tone = "success"
+            validation_value = "通过"
+            validation_note = "网络校验、基准对标和方法溯源均已闭合。"
+        elif validation_ready_count or any(tone == "accent" for tone in validation_tones):
+            validation_tone = "accent"
+            validation_value = f"{validation_ready_count}/3"
+            validation_note = "部分校验链路可用，仍需复核网络、基准或方法状态。"
+        else:
+            validation_tone = "warning"
+            validation_value = "待校验"
+            validation_note = "等待网络校验、基准对标和方法溯源结果。"
+
+        items = {
+            "report": (
+                "报告",
+                "可预览" if report_ready else "待生成",
+                "当前报告已有真实预览内容。" if report_ready else "请先运行处理或生成报告。",
+                "success" if report_ready else "warning",
+            ),
+            "manifest": (
+                "清单",
+                "已生成" if manifest_ready else "待生成",
+                "manifest 已落盘，可追溯交付文件。" if manifest_ready else "导出交付包后生成 manifest。",
+                "success" if manifest_ready else "warning",
+            ),
+            "validation": ("校验", validation_value, validation_note, validation_tone),
+            "package": (
+                "归档",
+                "已导出" if export_done else "待导出",
+                "交付包已导出，可归档审阅。" if export_done else "报告闭合后导出交付包。",
+                "success" if export_done else ("accent" if report_ready else "warning"),
+            ),
+        }
+        status_labels = {"success": "OK", "accent": "RDY", "warning": "WT", "danger": "RK"}
+        for key, (title, value, note, tone) in items.items():
+            button = self.delivery_bridge_buttons.get(key)
+            if button is None:
+                continue
+            status = status_labels.get(str(tone), "WT")
+            compact_value = self._compact_radar_value(value, max_chars=6)
+            button.setText(_ui_safe_text(f"{title}\n{status}"))
+            button.setToolTip(_ui_safe_text(f"{value} | {note}"))
+            button.setProperty("bridgeTone", tone)
+            button.setProperty("bridgeStatus", status)
+            button.setProperty("bridgeValue", compact_value)
             button.style().unpolish(button)
             button.style().polish(button)
 
@@ -3677,6 +3784,23 @@ class ReportCenterPage(QWidget):
         button.setEnabled(bool(target))
         button.style().unpolish(button)
         button.style().polish(button)
+
+    def _activate_delivery_bridge_segment(self, key: str) -> None:
+        if key == "report":
+            self._show_preview_content_mode("table")
+            return
+        if key == "manifest":
+            self._show_delivery_focus("details")
+            self._show_inspector_section("file")
+            return
+        if key == "validation":
+            self._activate_delivery_mission_node("network")
+            return
+        if key == "package":
+            self._show_delivery_focus("details")
+            self._show_inspector_section("export")
+            return
+        self._show_delivery_focus("gate")
 
     def _activate_delivery_rail_action(self) -> None:
         self._activate_delivery_rail_target(self.delivery_rail_action_button)

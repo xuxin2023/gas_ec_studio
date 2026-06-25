@@ -1592,6 +1592,44 @@ def build_stylesheet() -> str:
         font-size: 10px;
         font-weight: 800;
     }}
+    QFrame#cardMuted[deliveryCockpitBridge="true"] {{
+        border-radius: 14px;
+        border: 1px solid #bdd8df;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #f8fcfb,
+            stop: 0.48 #ffffff,
+            stop: 1 #f3f4e8
+        );
+    }}
+    QToolButton[deliveryBridgeSegment="true"] {{
+        min-height: 30px;
+        border-radius: 11px;
+        padding: 1px 5px;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid #c9dfe5;
+        color: #31586a;
+        font-size: 9px;
+        font-weight: 900;
+    }}
+    QToolButton[deliveryBridgeSegment="true"][bridgeTone="success"] {{
+        background: #effaf4;
+        border-color: #9acdb5;
+        color: #0f6946;
+    }}
+    QToolButton[deliveryBridgeSegment="true"][bridgeTone="accent"] {{
+        background: #edf9fb;
+        border-color: #8fc5d0;
+        color: #0b6475;
+    }}
+    QToolButton[deliveryBridgeSegment="true"][bridgeTone="warning"] {{
+        background: #fff7e4;
+        border-color: #e6c98e;
+        color: #8a5d0e;
+    }}
+    QToolButton[deliveryBridgeSegment="true"]:hover {{
+        border-color: #0c6d78;
+    }}
     QFrame#cardMuted[deliveryMissionMap="true"] {{
         border-radius: 14px;
         border: 1px solid #c6dce3;
