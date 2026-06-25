@@ -99,6 +99,18 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert page.spectral_status_value.text() in {"待运行", "待复核", "证据闭合"}
         assert page.spectral_status_note.toolTip()
         assert page.tree_card.property("cardRole") == "rail"
+        assert page.spectral_focus_rail.property("cardRole") == "rail"
+        assert page.spectral_focus_rail.property("spectralFocusRail") is True
+        assert page.spectral_focus_rail.minimumWidth() == 284
+        assert page.spectral_focus_rail.maximumWidth() == 340
+        assert set(page.spectral_focus_values) == {"section", "window", "risk", "correction", "provenance"}
+        assert len(page.spectral_focus_tiles) == 5
+        assert all(tile.property("spectralFocusTile") is True for tile in page.spectral_focus_tiles)
+        assert all(tile.maximumHeight() == 58 for tile in page.spectral_focus_tiles)
+        assert page.spectral_focus_next_card.property("spectralFocusNextCard") is True
+        assert page.spectral_focus_next_card.property("railTone") == "warning"
+        assert set(page.spectral_focus_buttons) == {"lag", "tf", "detail", "export"}
+        assert all(button.property("spectralFocusAction") is True for button in page.spectral_focus_buttons.values())
         assert page.footer_bar.property("cardRole") == "rail"
         assert page.footer_bar.maximumHeight() == 78
         visible_notes = [
@@ -116,6 +128,10 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert page.window_table.rowCount() == 0
         assert page.lag_curve.xData is None or len(page.lag_curve.xData) == 0
         assert page.power_curve.xData is None or len(page.power_curve.xData) == 0
+
+        page.spectral_focus_buttons["lag"].click()
+        assert controller.spectral_qc_nav_section == "lag_phase"
+        assert page.content_stack.currentIndex() == page.section_indexes["lag_phase"]
     finally:
         controller.shutdown()
 
@@ -143,6 +159,8 @@ def test_spectral_qc_page_refreshes_with_real_result(monkeypatch, tmp_path) -> N
         assert page.power_curve.xData is not None and len(page.power_curve.xData) > 0
         assert page.cross_curve.xData is not None and len(page.cross_curve.xData) > 0
         assert page.ogive_curve.xData is not None and len(page.ogive_curve.xData) > 0
+        assert page.spectral_focus_next_card.property("railTone") in {"accent", "success", "warning", "danger"}
+        assert page.spectral_focus_values["window"][0].text() != "--"
     finally:
         controller.shutdown()
 
@@ -164,6 +182,9 @@ def test_spectral_qc_viewport_layout_keeps_evidence_decks_stable(monkeypatch, tm
             assert_contained(page, page.run_bar, page)
             assert_contained(page, page.evidence_deck, page)
             assert_contained(page, page.tree_card, page)
+            assert_contained(page, page.spectral_focus_rail, page)
+            assert page.spectral_focus_rail.width() <= page.spectral_focus_rail.maximumWidth()
+            assert page.spectral_focus_rail.width() >= page.spectral_focus_rail.minimumWidth()
 
             source_panels = [
                 page.spectral_source_panel,
@@ -183,6 +204,9 @@ def test_spectral_qc_viewport_layout_keeps_evidence_decks_stable(monkeypatch, tm
             for card in page.summary_metric_cards:
                 assert_contained(page.summary_row, card, page)
             assert_no_visual_overlap(page.summary_metric_cards, page)
+            for tile in page.spectral_focus_tiles:
+                assert_contained(page.spectral_focus_rail, tile, page)
+            assert_no_visual_overlap(page.spectral_focus_tiles, page)
             assert_no_visible_competitor_name(page)
     finally:
         page.close()

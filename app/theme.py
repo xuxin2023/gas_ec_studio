@@ -1102,6 +1102,46 @@ def build_stylesheet() -> str:
         border: 1px solid #d2e3e9;
         background: rgba(255, 255, 255, 0.76);
     }}
+    QFrame#cardMuted[spectralFocusRail="true"] {{
+        border-radius: 18px;
+        border: 1px solid #c8dce4;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 rgba(255, 255, 255, 0.88),
+            stop: 0.55 rgba(244, 251, 252, 0.86),
+            stop: 1 rgba(255, 248, 231, 0.72)
+        );
+    }}
+    QFrame#cardMuted[spectralFocusTile="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.74);
+    }}
+    QFrame#cardMuted[spectralFocusNextCard="true"] {{
+        border-radius: 14px;
+        border: 1px solid #c8dce4;
+        background: rgba(255, 255, 255, 0.82);
+    }}
+    QFrame#cardMuted[spectralFocusNextCard="true"][railTone="success"] {{
+        border-color: #b7dcc9;
+        background: #f0fbf5;
+    }}
+    QFrame#cardMuted[spectralFocusNextCard="true"][railTone="warning"] {{
+        border-color: #e6c98e;
+        background: #fff8e8;
+    }}
+    QFrame#cardMuted[spectralFocusNextCard="true"][railTone="danger"] {{
+        border-color: #e8b3ad;
+        background: #fff0ef;
+    }}
+    QToolButton[spectralFocusAction="true"] {{
+        min-height: 24px;
+        border-radius: 12px;
+        padding: 0 8px;
+        background: #f7fcfd;
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
+    }}
     QFrame#cardMuted[stepCommandDock="true"] {{
         border-radius: 15px;
         border: 1px solid #bfd8df;

@@ -88,6 +88,11 @@ class SpectralQCPage(QWidget):
         self.content_stack = QStackedWidget()
         body.addWidget(self.content_stack, 1)
 
+        self.spectral_focus_rail = self._build_focus_rail()
+        self.spectral_focus_rail.setMinimumWidth(284)
+        self.spectral_focus_rail.setMaximumWidth(340)
+        body.addWidget(self.spectral_focus_rail, 0)
+
         self.footer_bar = self._build_footer_bar()
         layout.addWidget(self.footer_bar)
 
@@ -159,6 +164,7 @@ class SpectralQCPage(QWidget):
         self._populate_window_table()
         self._sync_section_from_controller()
         self._refresh_footer()
+        self._refresh_focus_rail()
 
     def _bind_live_signals(self) -> None:
         self.overview_focus_combo.currentIndexChanged.connect(self._refresh_overview)
@@ -472,6 +478,96 @@ class SpectralQCPage(QWidget):
         ):
             layout.addWidget(widget)
         return card
+
+    def _build_focus_rail(self) -> CardFrame:
+        card = CardFrame(muted=True, role="rail")
+        card.setProperty("spectralFocusRail", True)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
+
+        layout.addWidget(section_title("分析焦点", "把当前窗口、风险和下一步动作固定在图谱右侧。"))
+        self.spectral_focus_chip = chip("待运行", "warning")
+        layout.addWidget(self.spectral_focus_chip)
+
+        self.spectral_focus_tiles: list[CardFrame] = []
+        self.spectral_focus_values: dict[str, tuple[QLabel, QLabel]] = {}
+        for key, title in (
+            ("section", "当前页"),
+            ("window", "窗口"),
+            ("risk", "主风险"),
+            ("correction", "修正"),
+            ("provenance", "来源"),
+        ):
+            layout.addWidget(self._focus_tile(key, title))
+
+        self.spectral_focus_next_card = CardFrame(muted=True, role="tile")
+        self.spectral_focus_next_card.setProperty("spectralFocusNextCard", True)
+        self.spectral_focus_next_card.setMinimumHeight(74)
+        self.spectral_focus_next_card.setMaximumHeight(88)
+        next_layout = QVBoxLayout(self.spectral_focus_next_card)
+        next_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        next_layout.setSpacing(2)
+        next_label = QLabel("下一步")
+        next_label.setObjectName("metricLabel")
+        self.spectral_focus_next_value = QLabel("--")
+        self.spectral_focus_next_value.setObjectName("metricValue")
+        self.spectral_focus_next_value.setProperty("compactMetric", True)
+        self.spectral_focus_next_note = QLabel("--")
+        self.spectral_focus_next_note.setObjectName("subtitle")
+        self.spectral_focus_next_note.setWordWrap(True)
+        next_layout.addWidget(next_label)
+        next_layout.addWidget(self.spectral_focus_next_value)
+        next_layout.addWidget(self.spectral_focus_next_note)
+        layout.addWidget(self.spectral_focus_next_card)
+
+        actions = QGridLayout()
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setHorizontalSpacing(TOKENS.spacing_xs)
+        actions.setVerticalSpacing(TOKENS.spacing_xs)
+        self.spectral_focus_buttons: dict[str, QToolButton] = {}
+        for index, (key, text, target) in enumerate(
+            (
+                ("lag", "lag", "lag_phase"),
+                ("tf", "传递", "transfer_function"),
+                ("detail", "明细", "window_detail"),
+                ("export", "导出", "export"),
+            )
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setProperty("railAction", True)
+            button.setProperty("spectralFocusAction", True)
+            button.setMaximumHeight(24)
+            button.clicked.connect(lambda _checked=False, section=target: self._activate_focus_target(section))
+            self.spectral_focus_buttons[key] = button
+            actions.addWidget(button, index // 2, index % 2)
+        layout.addLayout(actions)
+        layout.addStretch(1)
+        return card
+
+    def _focus_tile(self, key: str, title: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("spectralFocusTile", True)
+        tile.setMinimumHeight(48)
+        tile.setMaximumHeight(58)
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.setContentsMargins(TOKENS.spacing_sm, 3, TOKENS.spacing_sm, 3)
+        tile_layout.setSpacing(0)
+        label = QLabel(title)
+        label.setObjectName("metricLabel")
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setProperty("compactMetric", True)
+        note = QLabel("--")
+        note.setObjectName("subtitle")
+        note.setWordWrap(False)
+        tile_layout.addWidget(label)
+        tile_layout.addWidget(value)
+        tile_layout.addWidget(note)
+        self.spectral_focus_tiles.append(tile)
+        self.spectral_focus_values[key] = (value, note)
+        return tile
 
     def _build_tree(self) -> None:
         root = QTreeWidgetItem(["谱分析工作台"])
@@ -958,6 +1054,8 @@ class SpectralQCPage(QWidget):
             self.section_tree.setCurrentItem(item)
             self.section_tree.blockSignals(False)
         self.content_stack.setCurrentIndex(self.section_indexes[key])
+        if hasattr(self, "spectral_focus_values"):
+            self._refresh_focus_rail()
 
     def _run_analysis(self, *, qc_only: bool) -> None:
         self.controller.save_spectral_qc_workspace(self._collect_payload())
@@ -1383,6 +1481,7 @@ class SpectralQCPage(QWidget):
         self._refresh_qc_plot()
         self._update_window_detail(selected)
         self._refresh_footer()
+        self._refresh_focus_rail()
         self.controller.selection_changed.emit()
 
     def _update_window_detail(self, row: dict) -> None:
@@ -1433,6 +1532,123 @@ class SpectralQCPage(QWidget):
         self._set_chip(self.footer_grade_chip, f"QC：{row.get('qc_grade', '--')}", self._grade_tone(row.get("qc_grade", "B")))
         self.footer_reason_label.setText(f"最近异常原因：{row.get('reason', '暂无异常')}")
         self.footer_export_label.setText(f"导出状态：{export_status}")
+
+    def _refresh_focus_rail(self) -> None:
+        if not hasattr(self, "spectral_focus_values"):
+            return
+        workspace = self.controller.spectral_qc_workspace
+        summary = dict(workspace.get("summary", {}) or {})
+        sections = dict(workspace.get("sections", {}) or {})
+        row = self._selected_window()
+        section_key = self.controller.spectral_qc_nav_section
+        section_title_text = next((title for key, title, _subtitle in SPECTRAL_SECTIONS if key == section_key), "谱分析")
+
+        grade = str(row.get("qc_grade", "--") or "--")
+        risk_text = str(summary.get("high_freq_loss_risk", row.get("anomaly_type", "--")) or "--")
+        reason = str(row.get("reason", "运行后显示主导异常") or "运行后显示主导异常")
+        correction_factor = str(row.get("correction_factor", "--") or "--")
+        transfer = dict(sections.get("transfer_function", {}) or {})
+        correction = dict(sections.get("correction_factor", {}) or {})
+        correction_model = str(correction.get("mode") or transfer.get("model") or "--")
+        provenance_notes = [str(note) for note in row.get("provenance_notes", []) if str(note).strip()]
+        model_version = str(row.get("model_version", "") or "").strip()
+        export_status = self._export_status_display(str(workspace.get("run", {}).get("export_status", "尚未导出证据包")))
+
+        self._set_focus_row("section", section_title_text, "目录切换会同步当前分析焦点")
+        self._set_focus_row("window", str(row.get("label") or row.get("window_id") or "未选择"), f"QC {grade} · lag {row.get('lag_s', '--')}")
+        self._set_focus_row("risk", risk_text, reason)
+        self._set_focus_row("correction", correction_factor, correction_model)
+        self._set_focus_row("provenance", model_version or f"{len(provenance_notes)} notes", provenance_notes[0] if provenance_notes else "等待谱分析结果写入 provenance")
+
+        target, next_value, next_note, tone = self._spectral_next_action(row, risk_text, correction_factor, export_status)
+        self.spectral_focus_next_value.setText(next_value)
+        self.spectral_focus_next_note.setText(next_note)
+        self.spectral_focus_next_value.setToolTip(next_note)
+        self.spectral_focus_next_note.setToolTip(next_note)
+        self.spectral_focus_next_card.setProperty("railTone", tone)
+        self.spectral_focus_next_card.style().unpolish(self.spectral_focus_next_card)
+        self.spectral_focus_next_card.style().polish(self.spectral_focus_next_card)
+        self._set_chip(self.spectral_focus_chip, "证据闭合" if tone == "success" else "待复核", tone)
+
+        for button in self.spectral_focus_buttons.values():
+            button.setProperty("actionTone", "")
+            button.style().unpolish(button)
+            button.style().polish(button)
+        active_button = {
+            "lag_phase": "lag",
+            "transfer_function": "tf",
+            "window_detail": "detail",
+            "export": "export",
+        }.get(target)
+        if active_button and active_button in self.spectral_focus_buttons:
+            button = self.spectral_focus_buttons[active_button]
+            button.setProperty("actionTone", tone)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _set_focus_row(self, key: str, value: str, note: str) -> None:
+        value_label, note_label = self.spectral_focus_values[key]
+        display_value = self._compact_text(value, 22)
+        display_note = self._compact_text(note, 34)
+        value_label.setText(display_value)
+        note_label.setText(display_note)
+        tooltip = f"{value}\n{note}"
+        value_label.setToolTip(tooltip)
+        note_label.setToolTip(tooltip)
+
+    def _spectral_next_action(self, row: dict, risk_text: str, correction_factor: str, export_status: str) -> tuple[str, str, str, str]:
+        if not row:
+            return (
+                "lag_phase",
+                "先运行谱分析",
+                "当前没有窗口级谱结果，先运行完整谱分析或 QC 摘要。",
+                "warning",
+            )
+        grade = str(row.get("qc_grade", "") or "")
+        if grade == "C" or "高" in risk_text:
+            return (
+                "lag_phase",
+                "复核 lag 与相位",
+                "高风险窗口优先确认 lag 峰值、相位和互谱是否一致。",
+                "danger",
+            )
+        try:
+            factor = float(correction_factor)
+        except (TypeError, ValueError):
+            factor = 0.0
+        if factor >= 1.20:
+            return (
+                "transfer_function",
+                "检查传递函数",
+                "修正因子偏高，优先查看管路、分离、路径平均和相位贡献。",
+                "warning",
+            )
+        if not self._export_status_is_done(export_status):
+            return (
+                "export",
+                "导出证据包",
+                "谱分析已可用，建议把证据包写入交付链。",
+                "accent",
+            )
+        return (
+            "window_detail",
+            "查看窗口明细",
+            "当前谱证据已闭合，可从窗口明细继续抽查。",
+            "success",
+        )
+
+    def _activate_focus_target(self, target: str) -> None:
+        if target == "export":
+            self._export_evidence()
+            self._refresh_focus_rail()
+            return
+        item = self.section_items.get(target)
+        if item is None:
+            return
+        self.section_tree.setCurrentItem(item)
+        self.content_stack.setCurrentIndex(self.section_indexes[target])
+        self.controller.set_spectral_qc_nav_section(target)
+        self._refresh_focus_rail()
 
     def _selected_window(self) -> dict:
         windows = self.controller.spectral_qc_workspace.get("windows", [])
