@@ -182,6 +182,10 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QToolButton[reportNavPhaseButton="true"]' in stylesheet
     assert 'QToolButton[reportNavPhaseButton="true"][activePhase="true"]' in stylesheet
     assert 'QLabel[reportNavStageNote="true"]' in stylesheet
+    assert 'QFrame#cardMuted[reportNavFocusCard="true"]' in stylesheet
+    assert 'QLabel[reportNavFocusValue="true"]' in stylesheet
+    assert 'QLabel[reportNavFocusNote="true"]' in stylesheet
+    assert 'QToolButton[reportNavNextButton="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportNavTaskMap="true"]' in stylesheet
     assert 'QLabel[reportNavTaskValue="true"]' in stylesheet
     assert 'QLabel[reportNavTaskStep="true"][activeTaskStep="true"]' in stylesheet

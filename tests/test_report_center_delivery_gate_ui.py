@@ -58,9 +58,28 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert all(step.property("reportNavTaskStep") is True for step in page.report_nav_task_steps.values())
         assert page.report_nav_task_steps["preview"].property("activeTaskStep") is True
         assert page.report_nav_stage_note.text().startswith("运行")
+        assert page.report_nav_focus_card.property("cardRole") == "console"
+        assert page.report_nav_focus_card.property("deckRole") == "reportNavFocusCard"
+        assert page.report_nav_focus_card.property("reportNavFocusCard") is True
+        assert page.report_nav_focus_card.maximumHeight() == 56
+        assert page.report_nav_focus_card.property("phaseKey") == "run"
+        assert page.report_nav_focus_card.property("phaseProgress") == "1/4"
+        assert page.report_nav_focus_chip.objectName() == "chip"
+        assert page.report_nav_focus_value.property("compactMetric") is True
+        assert page.report_nav_focus_value.property("reportNavFocusValue") is True
+        assert page.report_nav_focus_note.property("reportNavFocusNote") is True
+        assert page.report_nav_focus_next_button.property("reportNavNextButton") is True
+        assert "下一项" in page.report_nav_focus_next_button.text()
+        page.report_nav_focus_next_button.click()
+        assert controller.report_center_workspace["selected_report"] == "device_status"
+        assert page.report_nav_focus_card.property("phaseProgress") == "2/4"
+        controller.set_report_nav_section("run_summary")
+        page.refresh()
         page.report_nav_phase_buttons["qc"].click()
         assert controller.report_center_workspace["selected_report"] == "spectral_qc"
         assert page.report_nav_phase_buttons["qc"].isChecked() is True
+        assert page.report_nav_focus_card.property("phaseKey") == "qc"
+        assert page.report_nav_focus_card.property("phaseProgress") == "1/3"
         assert page.report_nav_task_steps["evidence"].property("activeTaskStep") is True
         controller.set_report_nav_section("run_summary")
         page.refresh()
@@ -532,9 +551,12 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             assert page.delivery_rail.width() <= page.delivery_rail.maximumWidth()
             assert page.delivery_rail.width() >= page.delivery_rail.minimumWidth()
             assert_contained(page.tree_card, page.report_nav_phase_strip, page)
+            assert_contained(page.tree_card, page.report_nav_focus_card, page)
             assert_contained(page.tree_card, page.report_nav_task_map, page)
             for button in page.report_nav_phase_buttons.values():
                 assert_contained(page.report_nav_phase_strip, button, page)
+            assert_contained(page.report_nav_focus_card, page.report_nav_focus_next_button, page)
+            assert_no_visual_overlap([page.report_nav_phase_strip, page.report_nav_focus_card, page.report_nav_task_map], page)
             assert_contained(page, page.delivery_rail, page)
 
             page._show_delivery_rail_mode("summary")

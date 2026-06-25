@@ -1557,6 +1557,40 @@ def build_stylesheet() -> str:
         font-size: 10px;
         font-weight: 700;
     }}
+    QFrame#cardMuted[reportNavFocusCard="true"] {{
+        border-radius: 14px;
+        border: 1px solid #bfd8df;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f8fcfd,
+            stop: 0.58 #ffffff,
+            stop: 1 #eef8f2
+        );
+    }}
+    QLabel[reportNavFocusValue="true"] {{
+        color: #103545;
+        font-size: 12px;
+        font-weight: 900;
+    }}
+    QLabel[reportNavFocusNote="true"] {{
+        color: #527081;
+        font-size: 9px;
+        font-weight: 700;
+    }}
+    QToolButton[reportNavNextButton="true"] {{
+        min-height: 22px;
+        border-radius: 11px;
+        padding: 0 8px;
+        background: #f7fcfd;
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
+        font-size: 10px;
+        font-weight: 800;
+    }}
+    QToolButton[reportNavNextButton="true"]:hover {{
+        border-color: #0c6d78;
+        background: #e7f8fa;
+    }}
     QFrame#cardMuted[reportNavTaskMap="true"] {{
         border-radius: 16px;
         border: 1px solid #cfe3e8;

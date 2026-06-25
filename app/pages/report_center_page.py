@@ -87,6 +87,7 @@ class ReportCenterPage(QWidget):
         self.report_nav_task_steps: dict[str, QLabel] = {}
         self.preview_route_buttons: dict[str, QToolButton] = {}
         self.preview_workbench_buttons: dict[str, QToolButton] = {}
+        self.report_nav_focus_phase_key = "run"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -134,6 +135,8 @@ class ReportCenterPage(QWidget):
         self.report_nav_stage_note.setMaximumHeight(18)
         self.report_nav_stage_note.setWordWrap(False)
         tree_layout.addWidget(self.report_nav_stage_note)
+        self.report_nav_focus_card = self._build_report_nav_focus_card()
+        tree_layout.addWidget(self.report_nav_focus_card)
         self.report_nav_task_map = self._build_report_nav_task_map()
         tree_layout.addWidget(self.report_nav_task_map)
         self.report_tree = QTreeWidget()
@@ -854,6 +857,44 @@ class ReportCenterPage(QWidget):
             layout.addWidget(button, index // 2, index % 2)
         return wrapper
 
+    def _build_report_nav_focus_card(self) -> CardFrame:
+        card = CardFrame(muted=True, role="console")
+        card.setProperty("deckRole", "reportNavFocusCard")
+        card.setProperty("reportNavFocusCard", True)
+        card.setMaximumHeight(56)
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(card)
+        layout.setContentsMargins(TOKENS.spacing_xs, 3, TOKENS.spacing_xs, 3)
+        layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(1)
+        self.report_nav_focus_chip = chip("运行", "accent")
+        self.report_nav_focus_chip.setMaximumHeight(20)
+        self.report_nav_focus_value = QLabel("--")
+        self.report_nav_focus_value.setObjectName("metricValue")
+        self.report_nav_focus_value.setProperty("compactMetric", True)
+        self.report_nav_focus_value.setProperty("reportNavFocusValue", True)
+        self.report_nav_focus_value.setWordWrap(False)
+        self.report_nav_focus_value.setMinimumWidth(0)
+        self.report_nav_focus_value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.report_nav_focus_next_button = QToolButton()
+        self.report_nav_focus_next_button.setText("下一项")
+        self.report_nav_focus_next_button.setProperty("reportNavNextButton", True)
+        self.report_nav_focus_next_button.setMaximumHeight(24)
+        self.report_nav_focus_next_button.clicked.connect(self._activate_report_nav_next)
+        self.report_nav_focus_note = QLabel("--")
+        self.report_nav_focus_note.setObjectName("subtitle")
+        self.report_nav_focus_note.setProperty("reportNavFocusNote", True)
+        self.report_nav_focus_note.setWordWrap(False)
+        self.report_nav_focus_note.setMinimumWidth(0)
+        self.report_nav_focus_note.setMaximumHeight(16)
+        self.report_nav_focus_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self.report_nav_focus_chip, 0, 0)
+        layout.addWidget(self.report_nav_focus_value, 0, 1)
+        layout.addWidget(self.report_nav_focus_next_button, 0, 2)
+        layout.addWidget(self.report_nav_focus_note, 1, 0, 1, 3)
+        layout.setColumnStretch(1, 1)
+        return card
+
     def _build_report_nav_task_map(self) -> CardFrame:
         card = CardFrame(muted=True, role="console")
         card.setProperty("deckRole", "reportNavTaskMap")
@@ -920,6 +961,23 @@ class ReportCenterPage(QWidget):
                 self.controller.set_report_nav_section(target)
                 self.refresh()
             return
+
+    def _activate_report_nav_next(self) -> None:
+        current = str(self.controller.report_center_workspace.get("selected_report", "run_summary") or "run_summary")
+        target = self._report_nav_next_for(current)
+        if target and target in self.report_items:
+            self.controller.set_report_nav_section(target)
+            self.refresh()
+
+    def _report_nav_next_for(self, report_key: str) -> str:
+        ordered = [key for _phase, _title, _note, reports in REPORT_NAV_PHASES for key in reports if key in self.report_items]
+        if not ordered:
+            return ""
+        try:
+            index = ordered.index(report_key)
+        except ValueError:
+            return ordered[0]
+        return ordered[(index + 1) % len(ordered)]
 
     def _report_nav_phase_for(self, report_key: str) -> tuple[str, str, str]:
         for phase_key, title, note, reports in REPORT_NAV_PHASES:
@@ -1846,9 +1904,31 @@ class ReportCenterPage(QWidget):
 
     def _refresh_report_nav_phase_state(self, report_key: str, report_title: str) -> None:
         phase_key, phase_title, phase_note = self._report_nav_phase_for(report_key)
+        self.report_nav_focus_phase_key = phase_key
         if hasattr(self, "report_nav_stage_note"):
             self.report_nav_stage_note.setText(_ui_safe_text(f"{phase_title} · {report_title}"))
             self.report_nav_stage_note.setToolTip(_ui_safe_text(phase_note))
+        if hasattr(self, "report_nav_focus_card"):
+            phase_reports = next((reports for key, _title, _note, reports in REPORT_NAV_PHASES if key == phase_key), ())
+            visible_phase_reports = [key for key in phase_reports if key in self.report_items]
+            phase_count = len(visible_phase_reports)
+            phase_index = visible_phase_reports.index(report_key) + 1 if report_key in visible_phase_reports else 1
+            next_key = self._report_nav_next_for(report_key)
+            next_item = self.report_items.get(next_key)
+            next_title = _ui_safe_text(next_item.text(0)) if next_item is not None else "--"
+            focus_value = report_title if len(report_title) <= 8 else f"{report_title[:7]}..."
+            note = f"{phase_title}阶段 {phase_index}/{phase_count or 1} · 下一项：{next_title}"
+            self._set_chip(self.report_nav_focus_chip, phase_title, "accent")
+            self.report_nav_focus_value.setText(_ui_safe_text(focus_value))
+            self.report_nav_focus_value.setToolTip(_ui_safe_text(report_title))
+            self.report_nav_focus_note.setText(_ui_safe_text(note if len(note) <= 30 else f"{note[:27]}..."))
+            self.report_nav_focus_note.setToolTip(_ui_safe_text(note))
+            self.report_nav_focus_next_button.setText(_ui_safe_text("下一项"))
+            self.report_nav_focus_next_button.setToolTip(_ui_safe_text(f"跳到：{next_title}"))
+            self.report_nav_focus_card.setProperty("phaseKey", phase_key)
+            self.report_nav_focus_card.setProperty("phaseProgress", f"{phase_index}/{phase_count or 1}")
+            self.report_nav_focus_card.style().unpolish(self.report_nav_focus_card)
+            self.report_nav_focus_card.style().polish(self.report_nav_focus_card)
         self._refresh_report_nav_task_map(report_key, report_title, phase_key, phase_title, phase_note)
         for key, button in self.report_nav_phase_buttons.items():
             button.blockSignals(True)
