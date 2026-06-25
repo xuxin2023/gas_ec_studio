@@ -268,8 +268,15 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_deck_card.property("activePane") == "table"
         assert page.preview_pane_switcher.property("deckRole") == "previewPaneSwitcher"
         assert all(button.property("previewPaneSwitch") is True for button in page.preview_content_switches.values())
+        assert page.preview_analysis_strip.property("deckRole") == "reportPreviewAnalysisStrip"
+        assert page.preview_analysis_strip.property("reportPreviewAnalysisStrip") is True
+        assert page.preview_analysis_strip.property("analysisMode") == "table"
+        assert page.preview_analysis_strip.maximumHeight() == 34
+        assert page.preview_analysis_chip.objectName() == "chip"
+        assert page.preview_analysis_value.property("compactMetric") is True
         assert page.preview_pane_hint_label.text()
-        assert page.preview_pane_hint_label.isHidden() is True
+        assert page.preview_pane_hint_label.property("reportPreviewAnalysisHint") is True
+        assert page.preview_pane_hint_label.isHidden() is False
         assert page.preview_route_strip.property("deckRole") == "previewWorkflowRoute"
         assert page.preview_route_strip.property("previewWorkflowRoute") is True
         assert page.preview_route_strip.maximumHeight() == 34
@@ -305,10 +312,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_content_card.property("deckRole") == "compactPreviewPane"
         assert page.preview_content_card.property("density") == "desktop"
         assert page.preview_content_card.property("plotStatus") == "tableOnly"
-        assert page.preview_content_card.maximumHeight() == 264
+        assert page.preview_content_card.maximumHeight() == 232
         assert page.preview_content_splitter.objectName() == "reportPreviewSplitPane"
         assert page.preview_content_splitter.property("reportPreviewSplitPane") is True
-        assert page.preview_content_splitter.maximumHeight() == 196
+        assert page.preview_content_splitter.maximumHeight() == 164
         assert page.preview_primary_pane.property("reportPreviewPrimaryPane") is True
         assert page.preview_context_pane.property("reportPreviewContextPane") is True
         assert page.preview_context_pane.minimumWidth() == 190
@@ -326,7 +333,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.expert_review_card.isHidden() is True
         assert page.preview_plot.isHidden() is True
         assert page.preview_plot.maximumHeight() == 0
-        assert page.preview_table.maximumHeight() == 180
+        assert page.preview_table.maximumHeight() == 146
+        assert "rows=" not in page.preview_table_note.text()
+        assert "columns=" not in page.preview_table_note.text()
+        assert "表格：" in page.preview_table_note.text()
         assert page.preview_content_card.property("activePane") == "table"
         assert set(page.preview_content_switches) == {"plot", "table", "insight"}
         assert page.preview_content_switches["table"].isChecked() is True
@@ -336,6 +346,8 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         page._show_preview_content_mode("insight")
         assert page.preview_content_card.property("activePane") == "insight"
         assert page.preview_deck_card.property("activePane") == "insight"
+        assert page.preview_analysis_strip.property("analysisMode") == "insight"
+        assert page.preview_analysis_value.text()
         assert page.preview_insight_card.isHidden() is False
         assert page.preview_table.isHidden() is True
         assert page.preview_metrics_row.property("reportPreviewMetricStrip") is True
@@ -500,6 +512,7 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             )
             assert_no_visual_overlap(list(page.report_command_tiles.values()), page)
             assert_contained(page, page.preview_content_splitter, page)
+            assert_contained(page.preview_deck_card, page.preview_analysis_strip, page)
             assert_contained(page.preview_deck_card, page.preview_route_strip, page)
             for button in page.preview_route_buttons.values():
                 assert_contained(page.preview_route_strip, button, page)
@@ -509,6 +522,8 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             for tile in page.preview_context_cards.values():
                 assert_contained(page.preview_context_pane, tile, page)
             assert_contained(page.preview_deck_card, page.report_action_drawer, page)
+            assert page.preview_analysis_strip.geometry().bottom() < page.preview_route_strip.geometry().top()
+            assert page.preview_route_strip.geometry().bottom() < page.report_action_drawer.geometry().top()
             assert page.report_action_drawer.geometry().bottom() < page.preview_content_card.geometry().top()
             for button in page.report_action_buttons.values():
                 assert_contained(page.report_action_drawer, button, page)
@@ -676,9 +691,11 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.preview_content_card.property("plotStatus") == "series"
         assert page.preview_content_card.property("activePane") == "plot"
         assert page.preview_deck_card.property("activePane") == "plot"
+        assert page.preview_analysis_strip.property("analysisMode") == "plot"
+        assert page.preview_analysis_chip.property("chipTone") == "accent"
         assert page.preview_plot.isHidden() is False
         assert page.preview_content_switches["plot"].isChecked() is True
-        assert page.preview_table.maximumHeight() == 128
+        assert page.preview_table.maximumHeight() == 106
         page._show_preview_content_mode("table")
         assert page.preview_table.isHidden() is False
         page._show_preview_content_mode("insight")

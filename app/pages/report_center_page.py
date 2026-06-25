@@ -206,12 +206,35 @@ class ReportCenterPage(QWidget):
         self.preview_pane_switcher = self._build_preview_pane_switcher()
         preview_deck_header.addWidget(self.preview_pane_switcher)
         preview_deck_layout.addLayout(preview_deck_header)
+        self.preview_analysis_strip = CardFrame(muted=True, role="console")
+        self.preview_analysis_strip.setProperty("deckRole", "reportPreviewAnalysisStrip")
+        self.preview_analysis_strip.setProperty("reportPreviewAnalysisStrip", True)
+        self.preview_analysis_strip.setMaximumHeight(34)
+        self.preview_analysis_strip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        analysis_layout = QHBoxLayout(self.preview_analysis_strip)
+        analysis_layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
+        analysis_layout.setSpacing(TOKENS.spacing_xs)
+        self.preview_analysis_chip = chip("表格", "accent")
+        self.preview_analysis_chip.setMaximumHeight(22)
+        self.preview_analysis_value = QLabel("数据表格")
+        self.preview_analysis_value.setObjectName("metricValue")
+        self.preview_analysis_value.setProperty("compactMetric", True)
+        self.preview_analysis_value.setMaximumHeight(20)
+        self.preview_analysis_value.setMinimumWidth(0)
+        self.preview_analysis_value.setWordWrap(False)
+        self.preview_analysis_value.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.preview_pane_hint_label = QLabel("--")
         self.preview_pane_hint_label.setObjectName("subtitle")
-        self.preview_pane_hint_label.setMaximumHeight(0)
+        self.preview_pane_hint_label.setProperty("reportPreviewAnalysisHint", True)
+        self.preview_pane_hint_label.setMaximumHeight(20)
+        self.preview_pane_hint_label.setMinimumWidth(0)
         self.preview_pane_hint_label.setWordWrap(False)
-        self.preview_pane_hint_label.setVisible(False)
-        preview_deck_layout.addWidget(self.preview_pane_hint_label)
+        self.preview_pane_hint_label.setVisible(True)
+        self.preview_pane_hint_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        analysis_layout.addWidget(self.preview_analysis_chip)
+        analysis_layout.addWidget(self.preview_analysis_value)
+        analysis_layout.addWidget(self.preview_pane_hint_label, 1)
+        preview_deck_layout.addWidget(self.preview_analysis_strip)
         self.preview_route_strip = self._build_preview_route_strip()
         preview_deck_layout.addWidget(self.preview_route_strip)
         self.report_action_drawer = self._build_report_action_drawer()
@@ -336,18 +359,18 @@ class ReportCenterPage(QWidget):
         self.preview_content_card = CardFrame(role="panel")
         self.preview_content_card.setProperty("deckRole", "compactPreviewPane")
         self.preview_content_card.setProperty("density", "desktop")
-        self.preview_content_card.setMaximumHeight(264)
+        self.preview_content_card.setMaximumHeight(232)
         self.preview_content_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         content_layout = QVBoxLayout(self.preview_content_card)
-        content_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        content_layout.setSpacing(TOKENS.spacing_sm)
+        content_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        content_layout.setSpacing(TOKENS.spacing_xs)
         content_layout.setAlignment(Qt.AlignTop)
         content_layout.addWidget(section_title("图表或表格预览", "让结果预览像报告，而不是文件清单。"))
         self.preview_content_splitter = QSplitter(Qt.Horizontal)
         self.preview_content_splitter.setObjectName("reportPreviewSplitPane")
         self.preview_content_splitter.setProperty("reportPreviewSplitPane", True)
         self.preview_content_splitter.setChildrenCollapsible(False)
-        self.preview_content_splitter.setMaximumHeight(196)
+        self.preview_content_splitter.setMaximumHeight(164)
         self.preview_content_splitter.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.preview_primary_pane = CardFrame(muted=True, role="panel")
         self.preview_primary_pane.setProperty("reportPreviewPrimaryPane", True)
@@ -362,7 +385,7 @@ class ReportCenterPage(QWidget):
         self.preview_curve = self.preview_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.2))
         primary_layout.addWidget(self.preview_plot)
         self.preview_table = QTableWidget(0, 3)
-        self.preview_table.setMaximumHeight(96)
+        self.preview_table.setMaximumHeight(84)
         self.preview_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.preview_table.verticalHeader().setVisible(False)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -1750,8 +1773,24 @@ class ReportCenterPage(QWidget):
             "table": "当前显示支撑表格；切到图表看趋势，切到结论看摘要。",
             "insight": "当前显示关键结论；切到表格可追溯证据，切到图表看趋势。",
         }
+        pane_titles = {"plot": "图表", "table": "表格", "insight": "结论"}
+        pane_values = {
+            "plot": "趋势图" if has_plot else "暂无序列",
+            "table": "数据表格",
+            "insight": "关键结论",
+        }
+        pane_tone = "warning" if mode == "plot" and not has_plot else "accent"
+        if hasattr(self, "preview_analysis_strip"):
+            self.preview_analysis_strip.setProperty("analysisMode", mode)
+            self.preview_analysis_strip.style().unpolish(self.preview_analysis_strip)
+            self.preview_analysis_strip.style().polish(self.preview_analysis_strip)
+        if hasattr(self, "preview_analysis_chip"):
+            self._set_chip(self.preview_analysis_chip, pane_titles[mode], pane_tone)
+        if hasattr(self, "preview_analysis_value"):
+            self.preview_analysis_value.setText(_ui_safe_text(pane_values[mode]))
         if hasattr(self, "preview_pane_hint_label"):
             self.preview_pane_hint_label.setText(_ui_safe_text(pane_notes[mode]))
+            self.preview_pane_hint_label.setToolTip(_ui_safe_text(pane_notes[mode]))
         self.preview_content_card.style().unpolish(self.preview_content_card)
         self.preview_content_card.style().polish(self.preview_content_card)
         self.preview_deck_card.style().unpolish(self.preview_deck_card)
@@ -1776,7 +1815,7 @@ class ReportCenterPage(QWidget):
             label.setWordWrap(True)
             label.setMaximumHeight(42)
             self.preview_insight_content.addWidget(label)
-        self.preview_insight_card.setToolTip(_ui_safe_text(f"report={report_key} | conclusions={len(conclusions)}"))
+        self.preview_insight_card.setToolTip(_ui_safe_text(f"结论 {len(conclusions)} 条 | {view_mode}"))
 
     def _refresh_preview_delivery_context(self) -> None:
         workspace = self.controller.report_center_workspace
@@ -1881,11 +1920,11 @@ class ReportCenterPage(QWidget):
             self.preview_plot.setMinimumHeight(0)
             self.preview_plot.setMaximumHeight(0)
         elif is_expert_review:
-            self.preview_plot.setMinimumHeight(145)
-            self.preview_plot.setMaximumHeight(190)
+            self.preview_plot.setMinimumHeight(108)
+            self.preview_plot.setMaximumHeight(132)
         else:
-            self.preview_plot.setMinimumHeight(140 if compact_plot else 170)
-            self.preview_plot.setMaximumHeight(180 if compact_plot else 220)
+            self.preview_plot.setMinimumHeight(102 if compact_plot else 118)
+            self.preview_plot.setMaximumHeight(126 if compact_plot else 146)
         if not has_plot_data:
             self.preview_plot_note.setText("暂无可绘制序列，优先查看表格与交付详情。")
         elif is_benchmark_cockpit:
@@ -1904,8 +1943,8 @@ class ReportCenterPage(QWidget):
         self.preview_table.setColumnCount(len(headers))
         self.preview_table.setHorizontalHeaderLabels([_ui_safe_text(header) for header in headers])
         self.preview_table.setRowCount(len(rows))
-        self.preview_table.setMaximumHeight(180 if not has_plot_data else (132 if is_expert_review else 128))
-        self.preview_table_note.setText(_ui_safe_text(f"rows={len(rows)} | columns={len(headers)} | mode={view_mode}"))
+        self.preview_table.setMaximumHeight(146 if not has_plot_data else (110 if is_expert_review else 106))
+        self.preview_table_note.setText(_ui_safe_text(f"表格：{len(rows)} 行 · {len(headers)} 列 · {view_mode}"))
         for row_index, row in enumerate(rows):
             for col, value in enumerate(row):
                 item = QTableWidgetItem(_ui_safe_text(value))

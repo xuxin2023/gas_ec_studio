@@ -120,6 +120,11 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[deliveryClosureTile="true"] QLabel#metricValue[compactMetric="true"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"][radarTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewWorkbench="true"]' in stylesheet
+    assert 'QFrame#cardMuted[reportPreviewAnalysisStrip="true"]' in stylesheet
+    assert 'QFrame#cardMuted[reportPreviewAnalysisStrip="true"][analysisMode="plot"]' in stylesheet
+    assert 'QFrame#cardMuted[reportPreviewAnalysisStrip="true"][analysisMode="table"]' in stylesheet
+    assert 'QFrame#cardMuted[reportPreviewAnalysisStrip="true"][analysisMode="insight"]' in stylesheet
+    assert 'QLabel[reportPreviewAnalysisHint="true"]' in stylesheet
     assert 'QWidget[reportPreviewMetricStrip="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewMetric="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportActionDrawer="true"]' in stylesheet

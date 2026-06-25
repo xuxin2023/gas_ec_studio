@@ -1123,6 +1123,30 @@ def build_stylesheet() -> str:
         border: 1px solid #c8dce4;
         background: rgba(247, 252, 253, 0.84);
     }}
+    QFrame#cardMuted[reportPreviewAnalysisStrip="true"] {{
+        border-radius: 14px;
+        border: 1px solid #c3dce3;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #f7fcfd,
+            stop: 0.58 #ffffff,
+            stop: 1 #eef8f1
+        );
+    }}
+    QFrame#cardMuted[reportPreviewAnalysisStrip="true"][analysisMode="plot"] {{
+        border-color: #94c9d3;
+    }}
+    QFrame#cardMuted[reportPreviewAnalysisStrip="true"][analysisMode="table"] {{
+        border-color: #9fd2bb;
+    }}
+    QFrame#cardMuted[reportPreviewAnalysisStrip="true"][analysisMode="insight"] {{
+        border-color: #e6c98e;
+    }}
+    QLabel[reportPreviewAnalysisHint="true"] {{
+        color: #527081;
+        font-size: 10px;
+        font-weight: 700;
+    }}
     QWidget[reportPreviewMetricStrip="true"] {{
         max-height: 62px;
     }}
