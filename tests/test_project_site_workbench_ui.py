@@ -72,11 +72,31 @@ def test_project_site_uses_station_closure_rail(monkeypatch, tmp_path: Path) -> 
         assert page.site_ops_next_card.maximumHeight() == 80
         assert page.metadata_cockpit_card.property("metadataCockpitDock") is True
         assert page.metadata_cockpit_card.maximumHeight() == 88
+        assert page.metadata_panel_switch.property("metadataPanelSwitch") is True
+        assert page.metadata_editor_stack.property("metadataEditorStack") is True
+        assert set(page.metadata_panel_buttons) == {
+            "station",
+            "instrument",
+            "raw",
+            "raw_settings",
+            "biomet",
+            "dynamic",
+            "profile",
+        }
+        assert page.metadata_panel_order == ["station", "instrument", "raw", "raw_settings", "biomet", "dynamic", "profile"]
+        assert page.metadata_editor_stack.count() == 7
+        assert all(button.property("metadataPanelSwitchButton") is True for button in page.metadata_panel_buttons.values())
         assert set(page.metadata_summary_values) == {"station", "instrument", "raw", "dynamic", "profile"}
         assert len(page.metadata_summary_tiles) == 5
         assert all(tile.property("metadataSummaryTile") is True for tile in page.metadata_summary_tiles)
         assert all(tile.maximumHeight() == 56 for tile in page.metadata_summary_tiles)
         assert all(card.property("metadataEditorPanel") is True for card in page.metadata_editor_cards)
+        for index, card in enumerate(page.metadata_editor_cards):
+            assert page.metadata_editor_stack.widget(index) is card
+        assert page.metadata_editor_stack.widget(6) is page.metadata_profile_card
+        page.metadata_panel_buttons["raw"].click()
+        assert page.metadata_editor_stack.currentIndex() == 2
+        assert page.metadata_panel_buttons["raw"].isChecked() is True
         assert page.metadata_profile_card.property("metadataProfileDock") is True
         assert len(page.metadata_profile_buttons) == 3
         assert all(button.property("metadataActionButton") is True for button in page.metadata_profile_buttons)

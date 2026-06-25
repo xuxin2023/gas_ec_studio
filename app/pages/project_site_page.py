@@ -872,6 +872,19 @@ class ProjectSitePage(QWidget):
         card_layout.addWidget(self.metadata_cockpit_card)
 
         self.metadata_editor_cards: list[CardFrame] = []
+        self.metadata_panel_buttons: dict[str, QToolButton] = {}
+        self.metadata_panel_order: list[str] = []
+        self.metadata_panel_switch = QWidget()
+        self.metadata_panel_switch.setProperty("metadataPanelSwitch", True)
+        self.metadata_panel_switch_layout = QGridLayout(self.metadata_panel_switch)
+        self.metadata_panel_switch_layout.setContentsMargins(0, 0, 0, 0)
+        self.metadata_panel_switch_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        self.metadata_panel_switch_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        self.metadata_editor_stack = QStackedWidget()
+        self.metadata_editor_stack.setProperty("metadataEditorStack", True)
+        card_layout.addWidget(self.metadata_panel_switch)
+        card_layout.addWidget(self.metadata_editor_stack)
+
         station_card = CardFrame(muted=True)
         station_card.setProperty("metadataEditorPanel", True)
         self.metadata_editor_cards.append(station_card)
@@ -891,7 +904,7 @@ class ProjectSitePage(QWidget):
         station_layout.addRow("Roughness length", self.station_roughness_spin)
         station_layout.addRow("Timestamp refers to", self.station_timestamp_ref_combo)
         station_layout.addRow("File duration", self.station_file_duration_spin)
-        card_layout.addWidget(station_card)
+        self._add_metadata_panel("station", "Station", station_card)
 
         instruments_card = CardFrame(muted=True)
         instruments_card.setProperty("metadataEditorPanel", True)
@@ -922,7 +935,7 @@ class ProjectSitePage(QWidget):
         instruments_layout.addRow("Sonic serial", self.sonic_serial_meta_edit)
         instruments_layout.addRow("Analyzer serial", self.analyzer_serial_meta_edit)
         instruments_layout.addRow("Geometry detail", self.geometry_detail_edit)
-        card_layout.addWidget(instruments_card)
+        self._add_metadata_panel("instrument", "Instrument", instruments_card)
 
         raw_card = CardFrame(muted=True)
         raw_card.setProperty("metadataEditorPanel", True)
@@ -946,7 +959,7 @@ class ProjectSitePage(QWidget):
         raw_layout.addRow("Raw timezone", self.raw_timezone_edit)
         raw_layout.addRow("Column mappings (JSON)", self.raw_column_mappings_edit)
         raw_layout.addRow("Raw notes", self.raw_notes_edit)
-        card_layout.addWidget(raw_card)
+        self._add_metadata_panel("raw", "Raw file", raw_card)
 
         raw_settings_card = CardFrame(muted=True)
         raw_settings_card.setProperty("metadataEditorPanel", True)
@@ -967,7 +980,7 @@ class ProjectSitePage(QWidget):
         raw_settings_layout.addRow("Header rows", self.raw_header_rows_spin)
         raw_settings_layout.addRow("Encoding", self.raw_encoding_edit)
         raw_settings_layout.addRow("Missing tokens", self.raw_missing_tokens_edit)
-        card_layout.addWidget(raw_settings_card)
+        self._add_metadata_panel("raw_settings", "Raw settings", raw_settings_card)
 
         biomet_card = CardFrame(muted=True)
         biomet_card.setProperty("metadataEditorPanel", True)
@@ -1004,7 +1017,7 @@ class ProjectSitePage(QWidget):
         biomet_layout.addRow("Fields", self.biomet_fields_edit)
         biomet_layout.addRow("Directory glob", self.biomet_glob_edit)
         biomet_layout.addRow("Biomet notes", self.biomet_notes_edit)
-        card_layout.addWidget(biomet_card)
+        self._add_metadata_panel("biomet", "Biomet", biomet_card)
 
         dynamic_card = CardFrame(muted=True)
         dynamic_card.setProperty("metadataEditorPanel", True)
@@ -1029,7 +1042,7 @@ class ProjectSitePage(QWidget):
         dynamic_layout.addRow("End column", self.dynamic_end_column_edit)
         dynamic_layout.addRow("Dynamic timezone", self.dynamic_timezone_edit)
         dynamic_layout.addRow("Imported records", self.dynamic_record_count_label)
-        card_layout.addWidget(dynamic_card)
+        self._add_metadata_panel("dynamic", "Dynamic", dynamic_card)
 
         profile_card = CardFrame()
         profile_card.setProperty("metadataProfileDock", True)
@@ -1063,8 +1076,29 @@ class ProjectSitePage(QWidget):
         profile_layout.addRow("Alternative metadata profile", self.metadata_profile_combo)
         profile_layout.addRow("Profile actions", profile_buttons)
         profile_layout.addRow("Completeness", self.metadata_status_label)
-        card_layout.addWidget(profile_card)
+        self._add_metadata_panel("profile", "Profile", profile_card)
         layout.addWidget(card)
+
+    def _add_metadata_panel(self, key: str, title: str, panel: CardFrame) -> None:
+        index = self.metadata_editor_stack.addWidget(panel)
+        self.metadata_panel_order.append(key)
+        button = QToolButton()
+        button.setText(title)
+        button.setCheckable(True)
+        button.setProperty("metadataPanelSwitchButton", True)
+        button.setMaximumHeight(28)
+        button.clicked.connect(lambda _checked=False, panel_key=key: self._set_metadata_panel(panel_key))
+        self.metadata_panel_buttons[key] = button
+        self.metadata_panel_switch_layout.addWidget(button, index // 4, index % 4)
+        if index == 0:
+            self._set_metadata_panel(key)
+
+    def _set_metadata_panel(self, key: str) -> None:
+        if key not in self.metadata_panel_order:
+            return
+        self.metadata_editor_stack.setCurrentIndex(self.metadata_panel_order.index(key))
+        for panel_key, button in self.metadata_panel_buttons.items():
+            button.setChecked(panel_key == key)
 
     def _metadata_payload(self) -> dict:
         return {

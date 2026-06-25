@@ -1812,6 +1812,26 @@ def build_stylesheet() -> str:
         border: 1px solid #c8dce4;
         background: rgba(255, 255, 255, 0.88);
     }}
+    QWidget[metadataPanelSwitch="true"] {{
+        background: transparent;
+    }}
+    QToolButton[metadataPanelSwitchButton="true"] {{
+        min-height: 28px;
+        border-radius: 14px;
+        padding: 0 10px;
+        background: rgba(247, 252, 253, 0.88);
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
+        font-weight: 800;
+    }}
+    QToolButton[metadataPanelSwitchButton="true"]:checked {{
+        background: #d8f3f4;
+        border-color: #78bdc6;
+        color: #073848;
+    }}
+    QStackedWidget[metadataEditorStack="true"] {{
+        background: transparent;
+    }}
     QFrame#card[metadataCockpitDock="true"] {{
         border-radius: 18px;
         border: 1px solid #c8d9ca;
