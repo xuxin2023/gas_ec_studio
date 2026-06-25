@@ -119,8 +119,16 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.view_mode_combo.minimumWidth() >= 96
         assert page.report_command_deck.property("cardRole") == "cockpit"
         assert page.report_command_deck.property("deckRole") == "reportCommandDeck"
-        assert page.report_command_deck.maximumHeight() == 146
+        assert page.report_command_deck.maximumHeight() == 156
+        assert page.report_command_summary_card.property("cardRole") == "console"
+        assert page.report_command_summary_card.property("reportCommandSummary") is True
+        assert page.report_command_summary_card.maximumHeight() == 108
         assert page.report_command_chip.text().startswith("待生成")
+        assert page.report_command_next_label.property("compactMetric") is True
+        assert page.report_command_next_label.text()
+        assert page.report_command_next_note.property("reportCommandNextNote") is True
+        assert "->" in page.report_command_next_note.text()
+        assert "report=" not in page.report_command_next_note.text()
         assert page.delivery_status_radar.property("deliveryStatusRadar") is True
         assert page.delivery_status_radar.maximumHeight() == 0
         assert page.delivery_status_radar.isHidden() is True
@@ -134,12 +142,31 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert set(page.report_command_tiles) == {"report", "gate", "network", "benchmark", "methods", "export"}
         assert all(tile.property("cardRole") == "tile" for tile in page.report_command_tiles.values())
         assert page.delivery_closure_strip.property("deliveryClosureStrip") is True
-        assert page.delivery_closure_strip.maximumHeight() == 60
+        assert page.delivery_closure_strip.property("deliveryClosureMatrix") is True
+        assert page.delivery_closure_strip.maximumHeight() == 104
         assert all(tile.property("deliveryClosureTile") is True for tile in page.report_command_tiles.values())
-        assert all(tile.maximumHeight() == 58 for tile in page.report_command_tiles.values())
+        assert all(tile.maximumHeight() == 46 for tile in page.report_command_tiles.values())
+        assert {
+            key: tile.property("commandGroup")
+            for key, tile in page.report_command_tiles.items()
+        } == {
+            "report": "artifact",
+            "gate": "artifact",
+            "network": "validation",
+            "benchmark": "validation",
+            "methods": "validation",
+            "export": "artifact",
+        }
+        closure_grid = page.delivery_closure_strip.layout()
+        assert closure_grid.itemAtPosition(0, 0).widget() is page.report_command_tiles["report"]
+        assert closure_grid.itemAtPosition(0, 1).widget() is page.report_command_tiles["gate"]
+        assert closure_grid.itemAtPosition(0, 2).widget() is page.report_command_tiles["network"]
+        assert closure_grid.itemAtPosition(1, 0).widget() is page.report_command_tiles["benchmark"]
+        assert closure_grid.itemAtPosition(1, 1).widget() is page.report_command_tiles["methods"]
+        assert closure_grid.itemAtPosition(1, 2).widget() is page.report_command_tiles["export"]
         assert all(value.property("compactMetric") is True for value in page.report_command_values.values())
         assert all(chip.property("closureStage") is True for chip in page.report_command_chips.values())
-        assert all(chip.minimumHeight() == 22 for chip in page.report_command_chips.values())
+        assert all(chip.minimumHeight() == 18 for chip in page.report_command_chips.values())
         assert page.report_command_values["report"].text() == "待生成"
         assert page.report_command_values["export"].text() == "待运行"
         assert page.delivery_rail_inspector.property("deckRole") == "deliveryRailInspector"
@@ -437,6 +464,16 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
 
             page._show_delivery_focus("gate")
             app.processEvents()
+            assert_contained(page, page.report_command_deck, page)
+            assert_contained(page.report_command_deck, page.report_command_summary_card, page)
+            assert_contained(page.report_command_deck, page.delivery_closure_strip, page)
+            for tile in page.report_command_tiles.values():
+                assert_contained(page.delivery_closure_strip, tile, page)
+            assert_no_visual_overlap(
+                [page.report_command_summary_card, page.delivery_closure_strip],
+                page,
+            )
+            assert_no_visual_overlap(list(page.report_command_tiles.values()), page)
             assert_contained(page, page.preview_content_splitter, page)
             assert_contained(page.preview_deck_card, page.preview_route_strip, page)
             for button in page.preview_route_buttons.values():
@@ -555,6 +592,10 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_gate_next_value.text() == "交付归档"
         assert page.report_command_chip.text().startswith("可交付")
         assert page.report_command_deck.property("commandStatus") == "success"
+        assert page.report_command_summary_card.property("commandStatus") == "success"
+        assert page.report_command_next_label.text() == page.delivery_gate_next_value.text()
+        assert "->" in page.report_command_next_note.text()
+        assert "report=" not in page.report_command_next_note.text()
         assert page.report_command_values["report"].text() == "3 个"
         assert page.report_command_values["gate"].text() == "可交付"
         assert page.report_command_values["network"].text() == "FLUXNET"

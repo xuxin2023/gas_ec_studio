@@ -846,30 +846,59 @@ class ReportCenterPage(QWidget):
         card = CardFrame(role="cockpit")
         card.setProperty("deckRole", "reportCommandDeck")
         card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
-        card.setMaximumHeight(146)
+        card.setMaximumHeight(156)
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_md)
+        layout.setSpacing(TOKENS.spacing_sm)
 
-        intro = QVBoxLayout()
-        intro.setSpacing(TOKENS.spacing_xs)
-        intro.addWidget(section_title("交付总控", "报告、门槛、网络、对标、方法和导出状态固定在首屏。"))
+        self.report_command_summary_card = CardFrame(muted=True, role="console")
+        self.report_command_summary_card.setProperty("reportCommandSummary", True)
+        self.report_command_summary_card.setMaximumHeight(108)
+        self.report_command_summary_card.setMinimumWidth(210)
+        self.report_command_summary_card.setMaximumWidth(260)
+        self.report_command_summary_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        intro = QVBoxLayout(self.report_command_summary_card)
+        intro.setContentsMargins(TOKENS.spacing_sm, 4, TOKENS.spacing_sm, 4)
+        intro.setSpacing(2)
+        intro.addWidget(section_title("交付总控", "总览、下一步和六项交付状态固定在首屏。"))
+        summary_line = QHBoxLayout()
+        summary_line.setContentsMargins(0, 0, 0, 0)
+        summary_line.setSpacing(TOKENS.spacing_xs)
         self.report_command_chip = chip("待生成", "warning")
-        intro.addWidget(self.report_command_chip)
+        self.report_command_chip.setMaximumHeight(22)
+        summary_line.addWidget(self.report_command_chip)
+        self.report_command_next_label = QLabel("--")
+        self.report_command_next_label.setObjectName("metricValue")
+        self.report_command_next_label.setProperty("compactMetric", True)
+        self.report_command_next_label.setMaximumHeight(22)
+        self.report_command_next_label.setWordWrap(False)
+        self.report_command_next_label.setMinimumWidth(0)
+        self.report_command_next_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        summary_line.addWidget(self.report_command_next_label, 1)
+        intro.addLayout(summary_line)
+        self.report_command_next_note = QLabel("--")
+        self.report_command_next_note.setObjectName("subtitle")
+        self.report_command_next_note.setProperty("reportCommandNextNote", True)
+        self.report_command_next_note.setMaximumHeight(18)
+        self.report_command_next_note.setWordWrap(False)
+        self.report_command_next_note.setMinimumWidth(0)
+        self.report_command_next_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        intro.addWidget(self.report_command_next_note)
         self.delivery_status_radar = self._build_delivery_status_radar()
         self.delivery_status_radar.setMaximumHeight(0)
         self.delivery_status_radar.setVisible(False)
         intro.addWidget(self.delivery_status_radar)
-        layout.addLayout(intro)
+        layout.addWidget(self.report_command_summary_card)
 
         self.delivery_closure_strip = QWidget()
         self.delivery_closure_strip.setProperty("deliveryClosureStrip", True)
-        self.delivery_closure_strip.setMaximumHeight(60)
+        self.delivery_closure_strip.setProperty("deliveryClosureMatrix", True)
+        self.delivery_closure_strip.setMaximumHeight(104)
         self.delivery_closure_strip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         grid = QGridLayout(self.delivery_closure_strip)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(TOKENS.spacing_xs)
-        grid.setVerticalSpacing(0)
+        grid.setVerticalSpacing(TOKENS.spacing_xs)
         self.report_command_tiles: dict[str, CardFrame] = {}
         self.report_command_values: dict[str, QLabel] = {}
         self.report_command_notes: dict[str, QLabel] = {}
@@ -883,8 +912,8 @@ class ReportCenterPage(QWidget):
             ("export", "导出"),
         ]
         for index, (key, title) in enumerate(items):
-            grid.addWidget(self._report_command_tile(key, title), 0, index)
-            grid.setColumnStretch(index, 1)
+            grid.addWidget(self._report_command_tile(key, title), index // 3, index % 3)
+            grid.setColumnStretch(index % 3, 1)
         layout.addWidget(self.delivery_closure_strip, 1)
         return card
 
@@ -941,11 +970,12 @@ class ReportCenterPage(QWidget):
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("commandKey", key)
         tile.setProperty("deliveryClosureTile", True)
-        tile.setMinimumHeight(54)
-        tile.setMaximumHeight(58)
+        tile.setProperty("commandGroup", "artifact" if key in {"report", "gate", "export"} else "validation")
+        tile.setMinimumHeight(42)
+        tile.setMaximumHeight(46)
         layout = QVBoxLayout(tile)
-        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
-        layout.setSpacing(1)
+        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
+        layout.setSpacing(0)
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
         label = QLabel(_ui_safe_text(title))
@@ -955,10 +985,10 @@ class ReportCenterPage(QWidget):
         status_chip = chip("待检查", "warning")
         status_chip.setProperty("closureStage", True)
         status_chip.setAlignment(Qt.AlignCenter)
-        status_chip.setMinimumWidth(52)
-        status_chip.setMaximumWidth(66)
-        status_chip.setMinimumHeight(22)
-        status_chip.setMaximumHeight(24)
+        status_chip.setMinimumWidth(48)
+        status_chip.setMaximumWidth(62)
+        status_chip.setMinimumHeight(18)
+        status_chip.setMaximumHeight(20)
         status_chip.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         top.addWidget(label)
         top.addStretch(1)
@@ -967,13 +997,13 @@ class ReportCenterPage(QWidget):
         value.setObjectName("metricValue")
         value.setProperty("compactMetric", True)
         value.setMinimumWidth(0)
-        value.setMaximumHeight(20)
+        value.setMaximumHeight(16)
         value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         value.setWordWrap(False)
         note = QLabel("--")
         note.setObjectName("subtitle")
         note.setMinimumWidth(0)
-        note.setMaximumHeight(16)
+        note.setMaximumHeight(14)
         note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         note.setWordWrap(False)
         layout.addLayout(top)
@@ -3008,10 +3038,11 @@ class ReportCenterPage(QWidget):
         self._set_report_command_tile("methods", methods["value"], methods["note"], methods["tone"])
         export_value = "已导出" if export_done else ("可导出" if exportable_count > 0 else "待运行")
         export_tone = "success" if export_done else ("accent" if exportable_count > 0 else "warning")
+        export_note = f"{report_title} | {export_status}"
         self._set_report_command_tile(
             "export",
             export_value,
-            f"report={selected_report} | {export_status}",
+            export_note,
             export_tone,
         )
         self._refresh_delivery_status_radar(
@@ -3019,7 +3050,7 @@ class ReportCenterPage(QWidget):
                 "network": (network["value"], network["note"], network["tone"]),
                 "benchmark": (benchmark["value"], benchmark["note"], benchmark["tone"]),
                 "methods": (methods["value"], methods["note"], methods["tone"]),
-                "export": (export_value, f"report={selected_report} | {export_status}", export_tone),
+                "export": (export_value, export_note, export_tone),
             }
         )
 
@@ -3039,6 +3070,18 @@ class ReportCenterPage(QWidget):
         else:
             deck_text, deck_tone = "待生成", "warning"
         self._set_chip(self.report_command_chip, f"{deck_text} · {success_count}/6", deck_tone)
+        next_action = str(self.delivery_gate_next_value.text() or "--")
+        next_note = str(self.delivery_gate_next_note.toolTip() or self.delivery_gate_next_note.text() or "--")
+        self.report_command_next_label.setText(_ui_safe_text(next_action if len(next_action) <= 14 else f"{next_action[:13]}..."))
+        self.report_command_next_label.setToolTip(_ui_safe_text(next_note))
+        current_label = report_title if len(report_title) <= 10 else f"{report_title[:9]}..."
+        next_label = next_action if len(next_action) <= 10 else f"{next_action[:9]}..."
+        next_summary = f"{current_label} -> {next_label}"
+        self.report_command_next_note.setText(_ui_safe_text(next_summary if len(next_summary) <= 34 else f"{next_summary[:31]}..."))
+        self.report_command_next_note.setToolTip(_ui_safe_text(next_note))
+        self.report_command_summary_card.setProperty("commandStatus", deck_tone)
+        self.report_command_summary_card.style().unpolish(self.report_command_summary_card)
+        self.report_command_summary_card.style().polish(self.report_command_summary_card)
         self.report_command_deck.setProperty("commandStatus", deck_tone)
         self.report_command_deck.style().unpolish(self.report_command_deck)
         self.report_command_deck.style().polish(self.report_command_deck)

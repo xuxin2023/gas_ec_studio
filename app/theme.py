@@ -1057,17 +1057,50 @@ def build_stylesheet() -> str:
         font-weight: 800;
         padding: 0;
     }}
+    QFrame#cardMuted[reportCommandSummary="true"] {{
+        border-radius: 15px;
+        border: 1px solid #bfd8df;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f8fcfd,
+            stop: 0.56 #ffffff,
+            stop: 1 #eef8f2
+        );
+    }}
+    QFrame#cardMuted[reportCommandSummary="true"][commandStatus="success"] {{
+        border-color: #9fd2bb;
+    }}
+    QFrame#cardMuted[reportCommandSummary="true"][commandStatus="accent"] {{
+        border-color: #94c9d3;
+    }}
+    QFrame#cardMuted[reportCommandSummary="true"][commandStatus="warning"] {{
+        border-color: #e6c98e;
+    }}
+    QLabel[reportCommandNextNote="true"] {{
+        color: #527081;
+        font-size: 10px;
+        font-weight: 700;
+    }}
     QWidget[deliveryClosureStrip="true"] {{
-        max-height: 60px;
+        max-height: 104px;
+    }}
+    QWidget[deliveryClosureStrip="true"][deliveryClosureMatrix="true"] {{
+        background: transparent;
     }}
     QFrame#cardMuted[deliveryClosureTile="true"] {{
-        border-radius: 13px;
+        border-radius: 12px;
         border: 1px solid #d1e2e8;
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,
             stop: 0 rgba(255, 255, 255, 0.94),
             stop: 1 rgba(239, 248, 249, 0.84)
         );
+    }}
+    QFrame#cardMuted[deliveryClosureTile="true"][commandGroup="artifact"] {{
+        border-left: 3px solid #8bbfca;
+    }}
+    QFrame#cardMuted[deliveryClosureTile="true"][commandGroup="validation"] {{
+        border-left: 3px solid #d7ad70;
     }}
     QFrame#cardMuted[deliveryClosureTile="true"][commandTone="success"] {{
         background: #f1fbf5;
@@ -1082,7 +1115,7 @@ def build_stylesheet() -> str:
         border-color: #e6c98e;
     }}
     QFrame#cardMuted[deliveryClosureTile="true"] QLabel#metricValue[compactMetric="true"] {{
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 800;
     }}
     QFrame#cardMuted[reportPreviewWorkbench="true"] {{
