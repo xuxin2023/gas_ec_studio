@@ -1957,6 +1957,40 @@ def build_stylesheet() -> str:
         border: 1px solid #d0e1e7;
         background: rgba(255, 255, 255, 0.76);
     }}
+    QFrame#cardMuted[deliveryDetailStatusHeader="true"] {{
+        border-radius: 13px;
+        border: 1px solid #c4dbe2;
+        border-left: 4px solid #8bbfca;
+        background: rgba(247, 252, 253, 0.90);
+    }}
+    QFrame#cardMuted[deliveryDetailStatusHeader="true"][detailTone="success"] {{
+        border-color: #9cccb4;
+        border-left-color: #2f9b67;
+        background: rgba(242, 251, 246, 0.94);
+    }}
+    QFrame#cardMuted[deliveryDetailStatusHeader="true"][detailTone="accent"] {{
+        border-color: #a9d0da;
+        border-left-color: #0c7a86;
+        background: rgba(239, 249, 251, 0.94);
+    }}
+    QFrame#cardMuted[deliveryDetailStatusHeader="true"][detailTone="warning"] {{
+        border-color: #e1c387;
+        border-left-color: #d0922c;
+        background: rgba(255, 249, 236, 0.94);
+    }}
+    QFrame#cardMuted[deliveryDetailStatusHeader="true"] QLabel[deliveryDetailStatusTitle="true"] {{
+        font-size: 14px;
+        font-weight: 900;
+        color: #092f3a;
+    }}
+    QFrame#cardMuted[deliveryDetailStatusHeader="true"] QLabel[deliveryDetailStatusNote="true"] {{
+        font-size: 10px;
+        color: #56717a;
+    }}
+    QFrame#cardMuted[deliveryDetailStatusHeader="true"] QLabel#chip[deliveryDetailStatusChip="true"] {{
+        font-size: 10px;
+        padding: 1px 5px;
+    }}
     QFrame#cardMuted[batchMetricTile="true"] {{
         border-radius: 11px;
         border: 1px solid #d2e3e9;

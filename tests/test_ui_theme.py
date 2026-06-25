@@ -252,6 +252,13 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[deliveryGateTile="true"] QLabel#chip' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateTile="true"] QLabel#metricValue[compactMetric="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryDetailShell="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryDetailStatusHeader="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryDetailStatusHeader="true"][detailTone="success"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryDetailStatusHeader="true"][detailTone="accent"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryDetailStatusHeader="true"][detailTone="warning"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryDetailStatusHeader="true"] QLabel[deliveryDetailStatusTitle="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryDetailStatusHeader="true"] QLabel[deliveryDetailStatusNote="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryDetailStatusHeader="true"] QLabel#chip[deliveryDetailStatusChip="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryBatchPanel="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryInspectorSection="true"]' in stylesheet
     assert 'QFrame#cardMuted[batchMetricTile="true"]' in stylesheet

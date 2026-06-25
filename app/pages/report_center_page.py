@@ -74,6 +74,8 @@ class ReportCenterPage(QWidget):
         self.delivery_status_radar_cards: dict[str, CardFrame] = {}
         self.delivery_status_radar_values: dict[str, QLabel] = {}
         self.delivery_status_radar_notes: dict[str, QLabel] = {}
+        self.delivery_detail_section_state: dict[str, tuple[str, str, str, str]] = {}
+        self.delivery_detail_active_section = "export"
         self.delivery_mission_buttons: dict[str, QToolButton] = {}
         self.delivery_bridge_buttons: dict[str, QToolButton] = {}
         self.delivery_mission_active_key = "report"
@@ -738,6 +740,9 @@ class ReportCenterPage(QWidget):
             switch_row.addWidget(button)
         switch_row.addStretch(1)
         inspector_layout.addLayout(switch_row)
+
+        self.delivery_detail_status_header = self._build_delivery_detail_status_header()
+        inspector_layout.addWidget(self.delivery_detail_status_header)
 
         self.inspector_stack = QStackedWidget()
         self.inspector_stack.setProperty("stackRole", "deliveryDetailInspectorStack")
@@ -4487,7 +4492,9 @@ class ReportCenterPage(QWidget):
         card = self.inspector_sections.get(section)
         if card is None:
             return
+        self.delivery_detail_active_section = section
         self.inspector_stack.setCurrentWidget(card)
+        self._refresh_delivery_detail_status_header(section)
         for key, button in self.inspector_switches.items():
             button.blockSignals(True)
             button.setChecked(key == section)
@@ -4559,6 +4566,38 @@ class ReportCenterPage(QWidget):
         manifest_ready = any("manifest" in str(key).lower() or "清单" in str(key) for key in file_info)
         network_file = next((str(value) for key, value in file_info.items() if "network" in str(key).lower() or "网络" in str(key)), "")
         network_ready = bool(network_file) or network_summary.get("tone") == "success"
+        file_ready_count = int(bool(file_info)) + int(manifest_ready) + int(network_ready)
+        file_tone = "success" if file_ready_count == 3 else ("accent" if file_ready_count else "warning")
+        version_ready = source != "--" and updated_at != "--"
+        version_tone = "success" if version_ready else ("accent" if versions else "warning")
+        usage_tone = "success" if usage else "accent"
+        self.delivery_detail_section_state = {
+            "export": (
+                "导出链路",
+                "已导出" if export_done else ("可导出" if export_options else "待生成"),
+                export_status,
+                export_tone,
+            ),
+            "file": (
+                "交付文件",
+                f"{file_ready_count}/3",
+                " / ".join(file_info.keys()) or network_summary.get("note", "导出后显示交付文件和校验清单。"),
+                file_tone,
+            ),
+            "version": (
+                "版本来源",
+                "已记录" if version_ready else ("部分记录" if versions else "待补"),
+                f"来源：{source}；更新：{updated_at}",
+                version_tone,
+            ),
+            "usage": (
+                "使用建议",
+                f"{len(usage)} 条" if usage else "默认建议",
+                " / ".join(usage[:2]) or f"当前视图：{view_mode}；结合门槛矩阵完成交付判断。",
+                usage_tone,
+            ),
+        }
+        self._refresh_delivery_detail_status_header(self.delivery_detail_active_section)
 
         self._clear_layout(self.export_content)
         self._add_inspector_tile(
@@ -4691,6 +4730,73 @@ class ReportCenterPage(QWidget):
         if view_mode == "管理汇报":
             return [base[0] if base else "当前批次整体可汇报。", "建议配合底部批次区一起说明差异。"]
         return base or ["当前报告暂无额外结论。"]
+
+    def _build_delivery_detail_status_header(self) -> CardFrame:
+        header = CardFrame(muted=True, role="console")
+        header.setProperty("deckRole", "deliveryDetailStatusHeader")
+        header.setProperty("deliveryDetailStatusHeader", True)
+        header.setProperty("detailSection", "export")
+        header.setProperty("detailTone", "warning")
+        header.setMinimumHeight(58)
+        header.setMaximumHeight(64)
+        layout = QGridLayout(header)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(0)
+
+        label = QLabel("当前详情")
+        label.setObjectName("metricLabel")
+        label.setProperty("deliveryDetailStatusLabel", True)
+        self.delivery_detail_status_title = QLabel("--")
+        self.delivery_detail_status_title.setObjectName("metricValue")
+        self.delivery_detail_status_title.setProperty("compactMetric", True)
+        self.delivery_detail_status_title.setProperty("deliveryDetailStatusTitle", True)
+        self.delivery_detail_status_title.setWordWrap(False)
+        self.delivery_detail_status_chip = chip("待生成", "warning")
+        self.delivery_detail_status_chip.setProperty("deliveryDetailStatusChip", True)
+        self.delivery_detail_status_chip.setAlignment(Qt.AlignCenter)
+        self.delivery_detail_status_chip.setMinimumWidth(52)
+        self.delivery_detail_status_chip.setMaximumWidth(76)
+        self.delivery_detail_status_note = QLabel("--")
+        self.delivery_detail_status_note.setObjectName("subtitle")
+        self.delivery_detail_status_note.setProperty("deliveryDetailStatusNote", True)
+        self.delivery_detail_status_note.setWordWrap(False)
+        self.delivery_detail_status_note.setMinimumWidth(0)
+        self.delivery_detail_status_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.delivery_detail_status_note.setMaximumHeight(18)
+
+        layout.addWidget(label, 0, 0)
+        layout.addWidget(self.delivery_detail_status_title, 0, 1)
+        layout.addWidget(self.delivery_detail_status_chip, 0, 2)
+        layout.addWidget(self.delivery_detail_status_note, 1, 0, 1, 3)
+        layout.setColumnStretch(1, 1)
+        self._refresh_delivery_detail_status_header("export")
+        return header
+
+    def _refresh_delivery_detail_status_header(self, section: str) -> None:
+        if not hasattr(self, "delivery_detail_status_header"):
+            return
+        title, status, note, tone = self.delivery_detail_section_state.get(
+            section,
+            {
+                "export": ("导出链路", "待生成", "生成报告后显示可用导出动作。", "warning"),
+                "file": ("交付文件", "0/3", "导出后显示 manifest、network 和方法清单。", "warning"),
+                "version": ("版本来源", "待补", "报告生成后显示来源和更新时间。", "warning"),
+                "usage": ("使用建议", "默认建议", "结合门槛矩阵和报告预览使用。", "accent"),
+            }.get(section, ("交付详情", "--", "选择一个详情分段查看。", "warning")),
+        )
+        display_note = _ui_safe_text(note)
+        self.delivery_detail_status_title.setText(_ui_safe_text(title))
+        self._set_chip(self.delivery_detail_status_chip, _ui_safe_text(status), tone)
+        self.delivery_detail_status_note.setText(display_note if len(display_note) <= 42 else f"{display_note[:41]}...")
+        self.delivery_detail_status_note.setToolTip(display_note)
+        self.delivery_detail_status_title.setToolTip(display_note)
+        self.delivery_detail_status_header.setToolTip(display_note)
+        self.delivery_detail_status_header.setProperty("detailSection", section)
+        self.delivery_detail_status_header.setProperty("detailTone", tone)
+        for widget in (self.delivery_detail_status_header, self.delivery_detail_status_title, self.delivery_detail_status_note):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
 
     def _inspector_card(self, title: str, subtitle: str) -> tuple[CardFrame, QVBoxLayout]:
         card = CardFrame(muted=True, role="panel")

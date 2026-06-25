@@ -560,6 +560,14 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.inspector_stack.currentWidget() is page.file_card
         assert page.inspector_switches["file"].isChecked() is True
         assert page.inspector_switches["export"].isChecked() is False
+        assert page.delivery_detail_status_header.property("deliveryDetailStatusHeader") is True
+        assert page.delivery_detail_status_header.property("detailSection") == "file"
+        assert page.delivery_detail_status_header.property("detailTone") in {"warning", "accent", "success"}
+        assert page.delivery_detail_status_title.text() == "交付文件"
+        assert page.delivery_detail_status_chip.property("deliveryDetailStatusChip") is True
+        assert page.delivery_detail_status_chip.text().endswith("/3")
+        assert page.delivery_detail_status_note.property("deliveryDetailStatusNote") is True
+        assert page.delivery_detail_status_note.toolTip()
         page._show_delivery_focus("batch")
         assert page.delivery_focus_stack.currentWidget() is page.batch_card
         assert page.batch_card.property("deliveryBatchPanel") is True
@@ -976,9 +984,15 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         page.delivery_bridge_buttons["package"].click()
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.inspector_stack.currentWidget() is page.export_card
+        assert page.delivery_detail_status_header.property("detailSection") == "export"
+        assert page.delivery_detail_status_header.property("detailTone") == "success"
+        assert page.delivery_detail_status_title.text() == "导出链路"
+        assert page.delivery_detail_status_chip.text() == "已导出"
         page.delivery_rail_risk_button.click()
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.inspector_stack.currentWidget() is page.usage_card
+        assert page.delivery_detail_status_header.property("detailSection") == "usage"
+        assert page.delivery_detail_status_title.text() == "使用建议"
         assert page.report_tree_active_chip.text().startswith("运行")
         assert page.preview_content_card.property("plotStatus") == "series"
         assert page.preview_content_card.property("activePane") == "plot"
