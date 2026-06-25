@@ -185,6 +185,16 @@ def build_stylesheet() -> str:
         );
         border: 1px solid #bfd8df;
     }}
+    QFrame#card[reportFilterDock="true"][compactReportFilter="true"] {{
+        border-radius: 14px;
+        border-color: #a9cbd3;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #ffffff,
+            stop: 0.58 #f4fbfd,
+            stop: 1 #e0f2ed
+        );
+    }}
     QFrame#card[cardRole="cockpit"] {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,
@@ -193,6 +203,10 @@ def build_stylesheet() -> str:
             stop: 1 #e9f7f1
         );
         border: 1px solid #c7dccf;
+    }}
+    QFrame#card[compactReportCommandDeck="true"] {{
+        border-radius: 16px;
+        border-color: #b9d4c5;
     }}
     QFrame#cardMuted[cardRole="tile"] {{
         background: rgba(255, 255, 255, 0.88);
@@ -1290,6 +1304,15 @@ def build_stylesheet() -> str:
             stop: 1 #eef8f2
         );
     }}
+    QFrame#cardMuted[reportCommandSummary="true"][compactReportCommandSummary="true"] {{
+        border-radius: 12px;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f9fdfe,
+            stop: 0.66 #ffffff,
+            stop: 1 #eef7ef
+        );
+    }}
     QFrame#cardMuted[reportCommandSummary="true"][commandStatus="success"] {{
         border-color: #9fd2bb;
     }}
@@ -1307,6 +1330,9 @@ def build_stylesheet() -> str:
     QWidget[deliveryClosureStrip="true"] {{
         max-height: 104px;
     }}
+    QWidget[deliveryClosureStrip="true"][compactClosureMatrix="true"] {{
+        max-height: 92px;
+    }}
     QWidget[deliveryClosureStrip="true"][deliveryClosureMatrix="true"] {{
         background: transparent;
     }}
@@ -1318,6 +1344,9 @@ def build_stylesheet() -> str:
             stop: 0 rgba(255, 255, 255, 0.94),
             stop: 1 rgba(239, 248, 249, 0.84)
         );
+    }}
+    QFrame#cardMuted[deliveryClosureTile="true"][compactClosureTile="true"] {{
+        border-radius: 10px;
     }}
     QFrame#cardMuted[deliveryClosureTile="true"][commandGroup="artifact"] {{
         border-left: 3px solid #8bbfca;

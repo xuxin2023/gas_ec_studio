@@ -129,15 +129,20 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#card[reportPreviewHeaderDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[previewCommandDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[previewCommandTile="true"]' in stylesheet
+    assert 'QFrame#card[reportFilterDock="true"][compactReportFilter="true"]' in stylesheet
+    assert 'QFrame#card[compactReportCommandDeck="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryStatusRadar="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryStatusRadarCell="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryStatusRadarCell="true"] QLabel#metricValue[compactMetric="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportCommandSummary="true"]' in stylesheet
+    assert 'QFrame#cardMuted[reportCommandSummary="true"][compactReportCommandSummary="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportCommandSummary="true"][commandStatus="success"]' in stylesheet
     assert 'QLabel[reportCommandNextNote="true"]' in stylesheet
     assert 'QWidget[deliveryClosureStrip="true"]' in stylesheet
     assert 'QWidget[deliveryClosureStrip="true"][deliveryClosureMatrix="true"]' in stylesheet
+    assert 'QWidget[deliveryClosureStrip="true"][compactClosureMatrix="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryClosureTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryClosureTile="true"][compactClosureTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryClosureTile="true"][commandGroup="artifact"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryClosureTile="true"][commandGroup="validation"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryClosureTile="true"][commandTone="success"]' in stylesheet

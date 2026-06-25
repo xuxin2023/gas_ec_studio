@@ -204,16 +204,20 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_evidence_button.property("actionTone") == "warning"
         page.delivery_rail_risk_button.click()
         assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
-        assert page.filter_bar.maximumHeight() == 104
+        assert page.filter_bar.property("reportFilterDock") is True
+        assert page.filter_bar.property("compactReportFilter") is True
+        assert page.filter_bar.maximumHeight() == 76
         assert page.project_combo.minimumWidth() >= 108
         assert page.batch_combo.minimumWidth() >= 108
         assert page.view_mode_combo.minimumWidth() >= 96
         assert page.report_command_deck.property("cardRole") == "cockpit"
         assert page.report_command_deck.property("deckRole") == "reportCommandDeck"
-        assert page.report_command_deck.maximumHeight() == 156
+        assert page.report_command_deck.property("compactReportCommandDeck") is True
+        assert page.report_command_deck.maximumHeight() == 122
         assert page.report_command_summary_card.property("cardRole") == "console"
         assert page.report_command_summary_card.property("reportCommandSummary") is True
-        assert page.report_command_summary_card.maximumHeight() == 108
+        assert page.report_command_summary_card.property("compactReportCommandSummary") is True
+        assert page.report_command_summary_card.maximumHeight() == 86
         assert page.report_command_chip.text().startswith("待生成")
         assert page.report_command_next_label.property("compactMetric") is True
         assert page.report_command_next_label.text()
@@ -234,9 +238,11 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert all(tile.property("cardRole") == "tile" for tile in page.report_command_tiles.values())
         assert page.delivery_closure_strip.property("deliveryClosureStrip") is True
         assert page.delivery_closure_strip.property("deliveryClosureMatrix") is True
-        assert page.delivery_closure_strip.maximumHeight() == 104
+        assert page.delivery_closure_strip.property("compactClosureMatrix") is True
+        assert page.delivery_closure_strip.maximumHeight() == 92
         assert all(tile.property("deliveryClosureTile") is True for tile in page.report_command_tiles.values())
-        assert all(tile.maximumHeight() == 46 for tile in page.report_command_tiles.values())
+        assert all(tile.property("compactClosureTile") is True for tile in page.report_command_tiles.values())
+        assert all(tile.maximumHeight() == 42 for tile in page.report_command_tiles.values())
         assert {
             key: tile.property("commandGroup")
             for key, tile in page.report_command_tiles.items()
