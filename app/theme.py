@@ -232,6 +232,48 @@ def build_stylesheet() -> str:
         border-color: #c8dce5;
         border-radius: {TOKENS.radius_md}px;
     }}
+    QFrame#cardMuted[cardRole="tile"][launchRouteTile="true"] {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #fbfefe,
+            stop: 0.58 #ffffff,
+            stop: 1 #f2f8ec
+        );
+        border-left: 3px solid #8bbfca;
+    }}
+    QFrame#cardMuted[cardRole="tile"][launchRouteTile="true"][routeTone="success"] {{
+        border-color: #9fd2bb;
+        border-left-color: #42a36b;
+        background: #f0fbf5;
+    }}
+    QFrame#cardMuted[cardRole="tile"][launchRouteTile="true"][routeTone="accent"] {{
+        border-color: #94c9d3;
+        border-left-color: #0f8492;
+        background: #edf9fb;
+    }}
+    QFrame#cardMuted[cardRole="tile"][launchRouteTile="true"][routeTone="warning"] {{
+        border-color: #e6c98e;
+        border-left-color: #d69a2d;
+        background: #fff7e4;
+    }}
+    QLabel[launchRouteNumber="true"],
+    QLabel[launchRouteStatusChip="true"] {{
+        font-size: 9px;
+        font-weight: 900;
+        padding: 0 4px;
+    }}
+    QLabel[launchRouteLabel="true"] {{
+        color: #31586a;
+        font-size: 10px;
+        font-weight: 900;
+    }}
+    QPushButton[launchRouteButton="true"] {{
+        min-height: 20px;
+        border-radius: 11px;
+        padding: 0 8px;
+        font-size: 10px;
+        font-weight: 900;
+    }}
     QFrame#cardMuted[cardRole="rail"] {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,

@@ -25,6 +25,12 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[cardRole="tile"][commandTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"][evidenceTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"][routeAction="true"]' in stylesheet
+    assert 'QFrame#cardMuted[cardRole="tile"][launchRouteTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[cardRole="tile"][launchRouteTile="true"][routeTone="success"]' in stylesheet
+    assert 'QFrame#cardMuted[cardRole="tile"][launchRouteTile="true"][routeTone="accent"]' in stylesheet
+    assert 'QFrame#cardMuted[cardRole="tile"][launchRouteTile="true"][routeTone="warning"]' in stylesheet
+    assert 'QLabel[launchRouteStatusChip="true"]' in stylesheet
+    assert 'QPushButton[launchRouteButton="true"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="rail"][navRailWorkbench="true"]' in stylesheet
     assert 'QWidget[navBrandBlock="true"]' in stylesheet
     assert 'QLabel[navRailNote="true"]' in stylesheet

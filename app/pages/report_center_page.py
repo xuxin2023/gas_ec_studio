@@ -493,6 +493,7 @@ class ReportCenterPage(QWidget):
         center_layout.insertWidget(0, self.preview_deck_card)
 
         self.closure_deck_card = CardFrame(muted=True, role="rail")
+        self.closure_deck_card.setProperty("closureLaunchDeck", True)
         closure_deck_layout = QVBoxLayout(self.closure_deck_card)
         closure_deck_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         closure_deck_layout.setSpacing(TOKENS.spacing_md)
@@ -1681,6 +1682,8 @@ class ReportCenterPage(QWidget):
             ("4", "检查验证包", "打开验证包页，注册或审计行业参考 raw-to-final 证据。", "打开验证包", self._open_fixture_pack_report),
         ]
         self.empty_state_action_buttons: dict[str, QPushButton] = {}
+        self.empty_state_route_tiles: dict[str, CardFrame] = {}
+        self.empty_state_route_status_chips: dict[str, QLabel] = {}
         for index, (number, title, note, button_text, callback) in enumerate(actions):
             route_grid.addWidget(
                 self._empty_state_action_tile(number, title, note, button_text, callback),
@@ -1700,20 +1703,44 @@ class ReportCenterPage(QWidget):
     ) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("routeAction", True)
-        tile.setMinimumHeight(56)
-        tile.setMaximumHeight(66)
+        tile.setProperty("launchRouteTile", True)
+        tile.setProperty("routeStep", button_text)
+        tile.setProperty("routeTone", "warning")
+        tile.setMinimumHeight(50)
+        tile.setMaximumHeight(58)
         tile_layout = QVBoxLayout(tile)
         tile_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         tile_layout.setSpacing(1)
+        step_row = QHBoxLayout()
+        step_row.setContentsMargins(0, 0, 0, 0)
+        step_row.setSpacing(TOKENS.spacing_xs)
+        number_chip = chip(_ui_safe_text(number), "accent")
+        number_chip.setProperty("launchRouteNumber", True)
+        number_chip.setAlignment(Qt.AlignCenter)
+        number_chip.setMinimumWidth(22)
+        number_chip.setMaximumHeight(16)
+        status_chip = chip("待运行", "warning")
+        status_chip.setProperty("launchRouteStatusChip", True)
+        status_chip.setAlignment(Qt.AlignCenter)
+        status_chip.setMaximumHeight(16)
+        step_row.addWidget(number_chip)
+        step_row.addStretch(1)
+        step_row.addWidget(status_chip)
         label = QLabel(_ui_safe_text(f"{number}. {title}"))
         label.setObjectName("metricLabel")
+        label.setProperty("launchRouteLabel", True)
+        label.setMaximumHeight(14)
         label.setWordWrap(True)
         label.setToolTip(_ui_safe_text(note))
         button = QPushButton(_ui_safe_text(button_text))
-        button.setMaximumHeight(24)
+        button.setMaximumHeight(20)
+        button.setProperty("launchRouteButton", True)
         button.setToolTip(_ui_safe_text(note))
         button.clicked.connect(callback)
         self.empty_state_action_buttons[button_text] = button
+        self.empty_state_route_tiles[button_text] = tile
+        self.empty_state_route_status_chips[button_text] = status_chip
+        tile_layout.addLayout(step_row)
         tile_layout.addWidget(label)
         tile_layout.addWidget(button)
         return tile
@@ -4213,6 +4240,30 @@ class ReportCenterPage(QWidget):
             button = self.empty_state_action_buttons.get(key)
             if button is not None:
                 button.setEnabled(has_real_result)
+        route_states = (
+            {
+                "运行处理": ("可启动", "accent"),
+                "生成报告": ("锁定", "warning"),
+                "导出": ("锁定", "warning"),
+                "打开验证包": ("可打开", "accent"),
+            }
+            if not has_real_result
+            else {
+                "运行处理": ("可重跑", "accent"),
+                "生成报告": ("可生成", "success"),
+                "导出": ("可导出", "success"),
+                "打开验证包": ("可审计", "success"),
+            }
+        )
+        for key, (status, tone) in route_states.items():
+            status_chip = self.empty_state_route_status_chips.get(key)
+            tile = self.empty_state_route_tiles.get(key)
+            if status_chip is not None:
+                self._set_chip(status_chip, status, tone)
+            if tile is not None:
+                tile.setProperty("routeTone", tone)
+                tile.style().unpolish(tile)
+                tile.style().polish(tile)
 
     def _show_inspector_section(self, section: str) -> None:
         card = self.inspector_sections.get(section)
