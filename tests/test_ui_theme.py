@@ -226,6 +226,10 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[deliveryFocusStatusBar="true"][focusTone="warning"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryFocusStatusBar="true"] QLabel[deliveryFocusStatusValue="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryFocusStatusBar="true"] QLabel#chip[deliveryFocusStatusChip="true"]' in stylesheet
+    assert 'QToolButton[previewPaneSwitch="true"][previewPaneTone="success"]' in stylesheet
+    assert 'QToolButton[previewPaneSwitch="true"][previewPaneTone="accent"]' in stylesheet
+    assert 'QToolButton[previewPaneSwitch="true"][previewPaneTone="warning"]' in stylesheet
+    assert 'QToolButton[previewPaneSwitch="true"][activePreviewPane="true"]' in stylesheet
     assert 'QFrame#card[deliveryGateCompact="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateHero="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateHero="true"][deliveryGateLayer="summary"]' in stylesheet

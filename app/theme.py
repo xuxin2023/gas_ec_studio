@@ -865,6 +865,35 @@ def build_stylesheet() -> str:
         color: #ffffff;
         font-weight: 800;
     }}
+    QToolButton[previewPaneSwitch="true"][previewPaneTone="success"] {{
+        border-color: #9fd2bb;
+        background: #f1fbf5;
+        color: #236642;
+        font-weight: 800;
+    }}
+    QToolButton[previewPaneSwitch="true"][previewPaneTone="accent"] {{
+        border-color: #94c9d3;
+        background: #eef9fb;
+        color: #0c6670;
+        font-weight: 800;
+    }}
+    QToolButton[previewPaneSwitch="true"][previewPaneTone="warning"] {{
+        border-color: #e6c98e;
+        background: #fff7e4;
+        color: #7a5615;
+        font-weight: 800;
+    }}
+    QToolButton[previewPaneSwitch="true"][activePreviewPane="true"],
+    QToolButton[previewPaneSwitch="true"]:checked {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 {TOKENS.color_accent},
+            stop: 1 #0f8990
+        );
+        border: 1px solid {TOKENS.color_accent_hover};
+        color: #ffffff;
+        font-weight: 900;
+    }}
     QToolButton[shellModeToggle="true"] {{
         min-height: 52px;
         min-width: 48px;

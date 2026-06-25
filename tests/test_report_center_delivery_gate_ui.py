@@ -384,6 +384,13 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_deck_card.property("activePane") == "table"
         assert page.preview_pane_switcher.property("deckRole") == "previewPaneSwitcher"
         assert all(button.property("previewPaneSwitch") is True for button in page.preview_content_switches.values())
+        assert all(button.property("previewPaneStatus") for button in page.preview_content_switches.values())
+        assert all(
+            button.property("previewPaneTone") in {"success", "accent", "warning"}
+            for button in page.preview_content_switches.values()
+        )
+        assert page.preview_content_switches["table"].property("activePreviewPane") is True
+        assert "·" in page.preview_content_switches["table"].text()
         assert page.preview_analysis_strip.property("deckRole") == "reportPreviewAnalysisStrip"
         assert page.preview_analysis_strip.property("reportPreviewAnalysisStrip") is True
         assert page.preview_analysis_strip.property("analysisMode") == "table"
@@ -496,6 +503,8 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         page._show_preview_content_mode("insight")
         assert page.preview_content_card.property("activePane") == "insight"
         assert page.preview_deck_card.property("activePane") == "insight"
+        assert page.preview_content_switches["insight"].property("activePreviewPane") is True
+        assert page.preview_content_switches["table"].property("activePreviewPane") is False
         assert page.preview_analysis_strip.property("analysisMode") == "insight"
         assert page.preview_analysis_value.text()
         assert page.preview_insight_card.isHidden() is False
@@ -1054,11 +1063,18 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.preview_analysis_chip.property("chipTone") == "accent"
         assert page.preview_plot.isHidden() is False
         assert page.preview_content_switches["plot"].isChecked() is True
+        assert page.preview_content_switches["plot"].property("activePreviewPane") is True
+        assert page.preview_content_switches["plot"].property("previewPaneTone") == "accent"
+        assert page.preview_content_switches["plot"].property("previewPaneStatus") == "2点"
+        assert page.preview_content_switches["table"].property("previewPaneStatus") == "2x3"
+        assert page.preview_content_switches["insight"].property("previewPaneStatus") == "2条"
         assert page.preview_table.maximumHeight() == 106
         page._show_preview_content_mode("table")
         assert page.preview_table.isHidden() is False
+        assert page.preview_content_switches["table"].property("activePreviewPane") is True
         page._show_preview_content_mode("insight")
         assert page.preview_insight_card.isHidden() is False
+        assert page.preview_content_switches["insight"].property("activePreviewPane") is True
         page._show_delivery_focus("details")
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.inspector_detail_values["export.status"].text() == "已导出"

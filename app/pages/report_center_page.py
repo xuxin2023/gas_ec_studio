@@ -1428,6 +1428,10 @@ class ReportCenterPage(QWidget):
             button.setCheckable(True)
             button.setProperty("viewSwitch", True)
             button.setProperty("previewPaneSwitch", True)
+            button.setProperty("previewPaneMode", mode)
+            button.setProperty("previewPaneTone", "warning")
+            button.setProperty("previewPaneStatus", "WT")
+            button.setProperty("activePreviewPane", False)
             button.setMinimumWidth(58)
             button.setMaximumHeight(28)
             button.clicked.connect(lambda _checked=False, key=mode: self._show_preview_content_mode(key))
@@ -2348,10 +2352,31 @@ class ReportCenterPage(QWidget):
             button.blockSignals(False)
             button.style().unpolish(button)
             button.style().polish(button)
+        self._refresh_preview_pane_switch_statuses(mode)
         if hasattr(self, "preview_route_buttons"):
             self._refresh_preview_route_buttons("preview")
         if hasattr(self, "preview_workbench_buttons"):
             self._sync_preview_workbench_active("insight" if mode == "insight" else "data")
+
+    def _refresh_preview_pane_switch_statuses(self, active_mode: str = "table") -> None:
+        if not hasattr(self, "preview_content_switches"):
+            return
+        defaults = {
+            "plot": ("图表", "无序列", "暂无可绘制序列。", "warning"),
+            "table": ("表格", "WT", "等待表格内容刷新。", "warning"),
+            "insight": ("结论", "WT", "等待结论摘要刷新。", "warning"),
+        }
+        summary = getattr(self, "preview_pane_status_summary", {}) or {}
+        for mode, button in self.preview_content_switches.items():
+            title, status, note, tone = summary.get(mode, defaults[mode])
+            compact_status = self._compact_radar_value(str(status), max_chars=5)
+            button.setText(_ui_safe_text(f"{title} · {compact_status}"))
+            button.setToolTip(_ui_safe_text(str(note)))
+            button.setProperty("previewPaneStatus", compact_status)
+            button.setProperty("previewPaneTone", tone)
+            button.setProperty("activePreviewPane", mode == active_mode)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def _set_preview_workbench_segment(self, key: str, title: str, status: str, note: str, tone: str) -> None:
         button = self.preview_workbench_buttons.get(key)
@@ -2609,6 +2634,30 @@ class ReportCenterPage(QWidget):
 
         conclusions = self._conclusions_for_mode(report, view_mode)
         self._refresh_preview_insight_panel(conclusions, view_mode=view_mode, report_key=report_key)
+        self.preview_pane_status_summary = {
+            "plot": (
+                "图表",
+                f"{len(plot_series)}点" if has_plot_data else "无序列",
+                (
+                    f"当前图表序列包含 {len(plot_series)} 个点。"
+                    if has_plot_data
+                    else "当前报告没有可绘制序列，优先查看表格和结论。"
+                ),
+                "accent" if has_plot_data else "warning",
+            ),
+            "table": (
+                "表格",
+                f"{len(rows)}x{len(headers)}" if rows else "空表",
+                f"当前表格包含 {len(rows)} 行、{len(headers)} 列；用于追溯报告证据。",
+                "success" if rows else "warning",
+            ),
+            "insight": (
+                "结论",
+                f"{len(conclusions)}条" if conclusions else "空",
+                f"当前视图可用于汇报的结论：{len(conclusions)} 条。",
+                "success" if conclusions else "warning",
+            ),
+        }
         data_tone = "success" if rows else ("accent" if has_plot_data else "warning")
         data_status = f"{len(rows)}x{len(headers)}" if rows else ("序列" if has_plot_data else "WT")
         data_note = (
