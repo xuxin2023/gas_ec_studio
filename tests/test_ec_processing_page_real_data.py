@@ -76,7 +76,8 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.run_mission_strip.property("runMissionStrip") is True
         assert page.run_mission_strip.maximumHeight() == 28
         assert set(page.run_mission_values) == {"step", "status", "gate"}
-        assert page.run_mission_values["status"].text() == "empty"
+        assert page.run_mission_values["status"].text() == "待运行"
+        assert page.run_mission_values["status"].toolTip() == "内部状态: empty"
         assert page.run_mission_values["gate"].text() == page.coverage_gate_chip.text()
         assert all(value.property("runMissionValue") is True for value in page.run_mission_values.values())
         assert page.run_summary_label.property("runMissionText") is True
@@ -153,6 +154,10 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.cockpit_card.property("cardRole") == "cockpit"
         assert page.cockpit_card.property("deckRole") == "processingCockpitDeck"
         assert page.cockpit_card.property("processingCockpitWorkbench") is True
+        assert page.cockpit_benchmark_value.text() == "未启用"
+        assert "status=未启用" in page.cockpit_benchmark_note.text()
+        assert page.rp_closure_values["benchmark"].text() == "未启用"
+        assert "status=未启用" in page.rp_closure_notes["benchmark"].toolTip()
         assert page.rail_focus_card.property("cardRole") == "panel"
         assert page.rail_focus_card.property("processingClosureFocusDeck") is True
         assert page.rail_focus_stack.count() == 2

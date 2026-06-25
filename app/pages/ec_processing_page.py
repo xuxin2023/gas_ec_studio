@@ -377,7 +377,7 @@ class ECProcessingPage(QWidget):
         mission_layout.setContentsMargins(TOKENS.spacing_sm, 0, TOKENS.spacing_sm, 0)
         mission_layout.setSpacing(TOKENS.spacing_xs)
         self.run_mission_values: dict[str, QLabel] = {}
-        for key, title in (("step", "Step"), ("status", "Run"), ("gate", "Gate")):
+        for key, title in (("step", "步骤"), ("status", "运行"), ("gate", "交付")):
             label = QLabel(title)
             label.setObjectName("metricLabel")
             label.setProperty("runMissionLabel", True)
@@ -668,7 +668,7 @@ class ECProcessingPage(QWidget):
         action_row.setHorizontalSpacing(TOKENS.spacing_xs)
         action_row.setVerticalSpacing(2)
         self.desktop_rail_action_button = QToolButton()
-        self.desktop_rail_action_button.setText("下步")
+        self.desktop_rail_action_button.setText("下一步")
         self.desktop_rail_action_button.setProperty("railAction", True)
         self.desktop_rail_action_button.setProperty("railMissionAction", True)
         self.desktop_rail_action_button.clicked.connect(self._activate_desktop_rail_action)
@@ -1764,7 +1764,7 @@ class ECProcessingPage(QWidget):
         current = self._current_window()
         status = str(summary.get("status", "empty") or "empty")
         status_tone = "success" if status == "ok" else ("warning" if status == "empty" else "accent")
-        run_value = "已运行" if current is not None else status
+        run_value = "已运行" if current is not None else self._ui_status_label(status)
         run_note = (
             f"windows={summary.get('valid_window_count', 0)}/{summary.get('window_count', 0)}"
             if current is not None
@@ -1816,7 +1816,7 @@ class ECProcessingPage(QWidget):
             risk_tone = closure_tone
             risk_display_note = closure_note
 
-        action_value = "下步"
+        action_value = "下一步"
         risk_value = "就绪" if risk_tone == "success" else "风险"
         self._set_desktop_rail_status_tile("step", step_title, self.controller.ec_nav_step, "accent")
         self._set_desktop_rail_status_tile("run", run_value, run_note, status_tone)
@@ -1884,8 +1884,8 @@ class ECProcessingPage(QWidget):
             step_title = step_titles.get(step_key, step_key)
             status_label, step_tone, step_note = statuses.get(step_key, ("--", "warning", "--"))
             self._set_step_command_tile(step_key, "step", step_title, status_label, step_note, step_tone)
-            self._set_step_command_tile(step_key, "run", run_value, "RP run", run_note, run_tone)
-            self._set_step_command_tile(step_key, "closure", closure_value, "delivery gate", closure_note, closure_tone)
+            self._set_step_command_tile(step_key, "run", run_value, "RP 状态", run_note, run_tone)
+            self._set_step_command_tile(step_key, "closure", closure_value, "交付门", closure_note, closure_tone)
             strip_tone = "accent" if step_key == active_key else step_tone
             strip.setProperty("evidenceTone", strip_tone)
             strip.style().unpolish(strip)
@@ -1971,9 +1971,7 @@ class ECProcessingPage(QWidget):
             foreground, background = palette.get(tone, palette["warning"])
             display_label = {
                 "待运行": "待跑",
-                "寰呰繍琛?": "待跑",
                 "可交付": "交付",
-                "鍙氦浠?": "交付",
             }.get(label, label)
             item.setText(1, display_label)
             item.setData(1, Qt.UserRole, tone)
@@ -3957,8 +3955,10 @@ class ECProcessingPage(QWidget):
         summary = workspace.get("summary", {})
         step_title = dict((key, title) for key, title, _subtitle in EC_STEPS).get(self.controller.ec_nav_step, "当前步骤")
         status = str(summary.get("status", "empty"))
+        status_label = self._ui_status_label(status)
         tone = "success" if status == "ok" else ("warning" if status == "empty" else "accent")
-        self.run_status_chip.setText(f"{step_title} · {status}")
+        self.run_status_chip.setText(f"{step_title} · {status_label}")
+        self.run_status_chip.setToolTip(f"内部状态: {status}")
         self.run_status_chip.setProperty("chipTone", tone)
         self.run_status_chip.style().unpolish(self.run_status_chip)
         self.run_status_chip.style().polish(self.run_status_chip)
@@ -3967,7 +3967,8 @@ class ECProcessingPage(QWidget):
             gate = getattr(self, "coverage_gate_chip", None)
             gate_text = gate.text() if gate is not None else "--"
             self.run_mission_values["step"].setText(step_title)
-            self.run_mission_values["status"].setText(status)
+            self.run_mission_values["status"].setText(status_label)
+            self.run_mission_values["status"].setToolTip(f"内部状态: {status}")
             self.run_mission_values["gate"].setText(gate_text)
         self._refresh_workflow_lens()
         self._refresh_desktop_rail_status_strip()
@@ -3978,8 +3979,9 @@ class ECProcessingPage(QWidget):
         workspace = self.controller.ec_processing_workspace
         summary = dict(workspace.get("summary", {}) or {})
         status = str(summary.get("status", "empty") or "empty")
+        status_label = self._ui_status_label(status)
         status_tone = "success" if status == "ok" else ("warning" if status == "empty" else "danger")
-        self._set_cockpit_chip(f"RP {status}", status_tone)
+        self._set_cockpit_chip(f"RP {status_label}", status_tone)
 
         footprint_method = self._current_combo_text("footprint_method_combo", "kljun")
         uncertainty_method = self._current_combo_text("uncertainty_mode_combo", "mann_lenschow")
@@ -4036,10 +4038,11 @@ class ECProcessingPage(QWidget):
         failed_fields = run_summary.get("failed_fields", deviation.get("failed_fields", []))
         if isinstance(failed_fields, str):
             failed_fields = [failed_fields]
-        benchmark_value = self._format_percent(pass_rate) if isinstance(pass_rate, (int, float)) else benchmark_status
+        benchmark_status_label = self._ui_status_label(benchmark_status)
+        benchmark_value = self._format_percent(pass_rate) if isinstance(pass_rate, (int, float)) else benchmark_status_label
         self.cockpit_benchmark_value.setText(benchmark_value)
         self.cockpit_benchmark_note.setText(
-            f"status={benchmark_status}，ref={run_summary.get('benchmark_reference_id') or benchmark_state.get('reference_id') or '--'}，"
+            f"status={benchmark_status_label}，ref={run_summary.get('benchmark_reference_id') or benchmark_state.get('reference_id') or '--'}，"
             f"failed={len(failed_fields or [])}"
         )
 
@@ -4118,13 +4121,14 @@ class ECProcessingPage(QWidget):
         failed_fields = run_summary.get("failed_fields", deviation.get("failed_fields", []))
         if isinstance(failed_fields, str):
             failed_fields = [failed_fields]
-        benchmark_value = self._format_percent(pass_rate) if isinstance(pass_rate, (int, float)) else benchmark_status
+        benchmark_status_label = self._ui_status_label(benchmark_status)
+        benchmark_value = self._format_percent(pass_rate) if isinstance(pass_rate, (int, float)) else benchmark_status_label
         benchmark_active = benchmark_status.lower() not in {"", "--", "inactive", "not_requested", "no_rp_result"}
         benchmark_tone = "success" if benchmark_active and isinstance(pass_rate, (int, float)) else ("accent" if benchmark_active else "warning")
         self._set_rp_closure_tile(
             "benchmark",
             benchmark_value,
-            f"ref={run_summary.get('benchmark_reference_id') or benchmark_state.get('reference_id') or '--'}，failed={len(failed_fields or [])}",
+            f"status={benchmark_status_label}，ref={run_summary.get('benchmark_reference_id') or benchmark_state.get('reference_id') or '--'}，failed={len(failed_fields or [])}",
             benchmark_tone,
         )
 
@@ -4227,6 +4231,22 @@ class ECProcessingPage(QWidget):
         if abs(numeric) <= 1.0:
             numeric *= 100.0
         return f"{numeric:.1f}%"
+
+    def _ui_status_label(self, status: object) -> str:
+        text = str(status or "--").strip()
+        key = text.lower().replace(" ", "_")
+        labels = {
+            "empty": "待运行",
+            "ok": "已运行",
+            "inactive": "未启用",
+            "not_requested": "未启用",
+            "no_rp_result": "无结果",
+            "not_exported": "尚未导出",
+            "disabled": "未启用",
+            "ready": "就绪",
+            "review": "复核",
+        }
+        return labels.get(key, text or "--")
 
     def _compact_text(self, value: object, max_chars: int) -> str:
         text = str(value or "--").strip() or "--"

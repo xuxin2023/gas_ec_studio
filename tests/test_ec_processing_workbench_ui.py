@@ -70,7 +70,7 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.desktop_rail_stack.maximumHeight() == 210
         assert set(page.desktop_rail_status_values) == {"step", "run", "closure"}
         assert page.desktop_rail_status_values["step"].text()
-        assert page.desktop_rail_status_values["run"].text() == "empty"
+        assert page.desktop_rail_status_values["run"].text() == "待运行"
         assert page.desktop_rail_status_values["closure"].text() == page.coverage_gate_chip.text()
         assert page.desktop_rail_action_button.property("railAction") is True
         assert page.desktop_rail_risk_button.property("railAction") is True
@@ -83,7 +83,7 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert all(tile.property("railMissionTile") is True for tile in page.desktop_rail_status_tiles.values())
         assert page.desktop_rail_action_button.text()
         assert page.desktop_rail_risk_button.text()
-        assert page.desktop_rail_action_button.text() == "下步"
+        assert page.desktop_rail_action_button.text() == "下一步"
         assert page.desktop_rail_risk_button.text() == "就绪"
         assert page.desktop_rail_run_button.text() == "运行"
         assert page.desktop_rail_coverage_button.text() == "覆盖"
@@ -96,7 +96,7 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert active_strip.property("stepCommandDock") is True
         assert active_strip.maximumHeight() == 68
         assert page.step_command_values["window_sampling"]["step"].text()
-        assert page.step_command_values["window_sampling"]["run"].text() == "empty"
+        assert page.step_command_values["window_sampling"]["run"].text() == "待运行"
         assert page.step_command_values["window_sampling"]["closure"].text() == page.coverage_gate_chip.text()
         assert all(
             tile.property("stepCommandTile") is True
