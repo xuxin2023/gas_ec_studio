@@ -224,6 +224,9 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[deliveryGateHero="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateHero="true"][deliveryGateLayer="summary"]' in stylesheet
     assert 'QWidget[deliveryGateLayeredMatrix="true"]' in stylesheet
+    assert 'QToolButton[deliveryGateDetailToggle="true"]' in stylesheet
+    assert 'QToolButton[deliveryGateDetailToggle="true"]:hover' in stylesheet
+    assert 'QToolButton[deliveryGateDetailToggle="true"][detailState="open"]' in stylesheet
     assert 'QWidget[deliveryGateGroupStrip="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateGroupTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateGroupTile="true"][gateGroupKey="artifact"]' in stylesheet

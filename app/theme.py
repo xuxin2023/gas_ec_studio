@@ -1824,6 +1824,24 @@ def build_stylesheet() -> str:
     QWidget[deliveryGateLayeredMatrix="true"] {{
         background: transparent;
     }}
+    QToolButton[deliveryGateDetailToggle="true"] {{
+        border-radius: 9px;
+        border: 1px solid #bcd7de;
+        background: rgba(255, 255, 255, 0.72);
+        color: #23505a;
+        font-size: 10px;
+        font-weight: 800;
+        padding: 2px 8px;
+    }}
+    QToolButton[deliveryGateDetailToggle="true"]:hover {{
+        border-color: #7fb4c0;
+        background: rgba(239, 249, 251, 0.92);
+    }}
+    QToolButton[deliveryGateDetailToggle="true"][detailState="open"] {{
+        border-color: #0c7a86;
+        background: rgba(222, 246, 248, 0.96);
+        color: #073f46;
+    }}
     QWidget[deliveryGateGroupStrip="true"] {{
         background: transparent;
     }}

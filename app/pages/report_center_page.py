@@ -1763,6 +1763,15 @@ class ReportCenterPage(QWidget):
         gate_title.setToolTip("把交付前必须一致的状态压缩成一个检查矩阵。")
         header.addWidget(gate_title)
         header.addStretch(1)
+        self.delivery_gate_detail_toggle = QToolButton()
+        self.delivery_gate_detail_toggle.setText("明细")
+        self.delivery_gate_detail_toggle.setCheckable(True)
+        self.delivery_gate_detail_toggle.setAutoRaise(True)
+        self.delivery_gate_detail_toggle.setProperty("deliveryGateDetailToggle", True)
+        self.delivery_gate_detail_toggle.setProperty("detailState", "closed")
+        self.delivery_gate_detail_toggle.setToolTip("展开六项交付检查明细。")
+        self.delivery_gate_detail_toggle.toggled.connect(self._set_delivery_gate_details_expanded)
+        header.addWidget(self.delivery_gate_detail_toggle)
         self.delivery_gate_chip = chip("待生成", "warning")
         header.addWidget(self.delivery_gate_chip)
         layout.addLayout(header)
@@ -1878,6 +1887,11 @@ class ReportCenterPage(QWidget):
         next_layout.addStretch(1)
         next_layout.addWidget(self.delivery_gate_next_value)
         layout.addWidget(self.delivery_gate_next_card)
+        self.delivery_gate_scroll.setVisible(False)
+        self.delivery_gate_scroll.setMinimumHeight(0)
+        self.delivery_gate_scroll.setMaximumHeight(0)
+        card.setMinimumHeight(126)
+        card.setProperty("deliveryGateDetailsExpanded", False)
         return card
 
     def _delivery_gate_group_card(self, key: str, title: str, note: str) -> CardFrame:
@@ -3888,6 +3902,24 @@ class ReportCenterPage(QWidget):
             tile.setProperty("gateGroupTone", tone)
             tile.style().unpolish(tile)
             tile.style().polish(tile)
+
+    def _set_delivery_gate_details_expanded(self, expanded: bool) -> None:
+        self.delivery_gate_scroll.setVisible(expanded)
+        self.delivery_gate_scroll.setMinimumHeight(58 if expanded else 0)
+        self.delivery_gate_scroll.setMaximumHeight(60 if expanded else 0)
+        self.delivery_gate_card.setMinimumHeight(184 if expanded else 126)
+        self.delivery_gate_card.setProperty("deliveryGateDetailsExpanded", expanded)
+        self.delivery_gate_detail_toggle.blockSignals(True)
+        self.delivery_gate_detail_toggle.setChecked(expanded)
+        self.delivery_gate_detail_toggle.blockSignals(False)
+        self.delivery_gate_detail_toggle.setText("收起" if expanded else "明细")
+        self.delivery_gate_detail_toggle.setToolTip(
+            "收起六项交付检查明细。" if expanded else "展开六项交付检查明细。"
+        )
+        self.delivery_gate_detail_toggle.setProperty("detailState", "open" if expanded else "closed")
+        for widget in (self.delivery_gate_card, self.delivery_gate_detail_toggle):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
 
     def _refresh_delivery_gate_hero(
         self,
