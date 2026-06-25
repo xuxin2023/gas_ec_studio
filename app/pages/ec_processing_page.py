@@ -337,6 +337,7 @@ class ECProcessingPage(QWidget):
         card = CardFrame(role="command")
         card.setProperty("deckRole", "runCommandRibbon")
         card.setProperty("runCommandDock", True)
+        card.setProperty("processingRunCommandDock", True)
         card.setMaximumHeight(74)
         card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout = QGridLayout(card)
@@ -421,6 +422,7 @@ class ECProcessingPage(QWidget):
         card = CardFrame(role="cockpit")
         self.rp_closure_deck = card
         card.setProperty("deckRole", "rpClosureDeck")
+        card.setProperty("processingClosureDeck", True)
         card.setMaximumHeight(92)
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
@@ -570,6 +572,7 @@ class ECProcessingPage(QWidget):
 
     def _build_desktop_rail(self) -> CardFrame:
         rail = CardFrame(muted=True, role="rail")
+        rail.setProperty("ecProcessingMissionRail", True)
         rail.setMinimumWidth(280)
         rail.setMaximumWidth(340)
         layout = QVBoxLayout(rail)
@@ -592,6 +595,7 @@ class ECProcessingPage(QWidget):
 
         self.desktop_rail_inspector = CardFrame(role="panel")
         self.desktop_rail_inspector.setProperty("deckRole", "ecRailInspector")
+        self.desktop_rail_inspector.setProperty("ecRailInspectorCockpit", True)
         self.desktop_rail_inspector.setMinimumWidth(0)
         self.desktop_rail_inspector.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         inspector_layout = QVBoxLayout(self.desktop_rail_inspector)
@@ -647,6 +651,7 @@ class ECProcessingPage(QWidget):
         card = CardFrame(muted=True, role="rail")
         card.setProperty("deckRole", "ecRailStatusStrip")
         card.setProperty("railMissionDeck", True)
+        card.setProperty("ecRailStatusConsole", True)
         card.setMaximumHeight(108)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
@@ -735,6 +740,7 @@ class ECProcessingPage(QWidget):
         card = CardFrame(muted=True, role="console")
         card.setProperty("deckRole", "ecMethodShortcutDeck")
         card.setProperty("ecMethodShortcutDeck", True)
+        card.setProperty("methodShortcutCommandDeck", True)
         card.setMaximumHeight(96)
         card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(card)
@@ -796,6 +802,7 @@ class ECProcessingPage(QWidget):
     def _build_workflow_lens_panel(self) -> CardFrame:
         card = CardFrame(role="panel")
         card.setProperty("deckRole", "workflowLensCompact")
+        card.setProperty("processingWorkflowLensDeck", True)
         card.setMinimumWidth(0)
         card.setMaximumHeight(170)
         card.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
@@ -845,6 +852,7 @@ class ECProcessingPage(QWidget):
 
     def _build_rail_focus_panel(self) -> CardFrame:
         card = CardFrame(role="panel")
+        card.setProperty("processingClosureFocusDeck", True)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_sm)
@@ -934,6 +942,7 @@ class ECProcessingPage(QWidget):
     def _build_processing_cockpit(self) -> CardFrame:
         card = CardFrame(role="cockpit")
         card.setProperty("deckRole", "processingCockpitDeck")
+        card.setProperty("processingCockpitWorkbench", True)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         layout.setSpacing(TOKENS.spacing_sm)
@@ -1010,6 +1019,7 @@ class ECProcessingPage(QWidget):
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("methodTile", True)
         tile.setProperty("methodConsoleTile", True)
+        tile.setProperty("methodConsoleWorkbenchTile", True)
         tile.setProperty("methodKey", key)
         tile.setProperty("evidenceTone", "warning")
         tile.setProperty("methodTone", "warning")

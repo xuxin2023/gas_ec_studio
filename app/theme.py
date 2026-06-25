@@ -933,6 +933,15 @@ def build_stylesheet() -> str:
             stop: 1 #f8fbef
         );
     }}
+    QFrame#cardMuted[ecMethodShortcutDeck="true"][methodShortcutCommandDeck="true"] {{
+        border-left: 4px solid #d5ac68;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #fffdf4,
+            stop: 0.54 #f6fbfb,
+            stop: 1 #edf8fa
+        );
+    }}
     QLabel[methodShortcutValue="true"] {{
         color: #123c4c;
         font-size: 13px;
@@ -1030,6 +1039,10 @@ def build_stylesheet() -> str:
             stop: 0 rgba(255, 255, 255, 0.94),
             stop: 1 rgba(239, 248, 249, 0.84)
         );
+    }}
+    QFrame#cardMuted[methodConsoleTile="true"][methodConsoleWorkbenchTile="true"] {{
+        border-radius: 10px;
+        border-left: 3px solid #8abec8;
     }}
     QFrame#cardMuted[methodConsoleTile="true"][methodTone="success"] {{
         background: #f1fbf5;
@@ -1134,6 +1147,66 @@ def build_stylesheet() -> str:
             stop: 0 #edf9fa,
             stop: 0.45 #ffffff,
             stop: 1 #e7f5f1
+        );
+    }}
+    QFrame#card[runCommandDock="true"][processingRunCommandDock="true"] {{
+        border-color: #91c1cb;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #e8f7f7,
+            stop: 0.28 #ffffff,
+            stop: 0.72 #fbf7eb,
+            stop: 1 #e1f4f1
+        );
+    }}
+    QFrame#card[processingClosureDeck="true"] {{
+        border-radius: 16px;
+        border: 1px solid #b7d2c3;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #eef9f3,
+            stop: 0.48 #ffffff,
+            stop: 1 #f8f3df
+        );
+    }}
+    QFrame#cardMuted[ecProcessingMissionRail="true"] {{
+        border-radius: 18px;
+        border: 1px solid #bed7df;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 0, y2: 1,
+            stop: 0 #f5fbfb,
+            stop: 0.52 #eef7f8,
+            stop: 1 #f7f4e8
+        );
+    }}
+    QFrame#card[ecRailInspectorCockpit="true"] {{
+        border-radius: 16px;
+        border: 1px solid #c7dce3;
+        background: rgba(255, 255, 255, 0.82);
+    }}
+    QFrame#cardMuted[railMissionDeck="true"][ecRailStatusConsole="true"] {{
+        border-left: 4px solid #79b2bd;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f1fafb,
+            stop: 0.58 #ffffff,
+            stop: 1 #f7efd9
+        );
+    }}
+    QFrame#card[processingWorkflowLensDeck="true"],
+    QFrame#card[processingClosureFocusDeck="true"] {{
+        border-radius: 16px;
+        border: 1px solid #c8dce4;
+        background: rgba(255, 255, 255, 0.78);
+    }}
+    QFrame#card[processingCockpitWorkbench="true"] {{
+        border-radius: 16px;
+        border: 1px solid #9fcbd3;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #ebf8f9,
+            stop: 0.62 #ffffff,
+            stop: 1 #f6f0dc
         );
     }}
     QFrame#cardMuted[runMissionStrip="true"] {{

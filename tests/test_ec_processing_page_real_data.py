@@ -69,6 +69,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert "尚未生成真实 RP 结果" in page.run_summary_label.text()
         assert page.run_bar.property("cardRole") == "command"
         assert page.run_bar.property("deckRole") == "runCommandRibbon"
+        assert page.run_bar.property("processingRunCommandDock") is True
         assert page.run_bar.maximumHeight() == 74
         assert page.data_source_combo.property("runRibbonField") is True
         assert page.time_range_combo.property("runRibbonField") is True
@@ -85,6 +86,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert any(button.property("variant") == "primary" for button in run_actions)
         assert page.rp_closure_deck.property("cardRole") == "cockpit"
         assert page.rp_closure_deck.property("deckRole") == "rpClosureDeck"
+        assert page.rp_closure_deck.property("processingClosureDeck") is True
         assert page.rp_closure_deck.maximumHeight() == 92
         assert page.rp_closure_deck.property("closureMode") == "compact"
         assert page.rp_closure_mode_buttons["compact"].isChecked() is True
@@ -129,6 +131,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.step_items["lag"].text(1) == "待跑"
         assert page.step_items["uncertainty"].data(1, Qt.UserRole) in {"warning", "danger"}
         assert page.desktop_rail.property("cardRole") == "rail"
+        assert page.desktop_rail.property("ecProcessingMissionRail") is True
         assert page.desktop_rail.minimumWidth() == 280
         assert page.desktop_rail.maximumWidth() == 340
         assert page.desktop_rail_scroll.objectName() == "railScroll"
@@ -136,23 +139,29 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.desktop_rail_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.desktop_rail_scroll.widget() is page.desktop_rail_body
         assert page.desktop_rail_inspector.property("deckRole") == "ecRailInspector"
+        assert page.desktop_rail_inspector.property("ecRailInspectorCockpit") is True
         assert page.desktop_rail_stack.count() == 3
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
         assert set(page.desktop_rail_status_tiles) == {"step", "run", "closure"}
         assert page.desktop_rail_action_button.property("railAction") is True
         assert page.desktop_rail_risk_button.property("railAction") is True
+        assert page.desktop_rail_status_strip.property("ecRailStatusConsole") is True
+        assert page.method_shortcut_card.property("methodShortcutCommandDeck") is True
         assert page.desktop_rail_action_button.text() != "--"
         assert page.desktop_rail_risk_button.text() != "--"
         assert page.cockpit_card.property("cardRole") == "cockpit"
         assert page.cockpit_card.property("deckRole") == "processingCockpitDeck"
+        assert page.cockpit_card.property("processingCockpitWorkbench") is True
         assert page.rail_focus_card.property("cardRole") == "panel"
+        assert page.rail_focus_card.property("processingClosureFocusDeck") is True
         assert page.rail_focus_stack.count() == 2
         assert page.rail_focus_stack.currentWidget() is page.readiness_card
         assert page.rail_focus_buttons["readiness"].isChecked() is True
         assert page.readiness_card.property("cardRole") == "panel"
         assert page.workflow_lens_card.property("cardRole") == "panel"
         assert page.workflow_lens_card.property("deckRole") == "workflowLensCompact"
+        assert page.workflow_lens_card.property("processingWorkflowLensDeck") is True
         assert page.workflow_lens_card.maximumHeight() == 170
         assert page.workflow_lens_active_note.maximumHeight() == 32
         assert page.output_coverage_card.property("cardRole") == "panel"
@@ -187,6 +196,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert set(page.method_console_tiles) == {"footprint", "uncertainty", "spectral"}
         assert all(tile.property("methodTile") is True for tile in page.method_console_tiles.values())
         assert all(tile.property("methodConsoleTile") is True for tile in page.method_console_tiles.values())
+        assert all(tile.property("methodConsoleWorkbenchTile") is True for tile in page.method_console_tiles.values())
         assert all(tile.property("methodTone") in {"success", "accent", "warning", "danger"} for tile in page.method_console_tiles.values())
         assert all(tile.property("cardRole") == "tile" for tile in page.method_console_tiles.values())
         assert len(page.method_field_labels) >= 20

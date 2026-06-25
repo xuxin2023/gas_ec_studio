@@ -28,6 +28,7 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         page.refresh()
 
         assert page.run_bar.property("runCommandDock") is True
+        assert page.run_bar.property("processingRunCommandDock") is True
         assert page.run_bar.maximumHeight() == 74
         assert page.data_source_combo.maximumHeight() == 28
         assert page.time_range_combo.maximumHeight() == 28
@@ -42,13 +43,17 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.step_phase_map.maximumHeight() == 78
         assert set(page.step_phase_buttons) == {"project", "core", "advanced", "delivery"}
         assert all(button.property("stepPhaseTile") is True for button in page.step_phase_buttons.values())
+        assert page.desktop_rail.property("ecProcessingMissionRail") is True
         assert page.desktop_rail_inspector.property("deckRole") == "ecRailInspector"
+        assert page.desktop_rail_inspector.property("ecRailInspectorCockpit") is True
         assert page.desktop_rail_inspector.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Fixed
         assert page.desktop_rail_status_strip.property("deckRole") == "ecRailStatusStrip"
         assert page.desktop_rail_status_strip.property("railMissionDeck") is True
+        assert page.desktop_rail_status_strip.property("ecRailStatusConsole") is True
         assert page.desktop_rail_status_strip.maximumHeight() == 108
         assert page.method_shortcut_card.property("deckRole") == "ecMethodShortcutDeck"
         assert page.method_shortcut_card.property("ecMethodShortcutDeck") is True
+        assert page.method_shortcut_card.property("methodShortcutCommandDeck") is True
         assert page.method_shortcut_card.maximumHeight() == 96
         assert set(page.method_shortcut_buttons) == {"footprint", "uncertainty", "spectral"}
         assert all(button.property("methodShortcut") is True for button in page.method_shortcut_buttons.values())
@@ -130,8 +135,12 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.method_family_control_values["spectral"]["gate"].text() in {"ready", "review", "disabled"}
         assert set(page.method_console_tiles) == {"footprint", "uncertainty", "spectral"}
         assert all(tile.property("methodConsoleTile") is True for tile in page.method_console_tiles.values())
+        assert all(tile.property("methodConsoleWorkbenchTile") is True for tile in page.method_console_tiles.values())
         assert all(tile.property("methodTone") in {"success", "accent", "warning", "danger"} for tile in page.method_console_tiles.values())
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
+        assert page.workflow_lens_card.property("processingWorkflowLensDeck") is True
+        assert page.rail_focus_card.property("processingClosureFocusDeck") is True
+        assert page.cockpit_card.property("processingCockpitWorkbench") is True
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
         assert page.rail_focus_stack.count() == 2
         assert page.rail_focus_stack.currentWidget() is page.readiness_card

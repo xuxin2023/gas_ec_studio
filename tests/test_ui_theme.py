@@ -99,6 +99,7 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QLabel[methodShortcutValue="true"]' in stylesheet
     assert 'QToolButton[methodShortcut="true"][methodTone="warning"]' in stylesheet
     assert 'QToolButton[methodShortcut="true"][activeMethodShortcut="true"]' in stylesheet
+    assert 'QFrame#cardMuted[ecMethodShortcutDeck="true"][methodShortcutCommandDeck="true"]' in stylesheet
     assert 'QFrame#cardMuted[ecProcessRail="true"]' in stylesheet
     assert 'QWidget[stepPhaseMap="true"]' in stylesheet
     assert 'QToolButton[stepPhaseTile="true"]' in stylesheet
@@ -109,6 +110,14 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QLabel[logLatestLine="true"]' in stylesheet
     assert 'QToolButton[logPanelAction="true"]' in stylesheet
     assert 'QFrame#card[runCommandDock="true"]' in stylesheet
+    assert 'QFrame#card[runCommandDock="true"][processingRunCommandDock="true"]' in stylesheet
+    assert 'QFrame#card[processingClosureDeck="true"]' in stylesheet
+    assert 'QFrame#cardMuted[ecProcessingMissionRail="true"]' in stylesheet
+    assert 'QFrame#card[ecRailInspectorCockpit="true"]' in stylesheet
+    assert 'QFrame#cardMuted[railMissionDeck="true"][ecRailStatusConsole="true"]' in stylesheet
+    assert 'QFrame#card[processingWorkflowLensDeck="true"]' in stylesheet
+    assert 'QFrame#card[processingClosureFocusDeck="true"]' in stylesheet
+    assert 'QFrame#card[processingCockpitWorkbench="true"]' in stylesheet
     assert 'QFrame#cardMuted[runMissionStrip="true"]' in stylesheet
     assert 'QLabel[runMissionLabel="true"]' in stylesheet
     assert 'QLabel[runMissionValue="true"]' in stylesheet
@@ -123,6 +132,7 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QToolButton[railAction="true"][actionTone="danger"]' in stylesheet
     assert 'QToolButton[railMissionAction="true"]' in stylesheet
     assert 'QFrame#cardMuted[railMissionTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[methodConsoleTile="true"][methodConsoleWorkbenchTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[stepCommandDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[stepCommandTile="true"]' in stylesheet
     assert 'QToolButton[stepCommandAction="true"]' in stylesheet
