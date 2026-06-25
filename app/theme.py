@@ -1117,6 +1117,33 @@ def build_stylesheet() -> str:
     QFrame#cardMuted[reportActionDrawer="true"][actionTone="warning"] {{
         border-color: #e6c98e;
     }}
+    QFrame#cardMuted[previewWorkflowRoute="true"] {{
+        border-radius: 14px;
+        border: 1px solid #c3dce4;
+        background: rgba(248, 252, 253, 0.88);
+    }}
+    QLabel[previewRouteTitle="true"] {{
+        color: #456879;
+        font-size: 10px;
+        font-weight: 800;
+    }}
+    QWidget[previewRouteButtonRow="true"] {{
+        background: transparent;
+    }}
+    QToolButton[previewWorkflowRouteButton="true"] {{
+        min-height: 22px;
+        border-radius: 11px;
+        padding: 0 8px;
+        background: #f7fcfd;
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
+        font-size: 10px;
+        font-weight: 800;
+    }}
+    QToolButton[previewWorkflowRouteButton="true"]:checked {{
+        background: #dff5f7;
+        border-color: #7fbec8;
+    }}
     QToolButton[reportActionDrawerButton="true"] {{
         min-height: 22px;
         border-radius: 11px;
@@ -1213,6 +1240,34 @@ def build_stylesheet() -> str:
         background: rgba(255, 255, 255, 0.82);
         border: 1px solid #d2e3e9;
         padding: 4px;
+    }}
+    QWidget[reportNavPhaseStrip="true"] {{
+        background: transparent;
+    }}
+    QToolButton[reportNavPhaseButton="true"] {{
+        min-height: 24px;
+        border-radius: 12px;
+        padding: 1px 6px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid #c8dce4;
+        color: #31586a;
+        font-size: 9px;
+        font-weight: 800;
+    }}
+    QToolButton[reportNavPhaseButton="true"][activePhase="true"],
+    QToolButton[reportNavPhaseButton="true"]:checked {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #e5f8fb,
+            stop: 1 #f8fff5
+        );
+        border-color: #7fbec8;
+        color: #0d6472;
+    }}
+    QLabel[reportNavStageNote="true"] {{
+        color: #527081;
+        font-size: 10px;
+        font-weight: 700;
     }}
     QFrame#cardMuted[deliveryMissionRail="true"] {{
         border-radius: 18px;

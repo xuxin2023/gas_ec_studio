@@ -52,6 +52,13 @@ REPORT_SECTIONS = [
     ("computation_surface", "计算能力面板", "查看行业参考计算核心族 ready/blocked 状态、stress suite 与声明边界。"),
 ]
 
+REPORT_NAV_PHASES = [
+    ("run", "运行", "采集到结果", ("run_summary", "device_status", "acquisition_quality", "ec_results")),
+    ("qc", "质控", "频谱与异常", ("spectral_qc", "anomaly_events", "site_method")),
+    ("delivery", "交付", "报告与证据", ("evidence_pack", "fixture_pack", "eddypro_compare", "benchmark_cockpit")),
+    ("method", "方法", "方法与算力", ("method_provenance", "method_compare", "computation_surface")),
+]
+
 
 class ReportCenterPage(QWidget):
     def __init__(self, controller: StudioController, parent: QWidget | None = None) -> None:
@@ -75,6 +82,8 @@ class ReportCenterPage(QWidget):
         self.preview_context_chips: dict[str, QLabel] = {}
         self.preview_context_buttons: dict[str, QToolButton] = {}
         self.report_action_buttons: dict[str, QToolButton] = {}
+        self.report_nav_phase_buttons: dict[str, QToolButton] = {}
+        self.preview_route_buttons: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -114,6 +123,14 @@ class ReportCenterPage(QWidget):
         tree_header.addWidget(self.report_tree_count_chip)
         tree_header.addWidget(self.report_tree_active_chip)
         tree_layout.addLayout(tree_header)
+        self.report_nav_phase_strip = self._build_report_nav_phase_strip()
+        tree_layout.addWidget(self.report_nav_phase_strip)
+        self.report_nav_stage_note = QLabel("--")
+        self.report_nav_stage_note.setObjectName("subtitle")
+        self.report_nav_stage_note.setProperty("reportNavStageNote", True)
+        self.report_nav_stage_note.setMaximumHeight(18)
+        self.report_nav_stage_note.setWordWrap(False)
+        tree_layout.addWidget(self.report_nav_stage_note)
         self.report_tree = QTreeWidget()
         self.report_tree.setObjectName("workflowTree")
         self.report_tree.setProperty("reportNavTree", True)
@@ -191,9 +208,12 @@ class ReportCenterPage(QWidget):
         preview_deck_layout.addLayout(preview_deck_header)
         self.preview_pane_hint_label = QLabel("--")
         self.preview_pane_hint_label.setObjectName("subtitle")
-        self.preview_pane_hint_label.setMaximumHeight(16)
+        self.preview_pane_hint_label.setMaximumHeight(0)
         self.preview_pane_hint_label.setWordWrap(False)
+        self.preview_pane_hint_label.setVisible(False)
         preview_deck_layout.addWidget(self.preview_pane_hint_label)
+        self.preview_route_strip = self._build_preview_route_strip()
+        preview_deck_layout.addWidget(self.preview_route_strip)
         self.report_action_drawer = self._build_report_action_drawer()
         preview_deck_layout.addWidget(self.report_action_drawer)
 
@@ -316,7 +336,7 @@ class ReportCenterPage(QWidget):
         self.preview_content_card = CardFrame(role="panel")
         self.preview_content_card.setProperty("deckRole", "compactPreviewPane")
         self.preview_content_card.setProperty("density", "desktop")
-        self.preview_content_card.setMaximumHeight(278)
+        self.preview_content_card.setMaximumHeight(264)
         self.preview_content_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         content_layout = QVBoxLayout(self.preview_content_card)
         content_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -327,7 +347,7 @@ class ReportCenterPage(QWidget):
         self.preview_content_splitter.setObjectName("reportPreviewSplitPane")
         self.preview_content_splitter.setProperty("reportPreviewSplitPane", True)
         self.preview_content_splitter.setChildrenCollapsible(False)
-        self.preview_content_splitter.setMaximumHeight(210)
+        self.preview_content_splitter.setMaximumHeight(196)
         self.preview_content_splitter.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.preview_primary_pane = CardFrame(muted=True, role="panel")
         self.preview_primary_pane.setProperty("reportPreviewPrimaryPane", True)
@@ -387,7 +407,7 @@ class ReportCenterPage(QWidget):
         content_layout.addWidget(self.preview_content_splitter)
         self._show_preview_content_mode("table")
         preview_deck_layout.addWidget(self.preview_content_card)
-        preview_deck_layout.insertWidget(3, self.preview_content_card)
+        preview_deck_layout.insertWidget(4, self.preview_content_card)
         center_layout.addWidget(self.preview_deck_card)
         center_layout.insertWidget(0, self.preview_deck_card)
 
@@ -726,6 +746,44 @@ class ReportCenterPage(QWidget):
         self._refresh_batch_compare(workspace.get("batch_compare", {}))
         self._sanitize_visible_labels()
 
+    def _build_report_nav_phase_strip(self) -> QWidget:
+        wrapper = QWidget()
+        wrapper.setProperty("reportNavPhaseStrip", True)
+        wrapper.setMaximumHeight(62)
+        wrapper.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(wrapper)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(TOKENS.spacing_xs)
+        for index, (phase_key, title, note, _reports) in enumerate(REPORT_NAV_PHASES):
+            button = QToolButton()
+            button.setText(_ui_safe_text(f"{title}\n{note}"))
+            button.setCheckable(True)
+            button.setProperty("reportNavPhaseButton", True)
+            button.setProperty("phaseKey", phase_key)
+            button.setToolTip(_ui_safe_text(note))
+            button.setMaximumHeight(26)
+            button.clicked.connect(lambda _checked=False, key=phase_key: self._activate_report_nav_phase(key))
+            self.report_nav_phase_buttons[phase_key] = button
+            layout.addWidget(button, index // 2, index % 2)
+        return wrapper
+
+    def _activate_report_nav_phase(self, phase_key: str) -> None:
+        for key, _title, _note, reports in REPORT_NAV_PHASES:
+            if key != phase_key:
+                continue
+            target = next((report_key for report_key in reports if report_key in self.report_items), "")
+            if target:
+                self.controller.set_report_nav_section(target)
+                self.refresh()
+            return
+
+    def _report_nav_phase_for(self, report_key: str) -> tuple[str, str, str]:
+        for phase_key, title, note, reports in REPORT_NAV_PHASES:
+            if report_key in reports:
+                return phase_key, title, note
+        return "run", "运行", "采集到结果"
+
     def _build_filter_bar(self) -> CardFrame:
         card = CardFrame(role="command")
         card.setMaximumHeight(104)
@@ -1049,6 +1107,55 @@ class ReportCenterPage(QWidget):
         layout.setColumnStretch(2, 1)
         layout.setColumnStretch(3, 0)
         return drawer
+
+    def _build_preview_route_strip(self) -> CardFrame:
+        strip = CardFrame(muted=True, role="console")
+        strip.setProperty("deckRole", "previewWorkflowRoute")
+        strip.setProperty("previewWorkflowRoute", True)
+        strip.setMaximumHeight(34)
+        strip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(strip)
+        layout.setContentsMargins(TOKENS.spacing_sm, 1, TOKENS.spacing_sm, 1)
+        layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(0)
+        self.preview_route_stage_chip = chip("运行", "accent")
+        self.preview_route_stage_chip.setMaximumHeight(20)
+        self.preview_route_title_label = QLabel("--")
+        self.preview_route_title_label.setObjectName("subtitle")
+        self.preview_route_title_label.setProperty("previewRouteTitle", True)
+        self.preview_route_title_label.setMaximumHeight(20)
+        self.preview_route_title_label.setWordWrap(False)
+        self.preview_route_title_label.setMinimumWidth(0)
+        self.preview_route_title_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+        button_row = QWidget()
+        button_row.setProperty("previewRouteButtonRow", True)
+        button_layout = QGridLayout(button_row)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        button_layout.setVerticalSpacing(0)
+        for column, (key, text) in enumerate(
+            (
+                ("catalog", "目录"),
+                ("preview", "预览"),
+                ("delivery", "交付"),
+            )
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("previewWorkflowRouteButton", True)
+            button.setProperty("routeStep", key)
+            button.setMaximumHeight(22)
+            button.clicked.connect(lambda _checked=False, item=button: self._activate_preview_route_step(item))
+            self.preview_route_buttons[key] = button
+            button_layout.addWidget(button, 0, column)
+
+        layout.addWidget(self.preview_route_stage_chip, 0, 0)
+        layout.addWidget(self.preview_route_title_label, 0, 1)
+        layout.addWidget(button_row, 0, 2)
+        layout.setColumnStretch(1, 1)
+        return strip
 
     def _build_preview_pane_switcher(self) -> QWidget:
         switcher = QWidget()
@@ -1482,6 +1589,7 @@ class ReportCenterPage(QWidget):
         for key, title, _subtitle in REPORT_SECTIONS:
             item = QTreeWidgetItem([_ui_safe_text(title)])
             item.setData(0, Qt.UserRole, key)
+            item.setData(0, Qt.UserRole + 1, self._report_nav_phase_for(key)[0])
             item.setToolTip(0, _ui_safe_text(title))
             self.report_tree.addTopLevelItem(item)
             self.report_items[key] = item
@@ -1495,10 +1603,24 @@ class ReportCenterPage(QWidget):
         display = title if len(title) <= 6 else f"{title[:5]}…"
         self.report_tree_active_chip.setText(display)
         self.report_tree_active_chip.setToolTip(title)
+        self._refresh_report_nav_phase_state(report_key, title)
         if self.report_tree.currentItem() is not item:
             self.report_tree.blockSignals(True)
             self.report_tree.setCurrentItem(item)
             self.report_tree.blockSignals(False)
+
+    def _refresh_report_nav_phase_state(self, report_key: str, report_title: str) -> None:
+        phase_key, phase_title, phase_note = self._report_nav_phase_for(report_key)
+        if hasattr(self, "report_nav_stage_note"):
+            self.report_nav_stage_note.setText(_ui_safe_text(f"{phase_title} · {report_title}"))
+            self.report_nav_stage_note.setToolTip(_ui_safe_text(phase_note))
+        for key, button in self.report_nav_phase_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == phase_key)
+            button.setProperty("activePhase", key == phase_key)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def _on_report_changed(self) -> None:
         item = self.report_tree.currentItem()
@@ -1607,6 +1729,8 @@ class ReportCenterPage(QWidget):
             button.blockSignals(False)
             button.style().unpolish(button)
             button.style().polish(button)
+        if hasattr(self, "preview_route_buttons"):
+            self._refresh_preview_route_buttons("preview")
 
     def _refresh_preview_insight_panel(self, conclusions: list[str], *, view_mode: str, report_key: str) -> None:
         if not hasattr(self, "preview_insight_content"):
@@ -1684,6 +1808,12 @@ class ReportCenterPage(QWidget):
         batch = str(filters.get("batch", "--") or "--")
         updated_at = str(report.get("updated_at", "--") or "--")
         report_key = str(report.get("report_key", "--") or "--")
+        if hasattr(self, "preview_route_title_label"):
+            _phase_key, phase_title, phase_note = self._report_nav_phase_for(report_key)
+            self._set_chip(self.preview_route_stage_chip, phase_title, "accent")
+            route_text = f"{report_key} · {view_mode}"
+            self.preview_route_title_label.setText(_ui_safe_text(route_text if len(route_text) <= 34 else f"{route_text[:31]}..."))
+            self.preview_route_title_label.setToolTip(_ui_safe_text(f"{phase_note} | {report.get('title', 'Report Preview')}"))
         self.preview_delivery_trail_value.setText(
             _ui_safe_text(f"{report.get('title', 'Report Preview')} · {view_mode}")
         )
@@ -3281,6 +3411,24 @@ class ReportCenterPage(QWidget):
             self._activate_delivery_mission_node(key)
         else:
             self._show_delivery_focus("gate")
+
+    def _activate_preview_route_step(self, button: QToolButton) -> None:
+        step = str(button.property("routeStep") or "")
+        if step == "catalog":
+            self.report_tree.setFocus()
+        elif step == "preview":
+            self._show_preview_content_mode("table")
+        elif step == "delivery":
+            self._show_delivery_focus("gate")
+        self._refresh_preview_route_buttons(step or "preview")
+
+    def _refresh_preview_route_buttons(self, active_step: str) -> None:
+        for key, button in self.preview_route_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == active_step)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def _activate_delivery_mission_node(self, key: str) -> None:
         self.delivery_mission_active_key = key

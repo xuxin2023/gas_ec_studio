@@ -120,6 +120,10 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[reportActionDrawer="true"][actionTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[reportActionDrawer="true"][actionTone="accent"]' in stylesheet
     assert 'QFrame#cardMuted[reportActionDrawer="true"][actionTone="warning"]' in stylesheet
+    assert 'QFrame#cardMuted[previewWorkflowRoute="true"]' in stylesheet
+    assert 'QLabel[previewRouteTitle="true"]' in stylesheet
+    assert 'QWidget[previewRouteButtonRow="true"]' in stylesheet
+    assert 'QToolButton[previewWorkflowRouteButton="true"]' in stylesheet
     assert 'QToolButton[reportActionDrawerButton="true"]' in stylesheet
     assert 'QSplitter#reportPreviewSplitPane' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewPrimaryPane="true"]' in stylesheet
@@ -132,6 +136,10 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QToolButton[previewCommandAction="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportNavRail="true"]' in stylesheet
     assert 'QTreeWidget#workflowTree[reportNavTree="true"]' in stylesheet
+    assert 'QWidget[reportNavPhaseStrip="true"]' in stylesheet
+    assert 'QToolButton[reportNavPhaseButton="true"]' in stylesheet
+    assert 'QToolButton[reportNavPhaseButton="true"][activePhase="true"]' in stylesheet
+    assert 'QLabel[reportNavStageNote="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryMissionRail="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryMissionRail="true"][desktopMissionRail="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryRailConsole="true"]' in stylesheet

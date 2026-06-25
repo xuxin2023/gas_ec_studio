@@ -5,7 +5,7 @@ import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from app.pages.report_center_page import REPORT_SECTIONS, ReportCenterPage
+from app.pages.report_center_page import REPORT_NAV_PHASES, REPORT_SECTIONS, ReportCenterPage
 from app.studio import StudioController
 from app.theme import apply_app_theme
 from tests.ui_geometry_helpers import assert_contained, assert_no_visible_competitor_name, assert_no_visual_overlap
@@ -41,6 +41,18 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.report_tree_count_chip.text() == f"{len(REPORT_SECTIONS)} 项"
         assert page.report_tree_count_chip.maximumHeight() == 22
         assert page.report_tree_active_chip.text().startswith("运行")
+        assert page.report_nav_phase_strip.property("reportNavPhaseStrip") is True
+        assert page.report_nav_phase_strip.maximumHeight() == 62
+        assert set(page.report_nav_phase_buttons) == {phase[0] for phase in REPORT_NAV_PHASES}
+        assert all(button.property("reportNavPhaseButton") is True for button in page.report_nav_phase_buttons.values())
+        assert page.report_nav_phase_buttons["run"].isChecked() is True
+        assert page.report_nav_stage_note.property("reportNavStageNote") is True
+        assert page.report_nav_stage_note.text().startswith("运行")
+        page.report_nav_phase_buttons["qc"].click()
+        assert controller.report_center_workspace["selected_report"] == "spectral_qc"
+        assert page.report_nav_phase_buttons["qc"].isChecked() is True
+        controller.set_report_nav_section("run_summary")
+        page.refresh()
         assert page.delivery_rail.property("cardRole") == "rail"
         assert page.delivery_rail.property("deliveryMissionRail") is True
         assert page.delivery_rail.property("desktopMissionRail") is True
@@ -214,6 +226,20 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_pane_switcher.property("deckRole") == "previewPaneSwitcher"
         assert all(button.property("previewPaneSwitch") is True for button in page.preview_content_switches.values())
         assert page.preview_pane_hint_label.text()
+        assert page.preview_pane_hint_label.isHidden() is True
+        assert page.preview_route_strip.property("deckRole") == "previewWorkflowRoute"
+        assert page.preview_route_strip.property("previewWorkflowRoute") is True
+        assert page.preview_route_strip.maximumHeight() == 34
+        assert page.preview_route_stage_chip.objectName() == "chip"
+        assert page.preview_route_title_label.property("previewRouteTitle") is True
+        assert set(page.preview_route_buttons) == {"catalog", "preview", "delivery"}
+        assert all(button.property("previewWorkflowRouteButton") is True for button in page.preview_route_buttons.values())
+        assert page.preview_route_buttons["preview"].isChecked() is True
+        page.preview_route_buttons["delivery"].click()
+        assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
+        assert page.preview_route_buttons["delivery"].isChecked() is True
+        page.preview_route_buttons["preview"].click()
+        assert page.preview_route_buttons["preview"].isChecked() is True
         assert page.report_action_drawer.property("deckRole") == "reportActionDrawer"
         assert page.report_action_drawer.property("reportActionDrawer") is True
         assert page.report_action_drawer.maximumHeight() == 58
@@ -236,10 +262,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_content_card.property("deckRole") == "compactPreviewPane"
         assert page.preview_content_card.property("density") == "desktop"
         assert page.preview_content_card.property("plotStatus") == "tableOnly"
-        assert page.preview_content_card.maximumHeight() == 278
+        assert page.preview_content_card.maximumHeight() == 264
         assert page.preview_content_splitter.objectName() == "reportPreviewSplitPane"
         assert page.preview_content_splitter.property("reportPreviewSplitPane") is True
-        assert page.preview_content_splitter.maximumHeight() == 210
+        assert page.preview_content_splitter.maximumHeight() == 196
         assert page.preview_primary_pane.property("reportPreviewPrimaryPane") is True
         assert page.preview_context_pane.property("reportPreviewContextPane") is True
         assert page.preview_context_pane.minimumWidth() == 190
@@ -384,6 +410,9 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             assert page.delivery_focus_stack.property("stackRole") == "compactDeliveryInspector"
             assert page.delivery_rail.width() <= page.delivery_rail.maximumWidth()
             assert page.delivery_rail.width() >= page.delivery_rail.minimumWidth()
+            assert_contained(page.tree_card, page.report_nav_phase_strip, page)
+            for button in page.report_nav_phase_buttons.values():
+                assert_contained(page.report_nav_phase_strip, button, page)
             assert_contained(page, page.delivery_rail, page)
 
             page._show_delivery_rail_mode("summary")
@@ -409,6 +438,9 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             page._show_delivery_focus("gate")
             app.processEvents()
             assert_contained(page, page.preview_content_splitter, page)
+            assert_contained(page.preview_deck_card, page.preview_route_strip, page)
+            for button in page.preview_route_buttons.values():
+                assert_contained(page.preview_route_strip, button, page)
             assert_contained(page.preview_deck_card, page.preview_content_splitter, page)
             assert_contained(page.preview_content_splitter, page.preview_primary_pane, page)
             assert_contained(page.preview_content_splitter, page.preview_context_pane, page)
