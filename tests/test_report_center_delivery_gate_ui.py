@@ -48,9 +48,19 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail.maximumWidth() == 340
         assert page.delivery_rail_status_chip.property("closureStage") is True
         assert page.delivery_rail_status_chip.text().startswith("待生成")
+        assert page.delivery_rail_console.property("deckRole") == "deliveryRailConsole"
+        assert page.delivery_rail_console.property("deliveryRailConsole") is True
+        assert page.delivery_rail_console.maximumHeight() == 108
+        assert page.delivery_rail_next_chip.objectName() == "chip"
+        assert page.delivery_rail_next_value.property("compactMetric") is True
+        assert page.delivery_rail_next_value.text()
+        assert page.delivery_rail_next_note.text()
+        assert page.delivery_rail_source_note.text().startswith("report=")
+        assert page.delivery_rail_mode_dock.property("deliveryRailModeDock") is True
+        assert all(button.property("deliveryRailModeSwitch") is True for button in page.delivery_rail_mode_buttons.values())
         assert page.delivery_rail_action_bar.property("deckRole") == "deliveryRailActionBar"
         assert page.delivery_rail_action_bar.property("deliveryRailActionDock") is True
-        assert page.delivery_rail_action_bar.maximumHeight() == 34
+        assert page.delivery_rail_action_bar.maximumHeight() == 30
         assert page.delivery_rail_action_button.property("railAction") is True
         assert page.delivery_rail_risk_button.property("railAction") is True
         assert page.delivery_rail_export_button.property("railAction") is True
@@ -60,7 +70,7 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_export_button.property("deliveryRailAction") is True
         assert page.delivery_rail_evidence_button.property("deliveryRailAction") is True
         assert page.delivery_mission_map.property("deliveryMissionMap") is True
-        assert page.delivery_mission_map.maximumHeight() == 30
+        assert page.delivery_mission_map.maximumHeight() == 52
         assert set(page.delivery_mission_buttons) == {
             "report",
             "export",
@@ -378,7 +388,11 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
 
             page._show_delivery_rail_mode("summary")
             app.processEvents()
+            assert_contained(page.delivery_rail, page.delivery_rail_console, page)
+            assert_contained(page.delivery_rail_console, page.delivery_rail_mode_dock, page)
             assert_contained(page.delivery_rail, page.delivery_rail_action_bar, page)
+            assert_contained(page.delivery_rail_console, page.delivery_rail_action_bar, page)
+            assert_contained(page.delivery_rail, page.delivery_mission_map, page)
             for button in (
                 page.delivery_rail_action_button,
                 page.delivery_rail_risk_button,

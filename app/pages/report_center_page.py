@@ -442,16 +442,41 @@ class ReportCenterPage(QWidget):
         delivery_header.addWidget(self.delivery_rail_status_chip)
         delivery_layout.addLayout(delivery_header)
 
-        self.delivery_rail_inspector = CardFrame(role="panel")
-        self.delivery_rail_inspector.setProperty("deckRole", "deliveryRailInspector")
-        self.delivery_rail_inspector.setProperty("deliveryMissionInspector", True)
-        self.delivery_rail_inspector.setMinimumWidth(0)
-        self.delivery_rail_inspector.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        rail_inspector_layout = QVBoxLayout(self.delivery_rail_inspector)
-        rail_inspector_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_sm)
-        rail_inspector_layout.setSpacing(TOKENS.spacing_xs)
+        self.delivery_rail_console = CardFrame(muted=True, role="console")
+        self.delivery_rail_console.setProperty("deckRole", "deliveryRailConsole")
+        self.delivery_rail_console.setProperty("deliveryRailConsole", True)
+        self.delivery_rail_console.setMaximumHeight(108)
+        self.delivery_rail_console.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        rail_console_layout = QGridLayout(self.delivery_rail_console)
+        rail_console_layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
+        rail_console_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        rail_console_layout.setVerticalSpacing(1)
+        self.delivery_rail_next_chip = chip("NEXT", "warning")
+        self.delivery_rail_next_chip.setMaximumHeight(20)
+        self.delivery_rail_next_value = QLabel("--")
+        self.delivery_rail_next_value.setObjectName("metricValue")
+        self.delivery_rail_next_value.setProperty("compactMetric", True)
+        self.delivery_rail_next_value.setMaximumHeight(20)
+        self.delivery_rail_next_value.setWordWrap(False)
+        self.delivery_rail_next_value.setMinimumWidth(0)
+        self.delivery_rail_next_value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.delivery_rail_next_note = QLabel("--")
+        self.delivery_rail_next_note.setObjectName("subtitle")
+        self.delivery_rail_next_note.setMaximumHeight(17)
+        self.delivery_rail_next_note.setWordWrap(False)
+        self.delivery_rail_next_note.setMinimumWidth(0)
+        self.delivery_rail_next_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.delivery_rail_source_note = QLabel("--")
+        self.delivery_rail_source_note.setObjectName("subtitle")
+        self.delivery_rail_source_note.setMaximumHeight(15)
+        self.delivery_rail_source_note.setWordWrap(False)
+        self.delivery_rail_source_note.setMinimumWidth(0)
+        self.delivery_rail_source_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
 
-        rail_mode_row = QHBoxLayout()
+        self.delivery_rail_mode_dock = QWidget()
+        self.delivery_rail_mode_dock.setProperty("deliveryRailModeDock", True)
+        self.delivery_rail_mode_dock.setMaximumHeight(24)
+        rail_mode_row = QHBoxLayout(self.delivery_rail_mode_dock)
         rail_mode_row.setContentsMargins(0, 0, 0, 0)
         rail_mode_row.setSpacing(TOKENS.spacing_xs)
         for mode, text in (
@@ -462,31 +487,27 @@ class ReportCenterPage(QWidget):
             button.setText(text)
             button.setCheckable(True)
             button.setProperty("viewSwitch", True)
+            button.setProperty("deliveryRailModeSwitch", True)
             button.clicked.connect(lambda _checked=False, key=mode: self._show_delivery_rail_mode(key))
             self.delivery_rail_mode_buttons[mode] = button
             rail_mode_row.addWidget(button)
-        rail_mode_row.addStretch(1)
-        rail_inspector_layout.addLayout(rail_mode_row)
-
-        self.delivery_mission_map = self._build_delivery_mission_map()
-        rail_inspector_layout.addWidget(self.delivery_mission_map)
 
         self.delivery_rail_action_bar = CardFrame(muted=True, role="console")
         self.delivery_rail_action_bar.setProperty("deckRole", "deliveryRailActionBar")
         self.delivery_rail_action_bar.setProperty("deliveryRailActionDock", True)
-        self.delivery_rail_action_bar.setMaximumHeight(34)
+        self.delivery_rail_action_bar.setMaximumHeight(30)
         self.delivery_rail_action_bar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         action_layout = QGridLayout(self.delivery_rail_action_bar)
-        action_layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
+        action_layout.setContentsMargins(TOKENS.spacing_xs, 1, TOKENS.spacing_xs, 1)
         action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
-        action_layout.setVerticalSpacing(2)
+        action_layout.setVerticalSpacing(1)
         self.delivery_rail_action_button = QToolButton()
-        self.delivery_rail_action_button.setText("下一动作")
+        self.delivery_rail_action_button.setText("下一步")
         self.delivery_rail_action_button.setProperty("railAction", True)
         self.delivery_rail_action_button.setProperty("deliveryRailAction", True)
         self.delivery_rail_action_button.clicked.connect(self._activate_delivery_rail_action)
         self.delivery_rail_risk_button = QToolButton()
-        self.delivery_rail_risk_button.setText("查看风险")
+        self.delivery_rail_risk_button.setText("风险")
         self.delivery_rail_risk_button.setProperty("railAction", True)
         self.delivery_rail_risk_button.setProperty("deliveryRailAction", True)
         self.delivery_rail_risk_button.clicked.connect(self._activate_delivery_rail_risk)
@@ -506,11 +527,32 @@ class ReportCenterPage(QWidget):
             self.delivery_rail_export_button,
             self.delivery_rail_evidence_button,
         )):
-            button.setMinimumWidth(50)
-            button.setMaximumHeight(24)
+            button.setMinimumWidth(46)
+            button.setMaximumHeight(22)
             button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             action_layout.addWidget(button, 0, index)
-        rail_inspector_layout.addWidget(self.delivery_rail_action_bar)
+
+        rail_console_layout.addWidget(self.delivery_rail_next_chip, 0, 0)
+        rail_console_layout.addWidget(self.delivery_rail_next_value, 0, 1)
+        rail_console_layout.addWidget(self.delivery_rail_mode_dock, 0, 2)
+        rail_console_layout.addWidget(self.delivery_rail_next_note, 1, 0, 1, 3)
+        rail_console_layout.addWidget(self.delivery_rail_source_note, 2, 0, 1, 3)
+        rail_console_layout.addWidget(self.delivery_rail_action_bar, 3, 0, 1, 3)
+        rail_console_layout.setColumnStretch(1, 2)
+        rail_console_layout.setColumnStretch(2, 0)
+        delivery_layout.addWidget(self.delivery_rail_console)
+
+        self.delivery_mission_map = self._build_delivery_mission_map()
+        delivery_layout.addWidget(self.delivery_mission_map)
+
+        self.delivery_rail_inspector = CardFrame(role="panel")
+        self.delivery_rail_inspector.setProperty("deckRole", "deliveryRailInspector")
+        self.delivery_rail_inspector.setProperty("deliveryMissionInspector", True)
+        self.delivery_rail_inspector.setMinimumWidth(0)
+        self.delivery_rail_inspector.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        rail_inspector_layout = QVBoxLayout(self.delivery_rail_inspector)
+        rail_inspector_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        rail_inspector_layout.setSpacing(TOKENS.spacing_xs)
 
         self.delivery_rail_stack = QStackedWidget()
         self.delivery_rail_stack.setMinimumWidth(0)
@@ -1116,12 +1158,12 @@ class ReportCenterPage(QWidget):
     def _build_delivery_mission_map(self) -> CardFrame:
         card = CardFrame(muted=True, role="console")
         card.setProperty("deliveryMissionMap", True)
-        card.setMaximumHeight(30)
+        card.setMaximumHeight(52)
         card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout = QGridLayout(card)
         layout.setContentsMargins(4, 2, 4, 2)
         layout.setHorizontalSpacing(2)
-        layout.setVerticalSpacing(0)
+        layout.setVerticalSpacing(2)
         mission_nodes = (
             ("report", "报告"),
             ("export", "导出"),
@@ -1142,7 +1184,7 @@ class ReportCenterPage(QWidget):
             button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             button.clicked.connect(lambda _checked=False, node=key: self._activate_delivery_mission_node(node))
             self.delivery_mission_buttons[key] = button
-            layout.addWidget(button, 0, index)
+            layout.addWidget(button, index // 3, index % 3)
         return card
 
     def _build_summary_row(self) -> QWidget:
@@ -3130,12 +3172,30 @@ class ReportCenterPage(QWidget):
             "检查基准对标": "benchmark",
             "交付归档": "details",
         }.get(next_action, "details")
+        rail_tone = "success" if success_count >= 6 else ("accent" if report_ready or success_count >= 3 else "warning")
+        if hasattr(self, "delivery_rail_console"):
+            self.delivery_rail_console.setProperty("railTone", rail_tone)
+            self.delivery_rail_console.style().unpolish(self.delivery_rail_console)
+            self.delivery_rail_console.style().polish(self.delivery_rail_console)
+            self._set_chip(self.delivery_rail_next_chip, f"{success_count}/6", rail_tone)
+            self.delivery_rail_next_value.setText(_ui_safe_text(next_action))
+            self.delivery_rail_next_value.setToolTip(_ui_safe_text(next_note))
+            note_text = str(next_note or "--")
+            self.delivery_rail_next_note.setText(_ui_safe_text(note_text if len(note_text) <= 38 else f"{note_text[:35]}..."))
+            self.delivery_rail_next_note.setToolTip(_ui_safe_text(note_text))
+            source_text = (
+                f"report={'ready' if report_ready else 'pending'} | "
+                f"export={'done' if export_done else 'pending'} | "
+                f"manifest={'ready' if manifest_ready else 'pending'}"
+            )
+            self.delivery_rail_source_note.setText(_ui_safe_text(source_text))
+            self.delivery_rail_source_note.setToolTip(_ui_safe_text(source_text))
         self._configure_delivery_rail_action_button(
             self.delivery_rail_action_button,
             "下一步",
             f"{next_action}: {next_note}",
             action_target,
-            "success" if success_count >= 6 else ("accent" if report_ready or success_count >= 3 else "warning"),
+            rail_tone,
         )
 
         risk_target = "details"

@@ -1227,6 +1227,35 @@ def build_stylesheet() -> str:
             stop: 1 #e6f3f6
         );
     }}
+    QFrame#cardMuted[deliveryRailConsole="true"] {{
+        border-radius: 16px;
+        border: 1px solid #bad6de;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f7fcfd,
+            stop: 0.58 #ffffff,
+            stop: 1 #edf8f1
+        );
+    }}
+    QFrame#cardMuted[deliveryRailConsole="true"][railTone="success"] {{
+        border-color: #9fcfba;
+    }}
+    QFrame#cardMuted[deliveryRailConsole="true"][railTone="accent"] {{
+        border-color: #8fc5d0;
+    }}
+    QFrame#cardMuted[deliveryRailConsole="true"][railTone="warning"] {{
+        border-color: #e2c17e;
+    }}
+    QWidget[deliveryRailModeDock="true"] {{
+        background: transparent;
+    }}
+    QToolButton[deliveryRailModeSwitch="true"] {{
+        min-height: 22px;
+        border-radius: 11px;
+        padding: 0 8px;
+        font-size: 10px;
+        font-weight: 800;
+    }}
     QFrame#cardMuted[deliveryMissionMap="true"] {{
         border-radius: 14px;
         border: 1px solid #c6dce3;
