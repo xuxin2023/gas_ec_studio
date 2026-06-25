@@ -104,6 +104,13 @@ def test_device_center_uses_field_operations_deck() -> None:
         assert page.operator_mission_card.property("deviceInspectorSectionRole") == "mission"
         assert page.operator_mission_card.maximumHeight() == 124
         assert set(page.operator_mission_tiles) == {"device", "capture", "processing", "delivery"}
+        assert set(page.operator_mission_tile_cards) == {"device", "capture", "processing", "delivery"}
+        assert all(card.property("deviceMissionTile") is True for card in page.operator_mission_tile_cards.values())
+        assert all(
+            card.property("missionTone") in {"success", "accent", "warning", "danger"}
+            for card in page.operator_mission_tile_cards.values()
+        )
+        assert sum(1 for card in page.operator_mission_tile_cards.values() if card.property("activeMissionStage") is True) == 1
         assert page.operator_mission_card.isVisibleTo(page) is True
         assert page.operator_mission_tiles["device"][0].property("compactMetric") is True
         assert page.operator_mission_tiles["processing"][1].text().startswith("status=")
@@ -170,6 +177,7 @@ def test_device_center_uses_field_operations_deck() -> None:
         controller.disconnect_device(uid)
         page.refresh()
         assert page.fleet_next_button.property("targetAction") == "connect"
+        assert page.operator_mission_tile_cards["device"].property("activeMissionStage") is True
         page.fleet_next_button.click()
         assert controller.selected_device() is not None
         assert controller.selected_device().runtime.connected is True

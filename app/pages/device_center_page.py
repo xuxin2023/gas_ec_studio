@@ -748,6 +748,7 @@ class DeviceCenterPage(QWidget):
         )
 
         self.operator_mission_tiles: dict[str, tuple[QLabel, QLabel]] = {}
+        self.operator_mission_tile_cards: dict[str, CardFrame] = {}
         stages = (
             ("device", "设备接入"),
             ("capture", "实时采集"),
@@ -757,6 +758,9 @@ class DeviceCenterPage(QWidget):
         for index, (key, title) in enumerate(stages):
             tile = CardFrame(muted=True, role="tile")
             tile.setProperty("missionStage", key)
+            tile.setProperty("deviceMissionTile", True)
+            tile.setProperty("missionTone", "warning")
+            tile.setProperty("activeMissionStage", key == "device")
             tile_layout = QVBoxLayout(tile)
             tile_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
             tile_layout.setSpacing(TOKENS.spacing_xs)
@@ -773,6 +777,7 @@ class DeviceCenterPage(QWidget):
             tile_layout.addWidget(value)
             tile_layout.addWidget(note)
             self.operator_mission_tiles[key] = (value, note)
+            self.operator_mission_tile_cards[key] = tile
             layout.addWidget(tile, 1, index)
         return card
 
@@ -786,11 +791,13 @@ class DeviceCenterPage(QWidget):
         online = int(summary.get("online_devices", 0) or 0)
         sampling = int(summary.get("sampling_devices", 0) or 0)
         abnormal = int(summary.get("abnormal_devices", 0) or 0)
+        device_ready = selected is not None and online > 0 and abnormal == 0
         device_value.setText("就绪" if selected is not None and online > 0 and abnormal == 0 else "待检查")
         device_note.setText(
             f"online={online}/{total}，selected={selected.config.label if selected else '--'}，abnormal={abnormal}"
         )
 
+        capture_ready = sampling > 0
         capture_value.setText("采集中" if sampling else "待启动")
         capture_note.setText("已有实时缓冲，可进入采集页复核曲线。" if sampling else "连接设备后启动实时采集，确认高频帧稳定。")
 
@@ -798,13 +805,37 @@ class DeviceCenterPage(QWidget):
         processing_status = str(processing_summary.get("status", "empty") or "empty")
         valid_windows = processing_summary.get("valid_window_count", 0)
         window_count = processing_summary.get("window_count", 0)
+        processing_ready = processing_status == "ok"
         processing_value.setText("已闭合" if processing_status == "ok" else "待运行")
         processing_note.setText(f"status={processing_status}，windows={valid_windows}/{window_count}")
 
         report_workspace = dict(self.controller.report_center_workspace or {})
         export_status = str(report_workspace.get("export_status", "not_exported") or "not_exported")
+        delivery_ready = export_status in {"exported", "ready"}
         delivery_value.setText("已导出" if export_status in {"exported", "ready"} else "待交付")
         delivery_note.setText(f"export={export_status}，处理完成后进入报告中心生成交付包。")
+        if not device_ready:
+            active_stage = "device"
+        elif not capture_ready:
+            active_stage = "capture"
+        elif not processing_ready:
+            active_stage = "processing"
+        else:
+            active_stage = "delivery"
+        mission_tones = {
+            "device": "success" if device_ready else ("danger" if abnormal > 0 else "warning"),
+            "capture": "accent" if capture_ready else "warning",
+            "processing": "success" if processing_ready else "warning",
+            "delivery": "success" if delivery_ready else "accent",
+        }
+        self._refresh_operator_mission_route(active_stage, mission_tones)
+
+    def _refresh_operator_mission_route(self, active_stage: str, mission_tones: dict[str, str]) -> None:
+        for stage, card in self.operator_mission_tile_cards.items():
+            card.setProperty("activeMissionStage", stage == active_stage)
+            card.setProperty("missionTone", mission_tones.get(stage, "warning"))
+            card.style().unpolish(card)
+            card.style().polish(card)
 
     def _build_operator_evidence_card(self) -> CardFrame:
         card = CardFrame(role="panel")

@@ -275,6 +275,9 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QStackedWidget[deviceInspectorStack="true"]' in stylesheet
     assert 'QFrame[deviceInspectorSection="true"][deviceInspectorSectionRole="mission"]' in stylesheet
     assert 'QFrame[deviceInspectorSection="true"][deviceInspectorSectionRole="activity"]' in stylesheet
+    assert 'QFrame#cardMuted[deviceMissionTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deviceMissionTile="true"][missionTone="success"]' in stylesheet
+    assert 'QFrame#cardMuted[deviceMissionTile="true"][activeMissionStage="true"]' in stylesheet
     assert 'QFrame#cardMuted[deviceEvidenceTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[deviceEvidenceTile="true"][evidenceTone="success"]' in stylesheet
     assert 'QLabel[deviceEvidenceLabel="true"]' in stylesheet

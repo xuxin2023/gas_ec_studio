@@ -2110,6 +2110,35 @@ def build_stylesheet() -> str:
         border-color: #c8dce4;
         background: rgba(247, 252, 253, 0.86);
     }}
+    QFrame#cardMuted[deviceMissionTile="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d2e3e9;
+        background: rgba(255, 255, 255, 0.76);
+    }}
+    QFrame#cardMuted[deviceMissionTile="true"][missionTone="success"] {{
+        border-color: #8ecfba;
+        background: rgba(231, 250, 241, 0.86);
+    }}
+    QFrame#cardMuted[deviceMissionTile="true"][missionTone="accent"] {{
+        border-color: #8dc7d0;
+        background: rgba(232, 248, 250, 0.88);
+    }}
+    QFrame#cardMuted[deviceMissionTile="true"][missionTone="warning"] {{
+        border-color: #efc980;
+        background: rgba(255, 249, 235, 0.88);
+    }}
+    QFrame#cardMuted[deviceMissionTile="true"][missionTone="danger"] {{
+        border-color: #e09a96;
+        background: rgba(255, 241, 241, 0.90);
+    }}
+    QFrame#cardMuted[deviceMissionTile="true"][activeMissionStage="true"] {{
+        border: 2px solid #0c7d8a;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #e3f7f8,
+            stop: 1 #ffffff
+        );
+    }}
     QFrame#cardMuted[deviceEvidenceTile="true"] {{
         border-radius: 12px;
         border: 1px solid #d2e3e9;
