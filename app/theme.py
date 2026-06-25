@@ -1469,13 +1469,43 @@ def build_stylesheet() -> str:
         border: 1px solid #bfd8df;
         background: rgba(244, 251, 252, 0.88);
     }}
+    QFrame#cardMuted[deliveryRailActionDock="true"][deliveryRailActionMatrix="true"] {{
+        border-color: #aecfd8;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f8fdfd,
+            stop: 0.54 #ffffff,
+            stop: 1 #eff8ef
+        );
+    }}
     QToolButton[deliveryRailAction="true"] {{
-        min-height: 24px;
+        min-height: 28px;
         border-radius: 12px;
         padding: 0 7px;
         background: #f7fcfd;
         border: 1px solid #b8d4dd;
         color: #0e5f6e;
+        font-weight: 800;
+    }}
+    QToolButton[deliveryRailAction="true"][actionTone="success"] {{
+        background: #f0fbf5;
+        border-color: #9fd2bb;
+        color: #0f6946;
+    }}
+    QToolButton[deliveryRailAction="true"][actionTone="accent"] {{
+        background: #edf9fb;
+        border-color: #8fc5d0;
+        color: #0b6475;
+    }}
+    QToolButton[deliveryRailAction="true"][actionTone="warning"] {{
+        background: #fff7e4;
+        border-color: #e6c98e;
+        color: #8a5d0e;
+    }}
+    QToolButton[deliveryRailAction="true"][actionTone="danger"] {{
+        background: #fff0ef;
+        border-color: #e8b3ad;
+        color: #a5382d;
     }}
     QFrame#card[projectSiteCommandDock="true"] {{
         border-radius: 18px;

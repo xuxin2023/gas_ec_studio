@@ -62,17 +62,19 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_status_chip.text().startswith("待生成")
         assert page.delivery_rail_console.property("deckRole") == "deliveryRailConsole"
         assert page.delivery_rail_console.property("deliveryRailConsole") is True
-        assert page.delivery_rail_console.maximumHeight() == 108
+        assert page.delivery_rail_console.maximumHeight() == 146
         assert page.delivery_rail_next_chip.objectName() == "chip"
         assert page.delivery_rail_next_value.property("compactMetric") is True
         assert page.delivery_rail_next_value.text()
         assert page.delivery_rail_next_note.text()
-        assert page.delivery_rail_source_note.text().startswith("report=")
+        assert "report=" not in page.delivery_rail_source_note.text()
+        assert "Manifest" in page.delivery_rail_source_note.text()
         assert page.delivery_rail_mode_dock.property("deliveryRailModeDock") is True
         assert all(button.property("deliveryRailModeSwitch") is True for button in page.delivery_rail_mode_buttons.values())
         assert page.delivery_rail_action_bar.property("deckRole") == "deliveryRailActionBar"
         assert page.delivery_rail_action_bar.property("deliveryRailActionDock") is True
-        assert page.delivery_rail_action_bar.maximumHeight() == 30
+        assert page.delivery_rail_action_bar.property("deliveryRailActionMatrix") is True
+        assert page.delivery_rail_action_bar.maximumHeight() == 72
         assert page.delivery_rail_action_button.property("railAction") is True
         assert page.delivery_rail_risk_button.property("railAction") is True
         assert page.delivery_rail_export_button.property("railAction") is True
@@ -81,6 +83,20 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_risk_button.property("deliveryRailAction") is True
         assert page.delivery_rail_export_button.property("deliveryRailAction") is True
         assert page.delivery_rail_evidence_button.property("deliveryRailAction") is True
+        assert all(
+            button.minimumWidth() == 84 and button.minimumHeight() == 30
+            for button in (
+                page.delivery_rail_action_button,
+                page.delivery_rail_risk_button,
+                page.delivery_rail_export_button,
+                page.delivery_rail_evidence_button,
+            )
+        )
+        action_grid = page.delivery_rail_action_bar.layout()
+        assert action_grid.itemAtPosition(0, 0).widget() is page.delivery_rail_action_button
+        assert action_grid.itemAtPosition(0, 1).widget() is page.delivery_rail_risk_button
+        assert action_grid.itemAtPosition(1, 0).widget() is page.delivery_rail_export_button
+        assert action_grid.itemAtPosition(1, 1).widget() is page.delivery_rail_evidence_button
         assert page.delivery_mission_map.property("deliveryMissionMap") is True
         assert page.delivery_mission_map.maximumHeight() == 52
         assert set(page.delivery_mission_buttons) == {
@@ -456,6 +472,15 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
                 page.delivery_rail_evidence_button,
             ):
                 assert_contained(page.delivery_rail_action_bar, button, page)
+            assert_no_visual_overlap(
+                [
+                    page.delivery_rail_action_button,
+                    page.delivery_rail_risk_button,
+                    page.delivery_rail_export_button,
+                    page.delivery_rail_evidence_button,
+                ],
+                page,
+            )
             summary_cards = list(page.summary_cards.values())
             assert len(summary_cards) == 4
             for card in summary_cards:
@@ -641,6 +666,9 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_rail_export_button.text() == "已导出"
         assert page.delivery_rail_evidence_button.property("targetAction") == "evidence"
         assert page.delivery_rail_evidence_button.property("actionTone") == "success"
+        assert "report=" not in page.delivery_rail_source_note.text()
+        assert "报告已就绪" in page.delivery_rail_source_note.text()
+        assert "交付包已导出" in page.delivery_rail_source_note.text()
         page.delivery_rail_risk_button.click()
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.inspector_stack.currentWidget() is page.usage_card
@@ -665,7 +693,9 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.closure_deck_chip.text() == "就绪"
         assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
         assert "batch-001" in page.preview_delivery_trail_note.text()
-        assert "report=run_summary" in page.preview_delivery_trail_note.text()
+        assert "report=" not in page.preview_delivery_trail_note.text()
+        assert "source=" not in page.preview_delivery_trail_note.text()
+        assert "来源：" in page.preview_delivery_trail_note.text()
         assert page.preview_table.rowCount() == 2
         assert page.empty_state_card.isHidden() is True
     finally:

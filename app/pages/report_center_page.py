@@ -465,7 +465,7 @@ class ReportCenterPage(QWidget):
         self.delivery_rail_console = CardFrame(muted=True, role="console")
         self.delivery_rail_console.setProperty("deckRole", "deliveryRailConsole")
         self.delivery_rail_console.setProperty("deliveryRailConsole", True)
-        self.delivery_rail_console.setMaximumHeight(108)
+        self.delivery_rail_console.setMaximumHeight(146)
         self.delivery_rail_console.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         rail_console_layout = QGridLayout(self.delivery_rail_console)
         rail_console_layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
@@ -515,12 +515,13 @@ class ReportCenterPage(QWidget):
         self.delivery_rail_action_bar = CardFrame(muted=True, role="console")
         self.delivery_rail_action_bar.setProperty("deckRole", "deliveryRailActionBar")
         self.delivery_rail_action_bar.setProperty("deliveryRailActionDock", True)
-        self.delivery_rail_action_bar.setMaximumHeight(30)
+        self.delivery_rail_action_bar.setProperty("deliveryRailActionMatrix", True)
+        self.delivery_rail_action_bar.setMaximumHeight(72)
         self.delivery_rail_action_bar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         action_layout = QGridLayout(self.delivery_rail_action_bar)
-        action_layout.setContentsMargins(TOKENS.spacing_xs, 1, TOKENS.spacing_xs, 1)
+        action_layout.setContentsMargins(TOKENS.spacing_xs, 3, TOKENS.spacing_xs, 3)
         action_layout.setHorizontalSpacing(TOKENS.spacing_xs)
-        action_layout.setVerticalSpacing(1)
+        action_layout.setVerticalSpacing(3)
         self.delivery_rail_action_button = QToolButton()
         self.delivery_rail_action_button.setText("下一步")
         self.delivery_rail_action_button.setProperty("railAction", True)
@@ -547,10 +548,12 @@ class ReportCenterPage(QWidget):
             self.delivery_rail_export_button,
             self.delivery_rail_evidence_button,
         )):
-            button.setMinimumWidth(46)
-            button.setMaximumHeight(22)
-            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-            action_layout.addWidget(button, 0, index)
+            button.setMinimumWidth(84)
+            button.setMinimumHeight(30)
+            button.setMaximumHeight(30)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            action_layout.addWidget(button, index // 2, index % 2)
+            action_layout.setColumnStretch(index % 2, 1)
 
         rail_console_layout.addWidget(self.delivery_rail_next_chip, 0, 0)
         rail_console_layout.addWidget(self.delivery_rail_next_value, 0, 1)
@@ -1831,7 +1834,7 @@ class ReportCenterPage(QWidget):
             action_title = str(report.get("title", "Report Preview") or "Report Preview")
             self.report_action_title_label.setText(_ui_safe_text(action_title if len(action_title) <= 18 else f"{action_title[:17]}..."))
             self.report_action_title_label.setToolTip(_ui_safe_text(action_title))
-            action_source = f"source={source_display} | batch={filters.get('batch', '--')} | updated={report.get('updated_at', '--')}"
+            action_source = f"来源：{source_display} · 批次：{filters.get('batch', '--')} · 更新：{report.get('updated_at', '--')}"
             self.report_action_source_label.setText(_ui_safe_text(action_source if len(action_source) <= 58 else f"{action_source[:55]}..."))
             self.report_action_source_label.setToolTip(_ui_safe_text(raw_source))
         source = source_display
@@ -1848,7 +1851,7 @@ class ReportCenterPage(QWidget):
             _ui_safe_text(f"{report.get('title', 'Report Preview')} · {view_mode}")
         )
         self.preview_delivery_trail_note.setText(
-            _ui_safe_text(f"report={report_key} | source={source} | batch={batch} | updated={updated_at}")
+            _ui_safe_text(f"来源：{source} · 批次：{batch} · 更新：{updated_at}")
         )
         self.preview_delivery_trail_note.setToolTip(_ui_safe_text(raw_source))
         self._refresh_preview_delivery_context()
@@ -3191,7 +3194,7 @@ class ReportCenterPage(QWidget):
             self._set_chip(self.report_action_next_chip, gate_text, gate_tone)
             next_action = self.delivery_gate_next_value.text() or "--"
             next_note = self.delivery_gate_next_note.text() or self.delivery_gate_next_value.toolTip() or "--"
-            self.report_action_next_label.setText(_ui_safe_text(f"next={next_action}"))
+            self.report_action_next_label.setText(_ui_safe_text(f"下一步：{next_action}"))
             self.report_action_next_label.setToolTip(_ui_safe_text(next_note))
         self._configure_delivery_rail_action_button(
             self.preview_command_buttons["generate"],
@@ -3356,11 +3359,10 @@ class ReportCenterPage(QWidget):
             note_text = str(next_note or "--")
             self.delivery_rail_next_note.setText(_ui_safe_text(note_text if len(note_text) <= 38 else f"{note_text[:35]}..."))
             self.delivery_rail_next_note.setToolTip(_ui_safe_text(note_text))
-            source_text = (
-                f"report={'ready' if report_ready else 'pending'} | "
-                f"export={'done' if export_done else 'pending'} | "
-                f"manifest={'ready' if manifest_ready else 'pending'}"
-            )
+            report_text = "报告已就绪" if report_ready else "报告待生成"
+            export_text = "交付包已导出" if export_done else "交付包待导出"
+            manifest_text = "Manifest 已就绪" if manifest_ready else "Manifest 待生成"
+            source_text = f"{report_text} · {export_text} · {manifest_text}"
             self.delivery_rail_source_note.setText(_ui_safe_text(source_text))
             self.delivery_rail_source_note.setToolTip(_ui_safe_text(source_text))
         self._configure_delivery_rail_action_button(
