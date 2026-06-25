@@ -345,6 +345,28 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_content_card.property("density") == "desktop"
         assert page.preview_content_card.property("plotStatus") == "tableOnly"
         assert page.preview_content_card.maximumHeight() == 232
+        assert page.preview_workbench_bridge.property("cardRole") == "console"
+        assert page.preview_workbench_bridge.property("deckRole") == "previewWorkbenchBridge"
+        assert page.preview_workbench_bridge.property("previewWorkbenchBridge") is True
+        assert page.preview_workbench_bridge.maximumHeight() == 36
+        assert set(page.preview_workbench_buttons) == {"data", "evidence", "insight"}
+        assert all(
+            button.property("previewWorkbenchSegment") is True
+            for button in page.preview_workbench_buttons.values()
+        )
+        assert page.preview_workbench_buttons["data"].isChecked() is True
+        assert page.preview_workbench_buttons["data"].property("activeWorkbenchSegment") is True
+        assert page.preview_workbench_buttons["data"].property("workbenchTone") == "success"
+        assert page.preview_workbench_buttons["evidence"].property("workbenchStatus") == "0/3"
+        page.preview_workbench_buttons["evidence"].click()
+        assert page.preview_workbench_buttons["evidence"].isChecked() is True
+        assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+        assert page.inspector_stack.currentWidget() is page.file_card
+        page._show_delivery_focus("gate")
+        page.preview_workbench_buttons["insight"].click()
+        assert page.preview_workbench_buttons["insight"].isChecked() is True
+        assert page.preview_content_card.property("activePane") == "insight"
+        page._show_preview_content_mode("table")
         assert page.preview_content_splitter.objectName() == "reportPreviewSplitPane"
         assert page.preview_content_splitter.property("reportPreviewSplitPane") is True
         assert page.preview_content_splitter.maximumHeight() == 164
@@ -565,6 +587,10 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             assert_contained(page.preview_deck_card, page.preview_route_strip, page)
             for button in page.preview_route_buttons.values():
                 assert_contained(page.preview_route_strip, button, page)
+            assert_contained(page.preview_content_card, page.preview_workbench_bridge, page)
+            for button in page.preview_workbench_buttons.values():
+                assert_contained(page.preview_workbench_bridge, button, page)
+            assert_no_visual_overlap(list(page.preview_workbench_buttons.values()), page)
             assert_contained(page.preview_deck_card, page.preview_content_splitter, page)
             assert_contained(page.preview_content_splitter, page.preview_primary_pane, page)
             assert_contained(page.preview_content_splitter, page.preview_context_pane, page)
@@ -722,6 +748,10 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert all(chip.property("chipTone") == "success" for chip in page.preview_evidence_status_chips.values())
         assert page.preview_context_chips["manifest"].property("chipTone") == "success"
         assert page.preview_context_values["network"].text() == "FLUXNET"
+        assert page.preview_workbench_buttons["data"].property("workbenchStatus") == "2x3"
+        assert page.preview_workbench_buttons["evidence"].property("workbenchStatus") == "3/3"
+        assert page.preview_workbench_buttons["evidence"].property("workbenchTone") == "success"
+        assert page.preview_workbench_buttons["insight"].property("workbenchStatus") == "2条"
         assert page.report_command_tiles["network"].property("commandTone") == "success"
         assert page.preview_command_values["report"].text() == "可预览"
         assert page.preview_command_values["gate"].text() == page.delivery_gate_chip.text()

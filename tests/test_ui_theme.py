@@ -143,6 +143,12 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[reportPreviewAnalysisStrip="true"][analysisMode="table"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewAnalysisStrip="true"][analysisMode="insight"]' in stylesheet
     assert 'QLabel[reportPreviewAnalysisHint="true"]' in stylesheet
+    assert 'QFrame#cardMuted[previewWorkbenchBridge="true"]' in stylesheet
+    assert 'QToolButton[previewWorkbenchSegment="true"]' in stylesheet
+    assert 'QToolButton[previewWorkbenchSegment="true"][workbenchTone="success"]' in stylesheet
+    assert 'QToolButton[previewWorkbenchSegment="true"][workbenchTone="accent"]' in stylesheet
+    assert 'QToolButton[previewWorkbenchSegment="true"][workbenchTone="warning"]' in stylesheet
+    assert 'QToolButton[previewWorkbenchSegment="true"][activeWorkbenchSegment="true"]' in stylesheet
     assert 'QWidget[reportPreviewMetricStrip="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewMetric="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportActionDrawer="true"]' in stylesheet

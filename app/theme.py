@@ -1299,6 +1299,47 @@ def build_stylesheet() -> str:
         font-size: 10px;
         font-weight: 700;
     }}
+    QFrame#cardMuted[previewWorkbenchBridge="true"] {{
+        border-radius: 13px;
+        border: 1px solid #bfd8df;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #f8fcfd,
+            stop: 0.52 #ffffff,
+            stop: 1 #eef8f2
+        );
+    }}
+    QToolButton[previewWorkbenchSegment="true"] {{
+        min-height: 26px;
+        border-radius: 10px;
+        padding: 1px 6px;
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid #c8dde4;
+        color: #31586a;
+        font-size: 9px;
+        font-weight: 900;
+    }}
+    QToolButton[previewWorkbenchSegment="true"][workbenchTone="success"] {{
+        background: #f0fbf5;
+        border-color: #9fd2bb;
+        color: #0f6946;
+    }}
+    QToolButton[previewWorkbenchSegment="true"][workbenchTone="accent"] {{
+        background: #edf9fb;
+        border-color: #8fc5d0;
+        color: #0b6475;
+    }}
+    QToolButton[previewWorkbenchSegment="true"][workbenchTone="warning"] {{
+        background: #fff7e4;
+        border-color: #e6c98e;
+        color: #8a5d0e;
+    }}
+    QToolButton[previewWorkbenchSegment="true"][activeWorkbenchSegment="true"],
+    QToolButton[previewWorkbenchSegment="true"]:checked {{
+        border-color: #0c6d78;
+        background: #dff5f7;
+        color: #0a5864;
+    }}
     QWidget[reportPreviewMetricStrip="true"] {{
         max-height: 62px;
     }}

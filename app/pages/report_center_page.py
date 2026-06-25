@@ -86,6 +86,7 @@ class ReportCenterPage(QWidget):
         self.report_nav_phase_buttons: dict[str, QToolButton] = {}
         self.report_nav_task_steps: dict[str, QLabel] = {}
         self.preview_route_buttons: dict[str, QToolButton] = {}
+        self.preview_workbench_buttons: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -369,7 +370,13 @@ class ReportCenterPage(QWidget):
         content_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
         content_layout.setSpacing(TOKENS.spacing_xs)
         content_layout.setAlignment(Qt.AlignTop)
-        content_layout.addWidget(section_title("图表或表格预览", "让结果预览像报告，而不是文件清单。"))
+        content_header = QHBoxLayout()
+        content_header.setContentsMargins(0, 0, 0, 0)
+        content_header.setSpacing(TOKENS.spacing_sm)
+        content_header.addWidget(section_title("图表或表格预览", "让结果预览像报告，而不是文件清单。"), 1)
+        self.preview_workbench_bridge = self._build_preview_workbench_bridge()
+        content_header.addWidget(self.preview_workbench_bridge)
+        content_layout.addLayout(content_header)
         self.preview_content_splitter = QSplitter(Qt.Horizontal)
         self.preview_content_splitter.setObjectName("reportPreviewSplitPane")
         self.preview_content_splitter.setProperty("reportPreviewSplitPane", True)
@@ -1348,6 +1355,37 @@ class ReportCenterPage(QWidget):
             layout.addWidget(button)
         return switcher
 
+    def _build_preview_workbench_bridge(self) -> CardFrame:
+        bridge = CardFrame(muted=True, role="console")
+        bridge.setProperty("deckRole", "previewWorkbenchBridge")
+        bridge.setProperty("previewWorkbenchBridge", True)
+        bridge.setMaximumWidth(342)
+        bridge.setMaximumHeight(36)
+        bridge.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        layout = QHBoxLayout(bridge)
+        layout.setContentsMargins(TOKENS.spacing_xs, 2, TOKENS.spacing_xs, 2)
+        layout.setSpacing(TOKENS.spacing_xs)
+        for key, title in (
+            ("data", "数据"),
+            ("evidence", "证据"),
+            ("insight", "结论"),
+        ):
+            button = QToolButton()
+            button.setText(_ui_safe_text(f"{title}\nWT"))
+            button.setCheckable(True)
+            button.setProperty("previewWorkbenchSegment", True)
+            button.setProperty("workbenchKey", key)
+            button.setProperty("workbenchTone", "warning")
+            button.setProperty("workbenchStatus", "WT")
+            button.setMinimumWidth(86)
+            button.setMinimumHeight(28)
+            button.setMaximumHeight(32)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.clicked.connect(lambda _checked=False, item=key: self._activate_preview_workbench_segment(item))
+            self.preview_workbench_buttons[key] = button
+            layout.addWidget(button)
+        return bridge
+
     def _preview_command_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("previewCommandTile", True)
@@ -1982,6 +2020,43 @@ class ReportCenterPage(QWidget):
             button.style().polish(button)
         if hasattr(self, "preview_route_buttons"):
             self._refresh_preview_route_buttons("preview")
+        if hasattr(self, "preview_workbench_buttons"):
+            self._sync_preview_workbench_active("insight" if mode == "insight" else "data")
+
+    def _set_preview_workbench_segment(self, key: str, title: str, status: str, note: str, tone: str) -> None:
+        button = self.preview_workbench_buttons.get(key)
+        if button is None:
+            return
+        compact_status = self._compact_radar_value(status, max_chars=7)
+        button.setText(_ui_safe_text(f"{title}\n{compact_status}"))
+        button.setToolTip(_ui_safe_text(note))
+        button.setProperty("workbenchTone", tone)
+        button.setProperty("workbenchStatus", compact_status)
+        button.style().unpolish(button)
+        button.style().polish(button)
+
+    def _sync_preview_workbench_active(self, active_key: str) -> None:
+        for key, button in self.preview_workbench_buttons.items():
+            is_active = key == active_key
+            button.blockSignals(True)
+            button.setChecked(is_active)
+            button.blockSignals(False)
+            button.setProperty("activeWorkbenchSegment", is_active)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _activate_preview_workbench_segment(self, key: str) -> None:
+        if key == "data":
+            self._show_preview_content_mode("table")
+            return
+        if key == "evidence":
+            self._sync_preview_workbench_active("evidence")
+            self._activate_preview_context_item("manifest")
+            return
+        if key == "insight":
+            self._show_preview_content_mode("insight")
+            return
+        self._show_preview_content_mode("table")
 
     def _refresh_preview_insight_panel(self, conclusions: list[str], *, view_mode: str, report_key: str) -> None:
         if not hasattr(self, "preview_insight_content"):
@@ -2056,6 +2131,7 @@ class ReportCenterPage(QWidget):
         self.preview_evidence_value.setToolTip(_ui_safe_text(note))
         self.preview_evidence_note.setText(_ui_safe_text(note))
         self.preview_evidence_note.setToolTip(_ui_safe_text(note))
+        self._set_preview_workbench_segment("evidence", "证据", f"{success_count}/3", note, tone)
         for key, item in items.items():
             status_chip = getattr(self, "preview_evidence_status_chips", {}).get(key)
             if status_chip is not None:
@@ -2203,6 +2279,17 @@ class ReportCenterPage(QWidget):
 
         conclusions = self._conclusions_for_mode(report, view_mode)
         self._refresh_preview_insight_panel(conclusions, view_mode=view_mode, report_key=report_key)
+        data_tone = "success" if rows else ("accent" if has_plot_data else "warning")
+        data_status = f"{len(rows)}x{len(headers)}" if rows else ("序列" if has_plot_data else "WT")
+        data_note = (
+            f"当前表格：{len(rows)} 行、{len(headers)} 列；"
+            f"{'可切换图表趋势。' if has_plot_data else '暂无图表序列，优先看表格和证据。'}"
+        )
+        self._set_preview_workbench_segment("data", "数据", data_status, data_note, data_tone)
+        insight_tone = "success" if conclusions else "warning"
+        insight_status = f"{len(conclusions)}条" if conclusions else "WT"
+        insight_note = f"当前视图可用于汇报的结论：{len(conclusions)} 条。"
+        self._set_preview_workbench_segment("insight", "结论", insight_status, insight_note, insight_tone)
         default_pane = "plot" if has_plot_data else ("table" if rows else "insight")
         self._show_preview_content_mode(default_pane)
 
