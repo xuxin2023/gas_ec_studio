@@ -59,6 +59,29 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_risk_button.property("deliveryRailAction") is True
         assert page.delivery_rail_export_button.property("deliveryRailAction") is True
         assert page.delivery_rail_evidence_button.property("deliveryRailAction") is True
+        assert page.delivery_mission_map.property("deliveryMissionMap") is True
+        assert page.delivery_mission_map.maximumHeight() == 30
+        assert set(page.delivery_mission_buttons) == {
+            "report",
+            "export",
+            "manifest",
+            "network",
+            "benchmark",
+            "methods",
+        }
+        assert all(
+            button.property("deliveryMissionNode") is True
+            for button in page.delivery_mission_buttons.values()
+        )
+        assert all(
+            button.property("missionTone") in {"success", "accent", "warning", "danger"}
+            for button in page.delivery_mission_buttons.values()
+        )
+        assert page.delivery_mission_buttons["report"].isChecked() is True
+        page.delivery_mission_buttons["export"].click()
+        assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+        assert page.inspector_stack.currentWidget() is page.export_card
+        assert page.delivery_mission_buttons["export"].isChecked() is True
         assert page.delivery_rail_action_button.property("targetAction") == "run_processing"
         assert page.delivery_rail_risk_button.property("targetAction") == "report"
         assert page.delivery_rail_risk_button.property("actionTone") == "danger"
@@ -125,14 +148,14 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_focus_stack.property("stackRole") == "compactDeliveryInspector"
         assert page.delivery_gate_hero_card.maximumHeight() == 56
         assert page.delivery_gate_scroll.objectName() == "deliveryGateMatrixScroll"
-        assert page.delivery_gate_scroll.maximumHeight() == 106
+        assert page.delivery_gate_scroll.maximumHeight() == 92
         assert page.delivery_gate_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.delivery_gate_scroll.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.delivery_gate_scroll.widget() is page.delivery_gate_grid_body
         assert page.delivery_gate_grid_body.property("deliveryGateLayeredMatrix") is True
         assert page.delivery_gate_ready_value.property("compactMetric") is True
         assert page.delivery_gate_ready_note.isHidden() is False
-        assert all(tile.maximumHeight() == 32 for tile in page.delivery_gate_tiles.values())
+        assert all(tile.maximumHeight() == 28 for tile in page.delivery_gate_tiles.values())
         assert all(tile.property("deliveryGateTile") is True for tile in page.delivery_gate_tiles.values())
         assert all(tile.property("deliveryGateLayerTile") is True for tile in page.delivery_gate_tiles.values())
         assert {
@@ -464,6 +487,14 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_status_radar_cards["benchmark"].property("radarTone") == "success"
         assert page.delivery_status_radar_cards["methods"].property("radarTone") == "success"
         assert page.delivery_status_radar_cards["export"].property("radarTone") == "success"
+        assert all(
+            page.delivery_mission_buttons[key].property("missionTone") == "success"
+            for key in ("report", "export", "manifest", "network", "benchmark", "methods")
+        )
+        assert all(
+            page.delivery_mission_buttons[key].property("missionStatus") == "OK"
+            for key in ("report", "export", "manifest", "network", "benchmark", "methods")
+        )
         assert page.report_command_tiles["network"].property("commandTone") == "success"
         assert page.preview_command_values["report"].text() == "可预览"
         assert page.preview_command_values["gate"].text() == page.delivery_gate_chip.text()

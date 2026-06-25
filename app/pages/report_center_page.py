@@ -67,6 +67,8 @@ class ReportCenterPage(QWidget):
         self.delivery_status_radar_cards: dict[str, CardFrame] = {}
         self.delivery_status_radar_values: dict[str, QLabel] = {}
         self.delivery_status_radar_notes: dict[str, QLabel] = {}
+        self.delivery_mission_buttons: dict[str, QToolButton] = {}
+        self.delivery_mission_active_key = "report"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -419,6 +421,9 @@ class ReportCenterPage(QWidget):
             rail_mode_row.addWidget(button)
         rail_mode_row.addStretch(1)
         rail_inspector_layout.addLayout(rail_mode_row)
+
+        self.delivery_mission_map = self._build_delivery_mission_map()
+        rail_inspector_layout.addWidget(self.delivery_mission_map)
 
         self.delivery_rail_action_bar = CardFrame(muted=True, role="console")
         self.delivery_rail_action_bar.setProperty("deckRole", "deliveryRailActionBar")
@@ -941,6 +946,38 @@ class ReportCenterPage(QWidget):
         self.preview_command_notes[key] = note
         return tile
 
+    def _build_delivery_mission_map(self) -> CardFrame:
+        card = CardFrame(muted=True, role="console")
+        card.setProperty("deliveryMissionMap", True)
+        card.setMaximumHeight(30)
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(card)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setHorizontalSpacing(2)
+        layout.setVerticalSpacing(0)
+        mission_nodes = (
+            ("report", "报告"),
+            ("export", "导出"),
+            ("manifest", "清单"),
+            ("network", "网络"),
+            ("benchmark", "对标"),
+            ("methods", "方法"),
+        )
+        for index, (key, title) in enumerate(mission_nodes):
+            button = QToolButton()
+            button.setText(_ui_safe_text(title))
+            button.setCheckable(True)
+            button.setProperty("deliveryMissionNode", True)
+            button.setProperty("missionKey", key)
+            button.setProperty("missionTitle", title)
+            button.setProperty("missionTone", "warning")
+            button.setMaximumHeight(22)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            button.clicked.connect(lambda _checked=False, node=key: self._activate_delivery_mission_node(node))
+            self.delivery_mission_buttons[key] = button
+            layout.addWidget(button, 0, index)
+        return card
+
     def _build_summary_row(self) -> QWidget:
         wrapper = QWidget()
         wrapper.setMaximumHeight(42)
@@ -1133,19 +1170,19 @@ class ReportCenterPage(QWidget):
         self.delivery_gate_scroll.setWidgetResizable(True)
         self.delivery_gate_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.delivery_gate_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.delivery_gate_scroll.setMinimumHeight(98)
-        self.delivery_gate_scroll.setMaximumHeight(106)
+        self.delivery_gate_scroll.setMinimumHeight(86)
+        self.delivery_gate_scroll.setMaximumHeight(92)
         self.delivery_gate_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.delivery_gate_grid_body = QWidget()
         self.delivery_gate_grid_body.setProperty("deliveryGateLayeredMatrix", True)
         self.delivery_gate_grid_body.setMinimumWidth(0)
-        self.delivery_gate_grid_body.setMinimumHeight(98)
+        self.delivery_gate_grid_body.setMinimumHeight(86)
         grid = QGridLayout(self.delivery_gate_grid_body)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(TOKENS.spacing_xs)
         grid.setVerticalSpacing(TOKENS.spacing_xs)
         for row in range(3):
-            grid.setRowMinimumHeight(row, 30)
+            grid.setRowMinimumHeight(row, 26)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         self.delivery_gate_values: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
@@ -1195,8 +1232,8 @@ class ReportCenterPage(QWidget):
         tile.setProperty("gateKey", key)
         tile.setProperty("deliveryGateTile", True)
         tile.setProperty("deliveryGateLayerTile", True)
-        tile.setMinimumHeight(28)
-        tile.setMaximumHeight(32)
+        tile.setMinimumHeight(24)
+        tile.setMaximumHeight(28)
         layout = QHBoxLayout(tile)
         layout.setContentsMargins(5, 1, 5, 1)
         layout.setSpacing(3)
@@ -2471,6 +2508,32 @@ class ReportCenterPage(QWidget):
         self._set_delivery_gate_tile("benchmark", benchmark["value"], benchmark["note"], benchmark["tone"])
         self._set_delivery_gate_tile("methods", methods["value"], methods["note"], methods["tone"])
 
+        report_value = "可预览" if report_ready else "待生成"
+        export_value = "已导出" if export_done else ("可导出" if exportable_count > 0 else "待运行")
+        manifest_value = "已生成" if manifest_ready else "待导出"
+        self._refresh_delivery_mission_map(
+            {
+                "report": (
+                    report_value,
+                    str(report.get("title", "当前报告")) if report_ready else "请先运行处理或生成报告。",
+                    "success" if report_ready else "warning",
+                ),
+                "export": (
+                    export_value,
+                    export_status,
+                    "success" if export_done else ("accent" if exportable_count > 0 else "warning"),
+                ),
+                "manifest": (
+                    manifest_value,
+                    manifest_path or "导出交付包后写入 manifest。",
+                    "success" if manifest_ready else "warning",
+                ),
+                "network": (network["value"], network["note"], network["tone"]),
+                "benchmark": (benchmark["value"], benchmark["note"], benchmark["tone"]),
+                "methods": (methods["value"], methods["note"], methods["tone"]),
+            }
+        )
+
         tones = [
             "success" if report_ready else "warning",
             "success" if export_done else ("accent" if exportable_count > 0 else "warning"),
@@ -2633,6 +2696,29 @@ class ReportCenterPage(QWidget):
             card.setProperty("radarTone", tone)
             card.style().unpolish(card)
             card.style().polish(card)
+
+    def _refresh_delivery_mission_map(self, items: dict[str, tuple[str, str, str]]) -> None:
+        status_labels = {
+            "success": "OK",
+            "accent": "RDY",
+            "warning": "WT",
+            "danger": "RK",
+        }
+        for key, (value, note, tone) in items.items():
+            button = self.delivery_mission_buttons.get(key)
+            if button is None:
+                continue
+            title = str(button.property("missionTitle") or button.text().split("\n", 1)[0])
+            compact_value = self._compact_radar_value(value, max_chars=7)
+            status = status_labels.get(str(tone), "WAIT")
+            button.setText(_ui_safe_text(f"{title} {status}"))
+            button.setToolTip(_ui_safe_text(f"{value} | {note}"))
+            button.setProperty("missionTone", tone)
+            button.setProperty("missionValue", compact_value)
+            button.setProperty("missionStatus", status)
+            button.setChecked(self.delivery_mission_active_key == key)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     @staticmethod
     def _compact_radar_value(value: object, *, max_chars: int = 8) -> str:
@@ -2875,6 +2961,36 @@ class ReportCenterPage(QWidget):
 
     def _activate_delivery_rail_risk(self) -> None:
         self._activate_delivery_rail_target(self.delivery_rail_risk_button)
+
+    def _activate_delivery_mission_node(self, key: str) -> None:
+        self.delivery_mission_active_key = key
+        if key == "report":
+            self._show_preview_content_mode("table")
+        elif key == "export":
+            self._show_delivery_focus("details")
+            self._show_inspector_section("export")
+        elif key in {"manifest", "network"}:
+            self._show_delivery_focus("details")
+            self._show_inspector_section("file")
+        elif key == "benchmark":
+            self.controller.set_report_nav_section("benchmark_cockpit")
+            self.refresh()
+            self._show_delivery_focus("gate")
+        elif key == "methods":
+            self.controller.set_report_nav_section("method_provenance")
+            self.refresh()
+            self._show_delivery_focus("gate")
+        else:
+            self._show_delivery_focus("gate")
+        self._refresh_delivery_mission_selection()
+
+    def _refresh_delivery_mission_selection(self) -> None:
+        for key, button in self.delivery_mission_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == self.delivery_mission_active_key)
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def _activate_delivery_rail_target(self, button: QToolButton) -> None:
         target = str(button.property("targetAction") or "")

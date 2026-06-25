@@ -1146,6 +1146,46 @@ def build_stylesheet() -> str:
             stop: 1 #e6f3f6
         );
     }}
+    QFrame#cardMuted[deliveryMissionMap="true"] {{
+        border-radius: 14px;
+        border: 1px solid #c6dce3;
+        background: rgba(248, 252, 253, 0.80);
+    }}
+    QToolButton[deliveryMissionNode="true"] {{
+        min-height: 22px;
+        border-radius: 10px;
+        padding: 0 5px;
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid #ccdde4;
+        color: #31586a;
+        font-size: 9px;
+        font-weight: 800;
+    }}
+    QToolButton[deliveryMissionNode="true"][missionTone="success"] {{
+        background: #f0fbf5;
+        border-color: #9fd2bb;
+    }}
+    QToolButton[deliveryMissionNode="true"][missionTone="accent"] {{
+        background: #eef9fb;
+        border-color: #94c9d3;
+    }}
+    QToolButton[deliveryMissionNode="true"][missionTone="warning"] {{
+        background: #fff7e4;
+        border-color: #e6c98e;
+    }}
+    QToolButton[deliveryMissionNode="true"][missionTone="danger"] {{
+        background: #fff0ef;
+        border-color: #e8b3ad;
+    }}
+    QToolButton[deliveryMissionNode="true"]:checked {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #0c6d78,
+            stop: 1 #2f9ca0
+        );
+        border-color: #075a69;
+        color: #ffffff;
+    }}
     QFrame#card[deliveryMissionInspector="true"] {{
         border-radius: 16px;
         border: 1px solid #c8dce4;
