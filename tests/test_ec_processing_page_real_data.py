@@ -149,6 +149,10 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.desktop_rail_risk_button.property("railAction") is True
         assert page.desktop_rail_status_strip.property("ecRailStatusConsole") is True
         assert page.method_shortcut_card.property("methodShortcutCommandDeck") is True
+        assert page.method_shortcut_pill_strip.property("methodShortcutPillStrip") is True
+        assert set(page.method_shortcut_pills) == {"footprint", "uncertainty", "spectral"}
+        assert all(pill.property("methodShortcutPill") is True for pill in page.method_shortcut_pills.values())
+        assert page.method_shortcut_pills["uncertainty"].text().startswith("误 M&L")
         assert page.desktop_rail_action_button.text() != "--"
         assert page.desktop_rail_risk_button.text() != "--"
         assert page.cockpit_card.property("cardRole") == "cockpit"

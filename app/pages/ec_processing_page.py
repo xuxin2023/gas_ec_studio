@@ -77,6 +77,7 @@ class ECProcessingPage(QWidget):
         self.step_phase_buttons: dict[str, QToolButton] = {}
         self.method_shortcut_buttons: dict[str, QToolButton] = {}
         self.method_shortcut_labels: dict[str, str] = {}
+        self.method_shortcut_pills: dict[str, QLabel] = {}
         self.method_console_mode_buttons: dict[str, QToolButton] = {}
         self.method_family_control_strips: dict[str, QWidget] = {}
         self.method_family_control_tiles: dict[str, dict[str, CardFrame]] = {}
@@ -791,12 +792,37 @@ class ECProcessingPage(QWidget):
             self.method_shortcut_labels[family] = text
             row.addWidget(button, 0, column)
         layout.addLayout(row)
-        self.method_shortcut_note = QLabel("--")
+        self.method_shortcut_pill_strip = QWidget()
+        self.method_shortcut_pill_strip.setProperty("methodShortcutPillStrip", True)
+        self.method_shortcut_pill_strip.setMaximumHeight(18)
+        pill_layout = QHBoxLayout(self.method_shortcut_pill_strip)
+        pill_layout.setContentsMargins(0, 0, 0, 0)
+        pill_layout.setSpacing(TOKENS.spacing_xs)
+        self.method_shortcut_pills = {}
+        for family, label_text in (
+            ("footprint", "足"),
+            ("uncertainty", "误"),
+            ("spectral", "谱"),
+        ):
+            pill = QLabel(f"{label_text} --")
+            pill.setObjectName("subtitle")
+            pill.setProperty("methodShortcutPill", True)
+            pill.setProperty("methodFamily", family)
+            pill.setProperty("methodTone", "accent")
+            pill.setProperty("activeMethodShortcut", family == "footprint")
+            pill.setWordWrap(False)
+            pill.setMinimumWidth(0)
+            pill.setMaximumHeight(18)
+            pill.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            self.method_shortcut_pills[family] = pill
+            pill_layout.addWidget(pill, 1)
+        layout.addWidget(self.method_shortcut_pill_strip)
+        self.method_shortcut_note = QLabel("--", card)
         self.method_shortcut_note.setObjectName("subtitle")
         self.method_shortcut_note.setProperty("methodShortcutNote", True)
         self.method_shortcut_note.setWordWrap(False)
         self.method_shortcut_note.setMaximumHeight(16)
-        layout.addWidget(self.method_shortcut_note)
+        self.method_shortcut_note.setVisible(False)
         return card
 
     def _build_workflow_lens_panel(self) -> CardFrame:
@@ -1276,6 +1302,7 @@ class ECProcessingPage(QWidget):
             button.blockSignals(False)
             button.style().unpolish(button)
             button.style().polish(button)
+        self._set_method_shortcut_pills(methods, active_family, family_tones)
         tone = "warning" if issue_count else "success"
         if hasattr(self, "method_shortcut_chip"):
             self.method_shortcut_chip.setText("复核" if issue_count else "就绪")
@@ -1289,12 +1316,9 @@ class ECProcessingPage(QWidget):
             self.method_shortcut_value.setText(self._compact_text(value, 22))
             self.method_shortcut_value.setToolTip(value)
         if hasattr(self, "method_shortcut_note"):
-            self.method_shortcut_note.setText(
-                self._compact_text(
-                    f"{footprint_method} / {uncertainty_method} / {spectral_method} · issues={issue_count}",
-                    48,
-                )
-            )
+            note = f"{footprint_method} / {uncertainty_method} / {spectral_method} · issues={issue_count}"
+            self.method_shortcut_note.setText(note)
+            self.method_shortcut_note.setToolTip(note)
 
     def _activate_desktop_rail_action(self) -> None:
         self._activate_desktop_rail_target(getattr(self, "desktop_rail_action_button", None))
@@ -1357,6 +1381,50 @@ class ECProcessingPage(QWidget):
         value = f"{active_label} · {methods.get(family, '--')}"
         value_label.setText(self._compact_text(value, 22))
         value_label.setToolTip(value)
+        self._set_method_shortcut_pills(methods, family)
+
+    def _set_method_shortcut_pills(
+        self,
+        methods: dict[str, str],
+        active_family: str,
+        family_tones: dict[str, str] | None = None,
+    ) -> None:
+        family_tones = family_tones or {}
+        family_labels = {
+            "footprint": "足",
+            "uncertainty": "误",
+            "spectral": "谱",
+        }
+        full_family_labels = {
+            "footprint": "足迹",
+            "uncertainty": "随机误差",
+            "spectral": "谱修正",
+        }
+        for family, pill in getattr(self, "method_shortcut_pills", {}).items():
+            method = methods.get(family, "--")
+            pill.setText(f"{family_labels.get(family, family)} {self._method_badge_text(method)}")
+            pill.setToolTip(f"{full_family_labels.get(family, family)}方法: {method}")
+            pill.setProperty("methodTone", family_tones.get(family, "accent"))
+            pill.setProperty("activeMethodShortcut", family == active_family)
+            pill.style().unpolish(pill)
+            pill.style().polish(pill)
+
+    def _method_badge_text(self, method: object) -> str:
+        text = str(method or "--").strip()
+        key = text.lower()
+        labels = {
+            "kljun": "Kljun",
+            "kormann_meixner": "K-M",
+            "hsieh": "Hsieh",
+            "mann_lenschow": "M&L",
+            "finkelstein_sims": "F&S",
+            "massman": "Mass",
+            "horst": "Horst",
+            "ibrom": "Ibrom",
+            "fratini": "Fratini",
+            "disabled": "off",
+        }
+        return labels.get(key, text.replace("_", " "))
 
     def _show_method_console_mode(self, mode: str) -> None:
         if mode not in {"family", "primary", "compare"}:

@@ -62,6 +62,15 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.method_shortcut_value.text()
         assert page.method_shortcut_note.property("methodShortcutNote") is True
         assert page.method_shortcut_note.text()
+        assert page.method_shortcut_note.isHidden() is True
+        assert page.method_shortcut_pill_strip.property("methodShortcutPillStrip") is True
+        assert page.method_shortcut_pill_strip.maximumHeight() == 18
+        assert set(page.method_shortcut_pills) == {"footprint", "uncertainty", "spectral"}
+        assert all(pill.property("methodShortcutPill") is True for pill in page.method_shortcut_pills.values())
+        assert page.method_shortcut_pills["footprint"].text().startswith("足 Kljun")
+        assert page.method_shortcut_pills["uncertainty"].text().startswith("误 M&L")
+        assert page.method_shortcut_pills["spectral"].text().startswith("谱 Mass")
+        assert page.method_shortcut_pills["footprint"].property("activeMethodShortcut") is True
         assert page.method_shortcut_buttons["footprint"].property("activeMethodShortcut") is True
         assert all(
             button.property("methodTone") in {"success", "accent", "warning", "danger"}
@@ -164,6 +173,8 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.method_shortcut_buttons["spectral"].isChecked() is True
         assert page.method_shortcut_buttons["spectral"].property("activeMethodShortcut") is True
         assert "massman" in page.method_shortcut_value.toolTip()
+        assert page.method_shortcut_pills["spectral"].property("activeMethodShortcut") is True
+        assert "massman" in page.method_shortcut_pills["spectral"].toolTip()
         assert page.step_phase_buttons["advanced"].isChecked() is True
         assert page.desktop_rail_stack.currentWidget() is page.cockpit_card
         assert set(page.coverage_values) == {

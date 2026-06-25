@@ -952,6 +952,38 @@ def build_stylesheet() -> str:
         font-size: 9px;
         font-weight: 700;
     }}
+    QWidget[methodShortcutPillStrip="true"] {{
+        max-height: 18px;
+    }}
+    QLabel[methodShortcutPill="true"] {{
+        border-radius: 9px;
+        padding: 1px 4px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid #c7dfe6;
+        color: #345d6a;
+        font-size: 8px;
+        font-weight: 800;
+    }}
+    QLabel[methodShortcutPill="true"][methodTone="success"] {{
+        border-color: #9fd2bb;
+        background: #f1fbf5;
+        color: #14664c;
+    }}
+    QLabel[methodShortcutPill="true"][methodTone="warning"] {{
+        border-color: #e6c98e;
+        background: #fff7e4;
+        color: #815000;
+    }}
+    QLabel[methodShortcutPill="true"][methodTone="danger"] {{
+        border-color: #e8b3ad;
+        background: #fff0ef;
+        color: {TOKENS.color_error};
+    }}
+    QLabel[methodShortcutPill="true"][activeMethodShortcut="true"] {{
+        background: #0c6d78;
+        border-color: #075a69;
+        color: #ffffff;
+    }}
     QToolButton[methodShortcut="true"] {{
         min-height: 28px;
         min-width: 66px;
