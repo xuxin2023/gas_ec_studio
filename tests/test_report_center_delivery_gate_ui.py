@@ -212,6 +212,22 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_content_card.property("density") == "desktop"
         assert page.preview_content_card.property("plotStatus") == "tableOnly"
         assert page.preview_content_card.maximumHeight() == 360
+        assert page.preview_content_splitter.objectName() == "reportPreviewSplitPane"
+        assert page.preview_content_splitter.property("reportPreviewSplitPane") is True
+        assert page.preview_content_splitter.maximumHeight() == 292
+        assert page.preview_primary_pane.property("reportPreviewPrimaryPane") is True
+        assert page.preview_context_pane.property("reportPreviewContextPane") is True
+        assert page.preview_context_pane.minimumWidth() == 190
+        assert set(page.preview_context_cards) == {"manifest", "network", "methods"}
+        assert all(card.property("previewContextTile") is True for card in page.preview_context_cards.values())
+        assert all(chip.property("closureStage") is True for chip in page.preview_context_chips.values())
+        assert all(button.property("previewContextAction") is True for button in page.preview_context_buttons.values())
+        assert page.preview_context_cards["manifest"].property("contextTone") == "warning"
+        page.preview_context_buttons["network"].click()
+        assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+        assert page.inspector_stack.currentWidget() is page.file_card
+        page._show_delivery_focus("gate")
+        page._show_inspector_section("export")
         assert page.expert_review_card.property("deckRole") == "expertReviewStrip"
         assert page.expert_review_card.isHidden() is True
         assert page.preview_plot.isHidden() is True
@@ -363,11 +379,12 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
 
             page._show_delivery_focus("gate")
             app.processEvents()
-            assert_contained(page, page.preview_command_strip, page)
-            for tile in page.preview_command_tiles.values():
-                assert_contained(page.preview_command_strip, tile, page)
-            for button in page.preview_command_buttons.values():
-                assert_contained(page.preview_command_strip, button, page)
+            assert_contained(page, page.preview_content_splitter, page)
+            assert_contained(page.preview_deck_card, page.preview_content_splitter, page)
+            assert_contained(page.preview_content_splitter, page.preview_primary_pane, page)
+            assert_contained(page.preview_content_splitter, page.preview_context_pane, page)
+            for tile in page.preview_context_cards.values():
+                assert_contained(page.preview_context_pane, tile, page)
             for button in page.preview_content_switches.values():
                 assert_contained(page.preview_deck_card, button, page)
             gate_widgets = [page.delivery_gate_scroll]
@@ -495,6 +512,11 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
             page.delivery_mission_buttons[key].property("missionStatus") == "OK"
             for key in ("report", "export", "manifest", "network", "benchmark", "methods")
         )
+        assert page.preview_context_cards["manifest"].property("contextTone") == "success"
+        assert page.preview_context_cards["network"].property("contextTone") == "success"
+        assert page.preview_context_cards["methods"].property("contextTone") == "success"
+        assert page.preview_context_chips["manifest"].property("chipTone") == "success"
+        assert page.preview_context_values["network"].text() == "FLUXNET"
         assert page.report_command_tiles["network"].property("commandTone") == "success"
         assert page.preview_command_values["report"].text() == "可预览"
         assert page.preview_command_values["gate"].text() == page.delivery_gate_chip.text()

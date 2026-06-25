@@ -69,6 +69,11 @@ class ReportCenterPage(QWidget):
         self.delivery_status_radar_notes: dict[str, QLabel] = {}
         self.delivery_mission_buttons: dict[str, QToolButton] = {}
         self.delivery_mission_active_key = "report"
+        self.preview_context_cards: dict[str, CardFrame] = {}
+        self.preview_context_values: dict[str, QLabel] = {}
+        self.preview_context_notes: dict[str, QLabel] = {}
+        self.preview_context_chips: dict[str, QLabel] = {}
+        self.preview_context_buttons: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -311,26 +316,38 @@ class ReportCenterPage(QWidget):
         content_layout.setSpacing(TOKENS.spacing_sm)
         content_layout.setAlignment(Qt.AlignTop)
         content_layout.addWidget(section_title("图表或表格预览", "让结果预览像报告，而不是文件清单。"))
+        self.preview_content_splitter = QSplitter(Qt.Horizontal)
+        self.preview_content_splitter.setObjectName("reportPreviewSplitPane")
+        self.preview_content_splitter.setProperty("reportPreviewSplitPane", True)
+        self.preview_content_splitter.setChildrenCollapsible(False)
+        self.preview_content_splitter.setMaximumHeight(292)
+        self.preview_content_splitter.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.preview_primary_pane = CardFrame(muted=True, role="panel")
+        self.preview_primary_pane.setProperty("reportPreviewPrimaryPane", True)
+        self.preview_primary_pane.setMinimumWidth(300)
+        primary_layout = QVBoxLayout(self.preview_primary_pane)
+        primary_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        primary_layout.setSpacing(TOKENS.spacing_xs)
         self.preview_plot = pg.PlotWidget()
         self.preview_plot.setMinimumHeight(150)
         self.preview_plot.setMaximumHeight(210)
         configure_plot_theme(self.preview_plot, left_label="指标", bottom_label="序列")
         self.preview_curve = self.preview_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.2))
-        content_layout.addWidget(self.preview_plot)
+        primary_layout.addWidget(self.preview_plot)
         self.preview_table = QTableWidget(0, 3)
         self.preview_table.setMaximumHeight(128)
         self.preview_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.preview_table.verticalHeader().setVisible(False)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        content_layout.addWidget(self.preview_table)
+        primary_layout.addWidget(self.preview_table)
         self.preview_table_note = QLabel("--")
         self.preview_table_note.setObjectName("subtitle")
         self.preview_table_note.setWordWrap(False)
-        content_layout.addWidget(self.preview_table_note)
+        primary_layout.addWidget(self.preview_table_note)
         self.preview_plot_note = QLabel("--")
         self.preview_plot_note.setObjectName("subtitle")
         self.preview_plot_note.setWordWrap(True)
-        content_layout.addWidget(self.preview_plot_note)
+        primary_layout.addWidget(self.preview_plot_note)
         self.preview_insight_card = CardFrame(muted=True, role="tile")
         self.preview_insight_card.setProperty("deckRole", "reportPreviewInsightPane")
         self.preview_insight_card.setMaximumHeight(210)
@@ -340,10 +357,32 @@ class ReportCenterPage(QWidget):
         self.preview_insight_content = QVBoxLayout()
         self.preview_insight_content.setSpacing(TOKENS.spacing_xs)
         insight_layout.addLayout(self.preview_insight_content)
-        content_layout.addWidget(self.preview_insight_card)
+        primary_layout.addWidget(self.preview_insight_card)
+        self.preview_content_splitter.addWidget(self.preview_primary_pane)
+
+        self.preview_context_pane = CardFrame(muted=True, role="rail")
+        self.preview_context_pane.setProperty("reportPreviewContextPane", True)
+        self.preview_context_pane.setMinimumWidth(190)
+        self.preview_context_pane.setMaximumWidth(242)
+        context_layout = QVBoxLayout(self.preview_context_pane)
+        context_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        context_layout.setSpacing(TOKENS.spacing_xs)
+        context_layout.addWidget(section_title("交付证据", "manifest、网络校验和方法 rollup 常驻预览。"))
+        for key, title in (
+            ("manifest", "Manifest"),
+            ("network", "Network"),
+            ("methods", "Methods"),
+        ):
+            context_layout.addWidget(self._preview_context_tile(key, title))
+        context_layout.addStretch(1)
+        self.preview_content_splitter.addWidget(self.preview_context_pane)
+        self.preview_content_splitter.setSizes([520, 220])
+        content_layout.addWidget(self.preview_content_splitter)
         self._show_preview_content_mode("table")
         preview_deck_layout.addWidget(self.preview_content_card)
+        preview_deck_layout.insertWidget(2, self.preview_content_card)
         center_layout.addWidget(self.preview_deck_card)
+        center_layout.insertWidget(0, self.preview_deck_card)
 
         self.closure_deck_card = CardFrame(muted=True, role="rail")
         closure_deck_layout = QVBoxLayout(self.closure_deck_card)
@@ -946,6 +985,55 @@ class ReportCenterPage(QWidget):
         self.preview_command_notes[key] = note
         return tile
 
+    def _preview_context_tile(self, key: str, title: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("previewContextTile", True)
+        tile.setProperty("contextKey", key)
+        tile.setProperty("contextTone", "warning")
+        tile.setMaximumHeight(66)
+        tile.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(tile)
+        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
+        layout.setSpacing(0)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(_ui_safe_text(title))
+        label.setObjectName("metricLabel")
+        status_chip = chip("待检查", "warning")
+        status_chip.setProperty("closureStage", True)
+        status_chip.setMaximumHeight(18)
+        action = QToolButton()
+        action.setText("打开")
+        action.setProperty("previewContextAction", True)
+        action.setProperty("targetContext", key)
+        action.setMaximumHeight(20)
+        action.clicked.connect(lambda _checked=False, item=key: self._activate_preview_context_item(item))
+        header.addWidget(label, 1)
+        header.addWidget(status_chip)
+        header.addWidget(action)
+        value = QLabel("--")
+        value.setObjectName("metricValue")
+        value.setProperty("compactMetric", True)
+        value.setMaximumHeight(18)
+        value.setWordWrap(False)
+        value.setMinimumWidth(0)
+        value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        note = QLabel("--")
+        note.setObjectName("subtitle")
+        note.setMaximumHeight(16)
+        note.setWordWrap(False)
+        note.setMinimumWidth(0)
+        note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        layout.addLayout(header)
+        layout.addWidget(value)
+        layout.addWidget(note)
+        self.preview_context_cards[key] = tile
+        self.preview_context_values[key] = value
+        self.preview_context_notes[key] = note
+        self.preview_context_chips[key] = status_chip
+        self.preview_context_buttons[key] = action
+        return tile
+
     def _build_delivery_mission_map(self) -> CardFrame:
         card = CardFrame(muted=True, role="console")
         card.setProperty("deliveryMissionMap", True)
@@ -1412,6 +1500,46 @@ class ReportCenterPage(QWidget):
             self.preview_insight_content.addWidget(label)
         self.preview_insight_card.setToolTip(_ui_safe_text(f"report={report_key} | conclusions={len(conclusions)}"))
 
+    def _refresh_preview_delivery_context(self) -> None:
+        workspace = self.controller.report_center_workspace
+        reports = dict(workspace.get("reports", {}) or {})
+        file_values = self._delivery_file_values(reports)
+        export_status = str(workspace.get("export_status", "") or "")
+        benchmark_report = dict(reports.get("benchmark_cockpit", {}) or {})
+        method_report = dict(reports.get("method_provenance", {}) or {})
+        manifest_path = self._first_file_value(file_values, ("manifest", "export_manifest"))
+        export_done = self._export_status_is_done(export_status)
+        network = self._network_gate_summary(workspace, benchmark_report)
+        methods = self._method_gate_summary(method_report, file_values)
+        self._set_preview_context_tile(
+            "manifest",
+            "ready" if manifest_path else ("pending" if export_done else "--"),
+            manifest_path or ("导出状态存在，但尚未发现 manifest 文件。" if export_done else "导出交付包后写入 manifest。"),
+            "success" if manifest_path else ("accent" if export_done else "warning"),
+        )
+        self._set_preview_context_tile("network", network["value"], network["note"], network["tone"])
+        self._set_preview_context_tile("methods", methods["value"], methods["note"], methods["tone"])
+
+    def _set_preview_context_tile(self, key: str, value: str, note: str, tone: str) -> None:
+        card = self.preview_context_cards.get(key)
+        value_label = self.preview_context_values.get(key)
+        note_label = self.preview_context_notes.get(key)
+        status_chip = self.preview_context_chips.get(key)
+        if card is None or value_label is None or note_label is None or status_chip is None:
+            return
+        display_value = self._compact_radar_value(value, max_chars=14)
+        display_note = _ui_safe_text(str(note or "--"))
+        value_label.setText(display_value)
+        value_label.setToolTip(display_note)
+        note_label.setText(display_note if len(display_note) <= 34 else f"{display_note[:31]}...")
+        note_label.setToolTip(display_note)
+        status_text = {"success": "通过", "accent": "可用", "warning": "待复核", "danger": "阻塞"}.get(tone, "待复核")
+        self._set_chip(status_chip, status_text, tone)
+        card.setToolTip(display_note)
+        card.setProperty("contextTone", tone)
+        card.style().unpolish(card)
+        card.style().polish(card)
+
     def _refresh_preview(self, report: dict, view_mode: str, filters: dict) -> None:
         self._set_chip(self.preview_mode_chip, view_mode, "accent")
         self.preview_title_label.setText(_ui_safe_text(report.get("title", "Report Preview")))
@@ -1434,6 +1562,7 @@ class ReportCenterPage(QWidget):
             _ui_safe_text(f"report={report_key} | source={source} | batch={batch} | updated={updated_at}")
         )
         self.preview_delivery_trail_note.setToolTip(_ui_safe_text(raw_source))
+        self._refresh_preview_delivery_context()
 
         is_expert_review = report_key in {"method_provenance", "method_compare", "computation_surface"}
         is_benchmark_cockpit = str(report.get("report_key", "")) == "benchmark_cockpit"
@@ -2961,6 +3090,12 @@ class ReportCenterPage(QWidget):
 
     def _activate_delivery_rail_risk(self) -> None:
         self._activate_delivery_rail_target(self.delivery_rail_risk_button)
+
+    def _activate_preview_context_item(self, key: str) -> None:
+        if key in {"manifest", "network", "methods"}:
+            self._activate_delivery_mission_node(key)
+        else:
+            self._show_delivery_focus("gate")
 
     def _activate_delivery_mission_node(self, key: str) -> None:
         self.delivery_mission_active_key = key

@@ -1098,6 +1098,58 @@ def build_stylesheet() -> str:
         border: 1px solid #d2e3e9;
         background: rgba(255, 255, 255, 0.76);
     }}
+    QSplitter#reportPreviewSplitPane {{
+        background: transparent;
+    }}
+    QFrame#cardMuted[reportPreviewPrimaryPane="true"] {{
+        border-radius: 15px;
+        border: 1px solid #c9dfe6;
+        background: rgba(255, 255, 255, 0.80);
+    }}
+    QFrame#cardMuted[reportPreviewContextPane="true"] {{
+        border-radius: 15px;
+        border: 1px solid #c8dce4;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f8fcfd,
+            stop: 1 #eef8f2
+        );
+    }}
+    QFrame#cardMuted[previewContextTile="true"] {{
+        border-radius: 12px;
+        border: 1px solid #d1e2e8;
+        background: rgba(255, 255, 255, 0.78);
+    }}
+    QFrame#cardMuted[previewContextTile="true"][contextTone="success"] {{
+        background: #f0fbf5;
+        border-color: #9fd2bb;
+    }}
+    QFrame#cardMuted[previewContextTile="true"][contextTone="accent"] {{
+        background: #eef9fb;
+        border-color: #94c9d3;
+    }}
+    QFrame#cardMuted[previewContextTile="true"][contextTone="warning"] {{
+        background: #fff7e4;
+        border-color: #e6c98e;
+    }}
+    QFrame#cardMuted[previewContextTile="true"][contextTone="danger"] {{
+        background: #fff0ef;
+        border-color: #e8b3ad;
+    }}
+    QFrame#cardMuted[previewContextTile="true"] QLabel#metricValue[compactMetric="true"] {{
+        font-size: 12px;
+        font-weight: 800;
+    }}
+    QToolButton[previewContextAction="true"] {{
+        min-height: 18px;
+        border-radius: 9px;
+        padding: 0 6px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid #bfd8df;
+        color: #0e5f6e;
+        font-size: 10px;
+        font-weight: 800;
+    }}
     QFrame#cardMuted[previewTrailStrip="true"] {{
         border-radius: 14px;
         border: 1px solid #bfd8df;
