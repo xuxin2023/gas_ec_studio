@@ -1228,10 +1228,48 @@ def build_stylesheet() -> str:
             stop: 1 #eef8f2
         );
     }}
+    QFrame#cardMuted[reportPreviewContextPane="true"][reportPreviewEvidenceRail="true"] {{
+        border-color: #b8d6df;
+    }}
+    QFrame#cardMuted[previewEvidenceSummary="true"] {{
+        border-radius: 13px;
+        border: 1px solid #bed8df;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f8fcfd,
+            stop: 0.56 #ffffff,
+            stop: 1 #eff8ef
+        );
+    }}
+    QFrame#cardMuted[previewEvidenceSummary="true"][evidenceTone="success"] {{
+        border-color: #9fd2bb;
+    }}
+    QFrame#cardMuted[previewEvidenceSummary="true"][evidenceTone="accent"] {{
+        border-color: #94c9d3;
+    }}
+    QFrame#cardMuted[previewEvidenceSummary="true"][evidenceTone="warning"] {{
+        border-color: #e6c98e;
+    }}
+    QLabel[previewEvidenceNote="true"] {{
+        color: #527081;
+        font-size: 10px;
+        font-weight: 700;
+    }}
+    QWidget[previewEvidenceStatusRow="true"] {{
+        background: transparent;
+    }}
+    QLabel[previewEvidenceStatusChip="true"] {{
+        min-width: 42px;
+        font-size: 9px;
+        font-weight: 800;
+    }}
     QFrame#cardMuted[previewContextTile="true"] {{
         border-radius: 12px;
         border: 1px solid #d1e2e8;
         background: rgba(255, 255, 255, 0.78);
+    }}
+    QFrame#cardMuted[previewContextTile="true"][previewEvidenceTile="true"] {{
+        border-radius: 11px;
     }}
     QFrame#cardMuted[previewContextTile="true"][contextTone="success"] {{
         background: #f0fbf5;

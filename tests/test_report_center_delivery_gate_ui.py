@@ -318,9 +318,21 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_content_splitter.maximumHeight() == 164
         assert page.preview_primary_pane.property("reportPreviewPrimaryPane") is True
         assert page.preview_context_pane.property("reportPreviewContextPane") is True
+        assert page.preview_context_pane.property("reportPreviewEvidenceRail") is True
         assert page.preview_context_pane.minimumWidth() == 190
+        assert page.preview_evidence_summary_card.property("previewEvidenceSummary") is True
+        assert page.preview_evidence_summary_card.maximumHeight() == 62
+        assert page.preview_evidence_progress_chip.objectName() == "chip"
+        assert page.preview_evidence_progress_chip.text().endswith("/3")
+        assert page.preview_evidence_note.property("previewEvidenceNote") is True
+        assert page.preview_evidence_note.isHidden() is True
+        assert page.preview_evidence_status_row.property("previewEvidenceStatusRow") is True
+        assert set(page.preview_evidence_status_chips) == {"manifest", "network", "methods"}
+        assert all(chip.property("previewEvidenceStatusChip") is True for chip in page.preview_evidence_status_chips.values())
         assert set(page.preview_context_cards) == {"manifest", "network", "methods"}
         assert all(card.property("previewContextTile") is True for card in page.preview_context_cards.values())
+        assert all(card.property("previewEvidenceTile") is True for card in page.preview_context_cards.values())
+        assert all(card.maximumHeight() == 28 for card in page.preview_context_cards.values())
         assert all(chip.property("closureStage") is True for chip in page.preview_context_chips.values())
         assert all(button.property("previewContextAction") is True for button in page.preview_context_buttons.values())
         assert page.preview_context_cards["manifest"].property("contextTone") == "warning"
@@ -519,8 +531,13 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             assert_contained(page.preview_deck_card, page.preview_content_splitter, page)
             assert_contained(page.preview_content_splitter, page.preview_primary_pane, page)
             assert_contained(page.preview_content_splitter, page.preview_context_pane, page)
+            assert_contained(page.preview_context_pane, page.preview_evidence_summary_card, page)
             for tile in page.preview_context_cards.values():
                 assert_contained(page.preview_context_pane, tile, page)
+            assert_no_visual_overlap(
+                [page.preview_evidence_summary_card, *page.preview_context_cards.values()],
+                page,
+            )
             assert_contained(page.preview_deck_card, page.report_action_drawer, page)
             assert page.preview_analysis_strip.geometry().bottom() < page.preview_route_strip.geometry().top()
             assert page.preview_route_strip.geometry().bottom() < page.report_action_drawer.geometry().top()
@@ -661,6 +678,11 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.preview_context_cards["manifest"].property("contextTone") == "success"
         assert page.preview_context_cards["network"].property("contextTone") == "success"
         assert page.preview_context_cards["methods"].property("contextTone") == "success"
+        assert page.preview_evidence_summary_card.property("evidenceTone") == "success"
+        assert page.preview_evidence_progress_chip.text() == "3/3"
+        assert page.preview_evidence_progress_chip.property("chipTone") == "success"
+        assert page.preview_evidence_value.text() == "证据链已闭合"
+        assert all(chip.property("chipTone") == "success" for chip in page.preview_evidence_status_chips.values())
         assert page.preview_context_chips["manifest"].property("chipTone") == "success"
         assert page.preview_context_values["network"].text() == "FLUXNET"
         assert page.report_command_tiles["network"].property("commandTone") == "success"

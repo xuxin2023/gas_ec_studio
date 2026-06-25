@@ -139,7 +139,14 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QSplitter#reportPreviewSplitPane' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewPrimaryPane="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewContextPane="true"]' in stylesheet
+    assert 'QFrame#cardMuted[reportPreviewContextPane="true"][reportPreviewEvidenceRail="true"]' in stylesheet
+    assert 'QFrame#cardMuted[previewEvidenceSummary="true"]' in stylesheet
+    assert 'QFrame#cardMuted[previewEvidenceSummary="true"][evidenceTone="success"]' in stylesheet
+    assert 'QLabel[previewEvidenceNote="true"]' in stylesheet
+    assert 'QWidget[previewEvidenceStatusRow="true"]' in stylesheet
+    assert 'QLabel[previewEvidenceStatusChip="true"]' in stylesheet
     assert 'QFrame#cardMuted[previewContextTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[previewContextTile="true"][previewEvidenceTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[previewContextTile="true"][contextTone="success"]' in stylesheet
     assert 'QToolButton[previewContextAction="true"]' in stylesheet
     assert 'QFrame#cardMuted[previewTrailStrip="true"]' in stylesheet

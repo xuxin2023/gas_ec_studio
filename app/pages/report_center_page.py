@@ -412,12 +412,56 @@ class ReportCenterPage(QWidget):
 
         self.preview_context_pane = CardFrame(muted=True, role="rail")
         self.preview_context_pane.setProperty("reportPreviewContextPane", True)
+        self.preview_context_pane.setProperty("reportPreviewEvidenceRail", True)
         self.preview_context_pane.setMinimumWidth(190)
         self.preview_context_pane.setMaximumWidth(242)
         context_layout = QVBoxLayout(self.preview_context_pane)
         context_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         context_layout.setSpacing(TOKENS.spacing_xs)
-        context_layout.addWidget(section_title("交付证据", "manifest、网络校验和方法 rollup 常驻预览。"))
+        self.preview_evidence_summary_card = CardFrame(muted=True, role="console")
+        self.preview_evidence_summary_card.setProperty("previewEvidenceSummary", True)
+        self.preview_evidence_summary_card.setMaximumHeight(62)
+        evidence_summary_layout = QGridLayout(self.preview_evidence_summary_card)
+        evidence_summary_layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
+        evidence_summary_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        evidence_summary_layout.setVerticalSpacing(0)
+        self.preview_evidence_title = QLabel("交付证据")
+        self.preview_evidence_title.setObjectName("metricLabel")
+        self.preview_evidence_value = QLabel("证据待生成")
+        self.preview_evidence_value.setObjectName("metricValue")
+        self.preview_evidence_value.setProperty("compactMetric", True)
+        self.preview_evidence_value.setWordWrap(False)
+        self.preview_evidence_value.setMinimumWidth(0)
+        self.preview_evidence_value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.preview_evidence_progress_chip = chip("0/3", "warning")
+        self.preview_evidence_progress_chip.setMaximumHeight(20)
+        self.preview_evidence_note = QLabel("Manifest、Network、Methods 审计链")
+        self.preview_evidence_note.setObjectName("subtitle")
+        self.preview_evidence_note.setProperty("previewEvidenceNote", True)
+        self.preview_evidence_note.setMaximumHeight(0)
+        self.preview_evidence_note.setWordWrap(False)
+        self.preview_evidence_note.setVisible(False)
+        self.preview_evidence_note.setMinimumWidth(0)
+        self.preview_evidence_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.preview_evidence_status_row = QWidget()
+        self.preview_evidence_status_row.setProperty("previewEvidenceStatusRow", True)
+        self.preview_evidence_status_row.setMaximumHeight(20)
+        evidence_status_layout = QHBoxLayout(self.preview_evidence_status_row)
+        evidence_status_layout.setContentsMargins(0, 0, 0, 0)
+        evidence_status_layout.setSpacing(TOKENS.spacing_xs)
+        self.preview_evidence_status_chips: dict[str, QLabel] = {}
+        for key, text in (("manifest", "清单"), ("network", "网络"), ("methods", "方法")):
+            status = chip(text, "warning")
+            status.setProperty("previewEvidenceStatusChip", True)
+            status.setAlignment(Qt.AlignCenter)
+            status.setMaximumHeight(18)
+            self.preview_evidence_status_chips[key] = status
+            evidence_status_layout.addWidget(status)
+        evidence_summary_layout.addWidget(self.preview_evidence_title, 0, 0)
+        evidence_summary_layout.addWidget(self.preview_evidence_progress_chip, 0, 1)
+        evidence_summary_layout.addWidget(self.preview_evidence_value, 1, 0, 1, 2)
+        evidence_summary_layout.addWidget(self.preview_evidence_status_row, 2, 0, 1, 2)
+        context_layout.addWidget(self.preview_evidence_summary_card)
         for key, title in (
             ("manifest", "Manifest"),
             ("network", "Network"),
@@ -1272,29 +1316,28 @@ class ReportCenterPage(QWidget):
     def _preview_context_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("previewContextTile", True)
+        tile.setProperty("previewEvidenceTile", True)
         tile.setProperty("contextKey", key)
         tile.setProperty("contextTone", "warning")
-        tile.setMaximumHeight(66)
+        tile.setMinimumHeight(26)
+        tile.setMaximumHeight(28)
         tile.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        layout = QVBoxLayout(tile)
-        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
-        layout.setSpacing(0)
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
+        layout = QHBoxLayout(tile)
+        layout.setContentsMargins(TOKENS.spacing_xs, 1, TOKENS.spacing_xs, 1)
+        layout.setSpacing(TOKENS.spacing_xs)
         label = QLabel(_ui_safe_text(title))
         label.setObjectName("metricLabel")
+        label.setMinimumWidth(42)
+        label.setMaximumWidth(58)
         status_chip = chip("待检查", "warning")
         status_chip.setProperty("closureStage", True)
-        status_chip.setMaximumHeight(18)
+        status_chip.setMaximumHeight(16)
         action = QToolButton()
         action.setText("打开")
         action.setProperty("previewContextAction", True)
         action.setProperty("targetContext", key)
-        action.setMaximumHeight(20)
+        action.setMaximumHeight(18)
         action.clicked.connect(lambda _checked=False, item=key: self._activate_preview_context_item(item))
-        header.addWidget(label, 1)
-        header.addWidget(status_chip)
-        header.addWidget(action)
         value = QLabel("--")
         value.setObjectName("metricValue")
         value.setProperty("compactMetric", True)
@@ -1304,13 +1347,15 @@ class ReportCenterPage(QWidget):
         value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         note = QLabel("--")
         note.setObjectName("subtitle")
-        note.setMaximumHeight(16)
+        note.setMaximumHeight(0)
         note.setWordWrap(False)
+        note.setVisible(False)
         note.setMinimumWidth(0)
         note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        layout.addLayout(header)
-        layout.addWidget(value)
-        layout.addWidget(note)
+        layout.addWidget(label)
+        layout.addWidget(value, 1)
+        layout.addWidget(status_chip)
+        layout.addWidget(action)
         self.preview_context_cards[key] = tile
         self.preview_context_values[key] = value
         self.preview_context_notes[key] = note
@@ -1828,14 +1873,64 @@ class ReportCenterPage(QWidget):
         export_done = self._export_status_is_done(export_status)
         network = self._network_gate_summary(workspace, benchmark_report)
         methods = self._method_gate_summary(method_report, file_values)
+        manifest_item = {
+            "value": "ready" if manifest_path else ("pending" if export_done else "--"),
+            "note": manifest_path
+            or ("导出状态存在，但尚未发现 manifest 文件。" if export_done else "导出交付包后写入 manifest。"),
+            "tone": "success" if manifest_path else ("accent" if export_done else "warning"),
+        }
         self._set_preview_context_tile(
             "manifest",
-            "ready" if manifest_path else ("pending" if export_done else "--"),
-            manifest_path or ("导出状态存在，但尚未发现 manifest 文件。" if export_done else "导出交付包后写入 manifest。"),
-            "success" if manifest_path else ("accent" if export_done else "warning"),
+            manifest_item["value"],
+            manifest_item["note"],
+            manifest_item["tone"],
         )
         self._set_preview_context_tile("network", network["value"], network["note"], network["tone"])
         self._set_preview_context_tile("methods", methods["value"], methods["note"], methods["tone"])
+        self._refresh_preview_evidence_summary(
+            {
+                "manifest": manifest_item,
+                "network": network,
+                "methods": methods,
+            }
+        )
+
+    def _refresh_preview_evidence_summary(self, items: dict[str, dict]) -> None:
+        if not hasattr(self, "preview_evidence_summary_card"):
+            return
+        labels = {"manifest": "Manifest", "network": "Network", "methods": "Methods"}
+        chip_labels = {"manifest": "清单", "network": "网络", "methods": "方法"}
+        success_count = sum(1 for item in items.values() if str(item.get("tone")) == "success")
+        accent_count = sum(1 for item in items.values() if str(item.get("tone")) == "accent")
+        if success_count == 3:
+            tone = "success"
+            value = "证据链已闭合"
+        elif success_count + accent_count >= 2:
+            tone = "accent"
+            value = "证据链可复核"
+        else:
+            tone = "warning"
+            value = "证据待生成"
+        missing = [
+            labels[key]
+            for key, item in items.items()
+            if str(item.get("tone")) not in {"success", "accent"}
+        ]
+        note = "全部证据可审计" if not missing else f"待补：{', '.join(missing)}"
+        self._set_chip(self.preview_evidence_progress_chip, f"{success_count}/3", tone)
+        self.preview_evidence_value.setText(_ui_safe_text(value))
+        self.preview_evidence_value.setToolTip(_ui_safe_text(note))
+        self.preview_evidence_note.setText(_ui_safe_text(note))
+        self.preview_evidence_note.setToolTip(_ui_safe_text(note))
+        for key, item in items.items():
+            status_chip = getattr(self, "preview_evidence_status_chips", {}).get(key)
+            if status_chip is not None:
+                item_tone = str(item.get("tone") or "warning")
+                self._set_chip(status_chip, chip_labels.get(key, key), item_tone)
+                status_chip.setToolTip(_ui_safe_text(str(item.get("note") or "--")))
+        self.preview_evidence_summary_card.setProperty("evidenceTone", tone)
+        self.preview_evidence_summary_card.style().unpolish(self.preview_evidence_summary_card)
+        self.preview_evidence_summary_card.style().polish(self.preview_evidence_summary_card)
 
     def _set_preview_context_tile(self, key: str, value: str, note: str, tone: str) -> None:
         card = self.preview_context_cards.get(key)
