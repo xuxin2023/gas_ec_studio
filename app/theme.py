@@ -1797,6 +1797,41 @@ def build_stylesheet() -> str:
         border: 1px solid #c8dce4;
         background: rgba(255, 255, 255, 0.70);
     }}
+    QFrame#cardMuted[deliveryFocusStatusBar="true"] {{
+        border-radius: 12px;
+        border: 1px solid #c8dce4;
+        border-left: 4px solid #8bbfca;
+        background: rgba(247, 252, 253, 0.88);
+    }}
+    QFrame#cardMuted[deliveryFocusStatusBar="true"][focusTone="success"] {{
+        border-color: #9cccb4;
+        border-left-color: #2f9b67;
+        background: rgba(242, 251, 246, 0.94);
+    }}
+    QFrame#cardMuted[deliveryFocusStatusBar="true"][focusTone="accent"] {{
+        border-color: #a9d0da;
+        border-left-color: #0c7a86;
+        background: rgba(239, 249, 251, 0.94);
+    }}
+    QFrame#cardMuted[deliveryFocusStatusBar="true"][focusTone="warning"] {{
+        border-color: #e1c387;
+        border-left-color: #d0922c;
+        background: rgba(255, 249, 236, 0.94);
+    }}
+    QFrame#cardMuted[deliveryFocusStatusBar="true"] QLabel[deliveryFocusStatusTitle="true"],
+    QFrame#cardMuted[deliveryFocusStatusBar="true"] QLabel[deliveryFocusStatusNote="true"] {{
+        color: #4d6972;
+        font-size: 10px;
+    }}
+    QFrame#cardMuted[deliveryFocusStatusBar="true"] QLabel[deliveryFocusStatusValue="true"] {{
+        color: #092f3a;
+        font-size: 12px;
+        font-weight: 900;
+    }}
+    QFrame#cardMuted[deliveryFocusStatusBar="true"] QLabel#chip[deliveryFocusStatusChip="true"] {{
+        font-size: 10px;
+        padding: 1px 6px;
+    }}
     QFrame#card[deliveryGateCompact="true"] {{
         border-radius: 15px;
         border: 1px solid #c4d8dc;

@@ -249,6 +249,15 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         page._show_delivery_rail_mode("delivery")
         assert page.delivery_focus_card.property("cardRole") == "panel"
         assert page.delivery_focus_card.property("deliveryFocusShell") is True
+        assert page.delivery_focus_status_bar.property("deliveryFocusStatusBar") is True
+        assert page.delivery_focus_status_bar.property("focusSection") == "gate"
+        assert page.delivery_focus_status_bar.property("focusTone") in {"warning", "accent", "success"}
+        assert page.delivery_focus_status_bar.maximumHeight() == 40
+        assert page.delivery_focus_status_chip.property("deliveryFocusStatusChip") is True
+        assert page.delivery_focus_status_chip.text() == "门槛"
+        assert page.delivery_focus_status_value.property("deliveryFocusStatusValue") is True
+        assert page.delivery_focus_status_note.property("deliveryFocusStatusNote") is True
+        assert page.delivery_focus_status_note.toolTip()
         assert page.delivery_focus_stack.count() == 3
         assert page.delivery_focus_buttons["gate"].isChecked() is True
         assert page.delivery_focus_stack.currentWidget() is page.delivery_gate_card
@@ -581,6 +590,9 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_batch_status_note.property("deliveryBatchStatusNote") is True
         assert page.delivery_batch_status_note.toolTip()
         assert page.delivery_focus_buttons["batch"].isChecked() is True
+        assert page.delivery_focus_status_bar.property("focusSection") == "batch"
+        assert page.delivery_focus_status_chip.text() == "批次"
+        assert page.delivery_focus_status_value.text() == "待对比"
         assert page.delivery_rail_stack.currentWidget() is page.delivery_focus_card
         assert page.delivery_rail_mode_buttons["delivery"].isChecked() is True
         controller.report_center_workspace["batch_compare"] = {
@@ -596,6 +608,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_batch_status_title.text() == "batch-001 vs batch-000"
         assert page.delivery_batch_status_chip.text() == "1 风险"
         assert "窗口 +2" in page.delivery_batch_status_note.toolTip()
+        assert page.delivery_focus_status_bar.property("focusSection") == "batch"
+        assert page.delivery_focus_status_bar.property("focusTone") == "warning"
+        assert page.delivery_focus_status_value.text() == "1 风险"
+        assert "窗口 +2" in page.delivery_focus_status_note.toolTip()
         assert page.batch_diff_value.text().startswith("有效窗口 +2")
         batch_notes = [
             label
@@ -610,6 +626,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         page._show_delivery_focus("details")
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.delivery_focus_buttons["details"].isChecked() is True
+        assert page.delivery_focus_status_bar.property("focusSection") == "details"
+        assert page.delivery_focus_status_chip.text() == "详情"
+        assert page.delivery_focus_status_title.text() == page.delivery_detail_status_title.text()
+        assert page.delivery_focus_status_value.text() == page.delivery_detail_status_chip.text()
         assert page.inner_inspector.property("deckRole") == "deliveryDetailInspector"
         assert page.inspector_stack.property("stackRole") == "deliveryDetailInspectorStack"
         assert page.export_card.property("deliveryInspectorSection") is True

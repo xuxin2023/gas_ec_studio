@@ -697,9 +697,11 @@ class ReportCenterPage(QWidget):
             button.setProperty("viewSwitch", True)
             button.clicked.connect(lambda _checked=False, section=key: self._show_delivery_focus(section))
             self.delivery_focus_buttons[key] = button
-            focus_switch_row.addWidget(button)
+        focus_switch_row.addWidget(button)
         focus_switch_row.addStretch(1)
         focus_layout.addLayout(focus_switch_row)
+        self.delivery_focus_status_bar = self._build_delivery_focus_status_bar()
+        focus_layout.addWidget(self.delivery_focus_status_bar)
         self.delivery_focus_stack = QStackedWidget()
         self.delivery_focus_stack.setProperty("stackRole", "compactDeliveryInspector")
         self.delivery_focus_stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
@@ -1763,6 +1765,104 @@ class ReportCenterPage(QWidget):
         tile_layout.addWidget(label)
         tile_layout.addWidget(button)
         return tile
+
+    def _build_delivery_focus_status_bar(self) -> CardFrame:
+        bar = CardFrame(muted=True, role="console")
+        bar.setProperty("deckRole", "deliveryFocusStatusBar")
+        bar.setProperty("deliveryFocusStatusBar", True)
+        bar.setProperty("focusSection", "gate")
+        bar.setProperty("focusTone", "warning")
+        bar.setMinimumHeight(36)
+        bar.setMaximumHeight(40)
+        layout = QGridLayout(bar)
+        layout.setContentsMargins(TOKENS.spacing_sm, 3, TOKENS.spacing_sm, 3)
+        layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        layout.setVerticalSpacing(0)
+
+        self.delivery_focus_status_chip = chip("门槛", "warning")
+        self.delivery_focus_status_chip.setProperty("deliveryFocusStatusChip", True)
+        self.delivery_focus_status_chip.setAlignment(Qt.AlignCenter)
+        self.delivery_focus_status_chip.setMinimumWidth(42)
+        self.delivery_focus_status_chip.setMaximumWidth(50)
+        self.delivery_focus_status_title = QLabel("交付门槛")
+        self.delivery_focus_status_title.setObjectName("metricLabel")
+        self.delivery_focus_status_title.setProperty("deliveryFocusStatusTitle", True)
+        self.delivery_focus_status_title.setWordWrap(False)
+        self.delivery_focus_status_value = QLabel("--")
+        self.delivery_focus_status_value.setObjectName("metricValue")
+        self.delivery_focus_status_value.setProperty("compactMetric", True)
+        self.delivery_focus_status_value.setProperty("deliveryFocusStatusValue", True)
+        self.delivery_focus_status_value.setWordWrap(False)
+        self.delivery_focus_status_value.setMinimumWidth(0)
+        self.delivery_focus_status_value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.delivery_focus_status_note = QLabel("--")
+        self.delivery_focus_status_note.setObjectName("subtitle")
+        self.delivery_focus_status_note.setProperty("deliveryFocusStatusNote", True)
+        self.delivery_focus_status_note.setWordWrap(False)
+        self.delivery_focus_status_note.setMinimumWidth(0)
+        self.delivery_focus_status_note.setMaximumHeight(14)
+        self.delivery_focus_status_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+        layout.addWidget(self.delivery_focus_status_chip, 0, 0, 2, 1)
+        layout.addWidget(self.delivery_focus_status_title, 0, 1)
+        layout.addWidget(self.delivery_focus_status_value, 0, 2)
+        layout.addWidget(self.delivery_focus_status_note, 1, 1, 1, 2)
+        layout.setColumnStretch(2, 1)
+        return bar
+
+    def _refresh_delivery_focus_status_bar(self, section: str | None = None) -> None:
+        if not hasattr(self, "delivery_focus_status_bar"):
+            return
+        section = section or getattr(self, "delivery_focus_active_section", "gate")
+        section_labels = {
+            "gate": "门槛",
+            "details": "详情",
+            "batch": "批次",
+        }
+        title = "交付门槛"
+        value = "--"
+        note = "--"
+        tone = "warning"
+
+        if section == "details" and hasattr(self, "delivery_detail_status_header"):
+            title = self.delivery_detail_status_title.text() or "交付详情"
+            value = self.delivery_detail_status_chip.text() or "--"
+            note = self.delivery_detail_status_note.toolTip() or self.delivery_detail_status_note.text() or "--"
+            tone = str(self.delivery_detail_status_header.property("detailTone") or "warning")
+        elif section == "batch" and hasattr(self, "delivery_batch_status_header"):
+            title = self.delivery_batch_status_title.text() or "批次状态"
+            value = self.delivery_batch_status_chip.text() or "--"
+            note = self.delivery_batch_status_note.toolTip() or self.delivery_batch_status_note.text() or "--"
+            tone = str(self.delivery_batch_status_header.property("batchTone") or "warning")
+        elif hasattr(self, "delivery_gate_hero_card"):
+            value = self.delivery_gate_chip.text() or "--"
+            note = self.delivery_gate_ready_note.toolTip() or self.delivery_gate_ready_note.text() or "--"
+            tone = str(
+                self.delivery_gate_chip.property("chipTone")
+                or self.delivery_gate_progress_badge.property("chipTone")
+                or "warning"
+            )
+
+        display_note = _ui_safe_text(note)
+        short_note = display_note if len(display_note) <= 36 else f"{display_note[:35]}..."
+        self._set_chip(self.delivery_focus_status_chip, section_labels.get(section, "交付"), tone)
+        self.delivery_focus_status_title.setText(_ui_safe_text(title if len(title) <= 16 else f"{title[:15]}..."))
+        self.delivery_focus_status_value.setText(_ui_safe_text(value if len(value) <= 10 else f"{value[:9]}..."))
+        self.delivery_focus_status_note.setText(short_note)
+        self.delivery_focus_status_bar.setToolTip(display_note)
+        self.delivery_focus_status_title.setToolTip(display_note)
+        self.delivery_focus_status_value.setToolTip(display_note)
+        self.delivery_focus_status_note.setToolTip(display_note)
+        self.delivery_focus_status_bar.setProperty("focusSection", section)
+        self.delivery_focus_status_bar.setProperty("focusTone", tone)
+        for widget in (
+            self.delivery_focus_status_bar,
+            self.delivery_focus_status_title,
+            self.delivery_focus_status_value,
+            self.delivery_focus_status_note,
+        ):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
 
     def _build_delivery_gate_card(self) -> CardFrame:
         card = CardFrame(role="cockpit")
@@ -4062,6 +4162,8 @@ class ReportCenterPage(QWidget):
         self.delivery_gate_ready_note.setText(_ui_safe_text(note))
         self.delivery_gate_ready_value.setToolTip(_ui_safe_text(note))
         self.delivery_gate_ready_note.setToolTip(_ui_safe_text(next_note))
+        if getattr(self, "delivery_focus_active_section", "gate") == "gate":
+            self._refresh_delivery_focus_status_bar("gate")
 
     def _delivery_next_action(
         self,
@@ -4503,6 +4605,8 @@ class ReportCenterPage(QWidget):
             button.blockSignals(False)
             button.style().unpolish(button)
             button.style().polish(button)
+        if getattr(self, "delivery_focus_active_section", "") == "details":
+            self._refresh_delivery_focus_status_bar("details")
 
     def _show_delivery_rail_mode(self, section: str) -> None:
         if not hasattr(self, "delivery_rail_sections"):
@@ -4527,6 +4631,7 @@ class ReportCenterPage(QWidget):
         if card is None:
             return
         self._show_delivery_rail_mode("delivery")
+        self.delivery_focus_active_section = section
         self.delivery_focus_stack.setCurrentWidget(card)
         if hasattr(self, "delivery_gate_detail_drawer"):
             is_pinned = getattr(self, "delivery_gate_detail_pinned", False)
@@ -4545,6 +4650,7 @@ class ReportCenterPage(QWidget):
             button.blockSignals(False)
             button.style().unpolish(button)
             button.style().polish(button)
+        self._refresh_delivery_focus_status_bar(section)
 
     def _refresh_inner_inspector(self, report: dict, export_status: str, view_mode: str) -> None:
         self.inspector_detail_tiles: dict[str, CardFrame] = {}
@@ -4838,6 +4944,8 @@ class ReportCenterPage(QWidget):
         for widget in (self.delivery_batch_status_header, self.delivery_batch_status_title, self.delivery_batch_status_note):
             widget.style().unpolish(widget)
             widget.style().polish(widget)
+        if getattr(self, "delivery_focus_active_section", "") == "batch":
+            self._refresh_delivery_focus_status_bar("batch")
 
     def _plot_note_for_mode(self, view_mode: str) -> str:
         notes = {
@@ -4921,6 +5029,8 @@ class ReportCenterPage(QWidget):
         for widget in (self.delivery_detail_status_header, self.delivery_detail_status_title, self.delivery_detail_status_note):
             widget.style().unpolish(widget)
             widget.style().polish(widget)
+        if getattr(self, "delivery_focus_active_section", "") == "details":
+            self._refresh_delivery_focus_status_bar("details")
 
     def _inspector_card(self, title: str, subtitle: str) -> tuple[CardFrame, QVBoxLayout]:
         card = CardFrame(muted=True, role="panel")
