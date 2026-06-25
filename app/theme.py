@@ -1087,12 +1087,26 @@ def build_stylesheet() -> str:
             stop: 1 #e8f6ef
         );
     }}
+    QLabel[chipTone="accent"][spectralCommandChip="true"] {{
+        border-radius: 12px;
+        padding: 4px 10px;
+        background: #e8f8f8;
+        border: 1px solid #b7dbe2;
+    }}
+    QWidget[spectralCommandDeck="true"] {{
+        max-height: 72px;
+    }}
     QFrame#cardMuted[spectralSourceDock="true"],
     QFrame#cardMuted[spectralActionDock="true"],
     QFrame#cardMuted[spectralStatusDock="true"] {{
         border-radius: 14px;
         border: 1px solid #c3dce3;
         background: rgba(255, 255, 255, 0.74);
+    }}
+    QFrame#cardMuted[spectralStatusDock="true"][spectralHeaderStatus="true"] {{
+        border-radius: 13px;
+        border-color: #e4c990;
+        background: #fff7e6;
     }}
     QWidget[spectralSummaryInline="true"] {{
         max-height: 72px;

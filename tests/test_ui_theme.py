@@ -62,6 +62,9 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[methodConsoleTile="true"][methodTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[methodConsoleTile="true"][methodTone="warning"]' in stylesheet
     assert 'QFrame#cardMuted[methodConsoleTile="true"][methodTone="danger"]' in stylesheet
+    assert 'QLabel[chipTone="accent"][spectralCommandChip="true"]' in stylesheet
+    assert 'QWidget[spectralCommandDeck="true"]' in stylesheet
+    assert 'QFrame#cardMuted[spectralStatusDock="true"][spectralHeaderStatus="true"]' in stylesheet
     assert 'QFrame#cardMuted[spectralFocusRail="true"]' in stylesheet
     assert 'QFrame#cardMuted[spectralFocusTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[spectralFocusNextCard="true"]' in stylesheet

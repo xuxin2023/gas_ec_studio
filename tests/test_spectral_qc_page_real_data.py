@@ -60,7 +60,9 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
 
         assert page.run_bar.property("cardRole") == "command"
         assert page.run_bar.property("spectralRunCommandDock") is True
-        assert page.run_bar.maximumHeight() == 136
+        assert page.run_bar.maximumHeight() == 150
+        assert page.spectral_command_deck.property("spectralCommandDeck") is True
+        assert page.spectral_run_chip.property("spectralCommandChip") is True
         assert page.spectral_source_panel.property("cardRole") == "tile"
         assert page.spectral_source_panel.property("spectralSourceDock") is True
         assert page.spectral_source_panel.maximumHeight() == 72
@@ -71,7 +73,8 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert page.spectral_status_panel.property("cardRole") == "tile"
         assert page.spectral_status_panel.property("deckRole") == "spectralRunStatusDock"
         assert page.spectral_status_panel.property("spectralStatusDock") is True
-        assert page.spectral_status_panel.maximumHeight() == 72
+        assert page.spectral_status_panel.property("spectralHeaderStatus") is True
+        assert page.spectral_status_panel.maximumHeight() == 50
         assert page.spectral_status_panel.property("evidenceTone") in {"success", "accent", "warning", "danger"}
         assert page.spectral_action_buttons["运行"].property("railAction") is True
         assert page.spectral_action_buttons["运行"].property("actionTone") == "success"
@@ -89,7 +92,7 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert page.summary_row.objectName() == "spectralSummaryDeck"
         assert page.summary_row.property("deckRole") == "spectralCockpitKpis"
         assert page.summary_row.property("spectralSummaryInline") is True
-        assert page.summary_row.parentWidget() is page.run_bar
+        assert page.summary_row.parentWidget() is page.spectral_command_deck
         assert page.summary_row.maximumHeight() == 72
         assert len(page.summary_metric_cards) == 4
         assert all(card.property("cardRole") == "tile" for card in page.summary_metric_cards)

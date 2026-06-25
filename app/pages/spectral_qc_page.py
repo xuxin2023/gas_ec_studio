@@ -189,8 +189,8 @@ class SpectralQCPage(QWidget):
     def _build_run_bar(self) -> CardFrame:
         card = CardFrame(role="command")
         card.setProperty("spectralRunCommandDock", True)
-        card.setMinimumHeight(122)
-        card.setMaximumHeight(136)
+        card.setMinimumHeight(138)
+        card.setMaximumHeight(150)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_xs, TOKENS.spacing_lg, TOKENS.spacing_xs)
@@ -212,10 +212,15 @@ class SpectralQCPage(QWidget):
         header.addLayout(header_title_box)
         header.addStretch(1)
         self.spectral_run_chip = chip("谱分析控制台", "accent")
+        self.spectral_run_chip.setProperty("spectralCommandChip", True)
         header.addWidget(self.spectral_run_chip)
+        self.spectral_status_panel = self._build_status_panel()
+        header.addWidget(self.spectral_status_panel)
         layout.addLayout(header)
 
-        deck = QHBoxLayout()
+        self.spectral_command_deck = QWidget()
+        self.spectral_command_deck.setProperty("spectralCommandDeck", True)
+        deck = QHBoxLayout(self.spectral_command_deck)
         deck.setContentsMargins(0, 0, 0, 0)
         deck.setSpacing(TOKENS.spacing_sm)
 
@@ -290,15 +295,24 @@ class SpectralQCPage(QWidget):
             self.spectral_action_buttons[text] = button
         deck.addWidget(self.spectral_action_panel, 4)
 
-        self.spectral_status_panel = CardFrame(muted=True, role="tile")
-        self.spectral_status_panel.setProperty("deckRole", "spectralRunStatusDock")
-        self.spectral_status_panel.setProperty("spectralStatusDock", True)
-        self.spectral_status_panel.setMinimumHeight(64)
-        self.spectral_status_panel.setMaximumHeight(72)
-        self.spectral_status_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        status_layout = QVBoxLayout(self.spectral_status_panel)
-        status_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
-        status_layout.setSpacing(TOKENS.spacing_xs)
+        self.summary_row = self._build_summary_row()
+        deck.addWidget(self.summary_row, 3)
+        layout.addWidget(self.spectral_command_deck)
+        return card
+
+    def _build_status_panel(self) -> CardFrame:
+        panel = CardFrame(muted=True, role="tile")
+        panel.setProperty("deckRole", "spectralRunStatusDock")
+        panel.setProperty("spectralStatusDock", True)
+        panel.setProperty("spectralHeaderStatus", True)
+        panel.setMinimumWidth(210)
+        panel.setMaximumWidth(260)
+        panel.setMinimumHeight(42)
+        panel.setMaximumHeight(50)
+        panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(TOKENS.spacing_md, 2, TOKENS.spacing_md, 2)
+        layout.setSpacing(0)
         status_title = QLabel("运行状态")
         status_title.setObjectName("metricLabel")
         status_title.setMaximumHeight(12)
@@ -308,16 +322,11 @@ class SpectralQCPage(QWidget):
         self.spectral_status_note = QLabel("--")
         self.spectral_status_note.setObjectName("subtitle")
         self.spectral_status_note.setWordWrap(False)
-        self.spectral_status_note.setMaximumHeight(16)
-        status_layout.addWidget(status_title)
-        status_layout.addWidget(self.spectral_status_value)
-        status_layout.addWidget(self.spectral_status_note)
-        deck.addWidget(self.spectral_status_panel, 3)
-
-        self.summary_row = self._build_summary_row()
-        deck.addWidget(self.summary_row, 3)
-        layout.addLayout(deck)
-        return card
+        self.spectral_status_note.setMaximumHeight(14)
+        layout.addWidget(status_title)
+        layout.addWidget(self.spectral_status_value)
+        layout.addWidget(self.spectral_status_note)
+        return panel
 
     def _build_evidence_deck(self) -> CardFrame:
         card = CardFrame(role="cockpit")
