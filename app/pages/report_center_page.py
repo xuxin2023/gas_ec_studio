@@ -708,6 +708,8 @@ class ReportCenterPage(QWidget):
 
         self.delivery_gate_card = self._build_delivery_gate_card()
         self.delivery_focus_stack.addWidget(self.delivery_gate_card)
+        self.delivery_gate_detail_drawer = self._build_delivery_gate_detail_drawer()
+        self.delivery_gate_detail_drawer.setParent(self.delivery_rail)
 
         self.inner_inspector = CardFrame(muted=True, role="panel")
         self.inner_inspector.setProperty("deckRole", "deliveryDetailInspector")
@@ -801,6 +803,10 @@ class ReportCenterPage(QWidget):
         self.controller.processing_changed.connect(self.refresh)
         self.controller.spectral_qc_changed.connect(self.refresh)
         self.refresh()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._position_delivery_gate_detail_drawer()
 
     def refresh(self) -> None:
         workspace = self.controller.report_center_workspace
@@ -1749,7 +1755,7 @@ class ReportCenterPage(QWidget):
         card = CardFrame(role="cockpit")
         card.setProperty("deckRole", "deliveryGateMatrix")
         card.setProperty("deliveryGateCompact", True)
-        card.setMinimumHeight(166)
+        card.setMinimumHeight(126)
         card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -1827,44 +1833,6 @@ class ReportCenterPage(QWidget):
             group_layout.addWidget(self._delivery_gate_group_card(key, title, note))
         layout.addWidget(self.delivery_gate_group_strip)
 
-        self.delivery_gate_scroll = QScrollArea()
-        self.delivery_gate_scroll.setObjectName("deliveryGateMatrixScroll")
-        self.delivery_gate_scroll.setWidgetResizable(True)
-        self.delivery_gate_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.delivery_gate_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.delivery_gate_scroll.setMinimumHeight(58)
-        self.delivery_gate_scroll.setMaximumHeight(60)
-        self.delivery_gate_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        self.delivery_gate_grid_body = QWidget()
-        self.delivery_gate_grid_body.setProperty("deliveryGateLayeredMatrix", True)
-        self.delivery_gate_grid_body.setMinimumWidth(0)
-        self.delivery_gate_grid_body.setMinimumHeight(58)
-        grid = QGridLayout(self.delivery_gate_grid_body)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(TOKENS.spacing_xs)
-        grid.setVerticalSpacing(TOKENS.spacing_xs)
-        for row in range(3):
-            grid.setRowMinimumHeight(row, 16)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        self.delivery_gate_values: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
-        self.delivery_gate_tiles: dict[str, CardFrame] = {}
-        gate_items = [
-            ("report", "报告", "当前预览是否有真实内容"),
-            ("export", "导出", "是否可导出或已经导出"),
-            ("manifest", "清单", "交付清单是否落盘"),
-            ("network", "网络", "schema 与缺失字段"),
-            ("benchmark", "对标", "参考对标和失败字段"),
-            ("methods", "方法", "三族方法溯源闭合"),
-        ]
-        for index, (key, title, hint) in enumerate(gate_items):
-            tile = self._delivery_gate_tile(key, title, hint)
-            group = "artifact" if key in {"report", "export", "manifest"} else "validation"
-            tile.setProperty("deliveryGateGroup", group)
-            grid.addWidget(tile, index // 2, index % 2)
-        self.delivery_gate_scroll.setWidget(self.delivery_gate_grid_body)
-        layout.addWidget(self.delivery_gate_scroll)
-
         self.delivery_gate_next_card = CardFrame(muted=True, role="tile")
         self.delivery_gate_next_card.setMaximumHeight(0)
         self.delivery_gate_next_card.setVisible(False)
@@ -1887,12 +1855,70 @@ class ReportCenterPage(QWidget):
         next_layout.addStretch(1)
         next_layout.addWidget(self.delivery_gate_next_value)
         layout.addWidget(self.delivery_gate_next_card)
-        self.delivery_gate_scroll.setVisible(False)
-        self.delivery_gate_scroll.setMinimumHeight(0)
-        self.delivery_gate_scroll.setMaximumHeight(0)
-        card.setMinimumHeight(126)
         card.setProperty("deliveryGateDetailsExpanded", False)
         return card
+
+    def _build_delivery_gate_detail_drawer(self) -> CardFrame:
+        drawer = CardFrame(muted=True, role="panel")
+        drawer.setProperty("deckRole", "deliveryGateDetailDrawer")
+        drawer.setProperty("deliveryGateDetailDrawer", True)
+        drawer.setProperty("deliveryGateDetailsExpanded", False)
+        drawer.setMinimumHeight(0)
+        drawer.setMaximumHeight(0)
+        drawer.setVisible(False)
+        drawer_layout = QVBoxLayout(drawer)
+        drawer_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
+        drawer_layout.setSpacing(TOKENS.spacing_xs)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        title = QLabel("门槛明细")
+        title.setObjectName("metricLabel")
+        title.setToolTip("展开查看六项交付检查的当前值、状态和解释。")
+        header.addWidget(title)
+        header.addStretch(1)
+        self.delivery_gate_detail_badge = chip("6 项", "accent")
+        self.delivery_gate_detail_badge.setProperty("deliveryGateDetailBadge", True)
+        header.addWidget(self.delivery_gate_detail_badge)
+        drawer_layout.addLayout(header)
+
+        self.delivery_gate_scroll = QScrollArea()
+        self.delivery_gate_scroll.setObjectName("deliveryGateMatrixScroll")
+        self.delivery_gate_scroll.setWidgetResizable(True)
+        self.delivery_gate_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.delivery_gate_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.delivery_gate_scroll.setMinimumHeight(104)
+        self.delivery_gate_scroll.setMaximumHeight(110)
+        self.delivery_gate_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.delivery_gate_grid_body = QWidget()
+        self.delivery_gate_grid_body.setProperty("deliveryGateLayeredMatrix", True)
+        self.delivery_gate_grid_body.setMinimumWidth(0)
+        self.delivery_gate_grid_body.setMinimumHeight(104)
+        grid = QGridLayout(self.delivery_gate_grid_body)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(TOKENS.spacing_xs)
+        grid.setVerticalSpacing(TOKENS.spacing_xs)
+        for row in range(3):
+            grid.setRowMinimumHeight(row, 32)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        self.delivery_gate_values: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
+        self.delivery_gate_tiles: dict[str, CardFrame] = {}
+        gate_items = [
+            ("report", "报告", "当前预览是否有真实内容"),
+            ("export", "导出", "是否可导出或已经导出"),
+            ("manifest", "清单", "交付清单是否落盘"),
+            ("network", "网络", "schema 与缺失字段"),
+            ("benchmark", "对标", "参考对标和失败字段"),
+            ("methods", "方法", "三族方法溯源闭合"),
+        ]
+        for index, (key, title, hint) in enumerate(gate_items):
+            tile = self._delivery_gate_tile(key, title, hint)
+            group = "artifact" if key in {"report", "export", "manifest"} else "validation"
+            tile.setProperty("deliveryGateGroup", group)
+            grid.addWidget(tile, index // 2, index % 2)
+        self.delivery_gate_scroll.setWidget(self.delivery_gate_grid_body)
+        drawer_layout.addWidget(self.delivery_gate_scroll)
+        return drawer
 
     def _delivery_gate_group_card(self, key: str, title: str, note: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
@@ -1934,11 +1960,14 @@ class ReportCenterPage(QWidget):
         tile.setProperty("gateKey", key)
         tile.setProperty("deliveryGateTile", True)
         tile.setProperty("deliveryGateLayerTile", True)
-        tile.setMinimumHeight(16)
-        tile.setMaximumHeight(18)
-        layout = QHBoxLayout(tile)
-        layout.setContentsMargins(5, 1, 5, 1)
-        layout.setSpacing(3)
+        tile.setMinimumHeight(30)
+        tile.setMaximumHeight(34)
+        tile.setMinimumWidth(0)
+        tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(tile)
+        layout.setContentsMargins(6, 2, 6, 2)
+        layout.setHorizontalSpacing(4)
+        layout.setVerticalSpacing(0)
         title_label = QLabel(_ui_safe_text(title))
         title_label.setObjectName("metricLabel")
         title_label.setMinimumWidth(24)
@@ -1961,12 +1990,15 @@ class ReportCenterPage(QWidget):
         value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         note = QLabel(_ui_safe_text(hint), tile)
         note.setObjectName("subtitle")
-        note.setWordWrap(True)
-        note.setMaximumHeight(36)
-        note.setVisible(False)
-        layout.addWidget(title_label)
-        layout.addWidget(value, 1)
-        layout.addWidget(status_chip)
+        note.setWordWrap(False)
+        note.setMinimumWidth(0)
+        note.setMaximumHeight(14)
+        note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        note.setVisible(True)
+        layout.addWidget(title_label, 0, 0)
+        layout.addWidget(value, 0, 1)
+        layout.addWidget(status_chip, 0, 2)
+        layout.addWidget(note, 1, 0, 1, 3)
         self.delivery_gate_values[key] = (value, note, status_chip)
         self.delivery_gate_tiles[key] = tile
         return tile
@@ -3904,11 +3936,13 @@ class ReportCenterPage(QWidget):
             tile.style().polish(tile)
 
     def _set_delivery_gate_details_expanded(self, expanded: bool) -> None:
-        self.delivery_gate_scroll.setVisible(expanded)
-        self.delivery_gate_scroll.setMinimumHeight(58 if expanded else 0)
-        self.delivery_gate_scroll.setMaximumHeight(60 if expanded else 0)
-        self.delivery_gate_card.setMinimumHeight(184 if expanded else 126)
+        self.delivery_gate_detail_drawer.setVisible(expanded)
+        self.delivery_gate_detail_drawer.setMinimumHeight(142 if expanded else 0)
+        self.delivery_gate_detail_drawer.setMaximumHeight(150 if expanded else 0)
+        self._position_delivery_gate_detail_drawer()
+        self.delivery_gate_card.setMinimumHeight(126)
         self.delivery_gate_card.setProperty("deliveryGateDetailsExpanded", expanded)
+        self.delivery_gate_detail_drawer.setProperty("deliveryGateDetailsExpanded", expanded)
         self.delivery_gate_detail_toggle.blockSignals(True)
         self.delivery_gate_detail_toggle.setChecked(expanded)
         self.delivery_gate_detail_toggle.blockSignals(False)
@@ -3917,9 +3951,25 @@ class ReportCenterPage(QWidget):
             "收起六项交付检查明细。" if expanded else "展开六项交付检查明细。"
         )
         self.delivery_gate_detail_toggle.setProperty("detailState", "open" if expanded else "closed")
-        for widget in (self.delivery_gate_card, self.delivery_gate_detail_toggle):
+        for widget in (self.delivery_gate_card, self.delivery_gate_detail_drawer, self.delivery_gate_detail_toggle):
             widget.style().unpolish(widget)
             widget.style().polish(widget)
+        if expanded:
+            self.delivery_gate_detail_drawer.raise_()
+
+    def _position_delivery_gate_detail_drawer(self) -> None:
+        if not hasattr(self, "delivery_gate_detail_drawer") or not hasattr(self, "delivery_rail"):
+            return
+        margin = 12
+        height = 150
+        rail_width = max(0, self.delivery_rail.width())
+        rail_height = max(0, self.delivery_rail.height())
+        width = max(220, rail_width - margin * 2)
+        gate_top = rail_height - height - margin
+        if hasattr(self, "delivery_gate_card"):
+            gate_top = self.delivery_gate_card.mapTo(self.delivery_rail, self.delivery_gate_card.rect().topLeft()).y()
+        y = max(margin, min(rail_height - height - margin, gate_top - height - TOKENS.spacing_xs))
+        self.delivery_gate_detail_drawer.setGeometry(margin, y, width, height)
 
     def _refresh_delivery_gate_hero(
         self,
@@ -4395,6 +4445,8 @@ class ReportCenterPage(QWidget):
         if card is None:
             return
         self.delivery_rail_stack.setCurrentWidget(card)
+        if section != "delivery" and hasattr(self, "delivery_gate_detail_drawer"):
+            self.delivery_gate_detail_drawer.setVisible(False)
         for key, button in self.delivery_rail_mode_buttons.items():
             button.blockSignals(True)
             button.setChecked(key == section)
@@ -4410,6 +4462,13 @@ class ReportCenterPage(QWidget):
             return
         self._show_delivery_rail_mode("delivery")
         self.delivery_focus_stack.setCurrentWidget(card)
+        if hasattr(self, "delivery_gate_detail_drawer"):
+            drawer_visible = section == "gate" and self.delivery_gate_detail_toggle.isChecked()
+            if drawer_visible:
+                self._position_delivery_gate_detail_drawer()
+            self.delivery_gate_detail_drawer.setVisible(drawer_visible)
+            if drawer_visible:
+                self.delivery_gate_detail_drawer.raise_()
         for key, button in self.delivery_focus_buttons.items():
             button.blockSignals(True)
             button.setChecked(key == section)

@@ -227,6 +227,9 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QToolButton[deliveryGateDetailToggle="true"]' in stylesheet
     assert 'QToolButton[deliveryGateDetailToggle="true"]:hover' in stylesheet
     assert 'QToolButton[deliveryGateDetailToggle="true"][detailState="open"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateDetailDrawer="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateDetailDrawer="true"][deliveryGateDetailsExpanded="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateDetailDrawer="true"] QLabel#subtitle' in stylesheet
     assert 'QWidget[deliveryGateGroupStrip="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateGroupTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateGroupTile="true"][gateGroupKey="artifact"]' in stylesheet

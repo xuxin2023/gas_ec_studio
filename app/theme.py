@@ -1842,6 +1842,24 @@ def build_stylesheet() -> str:
         background: rgba(222, 246, 248, 0.96);
         color: #073f46;
     }}
+    QFrame#cardMuted[deliveryGateDetailDrawer="true"] {{
+        border-radius: 13px;
+        border: 1px solid #bdd8df;
+        border-left: 4px solid #0c7a86;
+        background: rgba(247, 253, 252, 0.92);
+    }}
+    QFrame#cardMuted[deliveryGateDetailDrawer="true"][deliveryGateDetailsExpanded="true"] {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f7fdfc,
+            stop: 0.64 #ffffff,
+            stop: 1 #fff8ea
+        );
+    }}
+    QFrame#cardMuted[deliveryGateDetailDrawer="true"] QLabel#subtitle {{
+        font-size: 10px;
+        color: #54717b;
+    }}
     QWidget[deliveryGateGroupStrip="true"] {{
         background: transparent;
     }}
