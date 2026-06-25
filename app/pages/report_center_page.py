@@ -74,6 +74,7 @@ class ReportCenterPage(QWidget):
         self.preview_context_notes: dict[str, QLabel] = {}
         self.preview_context_chips: dict[str, QLabel] = {}
         self.preview_context_buttons: dict[str, QToolButton] = {}
+        self.report_action_buttons: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -159,9 +160,13 @@ class ReportCenterPage(QWidget):
         self.preview_source_label.setWordWrap(False)
         preview_header_layout.addWidget(self.preview_source_label)
         center_layout.addWidget(self.preview_header_card)
+        self.preview_header_card.setMaximumHeight(0)
+        self.preview_header_card.setVisible(False)
 
         self.preview_command_strip = self._build_preview_command_strip()
         center_layout.addWidget(self.preview_command_strip)
+        self.preview_command_strip.setMaximumHeight(0)
+        self.preview_command_strip.setVisible(False)
 
         self.preview_deck_card = CardFrame(muted=True, role="rail")
         self.preview_deck_card.setProperty("deckRole", "reportPreviewDeck")
@@ -189,6 +194,8 @@ class ReportCenterPage(QWidget):
         self.preview_pane_hint_label.setMaximumHeight(16)
         self.preview_pane_hint_label.setWordWrap(False)
         preview_deck_layout.addWidget(self.preview_pane_hint_label)
+        self.report_action_drawer = self._build_report_action_drawer()
+        preview_deck_layout.addWidget(self.report_action_drawer)
 
         self.preview_metrics_row = QWidget()
         self.preview_metrics_row.setProperty("reportPreviewMetricStrip", True)
@@ -309,7 +316,7 @@ class ReportCenterPage(QWidget):
         self.preview_content_card = CardFrame(role="panel")
         self.preview_content_card.setProperty("deckRole", "compactPreviewPane")
         self.preview_content_card.setProperty("density", "desktop")
-        self.preview_content_card.setMaximumHeight(360)
+        self.preview_content_card.setMaximumHeight(278)
         self.preview_content_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         content_layout = QVBoxLayout(self.preview_content_card)
         content_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
@@ -320,7 +327,7 @@ class ReportCenterPage(QWidget):
         self.preview_content_splitter.setObjectName("reportPreviewSplitPane")
         self.preview_content_splitter.setProperty("reportPreviewSplitPane", True)
         self.preview_content_splitter.setChildrenCollapsible(False)
-        self.preview_content_splitter.setMaximumHeight(292)
+        self.preview_content_splitter.setMaximumHeight(210)
         self.preview_content_splitter.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.preview_primary_pane = CardFrame(muted=True, role="panel")
         self.preview_primary_pane.setProperty("reportPreviewPrimaryPane", True)
@@ -329,13 +336,13 @@ class ReportCenterPage(QWidget):
         primary_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         primary_layout.setSpacing(TOKENS.spacing_xs)
         self.preview_plot = pg.PlotWidget()
-        self.preview_plot.setMinimumHeight(150)
-        self.preview_plot.setMaximumHeight(210)
+        self.preview_plot.setMinimumHeight(112)
+        self.preview_plot.setMaximumHeight(150)
         configure_plot_theme(self.preview_plot, left_label="指标", bottom_label="序列")
         self.preview_curve = self.preview_plot.plot(pen=pg.mkPen(PLOT_SERIES_COLORS["primary"], width=2.2))
         primary_layout.addWidget(self.preview_plot)
         self.preview_table = QTableWidget(0, 3)
-        self.preview_table.setMaximumHeight(128)
+        self.preview_table.setMaximumHeight(96)
         self.preview_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.preview_table.verticalHeader().setVisible(False)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -350,7 +357,7 @@ class ReportCenterPage(QWidget):
         primary_layout.addWidget(self.preview_plot_note)
         self.preview_insight_card = CardFrame(muted=True, role="tile")
         self.preview_insight_card.setProperty("deckRole", "reportPreviewInsightPane")
-        self.preview_insight_card.setMaximumHeight(210)
+        self.preview_insight_card.setMaximumHeight(150)
         insight_layout = QVBoxLayout(self.preview_insight_card)
         insight_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         insight_layout.setSpacing(TOKENS.spacing_xs)
@@ -380,7 +387,7 @@ class ReportCenterPage(QWidget):
         content_layout.addWidget(self.preview_content_splitter)
         self._show_preview_content_mode("table")
         preview_deck_layout.addWidget(self.preview_content_card)
-        preview_deck_layout.insertWidget(2, self.preview_content_card)
+        preview_deck_layout.insertWidget(3, self.preview_content_card)
         center_layout.addWidget(self.preview_deck_card)
         center_layout.insertWidget(0, self.preview_deck_card)
 
@@ -928,6 +935,78 @@ class ReportCenterPage(QWidget):
         layout.setColumnStretch(2, 1)
         layout.setColumnStretch(3, 0)
         return strip
+
+    def _build_report_action_drawer(self) -> CardFrame:
+        drawer = CardFrame(muted=True, role="console")
+        drawer.setProperty("deckRole", "reportActionDrawer")
+        drawer.setProperty("reportActionDrawer", True)
+        drawer.setMaximumHeight(58)
+        drawer.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(drawer)
+        layout.setContentsMargins(TOKENS.spacing_sm, 2, TOKENS.spacing_sm, 2)
+        layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        layout.setVerticalSpacing(0)
+
+        self.report_action_mode_chip = chip("工程诊断", "accent")
+        self.report_action_mode_chip.setMaximumHeight(20)
+        self.report_action_title_label = QLabel("--")
+        self.report_action_title_label.setObjectName("metricValue")
+        self.report_action_title_label.setProperty("compactMetric", True)
+        self.report_action_title_label.setMaximumHeight(20)
+        self.report_action_title_label.setWordWrap(False)
+        self.report_action_title_label.setMinimumWidth(0)
+        self.report_action_title_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.report_action_next_chip = chip("待生成", "warning")
+        self.report_action_next_chip.setMaximumHeight(20)
+        self.report_action_source_label = QLabel("--")
+        self.report_action_source_label.setObjectName("subtitle")
+        self.report_action_source_label.setMaximumHeight(18)
+        self.report_action_source_label.setWordWrap(False)
+        self.report_action_source_label.setMinimumWidth(0)
+        self.report_action_source_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.report_action_next_label = QLabel("--")
+        self.report_action_next_label.setObjectName("subtitle")
+        self.report_action_next_label.setMaximumHeight(18)
+        self.report_action_next_label.setWordWrap(False)
+        self.report_action_next_label.setMinimumWidth(0)
+        self.report_action_next_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+        button_row = QWidget()
+        button_row.setProperty("reportActionButtonRow", True)
+        button_layout = QGridLayout(button_row)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        button_layout.setVerticalSpacing(0)
+        for column, (key, text, target) in enumerate(
+            (
+                ("generate", "生成", "generate_report"),
+                ("export", "导出", "export_report"),
+                ("evidence", "证据", "evidence"),
+                ("compare", "对比", "compare_batches"),
+            )
+        ):
+            button = QToolButton()
+            button.setText(text)
+            button.setProperty("railAction", True)
+            button.setProperty("reportActionDrawerButton", True)
+            button.setProperty("targetAction", target)
+            button.clicked.connect(lambda _checked=False, item=button: self._activate_delivery_rail_target(item))
+            button.setMinimumWidth(46)
+            button.setMaximumHeight(22)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            self.report_action_buttons[key] = button
+            button_layout.addWidget(button, 0, column)
+
+        layout.addWidget(self.report_action_mode_chip, 0, 0)
+        layout.addWidget(self.report_action_title_label, 0, 1)
+        layout.addWidget(self.report_action_next_chip, 0, 2)
+        layout.addWidget(button_row, 0, 3, 2, 1)
+        layout.addWidget(self.report_action_source_label, 1, 0, 1, 2)
+        layout.addWidget(self.report_action_next_label, 1, 2)
+        layout.setColumnStretch(1, 2)
+        layout.setColumnStretch(2, 1)
+        layout.setColumnStretch(3, 0)
+        return drawer
 
     def _build_preview_pane_switcher(self) -> QWidget:
         switcher = QWidget()
@@ -1551,6 +1630,14 @@ class ReportCenterPage(QWidget):
             )
         )
         self.preview_source_label.setToolTip(_ui_safe_text(raw_source))
+        if hasattr(self, "report_action_title_label"):
+            self._set_chip(self.report_action_mode_chip, view_mode, "accent")
+            action_title = str(report.get("title", "Report Preview") or "Report Preview")
+            self.report_action_title_label.setText(_ui_safe_text(action_title if len(action_title) <= 18 else f"{action_title[:17]}..."))
+            self.report_action_title_label.setToolTip(_ui_safe_text(action_title))
+            action_source = f"source={source_display} | batch={filters.get('batch', '--')} | updated={report.get('updated_at', '--')}"
+            self.report_action_source_label.setText(_ui_safe_text(action_source if len(action_source) <= 58 else f"{action_source[:55]}..."))
+            self.report_action_source_label.setToolTip(_ui_safe_text(raw_source))
         source = source_display
         batch = str(filters.get("batch", "--") or "--")
         updated_at = str(report.get("updated_at", "--") or "--")
@@ -2882,6 +2969,15 @@ class ReportCenterPage(QWidget):
         self.preview_command_strip.setProperty("commandTone", strip_tone)
         self.preview_command_strip.style().unpolish(self.preview_command_strip)
         self.preview_command_strip.style().polish(self.preview_command_strip)
+        if hasattr(self, "report_action_drawer"):
+            self.report_action_drawer.setProperty("actionTone", strip_tone)
+            self.report_action_drawer.style().unpolish(self.report_action_drawer)
+            self.report_action_drawer.style().polish(self.report_action_drawer)
+            self._set_chip(self.report_action_next_chip, gate_text, gate_tone)
+            next_action = self.delivery_gate_next_value.text() or "--"
+            next_note = self.delivery_gate_next_note.text() or self.delivery_gate_next_value.toolTip() or "--"
+            self.report_action_next_label.setText(_ui_safe_text(f"next={next_action}"))
+            self.report_action_next_label.setToolTip(_ui_safe_text(next_note))
         self._configure_delivery_rail_action_button(
             self.preview_command_buttons["generate"],
             "生成",
@@ -2903,6 +2999,35 @@ class ReportCenterPage(QWidget):
             "evidence",
             "success" if manifest_ready else ("accent" if report_ready else "warning"),
         )
+        if hasattr(self, "report_action_buttons"):
+            self._configure_delivery_rail_action_button(
+                self.report_action_buttons["generate"],
+                "生成",
+                "重新生成报告中心内容，并同步交付门槛。",
+                "generate_report",
+                "success" if report_ready else "accent",
+            )
+            self._configure_delivery_rail_action_button(
+                self.report_action_buttons["export"],
+                "导出",
+                "写出当前报告、manifest、网络校验和交付包。",
+                "export_report",
+                export_tone,
+            )
+            self._configure_delivery_rail_action_button(
+                self.report_action_buttons["evidence"],
+                "证据",
+                "导出报告证据包，用于审阅、追踪和交付复核。",
+                "evidence",
+                "success" if manifest_ready else ("accent" if report_ready else "warning"),
+            )
+            self._configure_delivery_rail_action_button(
+                self.report_action_buttons["compare"],
+                "对比",
+                "刷新当前批次和上一批次的差异摘要。",
+                "compare_batches",
+                "accent" if exportable_count > 0 else "warning",
+            )
 
     def _set_preview_command_tile(self, key: str, value: str, note: str, tone: str) -> None:
         value_label = self.preview_command_values[key]
@@ -3139,6 +3264,9 @@ class ReportCenterPage(QWidget):
             self.refresh()
         elif target == "evidence":
             self._export_evidence()
+            self.refresh()
+        elif target == "compare_batches":
+            self._compare_batches()
             self.refresh()
         elif target == "network":
             self._show_delivery_focus("details")

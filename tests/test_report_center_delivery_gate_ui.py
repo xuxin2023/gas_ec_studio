@@ -180,11 +180,13 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_header_card.property("cardRole") == "cockpit"
         assert page.preview_header_card.property("deckRole") == "reportPreviewHeader"
         assert page.preview_header_card.property("reportPreviewHeaderDock") is True
-        assert page.preview_header_card.maximumHeight() == 88
+        assert page.preview_header_card.maximumHeight() == 0
+        assert page.preview_header_card.isHidden() is True
         assert page.preview_command_strip.property("cardRole") == "console"
         assert page.preview_command_strip.property("deckRole") == "reportPreviewCommandStrip"
         assert page.preview_command_strip.property("previewCommandDock") is True
-        assert page.preview_command_strip.maximumHeight() == 68
+        assert page.preview_command_strip.maximumHeight() == 0
+        assert page.preview_command_strip.isHidden() is True
         assert set(page.preview_command_tiles) == {"report", "gate", "export"}
         assert all(tile.property("previewCommandTile") is True for tile in page.preview_command_tiles.values())
         assert page.preview_command_values["report"].text() == "待生成"
@@ -202,6 +204,19 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_pane_switcher.property("deckRole") == "previewPaneSwitcher"
         assert all(button.property("previewPaneSwitch") is True for button in page.preview_content_switches.values())
         assert page.preview_pane_hint_label.text()
+        assert page.report_action_drawer.property("deckRole") == "reportActionDrawer"
+        assert page.report_action_drawer.property("reportActionDrawer") is True
+        assert page.report_action_drawer.maximumHeight() == 58
+        assert set(page.report_action_buttons) == {"generate", "export", "evidence", "compare"}
+        assert page.report_action_next_chip.objectName() == "chip"
+        assert page.report_action_buttons["generate"].property("targetAction") == "generate_report"
+        assert page.report_action_buttons["export"].property("targetAction") == "export_report"
+        assert page.report_action_buttons["evidence"].property("targetAction") == "evidence"
+        assert page.report_action_buttons["compare"].property("targetAction") == "compare_batches"
+        assert all(button.property("reportActionDrawerButton") is True for button in page.report_action_buttons.values())
+        preview_deck_layout = page.preview_deck_card.layout()
+        assert preview_deck_layout.indexOf(page.report_action_drawer) < preview_deck_layout.indexOf(page.preview_content_card)
+        assert preview_deck_layout.indexOf(page.preview_content_card) < preview_deck_layout.indexOf(page.preview_metrics_row)
         assert page.preview_delivery_trail_card.property("cardRole") == "console"
         assert page.preview_delivery_trail_card.property("previewTrailStrip") is True
         assert page.preview_delivery_trail_card.maximumHeight() == 54
@@ -211,10 +226,10 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_content_card.property("deckRole") == "compactPreviewPane"
         assert page.preview_content_card.property("density") == "desktop"
         assert page.preview_content_card.property("plotStatus") == "tableOnly"
-        assert page.preview_content_card.maximumHeight() == 360
+        assert page.preview_content_card.maximumHeight() == 278
         assert page.preview_content_splitter.objectName() == "reportPreviewSplitPane"
         assert page.preview_content_splitter.property("reportPreviewSplitPane") is True
-        assert page.preview_content_splitter.maximumHeight() == 292
+        assert page.preview_content_splitter.maximumHeight() == 210
         assert page.preview_primary_pane.property("reportPreviewPrimaryPane") is True
         assert page.preview_context_pane.property("reportPreviewContextPane") is True
         assert page.preview_context_pane.minimumWidth() == 190
@@ -385,6 +400,10 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             assert_contained(page.preview_content_splitter, page.preview_context_pane, page)
             for tile in page.preview_context_cards.values():
                 assert_contained(page.preview_context_pane, tile, page)
+            assert_contained(page.preview_deck_card, page.report_action_drawer, page)
+            assert page.report_action_drawer.geometry().bottom() < page.preview_content_card.geometry().top()
+            for button in page.report_action_buttons.values():
+                assert_contained(page.report_action_drawer, button, page)
             for button in page.preview_content_switches.values():
                 assert_contained(page.preview_deck_card, button, page)
             gate_widgets = [page.delivery_gate_scroll]

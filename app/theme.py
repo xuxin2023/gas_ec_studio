@@ -1098,6 +1098,35 @@ def build_stylesheet() -> str:
         border: 1px solid #d2e3e9;
         background: rgba(255, 255, 255, 0.76);
     }}
+    QFrame#cardMuted[reportActionDrawer="true"] {{
+        border-radius: 14px;
+        border: 1px solid #bfd8df;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #f8fcfd,
+            stop: 0.58 #ffffff,
+            stop: 1 #eef8f2
+        );
+    }}
+    QFrame#cardMuted[reportActionDrawer="true"][actionTone="success"] {{
+        border-color: #9fd2bb;
+    }}
+    QFrame#cardMuted[reportActionDrawer="true"][actionTone="accent"] {{
+        border-color: #94c9d3;
+    }}
+    QFrame#cardMuted[reportActionDrawer="true"][actionTone="warning"] {{
+        border-color: #e6c98e;
+    }}
+    QToolButton[reportActionDrawerButton="true"] {{
+        min-height: 22px;
+        border-radius: 11px;
+        padding: 0 8px;
+        background: #f7fcfd;
+        border: 1px solid #b8d4dd;
+        color: #0e5f6e;
+        font-size: 11px;
+        font-weight: 800;
+    }}
     QSplitter#reportPreviewSplitPane {{
         background: transparent;
     }}
