@@ -149,6 +149,7 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[deliveryClosureTile="true"] QLabel#metricValue[compactMetric="true"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="tile"][radarTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewWorkbench="true"]' in stylesheet
+    assert 'QFrame#card[previewDeliveryWorkbench="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewAnalysisStrip="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewAnalysisStrip="true"][analysisMode="plot"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewAnalysisStrip="true"][analysisMode="table"]' in stylesheet
@@ -173,8 +174,10 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QToolButton[reportActionDrawerButton="true"]' in stylesheet
     assert 'QSplitter#reportPreviewSplitPane' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewPrimaryPane="true"]' in stylesheet
+    assert 'QFrame#cardMuted[reportPreviewPrimaryPane="true"][analysisWorkbenchPane="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewContextPane="true"]' in stylesheet
     assert 'QFrame#cardMuted[reportPreviewContextPane="true"][reportPreviewEvidenceRail="true"]' in stylesheet
+    assert 'QFrame#cardMuted[reportPreviewContextPane="true"][desktopEvidenceRail="true"]' in stylesheet
     assert 'QFrame#cardMuted[previewEvidenceSummary="true"]' in stylesheet
     assert 'QFrame#cardMuted[previewEvidenceSummary="true"][evidenceTone="success"]' in stylesheet
     assert 'QLabel[previewEvidenceNote="true"]' in stylesheet
@@ -208,6 +211,7 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[deliveryMissionRail="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryMissionRail="true"][desktopMissionRail="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryRailConsole="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryRailConsole="true"][desktopRailConsole="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryRailConsole="true"][railTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryRailConsole="true"][railTone="accent"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryRailConsole="true"][railTone="warning"]' in stylesheet
@@ -219,6 +223,8 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QToolButton[deliveryBridgeSegment="true"][bridgeTone="accent"]' in stylesheet
     assert 'QToolButton[deliveryBridgeSegment="true"][bridgeTone="warning"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryRailActionDock="true"][deliveryRailActionMatrix="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryRailActionDock="true"][compactDeliveryActionMatrix="true"]' in stylesheet
+    assert 'QToolButton[deliveryRailAction="true"][compactDeliveryAction="true"]' in stylesheet
     assert 'QToolButton[deliveryRailAction="true"][actionTone="success"]' in stylesheet
     assert 'QToolButton[deliveryRailAction="true"][actionTone="accent"]' in stylesheet
     assert 'QToolButton[deliveryRailAction="true"][actionTone="warning"]' in stylesheet

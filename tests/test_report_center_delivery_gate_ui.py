@@ -117,7 +117,8 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_status_chip.text().startswith("待生成")
         assert page.delivery_rail_console.property("deckRole") == "deliveryRailConsole"
         assert page.delivery_rail_console.property("deliveryRailConsole") is True
-        assert page.delivery_rail_console.maximumHeight() == 146
+        assert page.delivery_rail_console.property("desktopRailConsole") is True
+        assert page.delivery_rail_console.maximumHeight() == 132
         assert page.delivery_rail_next_chip.objectName() == "chip"
         assert page.delivery_rail_next_value.property("compactMetric") is True
         assert page.delivery_rail_next_value.text()
@@ -148,8 +149,9 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_action_bar.property("deckRole") == "deliveryRailActionBar"
         assert page.delivery_rail_action_bar.property("deliveryRailActionDock") is True
         assert page.delivery_rail_action_bar.property("deliveryRailActionMatrix") is True
-        assert page.delivery_rail_action_bar.minimumHeight() == 69
-        assert page.delivery_rail_action_bar.maximumHeight() == 72
+        assert page.delivery_rail_action_bar.property("compactDeliveryActionMatrix") is True
+        assert page.delivery_rail_action_bar.minimumHeight() == 61
+        assert page.delivery_rail_action_bar.maximumHeight() == 64
         assert page.delivery_rail_action_button.property("railAction") is True
         assert page.delivery_rail_risk_button.property("railAction") is True
         assert page.delivery_rail_export_button.property("railAction") is True
@@ -159,7 +161,9 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_export_button.property("deliveryRailAction") is True
         assert page.delivery_rail_evidence_button.property("deliveryRailAction") is True
         assert all(
-            button.minimumWidth() == 84 and button.minimumHeight() == 30
+            button.property("compactDeliveryAction") is True
+            and button.minimumWidth() == 78
+            and button.minimumHeight() == 26
             for button in (
                 page.delivery_rail_action_button,
                 page.delivery_rail_risk_button,
@@ -463,8 +467,9 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.preview_content_card.property("cardRole") == "panel"
         assert page.preview_content_card.property("deckRole") == "compactPreviewPane"
         assert page.preview_content_card.property("density") == "desktop"
+        assert page.preview_content_card.property("previewDeliveryWorkbench") is True
         assert page.preview_content_card.property("plotStatus") == "tableOnly"
-        assert page.preview_content_card.maximumHeight() == 232
+        assert page.preview_content_card.maximumHeight() == 244
         assert page.preview_workbench_bridge.property("cardRole") == "console"
         assert page.preview_workbench_bridge.property("deckRole") == "previewWorkbenchBridge"
         assert page.preview_workbench_bridge.property("previewWorkbenchBridge") is True
@@ -489,10 +494,12 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         page._show_preview_content_mode("table")
         assert page.preview_content_splitter.objectName() == "reportPreviewSplitPane"
         assert page.preview_content_splitter.property("reportPreviewSplitPane") is True
-        assert page.preview_content_splitter.maximumHeight() == 164
+        assert page.preview_content_splitter.maximumHeight() == 176
         assert page.preview_primary_pane.property("reportPreviewPrimaryPane") is True
+        assert page.preview_primary_pane.property("analysisWorkbenchPane") is True
         assert page.preview_context_pane.property("reportPreviewContextPane") is True
         assert page.preview_context_pane.property("reportPreviewEvidenceRail") is True
+        assert page.preview_context_pane.property("desktopEvidenceRail") is True
         assert page.preview_context_pane.minimumWidth() == 190
         assert page.preview_evidence_summary_card.property("previewEvidenceSummary") is True
         assert page.preview_evidence_summary_card.maximumHeight() == 62

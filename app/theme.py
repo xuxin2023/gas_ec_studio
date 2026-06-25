@@ -1375,6 +1375,16 @@ def build_stylesheet() -> str:
         border: 1px solid #c8dce4;
         background: rgba(247, 252, 253, 0.84);
     }}
+    QFrame#card[previewDeliveryWorkbench="true"] {{
+        border-radius: 18px;
+        border: 1px solid #b8d4dc;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f9fdfe,
+            stop: 0.46 #ffffff,
+            stop: 1 #edf8f2
+        );
+    }}
     QFrame#cardMuted[reportPreviewAnalysisStrip="true"] {{
         border-radius: 14px;
         border: 1px solid #c3dce3;
@@ -1512,6 +1522,10 @@ def build_stylesheet() -> str:
         border: 1px solid #c9dfe6;
         background: rgba(255, 255, 255, 0.80);
     }}
+    QFrame#cardMuted[reportPreviewPrimaryPane="true"][analysisWorkbenchPane="true"] {{
+        border-left: 4px solid #8bbfca;
+        background: rgba(255, 255, 255, 0.88);
+    }}
     QFrame#cardMuted[reportPreviewContextPane="true"] {{
         border-radius: 15px;
         border: 1px solid #c8dce4;
@@ -1523,6 +1537,15 @@ def build_stylesheet() -> str:
     }}
     QFrame#cardMuted[reportPreviewContextPane="true"][reportPreviewEvidenceRail="true"] {{
         border-color: #b8d6df;
+    }}
+    QFrame#cardMuted[reportPreviewContextPane="true"][desktopEvidenceRail="true"] {{
+        border-left: 3px solid #d7ad70;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f8fcfd,
+            stop: 0.64 #ffffff,
+            stop: 1 #fff7e7
+        );
     }}
     QFrame#cardMuted[previewEvidenceSummary="true"] {{
         border-radius: 13px;
@@ -1772,6 +1795,10 @@ def build_stylesheet() -> str:
             stop: 0.58 #ffffff,
             stop: 1 #edf8f1
         );
+    }}
+    QFrame#cardMuted[deliveryRailConsole="true"][desktopRailConsole="true"] {{
+        border-radius: 14px;
+        border-left: 4px solid #8bbfca;
     }}
     QFrame#cardMuted[deliveryRailConsole="true"][railTone="success"] {{
         border-color: #9fcfba;
@@ -2169,6 +2196,10 @@ def build_stylesheet() -> str:
             stop: 1 #eff8ef
         );
     }}
+    QFrame#cardMuted[deliveryRailActionDock="true"][compactDeliveryActionMatrix="true"] {{
+        border-radius: 12px;
+        background: rgba(249, 253, 253, 0.92);
+    }}
     QToolButton[deliveryRailAction="true"] {{
         min-height: 28px;
         border-radius: 12px;
@@ -2177,6 +2208,12 @@ def build_stylesheet() -> str:
         border: 1px solid #b8d4dd;
         color: #0e5f6e;
         font-weight: 800;
+    }}
+    QToolButton[deliveryRailAction="true"][compactDeliveryAction="true"] {{
+        min-height: 24px;
+        border-radius: 10px;
+        padding: 0 6px;
+        font-size: 10px;
     }}
     QToolButton[deliveryRailAction="true"][actionTone="success"] {{
         background: #f0fbf5;
