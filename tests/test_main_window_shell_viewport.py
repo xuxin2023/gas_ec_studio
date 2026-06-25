@@ -37,7 +37,7 @@ def test_main_window_shell_fits_common_desktop_viewports(monkeypatch, tmp_path) 
             assert window._compact_shell is compact
             assert window.inspector.isVisible() is not compact
             assert window.header_status.isVisible() is not compact
-            assert window.log_panel.maximumHeight() == 54
+            assert window.log_panel.maximumHeight() == 44
             assert window.log_panel.latest_line.isVisible() is True
 
             root = window.centralWidget()

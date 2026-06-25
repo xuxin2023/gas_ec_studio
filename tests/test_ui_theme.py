@@ -75,6 +75,15 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="warning"]' in stylesheet
     assert 'QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="danger"]' in stylesheet
+    assert 'QFrame#cardMuted[ecProcessRail="true"]' in stylesheet
+    assert 'QWidget[stepPhaseMap="true"]' in stylesheet
+    assert 'QToolButton[stepPhaseTile="true"]' in stylesheet
+    assert 'QToolButton[stepPhaseTile="true"][phaseTone="success"]' in stylesheet
+    assert 'QToolButton[stepPhaseTile="true"][phaseTone="warning"]' in stylesheet
+    assert 'QToolButton[stepPhaseTile="true"][phaseTone="danger"]' in stylesheet
+    assert 'QFrame#cardMuted[logPanelCompactDock="true"]' in stylesheet
+    assert 'QLabel[logLatestLine="true"]' in stylesheet
+    assert 'QToolButton[logPanelAction="true"]' in stylesheet
     assert 'QFrame#card[runCommandDock="true"]' in stylesheet
     assert 'QFrame#cardMuted[runMissionStrip="true"]' in stylesheet
     assert 'QLabel[runMissionLabel="true"]' in stylesheet
@@ -331,10 +340,14 @@ def test_main_window_wires_theme_semantics() -> None:
     assert window.navigation.principle_footer.maximumHeight() == 118
     assert window.inspector.property("cardRole") == "rail"
     assert window.log_panel.property("cardRole") == "console"
+    assert window.log_panel.property("logPanelCompactDock") is True
     assert window.log_panel._expanded is False
     assert window.log_panel.editor.isHidden() is True
     assert window.log_panel.latest_line.isHidden() is False
-    assert window.log_panel.maximumHeight() == 54
+    assert window.log_panel.latest_line.property("logLatestLine") is True
+    assert window.log_panel.toggle_button.property("logPanelAction") is True
+    assert window.log_panel.clear_button.property("logPanelAction") is True
+    assert window.log_panel.maximumHeight() == 44
     assert window.log_panel.toggle_button.text() == "展开"
     assert window.log_panel.log_count_chip.text().endswith("条")
     window.log_panel.set_lines(["first", "second"])

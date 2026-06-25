@@ -110,7 +110,7 @@ class StudioMainWindow(QMainWindow):
 
         self.log_panel = LogPanel()
         self.vertical_splitter.addWidget(self.log_panel)
-        self.vertical_splitter.setSizes([800, 54])
+        self.vertical_splitter.setSizes([800, 44])
 
         self.device_center_page.open_detail_requested.connect(self._open_device_detail)
         self.device_center_page.open_realtime_requested.connect(lambda: self._set_page("realtime"))

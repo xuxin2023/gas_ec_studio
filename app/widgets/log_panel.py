@@ -18,7 +18,8 @@ class LogPanel(CardFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(muted=True, role="console", parent=parent)
         self._expanded = False
-        self._collapsed_height = 54
+        self.setProperty("logPanelCompactDock", True)
+        self._collapsed_height = 44
         self._expanded_min_height = 180
         self._expanded_max_height = 260
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -26,37 +27,40 @@ class LogPanel(CardFrame):
         self.setMaximumHeight(self._collapsed_height)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
-        layout.setSpacing(TOKENS.spacing_xs)
+        layout.setContentsMargins(TOKENS.spacing_md, 2, TOKENS.spacing_md, 2)
+        layout.setSpacing(0)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(TOKENS.spacing_sm)
         title = QLabel("运行日志")
         title.setObjectName("sectionTitle")
-        title.setMaximumHeight(24)
+        title.setMaximumHeight(20)
         header.addWidget(title)
 
         self.log_count_chip = chip("0 条", "accent")
-        self.log_count_chip.setMaximumHeight(24)
+        self.log_count_chip.setMaximumHeight(20)
         header.addWidget(self.log_count_chip)
 
         self.latest_line = QLabel("暂无日志。")
         self.latest_line.setObjectName("subtitle")
+        self.latest_line.setProperty("logLatestLine", True)
         self.latest_line.setWordWrap(False)
         self.latest_line.setMinimumWidth(0)
-        self.latest_line.setMaximumHeight(24)
+        self.latest_line.setMaximumHeight(20)
         self.latest_line.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         header.addWidget(self.latest_line, 1)
 
         self.toggle_button = QToolButton()
         self.toggle_button.setText("展开")
-        self.toggle_button.setMaximumHeight(30)
+        self.toggle_button.setProperty("logPanelAction", True)
+        self.toggle_button.setMaximumHeight(24)
         self.toggle_button.clicked.connect(self.toggle)
         header.addWidget(self.toggle_button)
 
         self.clear_button = QPushButton("清空日志")
-        self.clear_button.setMaximumHeight(30)
+        self.clear_button.setProperty("logPanelAction", True)
+        self.clear_button.setMaximumHeight(24)
         self.clear_button.clicked.connect(self.clear)
         header.addWidget(self.clear_button)
         layout.addLayout(header)

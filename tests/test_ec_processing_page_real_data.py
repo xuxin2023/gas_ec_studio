@@ -106,9 +106,17 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.rp_closure_deck.property("closureMode") == "detail"
         assert page.rp_closure_mode_buttons["detail"].isChecked() is True
         assert page.tree_card.property("cardRole") == "rail"
+        assert page.tree_card.property("ecProcessRail") is True
         assert page.step_nav_summary_card.property("deckRole") == "ecStepNavigationStatus"
         assert page.step_nav_summary_card.maximumHeight() == 42
         assert page.step_nav_summary_value.text().startswith("就绪")
+        assert page.step_phase_map.property("stepPhaseMap") is True
+        assert page.step_phase_map.maximumHeight() == 78
+        assert set(page.step_phase_buttons) == {"project", "core", "advanced", "delivery"}
+        assert all(button.property("stepPhaseTile") is True for button in page.step_phase_buttons.values())
+        assert all(button.property("phaseTone") in {"success", "warning", "danger"} for button in page.step_phase_buttons.values())
+        assert page.step_phase_buttons["project"].isChecked() is True
+        assert "\n" in page.step_phase_buttons["project"].text()
         assert page.step_count_chip.text() == f"{len(EC_STEPS)} 步"
         assert page.step_active_chip.text().startswith("窗口")
         assert page.step_tree.columnCount() == 2
@@ -336,6 +344,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         page.workflow_lens_buttons["advanced"].click()
         assert controller.ec_nav_step == "crosswind_correction"
         assert page.workflow_lens_buttons["advanced"].property("variant") == "primary"
+        assert page.step_phase_buttons["advanced"].isChecked() is True
         assert "kljun" in page.cockpit_method_value.text()
         assert page.cockpit_result_value.text() == "尚未运行"
         assert page.cockpit_delivery_value.text() == "FLUXNET"

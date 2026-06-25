@@ -74,6 +74,7 @@ class ECProcessingPage(QWidget):
         self.step_command_values: dict[str, dict[str, QLabel]] = {}
         self.step_command_notes: dict[str, dict[str, QLabel]] = {}
         self.step_command_buttons: dict[str, dict[str, QToolButton]] = {}
+        self.step_phase_buttons: dict[str, QToolButton] = {}
         self.method_shortcut_buttons: dict[str, QToolButton] = {}
         self.method_console_mode_buttons: dict[str, QToolButton] = {}
         self.method_family_control_strips: dict[str, QWidget] = {}
@@ -103,6 +104,7 @@ class ECProcessingPage(QWidget):
         layout.addWidget(body, 1)
 
         self.tree_card = CardFrame(muted=True, role="rail")
+        self.tree_card.setProperty("ecProcessRail", True)
         tree_layout = QVBoxLayout(self.tree_card)
         tree_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
         tree_layout.setSpacing(TOKENS.spacing_sm)
@@ -136,6 +138,31 @@ class ECProcessingPage(QWidget):
         summary_layout.addWidget(summary_title)
         summary_layout.addWidget(self.step_nav_summary_value, 1)
         tree_layout.addWidget(self.step_nav_summary_card)
+        self.step_phase_map = QWidget()
+        self.step_phase_map.setProperty("stepPhaseMap", True)
+        self.step_phase_map.setMaximumHeight(78)
+        phase_layout = QGridLayout(self.step_phase_map)
+        phase_layout.setContentsMargins(0, 0, 0, 0)
+        phase_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        phase_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        phase_titles = {
+            "project": "项目",
+            "core": "核心",
+            "advanced": "高级",
+            "delivery": "交付",
+        }
+        for index, (lens_key, title, _subtitle, _steps) in enumerate(WORKFLOW_LENSES):
+            button = QToolButton()
+            button.setText(phase_titles.get(lens_key, title))
+            button.setCheckable(True)
+            button.setProperty("stepPhaseTile", True)
+            button.setProperty("phaseKey", lens_key)
+            button.setProperty("phaseTone", "warning")
+            button.setMaximumHeight(34)
+            button.clicked.connect(lambda _checked=False, key=lens_key: self._select_workflow_lens(key))
+            self.step_phase_buttons[lens_key] = button
+            phase_layout.addWidget(button, index // 2, index % 2)
+        tree_layout.addWidget(self.step_phase_map)
 
         self.step_tree = QTreeWidget()
         self.step_tree.setObjectName("workflowTree")
@@ -1909,7 +1936,41 @@ class ECProcessingPage(QWidget):
         self.step_nav_summary_card.setProperty("evidenceTone", summary_tone)
         self.step_nav_summary_card.style().unpolish(self.step_nav_summary_card)
         self.step_nav_summary_card.style().polish(self.step_nav_summary_card)
+        self._refresh_step_phase_map(statuses)
         self._refresh_desktop_rail_status_strip()
+
+    def _refresh_step_phase_map(self, statuses: dict[str, tuple[str, str, str]]) -> None:
+        if not hasattr(self, "step_phase_buttons"):
+            return
+        active_step = self.controller.ec_nav_step
+        phase_titles = {
+            "project": "项目",
+            "core": "核心",
+            "advanced": "高级",
+            "delivery": "交付",
+        }
+        for lens_key, title, subtitle, steps in WORKFLOW_LENSES:
+            button = self.step_phase_buttons.get(lens_key)
+            if button is None:
+                continue
+            tones = [statuses.get(step, ("", "warning", ""))[1] for step in steps]
+            ready_count = sum(1 for tone in tones if tone in {"success", "accent"})
+            pending_count = sum(1 for tone in tones if tone == "warning")
+            risk_count = sum(1 for tone in tones if tone == "danger")
+            phase_tone = "danger" if risk_count else ("warning" if pending_count else "success")
+            active = active_step in steps
+            label = phase_titles.get(lens_key, title)
+            button.setText(f"{label}\n{ready_count}/{len(steps)}")
+            button.setToolTip(
+                f"{title}: ready={ready_count}; pending={pending_count}; risk={risk_count}\n{subtitle}"
+            )
+            button.blockSignals(True)
+            button.setChecked(active)
+            button.blockSignals(False)
+            button.setProperty("phaseTone", phase_tone)
+            button.setProperty("phaseActive", active)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def _refresh_step_active_chip(self, key: str) -> None:
         if not hasattr(self, "step_active_chip"):
@@ -3550,6 +3611,7 @@ class ECProcessingPage(QWidget):
         self.content_stack.setCurrentIndex(self.step_indexes[key])
         self.controller.set_ec_nav_step(key)
         self._refresh_step_active_chip(str(key))
+        self._refresh_step_tree_statuses()
         self._refresh_run_bar()
 
     def _sync_step_from_controller(self) -> None:
@@ -3564,7 +3626,7 @@ class ECProcessingPage(QWidget):
         self.content_stack.setCurrentIndex(self.step_indexes[key])
         self._refresh_step_active_chip(str(key))
         self._refresh_workflow_lens()
-        self._refresh_desktop_rail_status_strip()
+        self._refresh_step_tree_statuses()
 
     def _collect_payload(self) -> dict:
         return {

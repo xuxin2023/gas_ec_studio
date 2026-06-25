@@ -38,6 +38,10 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.run_summary_label.property("runMissionText") is True
         assert page.output_coverage_card.property("cardRole") == "panel"
         assert page.rail_focus_card.property("cardRole") == "panel"
+        assert page.step_phase_map.property("stepPhaseMap") is True
+        assert page.step_phase_map.maximumHeight() == 78
+        assert set(page.step_phase_buttons) == {"project", "core", "advanced", "delivery"}
+        assert all(button.property("stepPhaseTile") is True for button in page.step_phase_buttons.values())
         assert page.desktop_rail_inspector.property("deckRole") == "ecRailInspector"
         assert page.desktop_rail_inspector.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Fixed
         assert page.desktop_rail_status_strip.property("deckRole") == "ecRailStatusStrip"
@@ -139,6 +143,7 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.content_stack.currentIndex() == page.step_indexes["uncertainty"]
         assert page.method_family_stack.currentWidget() is page.spectral_card
         assert page.method_shortcut_buttons["spectral"].isChecked() is True
+        assert page.step_phase_buttons["advanced"].isChecked() is True
         assert page.desktop_rail_stack.currentWidget() is page.cockpit_card
         assert set(page.coverage_values) == {
             "metadata",

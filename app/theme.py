@@ -251,6 +251,45 @@ def build_stylesheet() -> str:
         );
         border-color: #c9dce5;
     }}
+    QFrame#cardMuted[ecProcessRail="true"] {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #fbfefe,
+            stop: 0.58 #eef8fa,
+            stop: 1 #e9f4f0
+        );
+        border-color: #c4dce4;
+    }}
+    QWidget[stepPhaseMap="true"] {{
+        max-height: 78px;
+    }}
+    QToolButton[stepPhaseTile="true"] {{
+        min-height: 30px;
+        border-radius: 11px;
+        padding: 2px 8px;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid #c8dce5;
+        color: #31586a;
+        font-size: 10px;
+        font-weight: 800;
+    }}
+    QToolButton[stepPhaseTile="true"]:checked {{
+        background: #e8f8f8;
+        border-color: #70b7c1;
+        color: #063847;
+    }}
+    QToolButton[stepPhaseTile="true"][phaseTone="success"] {{
+        background: #f0fbf5;
+        border-color: #9fd2bb;
+    }}
+    QToolButton[stepPhaseTile="true"][phaseTone="warning"] {{
+        background: #fff8e8;
+        border-color: #e6c98e;
+    }}
+    QToolButton[stepPhaseTile="true"][phaseTone="danger"] {{
+        background: #fff0ef;
+        border-color: #e8b3ad;
+    }}
     QWidget[navBrandBlock="true"] {{
         padding: 4px;
         border-radius: 14px;
@@ -279,6 +318,21 @@ def build_stylesheet() -> str:
         );
         border: 1px solid #c6d9e4;
         border-radius: {TOKENS.radius_lg}px;
+    }}
+    QFrame#cardMuted[logPanelCompactDock="true"] {{
+        border-radius: 15px;
+        background: rgba(244, 251, 252, 0.92);
+        border-color: #bcd6df;
+    }}
+    QLabel[logLatestLine="true"] {{
+        color: #31586a;
+        font-size: 11px;
+    }}
+    QToolButton[logPanelAction="true"],
+    QPushButton[logPanelAction="true"] {{
+        min-height: 22px;
+        border-radius: 11px;
+        padding: 0 10px;
     }}
     QLabel#pageTitle {{
         font-family: {TOKENS.font_family_display};
