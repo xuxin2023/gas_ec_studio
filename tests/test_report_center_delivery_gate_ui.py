@@ -263,15 +263,28 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_progress_badge.property("chipTone") in {"warning", "accent", "success"}
         assert page.delivery_focus_stack.property("stackRole") == "compactDeliveryInspector"
         assert page.delivery_gate_hero_card.maximumHeight() == 56
+        assert page.delivery_gate_group_strip.property("deliveryGateGroupStrip") is True
+        assert page.delivery_gate_group_strip.maximumHeight() == 26
+        assert set(page.delivery_gate_group_cards) == {"artifact", "validation"}
+        assert set(page.delivery_gate_group_values) == {"artifact", "validation"}
+        assert set(page.delivery_gate_group_chips) == {"artifact", "validation"}
+        assert page.delivery_gate_group_values["artifact"].text() == "0/3"
+        assert page.delivery_gate_group_values["validation"].text() == "0/3"
+        assert page.delivery_gate_group_cards["artifact"].property("deliveryGateGroupTile") is True
+        assert page.delivery_gate_group_cards["artifact"].property("gateGroupKey") == "artifact"
+        assert page.delivery_gate_group_cards["artifact"].property("gateGroupTone") == "warning"
+        assert page.delivery_gate_group_cards["validation"].property("gateGroupKey") == "validation"
+        assert page.delivery_gate_group_values["artifact"].property("deliveryGateGroupValue") is True
+        assert page.delivery_gate_group_chips["artifact"].property("deliveryGateGroupChip") is True
         assert page.delivery_gate_scroll.objectName() == "deliveryGateMatrixScroll"
-        assert page.delivery_gate_scroll.maximumHeight() == 92
+        assert page.delivery_gate_scroll.maximumHeight() == 60
         assert page.delivery_gate_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.delivery_gate_scroll.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.delivery_gate_scroll.widget() is page.delivery_gate_grid_body
         assert page.delivery_gate_grid_body.property("deliveryGateLayeredMatrix") is True
         assert page.delivery_gate_ready_value.property("compactMetric") is True
         assert page.delivery_gate_ready_note.isHidden() is False
-        assert all(tile.maximumHeight() == 28 for tile in page.delivery_gate_tiles.values())
+        assert all(tile.maximumHeight() == 18 for tile in page.delivery_gate_tiles.values())
         assert all(tile.property("deliveryGateTile") is True for tile in page.delivery_gate_tiles.values())
         assert all(tile.property("deliveryGateLayerTile") is True for tile in page.delivery_gate_tiles.values())
         assert {
@@ -289,7 +302,7 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_values["report"][1].isHidden() is True
         assert page.delivery_gate_values["report"][2].isHidden() is False
         assert page.delivery_gate_values["report"][2].property("closureStage") is True
-        assert page.delivery_gate_values["report"][2].minimumHeight() == 18
+        assert page.delivery_gate_values["report"][2].minimumHeight() == 14
         assert page.delivery_gate_next_value.property("compactMetric") is True
         assert page.delivery_gate_next_card.isHidden() is True
         assert page.delivery_gate_next_note.isHidden() is True
@@ -641,14 +654,20 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
                 assert_contained(page.report_action_drawer, button, page)
             for button in page.preview_content_switches.values():
                 assert_contained(page.preview_deck_card, button, page)
-            gate_widgets = [page.delivery_gate_scroll]
+            gate_widgets = [page.delivery_gate_group_strip, page.delivery_gate_scroll]
             for widget in gate_widgets:
                 assert_contained(page.delivery_gate_card, widget, page)
+            for widget in page.delivery_gate_group_cards.values():
+                assert_contained(page.delivery_gate_group_strip, widget, page)
             for widget in (page.delivery_gate_tiles["report"], page.delivery_gate_tiles["export"]):
                 assert_contained(page.delivery_gate_scroll.viewport(), widget, page)
             for widget in page.delivery_gate_tiles.values():
                 assert_contained(page.delivery_gate_grid_body, widget, page)
-            assert_no_visual_overlap([page.delivery_gate_hero_card, page.delivery_gate_scroll], page)
+            assert_no_visual_overlap(
+                [page.delivery_gate_hero_card, page.delivery_gate_group_strip, page.delivery_gate_scroll],
+                page,
+            )
+            assert_no_visual_overlap(list(page.delivery_gate_group_cards.values()), page)
             assert_no_visual_overlap(list(page.delivery_gate_tiles.values()), page)
 
             assert_no_visible_competitor_name(page)
@@ -735,6 +754,12 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_gate_ready_value.text() == "可交付"
         assert page.delivery_gate_progress_badge.text().startswith("6/6")
         assert page.delivery_gate_progress_badge.property("chipTone") == "success"
+        assert page.delivery_gate_group_values["artifact"].text() == "3/3"
+        assert page.delivery_gate_group_values["validation"].text() == "3/3"
+        assert page.delivery_gate_group_cards["artifact"].property("gateGroupTone") == "success"
+        assert page.delivery_gate_group_cards["validation"].property("gateGroupTone") == "success"
+        assert page.delivery_gate_group_chips["artifact"].text() == "闭合"
+        assert page.delivery_gate_group_chips["validation"].text() == "闭合"
         assert "交付归档" in page.delivery_gate_ready_note.text()
         assert page.delivery_gate_values["network"][0].text() == "FLUXNET"
         assert "缺失：无" in page.delivery_gate_values["network"][1].text()

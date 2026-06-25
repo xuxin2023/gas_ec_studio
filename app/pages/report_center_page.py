@@ -1753,7 +1753,7 @@ class ReportCenterPage(QWidget):
         card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(3)
+        layout.setSpacing(2)
         layout.setAlignment(Qt.AlignTop)
 
         header = QHBoxLayout()
@@ -1801,24 +1801,41 @@ class ReportCenterPage(QWidget):
         hero_layout.addWidget(self.delivery_gate_ready_note)
         layout.addWidget(self.delivery_gate_hero_card)
 
+        self.delivery_gate_group_strip = QWidget()
+        self.delivery_gate_group_strip.setProperty("deliveryGateGroupStrip", True)
+        self.delivery_gate_group_strip.setMinimumHeight(24)
+        self.delivery_gate_group_strip.setMaximumHeight(26)
+        group_layout = QHBoxLayout(self.delivery_gate_group_strip)
+        group_layout.setContentsMargins(0, 0, 0, 0)
+        group_layout.setSpacing(TOKENS.spacing_xs)
+        self.delivery_gate_group_values: dict[str, QLabel] = {}
+        self.delivery_gate_group_chips: dict[str, QLabel] = {}
+        self.delivery_gate_group_cards: dict[str, CardFrame] = {}
+        for key, title, note in (
+            ("artifact", "交付链", "报告 / 导出 / 清单"),
+            ("validation", "验证链", "网络 / 对标 / 方法"),
+        ):
+            group_layout.addWidget(self._delivery_gate_group_card(key, title, note))
+        layout.addWidget(self.delivery_gate_group_strip)
+
         self.delivery_gate_scroll = QScrollArea()
         self.delivery_gate_scroll.setObjectName("deliveryGateMatrixScroll")
         self.delivery_gate_scroll.setWidgetResizable(True)
         self.delivery_gate_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.delivery_gate_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.delivery_gate_scroll.setMinimumHeight(86)
-        self.delivery_gate_scroll.setMaximumHeight(92)
+        self.delivery_gate_scroll.setMinimumHeight(58)
+        self.delivery_gate_scroll.setMaximumHeight(60)
         self.delivery_gate_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.delivery_gate_grid_body = QWidget()
         self.delivery_gate_grid_body.setProperty("deliveryGateLayeredMatrix", True)
         self.delivery_gate_grid_body.setMinimumWidth(0)
-        self.delivery_gate_grid_body.setMinimumHeight(86)
+        self.delivery_gate_grid_body.setMinimumHeight(58)
         grid = QGridLayout(self.delivery_gate_grid_body)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(TOKENS.spacing_xs)
         grid.setVerticalSpacing(TOKENS.spacing_xs)
         for row in range(3):
-            grid.setRowMinimumHeight(row, 26)
+            grid.setRowMinimumHeight(row, 16)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         self.delivery_gate_values: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
@@ -1863,13 +1880,48 @@ class ReportCenterPage(QWidget):
         layout.addWidget(self.delivery_gate_next_card)
         return card
 
+    def _delivery_gate_group_card(self, key: str, title: str, note: str) -> CardFrame:
+        tile = CardFrame(muted=True, role="tile")
+        tile.setProperty("deliveryGateGroupTile", True)
+        tile.setProperty("gateGroupKey", key)
+        tile.setProperty("gateGroupTone", "warning")
+        tile.setMinimumHeight(24)
+        tile.setMaximumHeight(26)
+        tile.setToolTip(_ui_safe_text(note))
+        layout = QHBoxLayout(tile)
+        layout.setContentsMargins(5, 1, 5, 1)
+        layout.setSpacing(3)
+        title_label = QLabel(_ui_safe_text(title))
+        title_label.setObjectName("metricLabel")
+        title_label.setProperty("deliveryGateGroupTitle", True)
+        title_label.setMinimumWidth(38)
+        value = QLabel("0/3")
+        value.setObjectName("metricValue")
+        value.setProperty("deliveryGateGroupValue", True)
+        value.setProperty("compactMetric", True)
+        value.setAlignment(Qt.AlignCenter)
+        status_chip = chip("待补", "warning")
+        status_chip.setProperty("deliveryGateGroupChip", True)
+        status_chip.setAlignment(Qt.AlignCenter)
+        status_chip.setMinimumWidth(32)
+        status_chip.setMaximumWidth(38)
+        status_chip.setMinimumHeight(14)
+        status_chip.setMaximumHeight(16)
+        layout.addWidget(title_label)
+        layout.addWidget(value, 1)
+        layout.addWidget(status_chip)
+        self.delivery_gate_group_values[key] = value
+        self.delivery_gate_group_chips[key] = status_chip
+        self.delivery_gate_group_cards[key] = tile
+        return tile
+
     def _delivery_gate_tile(self, key: str, title: str, hint: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("gateKey", key)
         tile.setProperty("deliveryGateTile", True)
         tile.setProperty("deliveryGateLayerTile", True)
-        tile.setMinimumHeight(24)
-        tile.setMaximumHeight(28)
+        tile.setMinimumHeight(16)
+        tile.setMaximumHeight(18)
         layout = QHBoxLayout(tile)
         layout.setContentsMargins(5, 1, 5, 1)
         layout.setSpacing(3)
@@ -1883,15 +1935,15 @@ class ReportCenterPage(QWidget):
         status_chip.setAlignment(Qt.AlignCenter)
         status_chip.setMinimumWidth(30)
         status_chip.setMaximumWidth(36)
-        status_chip.setMinimumHeight(18)
-        status_chip.setMaximumHeight(20)
+        status_chip.setMinimumHeight(14)
+        status_chip.setMaximumHeight(16)
         status_chip.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         value = QLabel("--")
         value.setObjectName("metricValue")
         value.setProperty("compactMetric", True)
         value.setMinimumWidth(0)
         value.setWordWrap(False)
-        value.setMaximumHeight(18)
+        value.setMaximumHeight(16)
         value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         note = QLabel(_ui_safe_text(hint), tile)
         note.setObjectName("subtitle")
@@ -3435,6 +3487,8 @@ class ReportCenterPage(QWidget):
             methods["tone"],
         ]
         success_count = sum(1 for tone in tones if tone == "success")
+        self._refresh_delivery_gate_group("artifact", tones[:3], "报告 / 导出 / 清单")
+        self._refresh_delivery_gate_group("validation", tones[3:], "网络 / 对标 / 方法")
         if success_count >= 5:
             gate_text, gate_tone = "可交付", "success"
         elif report_ready or exportable_count > 0:
@@ -3807,6 +3861,31 @@ class ReportCenterPage(QWidget):
         tile = self.delivery_gate_tiles.get(key)
         if tile is not None:
             tile.setProperty("gateTone", tone)
+            tile.style().unpolish(tile)
+            tile.style().polish(tile)
+
+    def _refresh_delivery_gate_group(self, key: str, tones: list[str], note: str) -> None:
+        total = len(tones)
+        success_count = sum(1 for tone in tones if tone == "success")
+        if total > 0 and success_count == total:
+            tone, status_text = "success", "闭合"
+        elif success_count > 0 or any(tone == "accent" for tone in tones):
+            tone, status_text = "accent", "复核"
+        else:
+            tone, status_text = "warning", "待补"
+
+        value_label = self.delivery_gate_group_values.get(key)
+        status_chip = self.delivery_gate_group_chips.get(key)
+        tile = self.delivery_gate_group_cards.get(key)
+        if value_label is not None:
+            value_label.setText(f"{success_count}/{total}")
+            value_label.setToolTip(_ui_safe_text(note))
+        if status_chip is not None:
+            self._set_chip(status_chip, status_text, tone)
+            status_chip.setToolTip(_ui_safe_text(note))
+        if tile is not None:
+            tile.setToolTip(_ui_safe_text(f"{note}：{success_count}/{total} 已闭合"))
+            tile.setProperty("gateGroupTone", tone)
             tile.style().unpolish(tile)
             tile.style().polish(tile)
 

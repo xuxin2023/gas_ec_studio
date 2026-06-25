@@ -224,6 +224,15 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[deliveryGateHero="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateHero="true"][deliveryGateLayer="summary"]' in stylesheet
     assert 'QWidget[deliveryGateLayeredMatrix="true"]' in stylesheet
+    assert 'QWidget[deliveryGateGroupStrip="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateGroupTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateGroupTile="true"][gateGroupKey="artifact"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateGroupTile="true"][gateGroupKey="validation"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateGroupTile="true"][gateGroupTone="success"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateGroupTile="true"][gateGroupTone="accent"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateGroupTile="true"][gateGroupTone="warning"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateGroupTile="true"] QLabel[deliveryGateGroupValue="true"]' in stylesheet
+    assert 'QFrame#cardMuted[deliveryGateGroupTile="true"] QLabel#chip[deliveryGateGroupChip="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateTile="true"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateLayerTile="true"][deliveryGateGroup="artifact"]' in stylesheet
     assert 'QFrame#cardMuted[deliveryGateLayerTile="true"][deliveryGateGroup="validation"]' in stylesheet
