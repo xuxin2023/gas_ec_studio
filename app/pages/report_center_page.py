@@ -1859,10 +1859,13 @@ class ReportCenterPage(QWidget):
         return card
 
     def _build_delivery_gate_detail_drawer(self) -> CardFrame:
+        self.delivery_gate_detail_pinned = False
         drawer = CardFrame(muted=True, role="panel")
         drawer.setProperty("deckRole", "deliveryGateDetailDrawer")
         drawer.setProperty("deliveryGateDetailDrawer", True)
         drawer.setProperty("deliveryGateDetailsExpanded", False)
+        drawer.setProperty("deliveryGateDetailPinned", False)
+        drawer.setProperty("pinState", "unpinned")
         drawer.setMinimumHeight(0)
         drawer.setMaximumHeight(0)
         drawer.setVisible(False)
@@ -1876,6 +1879,15 @@ class ReportCenterPage(QWidget):
         title.setToolTip("展开查看六项交付检查的当前值、状态和解释。")
         header.addWidget(title)
         header.addStretch(1)
+        self.delivery_gate_detail_pin = QToolButton()
+        self.delivery_gate_detail_pin.setText("固定")
+        self.delivery_gate_detail_pin.setCheckable(True)
+        self.delivery_gate_detail_pin.setAutoRaise(True)
+        self.delivery_gate_detail_pin.setProperty("deliveryGateDetailPin", True)
+        self.delivery_gate_detail_pin.setProperty("pinState", "unpinned")
+        self.delivery_gate_detail_pin.setToolTip("固定门槛明细，切换交付子页时保持浮层。")
+        self.delivery_gate_detail_pin.toggled.connect(self._set_delivery_gate_detail_pinned)
+        header.addWidget(self.delivery_gate_detail_pin)
         self.delivery_gate_detail_badge = chip("6 项", "accent")
         self.delivery_gate_detail_badge.setProperty("deliveryGateDetailBadge", True)
         header.addWidget(self.delivery_gate_detail_badge)
@@ -1887,7 +1899,7 @@ class ReportCenterPage(QWidget):
         self.delivery_gate_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.delivery_gate_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.delivery_gate_scroll.setMinimumHeight(104)
-        self.delivery_gate_scroll.setMaximumHeight(110)
+        self.delivery_gate_scroll.setMaximumHeight(104)
         self.delivery_gate_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.delivery_gate_grid_body = QWidget()
         self.delivery_gate_grid_body.setProperty("deliveryGateLayeredMatrix", True)
@@ -3936,9 +3948,11 @@ class ReportCenterPage(QWidget):
             tile.style().polish(tile)
 
     def _set_delivery_gate_details_expanded(self, expanded: bool) -> None:
+        if not expanded and getattr(self, "delivery_gate_detail_pinned", False):
+            self._set_delivery_gate_detail_pinned(False)
         self.delivery_gate_detail_drawer.setVisible(expanded)
-        self.delivery_gate_detail_drawer.setMinimumHeight(142 if expanded else 0)
-        self.delivery_gate_detail_drawer.setMaximumHeight(150 if expanded else 0)
+        self.delivery_gate_detail_drawer.setMinimumHeight(158 if expanded else 0)
+        self.delivery_gate_detail_drawer.setMaximumHeight(166 if expanded else 0)
         self._position_delivery_gate_detail_drawer()
         self.delivery_gate_card.setMinimumHeight(126)
         self.delivery_gate_card.setProperty("deliveryGateDetailsExpanded", expanded)
@@ -3957,11 +3971,39 @@ class ReportCenterPage(QWidget):
         if expanded:
             self.delivery_gate_detail_drawer.raise_()
 
+    def _set_delivery_gate_detail_pinned(self, pinned: bool) -> None:
+        self.delivery_gate_detail_pinned = bool(pinned)
+        if not hasattr(self, "delivery_gate_detail_pin"):
+            return
+        state = "pinned" if self.delivery_gate_detail_pinned else "unpinned"
+        self.delivery_gate_detail_pin.blockSignals(True)
+        self.delivery_gate_detail_pin.setChecked(self.delivery_gate_detail_pinned)
+        self.delivery_gate_detail_pin.blockSignals(False)
+        self.delivery_gate_detail_pin.setText("已固定" if self.delivery_gate_detail_pinned else "固定")
+        self.delivery_gate_detail_pin.setToolTip(
+            "取消固定后，离开门槛页会自动收起明细。"
+            if self.delivery_gate_detail_pinned
+            else "固定门槛明细，切换交付子页时保持浮层。"
+        )
+        self.delivery_gate_detail_pin.setProperty("pinState", state)
+        self.delivery_gate_detail_drawer.setProperty("deliveryGateDetailPinned", self.delivery_gate_detail_pinned)
+        self.delivery_gate_detail_drawer.setProperty("pinState", state)
+        for widget in (self.delivery_gate_detail_pin, self.delivery_gate_detail_drawer):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+        if self.delivery_gate_detail_pinned and self.delivery_gate_detail_drawer.isHidden():
+            self._set_delivery_gate_details_expanded(True)
+
+    def _close_delivery_gate_detail_drawer(self, *, clear_pin: bool = False) -> None:
+        if clear_pin and getattr(self, "delivery_gate_detail_pinned", False):
+            self._set_delivery_gate_detail_pinned(False)
+        self._set_delivery_gate_details_expanded(False)
+
     def _position_delivery_gate_detail_drawer(self) -> None:
         if not hasattr(self, "delivery_gate_detail_drawer") or not hasattr(self, "delivery_rail"):
             return
         margin = 12
-        height = 150
+        height = 166
         rail_width = max(0, self.delivery_rail.width())
         rail_height = max(0, self.delivery_rail.height())
         width = max(220, rail_width - margin * 2)
@@ -4446,7 +4488,7 @@ class ReportCenterPage(QWidget):
             return
         self.delivery_rail_stack.setCurrentWidget(card)
         if section != "delivery" and hasattr(self, "delivery_gate_detail_drawer"):
-            self.delivery_gate_detail_drawer.setVisible(False)
+            self._close_delivery_gate_detail_drawer(clear_pin=True)
         for key, button in self.delivery_rail_mode_buttons.items():
             button.blockSignals(True)
             button.setChecked(key == section)
@@ -4463,12 +4505,16 @@ class ReportCenterPage(QWidget):
         self._show_delivery_rail_mode("delivery")
         self.delivery_focus_stack.setCurrentWidget(card)
         if hasattr(self, "delivery_gate_detail_drawer"):
-            drawer_visible = section == "gate" and self.delivery_gate_detail_toggle.isChecked()
+            is_pinned = getattr(self, "delivery_gate_detail_pinned", False)
+            drawer_visible = self.delivery_gate_detail_toggle.isChecked() and (section == "gate" or is_pinned)
             if drawer_visible:
                 self._position_delivery_gate_detail_drawer()
-            self.delivery_gate_detail_drawer.setVisible(drawer_visible)
-            if drawer_visible:
+                self.delivery_gate_detail_drawer.setVisible(True)
                 self.delivery_gate_detail_drawer.raise_()
+            elif self.delivery_gate_detail_toggle.isChecked():
+                self._close_delivery_gate_detail_drawer()
+            else:
+                self.delivery_gate_detail_drawer.setVisible(False)
         for key, button in self.delivery_focus_buttons.items():
             button.blockSignals(True)
             button.setChecked(key == section)

@@ -274,6 +274,13 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_detail_toggle.property("detailState") == "closed"
         assert page.delivery_gate_detail_toggle.text() == "明细"
         assert page.delivery_gate_detail_toggle.isChecked() is False
+        assert page.delivery_gate_detail_pinned is False
+        assert page.delivery_gate_detail_pin.property("deliveryGateDetailPin") is True
+        assert page.delivery_gate_detail_pin.property("pinState") == "unpinned"
+        assert page.delivery_gate_detail_pin.text() == "固定"
+        assert page.delivery_gate_detail_pin.isChecked() is False
+        assert page.delivery_gate_detail_drawer.property("deliveryGateDetailPinned") is False
+        assert page.delivery_gate_detail_drawer.property("pinState") == "unpinned"
         assert page.delivery_gate_group_strip.property("deliveryGateGroupStrip") is True
         assert page.delivery_gate_group_strip.maximumHeight() == 26
         assert set(page.delivery_gate_group_cards) == {"artifact", "validation"}
@@ -293,12 +300,26 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_gate_card.property("deliveryGateDetailsExpanded") is True
         assert page.delivery_gate_detail_drawer.property("deliveryGateDetailsExpanded") is True
         assert page.delivery_gate_detail_drawer.isHidden() is False
-        assert page.delivery_gate_detail_drawer.maximumHeight() == 150
+        assert page.delivery_gate_detail_drawer.maximumHeight() == 166
         assert page.delivery_gate_detail_toggle.property("detailState") == "open"
         assert page.delivery_gate_detail_toggle.text() == "收起"
         assert page.delivery_gate_detail_toggle.isChecked() is True
         assert page.delivery_gate_scroll.isHidden() is False
-        assert page.delivery_gate_scroll.maximumHeight() == 110
+        page.delivery_gate_detail_pin.click()
+        assert page.delivery_gate_detail_pinned is True
+        assert page.delivery_gate_detail_pin.text() == "已固定"
+        assert page.delivery_gate_detail_pin.isChecked() is True
+        assert page.delivery_gate_detail_pin.property("pinState") == "pinned"
+        assert page.delivery_gate_detail_drawer.property("deliveryGateDetailPinned") is True
+        assert page.delivery_gate_detail_drawer.property("pinState") == "pinned"
+        page.delivery_gate_detail_toggle.click()
+        assert page.delivery_gate_detail_drawer.isHidden() is True
+        assert page.delivery_gate_detail_pinned is False
+        assert page.delivery_gate_detail_pin.isChecked() is False
+        assert page.delivery_gate_detail_pin.property("pinState") == "unpinned"
+        page.delivery_gate_detail_toggle.click()
+        assert page.delivery_gate_detail_drawer.isHidden() is False
+        assert page.delivery_gate_scroll.maximumHeight() == 104
         assert page.delivery_gate_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.delivery_gate_scroll.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
         assert page.delivery_gate_scroll.widget() is page.delivery_gate_grid_body
@@ -705,8 +726,21 @@ def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypa
             )
             assert_no_visual_overlap(list(page.delivery_gate_group_cards.values()), page)
             assert_no_visual_overlap(list(page.delivery_gate_tiles.values()), page)
-            page.delivery_gate_detail_toggle.click()
+            page.delivery_gate_detail_pin.click()
+            assert page.delivery_gate_detail_pinned is True
+            page._show_delivery_focus("details")
             app.processEvents()
+            assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
+            assert page.delivery_gate_detail_drawer.isHidden() is False
+            assert page.delivery_gate_detail_toggle.isChecked() is True
+            assert page.delivery_gate_detail_pin.isChecked() is True
+            assert_contained(page.delivery_rail, page.delivery_gate_detail_drawer, page)
+            page._show_delivery_rail_mode("summary")
+            app.processEvents()
+            assert page.delivery_gate_detail_drawer.isHidden() is True
+            assert page.delivery_gate_detail_toggle.isChecked() is False
+            assert page.delivery_gate_detail_pin.isChecked() is False
+            assert page.delivery_gate_detail_pinned is False
 
             assert_no_visible_competitor_name(page)
     finally:

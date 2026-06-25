@@ -1842,6 +1842,24 @@ def build_stylesheet() -> str:
         background: rgba(222, 246, 248, 0.96);
         color: #073f46;
     }}
+    QToolButton[deliveryGateDetailPin="true"] {{
+        border-radius: 9px;
+        border: 1px solid #d4c08e;
+        background: rgba(255, 250, 236, 0.86);
+        color: #6f5312;
+        font-size: 10px;
+        font-weight: 800;
+        padding: 2px 7px;
+    }}
+    QToolButton[deliveryGateDetailPin="true"]:hover {{
+        border-color: #c79f35;
+        background: rgba(255, 246, 218, 0.96);
+    }}
+    QToolButton[deliveryGateDetailPin="true"][pinState="pinned"] {{
+        border-color: #b57a10;
+        background: rgba(255, 236, 177, 0.98);
+        color: #4e3508;
+    }}
     QFrame#cardMuted[deliveryGateDetailDrawer="true"] {{
         border-radius: 13px;
         border: 1px solid #bdd8df;
@@ -1855,6 +1873,11 @@ def build_stylesheet() -> str:
             stop: 0.64 #ffffff,
             stop: 1 #fff8ea
         );
+    }}
+    QFrame#cardMuted[deliveryGateDetailDrawer="true"][pinState="pinned"] {{
+        border-color: #d7bb6a;
+        border-left-color: #b57a10;
+        background: rgba(255, 252, 241, 0.97);
     }}
     QFrame#cardMuted[deliveryGateDetailDrawer="true"] QLabel#subtitle {{
         font-size: 10px;
