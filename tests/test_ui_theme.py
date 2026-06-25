@@ -75,6 +75,10 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="success"]' in stylesheet
     assert 'QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="warning"]' in stylesheet
     assert 'QFrame#cardMuted[methodFamilyControlTile="true"][methodTone="danger"]' in stylesheet
+    assert 'QFrame#cardMuted[ecMethodShortcutDeck="true"]' in stylesheet
+    assert 'QLabel[methodShortcutValue="true"]' in stylesheet
+    assert 'QToolButton[methodShortcut="true"][methodTone="warning"]' in stylesheet
+    assert 'QToolButton[methodShortcut="true"][activeMethodShortcut="true"]' in stylesheet
     assert 'QFrame#cardMuted[ecProcessRail="true"]' in stylesheet
     assert 'QWidget[stepPhaseMap="true"]' in stylesheet
     assert 'QToolButton[stepPhaseTile="true"]' in stylesheet

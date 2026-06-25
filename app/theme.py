@@ -783,6 +783,26 @@ def build_stylesheet() -> str:
         border: 1px solid #9bc9d2;
         color: #073746;
     }}
+    QFrame#cardMuted[ecMethodShortcutDeck="true"] {{
+        border-radius: 16px;
+        border: 1px solid #c8dfe6;
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 #f8fcfd,
+            stop: 0.56 #eef8f9,
+            stop: 1 #f8fbef
+        );
+    }}
+    QLabel[methodShortcutValue="true"] {{
+        color: #123c4c;
+        font-size: 13px;
+        font-weight: 900;
+    }}
+    QLabel[methodShortcutNote="true"] {{
+        color: #587282;
+        font-size: 9px;
+        font-weight: 700;
+    }}
     QToolButton[methodShortcut="true"] {{
         min-height: 28px;
         min-width: 66px;
@@ -797,7 +817,30 @@ def build_stylesheet() -> str:
         border-color: #7eb3bd;
         color: {TOKENS.color_text};
     }}
+    QToolButton[methodShortcut="true"][methodTone="success"] {{
+        border-color: #9fd2bb;
+        background: #f1fbf5;
+    }}
+    QToolButton[methodShortcut="true"][methodTone="warning"] {{
+        border-color: #e6c98e;
+        background: #fff7e4;
+    }}
+    QToolButton[methodShortcut="true"][methodTone="danger"] {{
+        border-color: #e8b3ad;
+        background: #fff0ef;
+        color: {TOKENS.color_error};
+    }}
     QToolButton[methodShortcut="true"]:checked {{
+        background: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 0,
+            stop: 0 #0c6d78,
+            stop: 1 #33a0a0
+        );
+        border: 1px solid #075a69;
+        color: #ffffff;
+        font-weight: 800;
+    }}
+    QToolButton[methodShortcut="true"][activeMethodShortcut="true"] {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 0,
             stop: 0 #0c6d78,

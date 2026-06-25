@@ -76,6 +76,7 @@ class ECProcessingPage(QWidget):
         self.step_command_buttons: dict[str, dict[str, QToolButton]] = {}
         self.step_phase_buttons: dict[str, QToolButton] = {}
         self.method_shortcut_buttons: dict[str, QToolButton] = {}
+        self.method_shortcut_labels: dict[str, str] = {}
         self.method_console_mode_buttons: dict[str, QToolButton] = {}
         self.method_family_control_strips: dict[str, QWidget] = {}
         self.method_family_control_tiles: dict[str, dict[str, CardFrame]] = {}
@@ -733,6 +734,7 @@ class ECProcessingPage(QWidget):
     def _build_method_shortcut_panel(self) -> CardFrame:
         card = CardFrame(muted=True, role="console")
         card.setProperty("deckRole", "ecMethodShortcutDeck")
+        card.setProperty("ecMethodShortcutDeck", True)
         card.setMaximumHeight(96)
         card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(card)
@@ -745,6 +747,15 @@ class ECProcessingPage(QWidget):
         self.method_shortcut_chip = chip("首屏", "accent")
         self.method_shortcut_chip.setMaximumHeight(20)
         header.addWidget(title)
+        self.method_shortcut_value = QLabel("--")
+        self.method_shortcut_value.setObjectName("metricValue")
+        self.method_shortcut_value.setProperty("compactMetric", True)
+        self.method_shortcut_value.setProperty("methodShortcutValue", True)
+        self.method_shortcut_value.setWordWrap(False)
+        self.method_shortcut_value.setMaximumHeight(20)
+        self.method_shortcut_value.setMinimumWidth(0)
+        self.method_shortcut_value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        header.addWidget(self.method_shortcut_value, 1)
         header.addStretch(1)
         header.addWidget(self.method_shortcut_chip)
         layout.addLayout(header)
@@ -765,14 +776,18 @@ class ECProcessingPage(QWidget):
             button.setCheckable(True)
             button.setProperty("viewSwitch", True)
             button.setProperty("methodShortcut", True)
+            button.setProperty("activeMethodShortcut", family == "footprint")
+            button.setProperty("methodTone", "accent")
             button.setMinimumWidth(66)
             button.setMaximumHeight(26)
             button.clicked.connect(lambda _checked=False, key=family: self._activate_method_shortcut(key))
             self.method_shortcut_buttons[family] = button
+            self.method_shortcut_labels[family] = text
             row.addWidget(button, 0, column)
         layout.addLayout(row)
         self.method_shortcut_note = QLabel("--")
         self.method_shortcut_note.setObjectName("subtitle")
+        self.method_shortcut_note.setProperty("methodShortcutNote", True)
         self.method_shortcut_note.setWordWrap(False)
         self.method_shortcut_note.setMaximumHeight(16)
         layout.addWidget(self.method_shortcut_note)
@@ -1230,6 +1245,7 @@ class ECProcessingPage(QWidget):
         footprint_method: str,
         uncertainty_method: str,
         spectral_method: str,
+        family_tones: dict[str, str] | None = None,
         issue_count: int,
     ) -> None:
         if not hasattr(self, "method_shortcut_buttons"):
@@ -1239,9 +1255,12 @@ class ECProcessingPage(QWidget):
             "uncertainty": uncertainty_method,
             "spectral": spectral_method,
         }
+        family_tones = family_tones or {}
         for family, button in self.method_shortcut_buttons.items():
             method = methods.get(family, "--")
             button.setToolTip(f"{family}: {method}")
+            button.setProperty("activeMethodShortcut", family == active_family)
+            button.setProperty("methodTone", family_tones.get(family, "accent"))
             button.blockSignals(True)
             button.setChecked(family == active_family)
             button.blockSignals(False)
@@ -1253,6 +1272,12 @@ class ECProcessingPage(QWidget):
             self.method_shortcut_chip.setProperty("chipTone", tone)
             self.method_shortcut_chip.style().unpolish(self.method_shortcut_chip)
             self.method_shortcut_chip.style().polish(self.method_shortcut_chip)
+        if hasattr(self, "method_shortcut_value"):
+            active_method = methods.get(active_family, "--")
+            active_label = self.method_shortcut_labels.get(active_family, active_family)
+            value = f"{active_label} · {active_method}"
+            self.method_shortcut_value.setText(self._compact_text(value, 22))
+            self.method_shortcut_value.setToolTip(value)
         if hasattr(self, "method_shortcut_note"):
             self.method_shortcut_note.setText(
                 self._compact_text(
@@ -1299,9 +1324,29 @@ class ECProcessingPage(QWidget):
         for key, button in getattr(self, "method_shortcut_buttons", {}).items():
             button.blockSignals(True)
             button.setChecked(key == family)
+            button.setProperty("activeMethodShortcut", key == family)
             button.blockSignals(False)
             button.style().unpolish(button)
             button.style().polish(button)
+        self._update_method_shortcut_active_value(family)
+
+    def _update_method_shortcut_active_value(self, family: str) -> None:
+        value_label = getattr(self, "method_shortcut_value", None)
+        if value_label is None:
+            return
+        methods = {
+            "footprint": self._current_combo_text("footprint_method_combo", "kljun"),
+            "uncertainty": self._current_combo_text("uncertainty_mode_combo", "mann_lenschow"),
+            "spectral": self._current_combo_text("spectral_method_combo", "massman"),
+        }
+        if family == "footprint" and self._current_combo_text("footprint_enable_combo", "enabled") != "enabled":
+            methods["footprint"] = "disabled"
+        if family == "spectral" and self._current_combo_text("spectral_enable_combo", "enabled") != "enabled":
+            methods["spectral"] = "disabled"
+        active_label = self.method_shortcut_labels.get(family, family)
+        value = f"{active_label} · {methods.get(family, '--')}"
+        value_label.setText(self._compact_text(value, 22))
+        value_label.setToolTip(value)
 
     def _show_method_console_mode(self, mode: str) -> None:
         if mode not in {"family", "primary", "compare"}:
@@ -1585,6 +1630,11 @@ class ECProcessingPage(QWidget):
             footprint_method=footprint_method if footprint_enabled == "enabled" else "disabled",
             uncertainty_method=uncertainty_method,
             spectral_method=spectral_method if spectral_enabled == "enabled" else "disabled",
+            family_tones={
+                "footprint": footprint_tone,
+                "uncertainty": uncertainty_tone,
+                "spectral": spectral_tone,
+            },
             issue_count=len(issues),
         )
 

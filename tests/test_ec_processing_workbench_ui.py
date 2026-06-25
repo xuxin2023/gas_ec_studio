@@ -48,10 +48,20 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.desktop_rail_status_strip.property("railMissionDeck") is True
         assert page.desktop_rail_status_strip.maximumHeight() == 108
         assert page.method_shortcut_card.property("deckRole") == "ecMethodShortcutDeck"
+        assert page.method_shortcut_card.property("ecMethodShortcutDeck") is True
         assert page.method_shortcut_card.maximumHeight() == 96
         assert set(page.method_shortcut_buttons) == {"footprint", "uncertainty", "spectral"}
         assert all(button.property("methodShortcut") is True for button in page.method_shortcut_buttons.values())
+        assert page.method_shortcut_value.property("methodShortcutValue") is True
+        assert page.method_shortcut_value.property("compactMetric") is True
+        assert page.method_shortcut_value.text()
+        assert page.method_shortcut_note.property("methodShortcutNote") is True
         assert page.method_shortcut_note.text()
+        assert page.method_shortcut_buttons["footprint"].property("activeMethodShortcut") is True
+        assert all(
+            button.property("methodTone") in {"success", "accent", "warning", "danger"}
+            for button in page.method_shortcut_buttons.values()
+        )
         assert page.desktop_rail_stack.maximumHeight() == 210
         assert set(page.desktop_rail_status_values) == {"step", "run", "closure"}
         assert page.desktop_rail_status_values["step"].text()
@@ -143,6 +153,8 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.content_stack.currentIndex() == page.step_indexes["uncertainty"]
         assert page.method_family_stack.currentWidget() is page.spectral_card
         assert page.method_shortcut_buttons["spectral"].isChecked() is True
+        assert page.method_shortcut_buttons["spectral"].property("activeMethodShortcut") is True
+        assert "massman" in page.method_shortcut_value.toolTip()
         assert page.step_phase_buttons["advanced"].isChecked() is True
         assert page.desktop_rail_stack.currentWidget() is page.cockpit_card
         assert set(page.coverage_values) == {
