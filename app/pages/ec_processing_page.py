@@ -501,6 +501,8 @@ class ECProcessingPage(QWidget):
         tile = CardFrame(muted=True, role="tile")
         tile.setProperty("closureCompactTile", True)
         tile.setProperty("evidenceKey", key)
+        if key in {"methods", "benchmark", "network"}:
+            tile.setProperty("deliveryGateTile", True)
         tile.setMinimumWidth(0)
         tile.setMaximumHeight(48)
         tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
@@ -4194,14 +4196,20 @@ class ECProcessingPage(QWidget):
         footprint_method = self._current_combo_text("footprint_method_combo", "kljun")
         uncertainty_method = self._current_combo_text("uncertainty_mode_combo", "mann_lenschow")
         spectral_method = self._current_combo_text("spectral_method_combo", "massman")
+        spectral_cospectrum = self._current_combo_text("spectral_cospectrum_combo", "fcc_auto")
         method_validation_label = getattr(self, "method_validation_label", None)
         validation_text = method_validation_label.text() if method_validation_label is not None else ""
         methods_tone = "warning" if "review" in validation_text.lower() or "复核" in validation_text else "success"
+        method_gate_status = "方法已就绪" if methods_tone == "success" else "方法待复核"
         self._set_rp_closure_tile(
             "methods",
             f"{footprint_method} / {uncertainty_method}",
-            f"spectral={spectral_method}，cospectrum={self._current_combo_text('spectral_cospectrum_combo', 'fcc_auto')}",
+            (
+                f"方法交付门：{method_gate_status}；footprint={footprint_method}；"
+                f"uncertainty={uncertainty_method}；spectral={spectral_method}；cospectrum={spectral_cospectrum}"
+            ),
             methods_tone,
+            gate_title="方法交付门",
         )
         self._set_rp_closure_method_pills(
             {
@@ -4228,11 +4236,23 @@ class ECProcessingPage(QWidget):
         benchmark_value = self._format_percent(pass_rate) if isinstance(pass_rate, (int, float)) else benchmark_status_label
         benchmark_active = benchmark_status.lower() not in {"", "--", "inactive", "not_requested", "no_rp_result"}
         benchmark_tone = "success" if benchmark_active and isinstance(pass_rate, (int, float)) else ("accent" if benchmark_active else "warning")
+        benchmark_reference = run_summary.get("benchmark_reference_id") or benchmark_state.get("reference_id") or "--"
+        failed_count = len(failed_fields or [])
+        if not benchmark_active:
+            benchmark_gate_status = "对标未启用"
+        elif failed_count:
+            benchmark_gate_status = "对标有偏差"
+        elif isinstance(pass_rate, (int, float)):
+            benchmark_gate_status = "对标已闭合"
+        else:
+            benchmark_gate_status = "对标已启用"
         self._set_rp_closure_tile(
             "benchmark",
             benchmark_value,
-            f"status={benchmark_status_label}，ref={run_summary.get('benchmark_reference_id') or benchmark_state.get('reference_id') or '--'}，failed={len(failed_fields or [])}",
+            f"对标交付门：{benchmark_gate_status}；status={benchmark_status_label}；ref={benchmark_reference}；failed={failed_count}",
             benchmark_tone,
+            compact_value=benchmark_gate_status,
+            gate_title="对标交付门",
         )
 
         network = dict(self.controller.report_center_workspace.get("network_output", {}) or {})
@@ -4247,11 +4267,22 @@ class ECProcessingPage(QWidget):
         network_ready = bool(schema_target) and len(missing_fields or []) == 0
         export_done = self._export_status_is_done(export_status)
         network_tone = "success" if network_ready and export_done else ("accent" if network_ready else "warning")
+        validation_label = self._ui_status_label(str(validation_status))
+        if network_ready and export_done:
+            network_gate_status = "网络已交付"
+        elif network_ready:
+            network_gate_status = "网络待导出"
+        else:
+            network_gate_status = "网络待补齐"
         self._set_rp_closure_tile(
             "network",
             str(schema_target),
-            f"validation={validation_status}，missing={len(missing_fields or [])}，export={export_status}",
+            (
+                f"网络交付门：{network_gate_status}；schema={schema_target}；"
+                f"validation={validation_label}；missing={len(missing_fields or [])}；export={export_status}"
+            ),
             network_tone,
+            gate_title="网络交付门",
         )
 
         tones = [
@@ -4274,7 +4305,16 @@ class ECProcessingPage(QWidget):
         self.rp_closure_deck.style().unpolish(self.rp_closure_deck)
         self.rp_closure_deck.style().polish(self.rp_closure_deck)
 
-    def _set_rp_closure_tile(self, key: str, value: str, note: str, tone: str) -> None:
+    def _set_rp_closure_tile(
+        self,
+        key: str,
+        value: str,
+        note: str,
+        tone: str,
+        *,
+        compact_value: str | None = None,
+        gate_title: str | None = None,
+    ) -> None:
         value_label = self.rp_closure_values[key]
         note_label = self.rp_closure_notes[key]
         tile = self.rp_closure_tiles[key]
@@ -4282,7 +4322,7 @@ class ECProcessingPage(QWidget):
         display_note = self._compact_text(note, 30)
         value_label.setText(display_value)
         note_label.setText(display_note)
-        tooltip = f"{value}\n{note}"
+        tooltip = f"{gate_title or value}\n{note}"
         value_label.setToolTip(tooltip)
         note_label.setToolTip(tooltip)
         status_text = {"success": "通过", "accent": "可用", "warning": "待复核", "danger": "风险"}.get(tone, "待复核")
@@ -4290,11 +4330,12 @@ class ECProcessingPage(QWidget):
         tile.setProperty("evidenceTone", tone)
         tile.style().unpolish(tile)
         tile.style().polish(tile)
-        compact_value = getattr(self, "rp_closure_compact_values", {}).get(key)
+        compact_value_label = getattr(self, "rp_closure_compact_values", {}).get(key)
         compact_tile = getattr(self, "rp_closure_compact_tiles", {}).get(key)
-        if compact_value is not None:
-            compact_value.setText(display_value)
-            compact_value.setToolTip(tooltip)
+        if compact_value_label is not None:
+            compact_display = self._compact_text(compact_value if compact_value is not None else value, 18)
+            compact_value_label.setText(compact_display)
+            compact_value_label.setToolTip(tooltip)
         if compact_tile is not None:
             compact_tile.setToolTip(tooltip)
             compact_tile.setProperty("evidenceTone", tone)

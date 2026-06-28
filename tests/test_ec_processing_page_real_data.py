@@ -97,6 +97,10 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert set(page.rp_closure_compact_tiles) == set(page.rp_closure_tiles)
         assert all(tile.property("cardRole") == "tile" for tile in page.rp_closure_tiles.values())
         assert all(tile.property("closureCompactTile") is True for tile in page.rp_closure_compact_tiles.values())
+        assert all(
+            page.rp_closure_compact_tiles[key].property("deliveryGateTile") is True
+            for key in ("methods", "benchmark", "network")
+        )
         assert all(value.property("compactMetric") is True for value in page.rp_closure_values.values())
         assert all(chip.property("closureStage") is True for chip in page.rp_closure_chips.values())
         assert all(chip.minimumHeight() == 22 for chip in page.rp_closure_chips.values())
@@ -107,6 +111,11 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.rp_closure_method_pills["uncertainty"].text().startswith("误 M&L")
         assert page.rp_closure_method_pills["spectral"].text().startswith("谱 Mass")
         assert "mann_lenschow" in page.rp_closure_method_pills["uncertainty"].toolTip()
+        assert "方法交付门" in page.rp_closure_compact_tiles["methods"].toolTip()
+        assert "对标交付门" in page.rp_closure_compact_tiles["benchmark"].toolTip()
+        assert page.rp_closure_compact_values["benchmark"].text() == "对标未启用"
+        assert "网络交付门" in page.rp_closure_compact_tiles["network"].toolTip()
+        assert "schema=FLUXNET" in page.rp_closure_compact_tiles["network"].toolTip()
         assert page.rp_closure_values["run"].text() == "待运行"
         assert page.rp_closure_values["flux"].text() == "待生成"
         assert page.rp_closure_values["network"].text() == "FLUXNET"
@@ -478,6 +487,8 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.rp_closure_compact_values["run"].text() == page.rp_closure_values["run"].text()
         assert page.rp_closure_compact_tiles["run"].property("evidenceTone") == "success"
         assert page.rp_closure_method_pills["spectral"].text().startswith("谱 Mass")
+        assert "网络交付门" in page.rp_closure_compact_tiles["network"].toolTip()
+        assert "schema=FLUXNET" in page.rp_closure_compact_tiles["network"].toolTip()
         assert page.cockpit_delivery_value.text() == "FLUXNET"
         assert "windows=" in page.cockpit_result_note.text()
         assert page.window_readiness_value.text() != "36,000"

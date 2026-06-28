@@ -83,6 +83,7 @@ def test_stylesheet_contains_instrument_cockpit_contract() -> None:
     assert 'QComboBox[runRibbonField="true"]' in stylesheet
     assert 'QPushButton[runRibbonAction="true"]' in stylesheet
     assert 'QFrame#cardMuted[closureCompactTile="true"]' in stylesheet
+    assert 'QFrame#cardMuted[closureCompactTile="true"][deliveryGateTile="true"]' in stylesheet
     assert 'QWidget[rpClosureMethodPillStrip="true"]' in stylesheet
     assert 'QLabel[rpClosureMethodPill="true"]' in stylesheet
     assert 'QFrame#cardMuted[cardRole="rail"] QToolButton[viewSwitch="true"]:checked' in stylesheet

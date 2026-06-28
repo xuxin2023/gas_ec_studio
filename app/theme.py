@@ -2897,20 +2897,27 @@ def build_stylesheet() -> str:
         border: 1px solid #c4dce4;
         background: rgba(255, 255, 255, 0.62);
     }}
+    QFrame#cardMuted[closureCompactTile="true"][deliveryGateTile="true"] {{
+        border-left: 4px solid #92b6c0;
+    }}
     QFrame#cardMuted[closureCompactTile="true"][evidenceTone="success"] {{
         border-color: #8ecfba;
+        border-left-color: #42a879;
         background: rgba(231, 250, 241, 0.86);
     }}
     QFrame#cardMuted[closureCompactTile="true"][evidenceTone="accent"] {{
         border-color: #8dc7d0;
+        border-left-color: #2d8fa0;
         background: rgba(232, 248, 250, 0.88);
     }}
     QFrame#cardMuted[closureCompactTile="true"][evidenceTone="warning"] {{
         border-color: #efc980;
+        border-left-color: #c5811d;
         background: rgba(255, 249, 235, 0.90);
     }}
     QFrame#cardMuted[closureCompactTile="true"][evidenceTone="danger"] {{
         border-color: #e99d9a;
+        border-left-color: #ca4f4b;
         background: rgba(255, 240, 240, 0.90);
     }}
     QWidget[rpClosureMethodPillStrip="true"] {{
