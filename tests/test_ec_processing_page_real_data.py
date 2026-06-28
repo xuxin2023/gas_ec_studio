@@ -100,6 +100,13 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert all(value.property("compactMetric") is True for value in page.rp_closure_values.values())
         assert all(chip.property("closureStage") is True for chip in page.rp_closure_chips.values())
         assert all(chip.minimumHeight() == 22 for chip in page.rp_closure_chips.values())
+        assert set(page.rp_closure_method_pills) == {"footprint", "uncertainty", "spectral"}
+        assert all(pill.property("rpClosureMethodPill") is True for pill in page.rp_closure_method_pills.values())
+        assert page.rp_closure_compact_values["methods"].isHidden() is True
+        assert page.rp_closure_method_pills["footprint"].text().startswith("足 Kljun")
+        assert page.rp_closure_method_pills["uncertainty"].text().startswith("误 M&L")
+        assert page.rp_closure_method_pills["spectral"].text().startswith("谱 Mass")
+        assert "mann_lenschow" in page.rp_closure_method_pills["uncertainty"].toolTip()
         assert page.rp_closure_values["run"].text() == "待运行"
         assert page.rp_closure_values["flux"].text() == "待生成"
         assert page.rp_closure_values["network"].text() == "FLUXNET"
@@ -470,6 +477,7 @@ def test_ec_processing_page_refreshes_with_real_rp_result(monkeypatch, tmp_path)
         assert page.rp_closure_tiles["run"].property("evidenceTone") == "success"
         assert page.rp_closure_compact_values["run"].text() == page.rp_closure_values["run"].text()
         assert page.rp_closure_compact_tiles["run"].property("evidenceTone") == "success"
+        assert page.rp_closure_method_pills["spectral"].text().startswith("谱 Mass")
         assert page.cockpit_delivery_value.text() == "FLUXNET"
         assert "windows=" in page.cockpit_result_note.text()
         assert page.window_readiness_value.text() != "36,000"

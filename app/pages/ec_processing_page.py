@@ -466,6 +466,7 @@ class ECProcessingPage(QWidget):
         compact_layout.setVerticalSpacing(TOKENS.spacing_xs)
         self.rp_closure_compact_tiles: dict[str, CardFrame] = {}
         self.rp_closure_compact_values: dict[str, QLabel] = {}
+        self.rp_closure_method_pills: dict[str, QLabel] = {}
 
         detail_widget = QWidget()
         detail_widget.setProperty("deckRole", "rpClosureDetailGrid")
@@ -516,7 +517,33 @@ class ECProcessingPage(QWidget):
         value_label.setMinimumWidth(0)
         value_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         tile_layout.addWidget(title_label)
-        tile_layout.addWidget(value_label)
+        if key == "methods":
+            value_label.setVisible(False)
+            pill_strip = QWidget()
+            pill_strip.setProperty("rpClosureMethodPillStrip", True)
+            pill_strip.setMaximumHeight(18)
+            pill_layout = QHBoxLayout(pill_strip)
+            pill_layout.setContentsMargins(0, 0, 0, 0)
+            pill_layout.setSpacing(2)
+            for family, label_text in (
+                ("footprint", "足"),
+                ("uncertainty", "误"),
+                ("spectral", "谱"),
+            ):
+                pill = QLabel(f"{label_text} --")
+                pill.setObjectName("subtitle")
+                pill.setProperty("rpClosureMethodPill", True)
+                pill.setProperty("methodFamily", family)
+                pill.setProperty("methodTone", "accent")
+                pill.setWordWrap(False)
+                pill.setMinimumWidth(0)
+                pill.setMaximumHeight(18)
+                pill.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+                self.rp_closure_method_pills[family] = pill
+                pill_layout.addWidget(pill, 1)
+            tile_layout.addWidget(pill_strip)
+        else:
+            tile_layout.addWidget(value_label)
         self.rp_closure_compact_tiles[key] = tile
         self.rp_closure_compact_values[key] = value_label
         return tile
@@ -4176,6 +4203,14 @@ class ECProcessingPage(QWidget):
             f"spectral={spectral_method}，cospectrum={self._current_combo_text('spectral_cospectrum_combo', 'fcc_auto')}",
             methods_tone,
         )
+        self._set_rp_closure_method_pills(
+            {
+                "footprint": footprint_method,
+                "uncertainty": uncertainty_method,
+                "spectral": spectral_method,
+            },
+            methods_tone,
+        )
 
         benchmark_state = dict(self.controller.report_center_workspace.get("benchmark", {}) or {})
         benchmark_status = str(
@@ -4265,6 +4300,25 @@ class ECProcessingPage(QWidget):
             compact_tile.setProperty("evidenceTone", tone)
             compact_tile.style().unpolish(compact_tile)
             compact_tile.style().polish(compact_tile)
+
+    def _set_rp_closure_method_pills(self, methods: dict[str, str], tone: str) -> None:
+        family_labels = {
+            "footprint": "足",
+            "uncertainty": "误",
+            "spectral": "谱",
+        }
+        full_family_labels = {
+            "footprint": "足迹",
+            "uncertainty": "随机误差",
+            "spectral": "谱修正",
+        }
+        for family, pill in getattr(self, "rp_closure_method_pills", {}).items():
+            method = methods.get(family, "--")
+            pill.setText(f"{family_labels.get(family, family)} {self._method_badge_text(method)}")
+            pill.setToolTip(f"{full_family_labels.get(family, family)}方法: {method}")
+            pill.setProperty("methodTone", tone)
+            pill.style().unpolish(pill)
+            pill.style().polish(pill)
 
     def _set_generic_chip(self, label: QLabel, text: str, tone: str) -> None:
         label.setText(text)

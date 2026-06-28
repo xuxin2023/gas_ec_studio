@@ -2913,6 +2913,33 @@ def build_stylesheet() -> str:
         border-color: #e99d9a;
         background: rgba(255, 240, 240, 0.90);
     }}
+    QWidget[rpClosureMethodPillStrip="true"] {{
+        max-height: 18px;
+    }}
+    QLabel[rpClosureMethodPill="true"] {{
+        border-radius: 8px;
+        padding: 1px 4px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid #c7dfe6;
+        color: #345d6a;
+        font-size: 8px;
+        font-weight: 800;
+    }}
+    QLabel[rpClosureMethodPill="true"][methodTone="success"] {{
+        border-color: #9fd2bb;
+        background: #f1fbf5;
+        color: #14664c;
+    }}
+    QLabel[rpClosureMethodPill="true"][methodTone="warning"] {{
+        border-color: #e6c98e;
+        background: #fff7e4;
+        color: #815000;
+    }}
+    QLabel[rpClosureMethodPill="true"][methodTone="danger"] {{
+        border-color: #e8b3ad;
+        background: #fff0ef;
+        color: {TOKENS.color_error};
+    }}
     QListWidget, QTableWidget, QTreeWidget {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,
