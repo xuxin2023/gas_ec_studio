@@ -3940,6 +3940,7 @@ class ReportCenterPage(QWidget):
         note_label.setText(_ui_safe_text(note))
         value_label.setToolTip(_ui_safe_text(note))
         note_label.setToolTip(_ui_safe_text(note))
+        tile.setToolTip(_ui_safe_text(note))
         status_text = {"success": "通过", "accent": "可用", "warning": "待复核"}.get(tone, "待复核")
         self._set_chip(self.report_command_chips[key], status_text, tone)
         tile.setProperty("commandTone", tone)
@@ -4159,14 +4160,16 @@ class ReportCenterPage(QWidget):
 
     def _set_delivery_gate_tile(self, key: str, value: str, note: str, tone: str) -> None:
         value_label, note_label, status_chip = self.delivery_gate_values[key]
+        display_note = _ui_safe_text(note)
         value_label.setText(_ui_safe_text(value))
-        note_label.setText(_ui_safe_text(note))
-        value_label.setToolTip(_ui_safe_text(note))
-        note_label.setToolTip(_ui_safe_text(note))
+        note_label.setText(display_note if len(display_note) <= 34 else f"{display_note[:31]}...")
+        value_label.setToolTip(display_note)
+        note_label.setToolTip(display_note)
         status_text = {"success": "通过", "accent": "可用", "warning": "复核"}.get(tone, "复核")
         self._set_chip(status_chip, status_text, tone)
         tile = self.delivery_gate_tiles.get(key)
         if tile is not None:
+            tile.setToolTip(display_note)
             tile.setProperty("gateTone", tone)
             tile.style().unpolish(tile)
             tile.style().polish(tile)
@@ -4591,16 +4594,52 @@ class ReportCenterPage(QWidget):
             or network_cfg.get("schema_target")
             or "--"
         )
-        validation_status = str(self._table_value(benchmark_report, "network.validation_status") or "待校验")
-        missing_text = str(self._table_value(benchmark_report, "network.missing_fields") or "待校验")
+        table_validation = self._table_value(benchmark_report, "network.validation_status")
+        if table_validation:
+            validation_status = str(table_validation)
+        elif "validation_status" in network_cfg:
+            validation_status = str(network_cfg.get("validation_status") or "待校验")
+        else:
+            validation_status = str(network_cfg.get("network_validation_status") or "待校验")
+        table_missing = self._table_value(benchmark_report, "network.missing_fields")
+        if table_missing:
+            missing_source = table_missing
+        elif "missing_fields" in network_cfg:
+            missing_source = network_cfg.get("missing_fields")
+        elif "network_missing_fields" in network_cfg:
+            missing_source = network_cfg.get("network_missing_fields")
+        else:
+            missing_source = "待校验"
+        if isinstance(missing_source, (list, tuple, set)):
+            missing_text = "0" if not missing_source else ", ".join(str(item) for item in missing_source)
+        else:
+            missing_text = str(missing_source or "待校验")
         missing_ok = missing_text.strip().lower() in {"", "--", "无", "none", "[]", "0"}
         status_lower = validation_status.strip().lower()
         validated = any(token in status_lower for token in ("valid", "pass", "ok", "ready", "success", "通过"))
+        export_status = str(workspace.get("export_status", "尚未导出") or "尚未导出")
+        export_done = self._export_status_is_done(export_status)
         tone = "success" if validated and missing_ok else ("accent" if schema_target != "--" and missing_ok else "warning")
+        if validated and missing_ok and export_done:
+            gate_status = "网络已交付"
+        elif validated and missing_ok:
+            gate_status = "网络待导出"
+        elif schema_target != "--" and missing_ok:
+            gate_status = "网络待校验"
+        else:
+            gate_status = "网络待补齐"
         return {
             "value": schema_target,
-            "note": f"校验：{validation_status}；缺失：{missing_text}",
+            "note": (
+                f"网络交付门：{gate_status}；schema={schema_target}；"
+                f"validation={validation_status}；missing={missing_text}；export={export_status}"
+            ),
             "tone": tone,
+            "gate_status": gate_status,
+            "schema_target": schema_target,
+            "validation_status": validation_status,
+            "missing_fields": missing_text,
+            "export_status": export_status,
         }
 
     def _benchmark_gate_summary(self, workspace: dict, benchmark_report: dict) -> dict[str, str]:

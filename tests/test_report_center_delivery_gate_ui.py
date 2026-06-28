@@ -703,6 +703,42 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         controller.shutdown()
 
 
+def test_report_center_network_delivery_gate_uses_validation_summary(monkeypatch, tmp_path) -> None:
+    _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    try:
+        page = ReportCenterPage(controller)
+        controller.report_center_workspace["network_output"] = {
+            "schema_target": "AmeriFlux",
+            "validation_status": "ok",
+            "missing_fields": [],
+        }
+        controller.report_center_workspace["export_status"] = "交付包已导出"
+        page.refresh()
+
+        network_note = page.delivery_gate_values["network"][1].toolTip()
+        assert page.delivery_gate_values["network"][0].text() == "AmeriFlux"
+        assert page.delivery_gate_tiles["network"].property("gateTone") == "success"
+        assert "网络交付门" in network_note
+        assert "网络已交付" in network_note
+        assert "schema=AmeriFlux" in network_note
+        assert "validation=ok" in network_note
+        assert "missing=0" in network_note
+        assert "export=交付包已导出" in network_note
+        assert page.delivery_gate_tiles["network"].toolTip() == network_note
+        assert page.report_command_notes["network"].toolTip() == network_note
+        assert page.report_command_tiles["network"].toolTip() == network_note
+        assert page.delivery_status_radar_cards["network"].toolTip() == network_note
+        assert page.preview_context_notes["network"].toolTip() == network_note
+
+        page._show_inspector_section("file")
+        assert page.inspector_detail_values["file.network"].toolTip() == network_note
+    finally:
+        page.deleteLater()
+        controller.shutdown()
+
+
 def test_report_center_delivery_inspector_fits_common_desktop_viewports(monkeypatch, tmp_path) -> None:
     app = _app()
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
@@ -1002,7 +1038,12 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_gate_detail_toggle.text() == "收起"
         assert "交付归档" in page.delivery_gate_ready_note.text()
         assert page.delivery_gate_values["network"][0].text() == "FLUXNET"
-        assert "缺失：无" in page.delivery_gate_values["network"][1].text()
+        network_note = page.delivery_gate_values["network"][1].toolTip()
+        assert "网络交付门" in network_note
+        assert "网络已交付" in network_note
+        assert "schema=FLUXNET" in network_note
+        assert "validation=valid" in network_note
+        assert "missing=无" in network_note
         assert page.delivery_gate_tiles["network"].property("gateTone") == "success"
         assert page.delivery_gate_values["benchmark"][0].text() == "ref-001"
         assert page.delivery_gate_values["methods"][0].text() == "已汇总"
