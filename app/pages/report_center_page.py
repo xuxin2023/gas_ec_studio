@@ -2522,14 +2522,9 @@ class ReportCenterPage(QWidget):
         method_report = dict(reports.get("method_provenance", {}) or {})
         manifest_path = self._first_file_value(file_values, ("manifest", "export_manifest"))
         export_done = self._export_status_is_done(export_status)
+        manifest_item = self._manifest_gate_summary(manifest_path, export_status)
         network = self._network_gate_summary(workspace, benchmark_report)
         methods = self._method_gate_summary(method_report, file_values)
-        manifest_item = {
-            "value": "ready" if manifest_path else ("pending" if export_done else "--"),
-            "note": manifest_path
-            or ("导出状态存在，但尚未发现 manifest 文件。" if export_done else "导出交付包后写入 manifest。"),
-            "tone": "success" if manifest_path else ("accent" if export_done else "warning"),
-        }
         self._set_preview_context_tile(
             "manifest",
             manifest_item["value"],
@@ -3723,7 +3718,8 @@ class ReportCenterPage(QWidget):
         report_ready = self._report_has_preview_payload(report) and exportable_count > 0
         export_done = self._export_status_is_done(export_status)
         manifest_path = self._first_file_value(file_values, ("manifest", "export_manifest"))
-        manifest_ready = bool(manifest_path) or "交付包已导出" in export_status
+        manifest = self._manifest_gate_summary(manifest_path, export_status)
+        manifest_ready = manifest["tone"] == "success"
 
         network = self._network_gate_summary(workspace, benchmark_report)
         benchmark = self._benchmark_gate_summary(workspace, benchmark_report)
@@ -3743,9 +3739,9 @@ class ReportCenterPage(QWidget):
         )
         self._set_delivery_gate_tile(
             "manifest",
-            "已生成" if manifest_ready else "待导出",
-            manifest_path or "导出交付包后写入 manifest。",
-            "success" if manifest_ready else "warning",
+            manifest["value"],
+            manifest["note"],
+            manifest["tone"],
         )
         self._set_delivery_gate_tile("network", network["value"], network["note"], network["tone"])
         self._set_delivery_gate_tile("benchmark", benchmark["value"], benchmark["note"], benchmark["tone"])
@@ -3753,7 +3749,6 @@ class ReportCenterPage(QWidget):
 
         report_value = "可预览" if report_ready else "待生成"
         export_value = "已导出" if export_done else ("可导出" if exportable_count > 0 else "待运行")
-        manifest_value = "已生成" if manifest_ready else "待导出"
         self._refresh_delivery_mission_map(
             {
                 "report": (
@@ -3767,9 +3762,9 @@ class ReportCenterPage(QWidget):
                     "success" if export_done else ("accent" if exportable_count > 0 else "warning"),
                 ),
                 "manifest": (
-                    manifest_value,
-                    manifest_path or "导出交付包后写入 manifest。",
-                    "success" if manifest_ready else "warning",
+                    manifest["value"],
+                    manifest["note"],
+                    manifest["tone"],
                 ),
                 "network": (network["value"], network["note"], network["tone"]),
                 "benchmark": (benchmark["value"], benchmark["note"], benchmark["tone"]),
@@ -3780,6 +3775,7 @@ class ReportCenterPage(QWidget):
             report_ready=report_ready,
             manifest_ready=manifest_ready,
             export_done=export_done,
+            manifest=manifest,
             network=network,
             benchmark=benchmark,
             methods=methods,
@@ -3788,7 +3784,7 @@ class ReportCenterPage(QWidget):
         tones = [
             "success" if report_ready else "warning",
             "success" if export_done else ("accent" if exportable_count > 0 else "warning"),
-            "success" if manifest_ready else "warning",
+            manifest["tone"],
             network["tone"],
             benchmark["tone"],
             methods["tone"],
@@ -3993,6 +3989,7 @@ class ReportCenterPage(QWidget):
         report_ready: bool,
         manifest_ready: bool,
         export_done: bool,
+        manifest: dict,
         network: dict,
         benchmark: dict,
         methods: dict,
@@ -4023,9 +4020,9 @@ class ReportCenterPage(QWidget):
             ),
             "manifest": (
                 "清单",
-                "已生成" if manifest_ready else "待生成",
-                "manifest 已落盘，可追溯交付文件。" if manifest_ready else "导出交付包后生成 manifest。",
-                "success" if manifest_ready else "warning",
+                str(manifest.get("value", "清单已生成" if manifest_ready else "清单待生成")),
+                str(manifest.get("note", "manifest 已落盘，可追溯交付文件。" if manifest_ready else "导出交付包后生成 manifest。")),
+                str(manifest.get("tone", "success" if manifest_ready else "warning")),
             ),
             "validation": ("校验", validation_value, validation_note, validation_tone),
             "package": (
@@ -4587,6 +4584,28 @@ class ReportCenterPage(QWidget):
             )
         )
 
+    def _manifest_gate_summary(self, manifest_path: str, export_status: str) -> dict[str, str]:
+        export_done = self._export_status_is_done(export_status)
+        manifest_ready = bool(manifest_path) or "交付包已导出" in export_status
+        if manifest_ready:
+            gate_status = "清单已生成"
+            tone = "success"
+        elif export_done:
+            gate_status = "清单待定位"
+            tone = "accent"
+        else:
+            gate_status = "清单待导出"
+            tone = "warning"
+        manifest_ref = manifest_path or "--"
+        return {
+            "value": gate_status,
+            "note": f"清单交付门：{gate_status}；manifest={manifest_ref}；export={export_status or '尚未导出'}",
+            "tone": tone,
+            "gate_status": gate_status,
+            "manifest_path": manifest_ref,
+            "export_status": export_status or "尚未导出",
+        }
+
     def _network_gate_summary(self, workspace: dict, benchmark_report: dict) -> dict[str, str]:
         network_cfg = dict(workspace.get("network_output", {}) or {})
         schema_target = str(
@@ -4650,17 +4669,40 @@ class ReportCenterPage(QWidget):
         failed_fields = str(self._table_value(benchmark_report, "failed_fields") or "待运行")
         status_lower = status.strip().lower()
         active = status_lower not in {"", "--", "inactive", "no_rp_result", "not_requested"}
+        pass_rate_ready = pass_rate.strip().lower() not in {"", "--", "none", "待运行"}
+        failed_ok = failed_fields.strip().lower() in {"", "--", "无", "none", "[]", "0"}
         display_status = {
             "inactive": "未激活",
             "no_rp_result": "无 RP 结果",
             "not_requested": "未请求",
             "active": "已激活",
         }.get(status_lower, status or "未激活")
-        tone = "success" if active and pass_rate != "--" else ("accent" if reference_id != "--" else "warning")
+        if active and pass_rate_ready and failed_ok:
+            gate_status = "对标已闭合"
+            tone = "success"
+        elif active and pass_rate_ready:
+            gate_status = "对标有偏差"
+            tone = "accent"
+        elif active:
+            gate_status = "对标已启用"
+            tone = "accent"
+        elif reference_id != "--":
+            gate_status = "对标待运行"
+            tone = "accent"
+        else:
+            gate_status = "对标未启用"
+            tone = "warning"
         return {
-            "value": reference_id if reference_id != "--" else display_status,
-            "note": f"状态：{display_status}；通过率：{pass_rate}；失败字段：{failed_fields}",
+            "value": gate_status,
+            "note": (
+                f"对标交付门：{gate_status}；status={display_status}；"
+                f"ref={reference_id}；pass_rate={pass_rate}；failed={failed_fields}"
+            ),
             "tone": tone,
+            "gate_status": gate_status,
+            "reference_id": reference_id,
+            "pass_rate": pass_rate,
+            "failed_fields": failed_fields,
         }
 
     def _method_gate_summary(self, method_report: dict, file_values: dict[str, str]) -> dict[str, str]:
@@ -4669,10 +4711,21 @@ class ReportCenterPage(QWidget):
         spectral = self._metric_value(method_report, "谱修正")
         method_rollup = self._first_file_value(file_values, ("method rollup", "method_rollup", "方法"))
         ready = bool(footprint and uncertainty and spectral)
-        value = "已汇总" if ready else "待生成"
-        methods = " / ".join(item for item in (footprint, uncertainty, spectral) if item) or "暂无方法摘要"
-        note = f"{methods}" + (f"；Artifact：{method_rollup}" if method_rollup else "")
-        return {"value": value, "note": note, "tone": "success" if ready else "warning"}
+        gate_status = "方法已就绪" if ready else "方法待补齐"
+        note = (
+            f"方法交付门：{gate_status}；footprint={footprint or '--'}；"
+            f"uncertainty={uncertainty or '--'}；spectral={spectral or '--'}；artifact={method_rollup or '--'}"
+        )
+        return {
+            "value": gate_status,
+            "note": note,
+            "tone": "success" if ready else "warning",
+            "gate_status": gate_status,
+            "footprint_method": footprint or "--",
+            "uncertainty_method": uncertainty or "--",
+            "spectral_correction_method": spectral or "--",
+            "artifact": method_rollup or "--",
+        }
 
     def _table_value(self, report: dict, key: str) -> str:
         for row in list(report.get("table_rows", []) or []):

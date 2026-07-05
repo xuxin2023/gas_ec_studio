@@ -603,7 +603,12 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         }
         assert page.delivery_gate_values["export"][0].text() in {"待运行", "可导出", "已导出"}
         assert page.delivery_gate_values["report"][0].text() == "待生成"
-        assert page.delivery_gate_values["manifest"][0].text() == "待导出"
+        assert page.delivery_gate_values["manifest"][0].text() == "清单待导出"
+        assert "清单交付门" in page.delivery_gate_values["manifest"][1].toolTip()
+        assert page.delivery_gate_values["benchmark"][0].text() == "对标未启用"
+        assert "对标交付门" in page.delivery_gate_values["benchmark"][1].toolTip()
+        assert page.delivery_gate_values["methods"][0].text() == "方法待补齐"
+        assert "方法交付门" in page.delivery_gate_values["methods"][1].toolTip()
         assert "inactive" not in page.delivery_gate_values["benchmark"][0].text()
         assert "inactive" not in page.delivery_gate_values["benchmark"][1].text()
         assert page.delivery_gate_chip.text() in {"待生成", "待复核"}
@@ -1037,6 +1042,11 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.delivery_gate_scroll.isHidden() is False
         assert page.delivery_gate_detail_toggle.text() == "收起"
         assert "交付归档" in page.delivery_gate_ready_note.text()
+        assert page.delivery_gate_values["manifest"][0].text() == "清单已生成"
+        manifest_note = page.delivery_gate_values["manifest"][1].toolTip()
+        assert "清单交付门" in manifest_note
+        assert "清单已生成" in manifest_note
+        assert "export_manifest.json" in manifest_note
         assert page.delivery_gate_values["network"][0].text() == "FLUXNET"
         network_note = page.delivery_gate_values["network"][1].toolTip()
         assert "网络交付门" in network_note
@@ -1045,8 +1055,19 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert "validation=valid" in network_note
         assert "missing=无" in network_note
         assert page.delivery_gate_tiles["network"].property("gateTone") == "success"
-        assert page.delivery_gate_values["benchmark"][0].text() == "ref-001"
-        assert page.delivery_gate_values["methods"][0].text() == "已汇总"
+        assert page.delivery_gate_values["benchmark"][0].text() == "对标已闭合"
+        benchmark_note = page.delivery_gate_values["benchmark"][1].toolTip()
+        assert "对标交付门" in benchmark_note
+        assert "ref=ref-001" in benchmark_note
+        assert "pass_rate=100.0%" in benchmark_note
+        assert "failed=无" in benchmark_note
+        assert page.delivery_gate_values["methods"][0].text() == "方法已就绪"
+        methods_note = page.delivery_gate_values["methods"][1].toolTip()
+        assert "方法交付门" in methods_note
+        assert "footprint=Kljun" in methods_note
+        assert "uncertainty=Mann & Lenschow" in methods_note
+        assert "spectral=Fratini" in methods_note
+        assert "method_rollup.json" in methods_note
         assert page.delivery_gate_next_value.text() == "交付归档"
         assert page.report_command_chip.text().startswith("可交付")
         assert page.report_command_deck.property("commandStatus") == "success"
@@ -1057,12 +1078,12 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.report_command_values["report"].text() == "3 个"
         assert page.report_command_values["gate"].text() == "可交付"
         assert page.report_command_values["network"].text() == "FLUXNET"
-        assert page.report_command_values["benchmark"].text() == "ref-001"
-        assert page.report_command_values["methods"].text() == "已汇总"
+        assert page.report_command_values["benchmark"].text() == "对标已闭合"
+        assert page.report_command_values["methods"].text() == "方法已就绪"
         assert page.report_command_values["export"].text() == "已导出"
         assert page.delivery_status_radar_values["network"].text() == "FLUXNET"
-        assert page.delivery_status_radar_values["benchmark"].text() == "ref-001"
-        assert page.delivery_status_radar_values["methods"].text() == "已汇总"
+        assert page.delivery_status_radar_values["benchmark"].text() == "对标已闭合"
+        assert page.delivery_status_radar_values["methods"].text() == "方法已就绪"
         assert page.delivery_status_radar_values["export"].text() == "已导出"
         assert page.delivery_status_radar_cards["network"].property("radarTone") == "success"
         assert page.delivery_status_radar_cards["benchmark"].property("radarTone") == "success"
@@ -1079,6 +1100,8 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.preview_context_cards["manifest"].property("contextTone") == "success"
         assert page.preview_context_cards["network"].property("contextTone") == "success"
         assert page.preview_context_cards["methods"].property("contextTone") == "success"
+        assert page.preview_context_values["manifest"].text() == "清单已生成"
+        assert page.preview_context_values["methods"].text() == "方法已就绪"
         assert page.preview_evidence_summary_card.property("evidenceTone") == "success"
         assert page.preview_evidence_progress_chip.text() == "3/3"
         assert page.preview_evidence_progress_chip.property("chipTone") == "success"
