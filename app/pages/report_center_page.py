@@ -705,7 +705,7 @@ class ReportCenterPage(QWidget):
             button.setProperty("viewSwitch", True)
             button.clicked.connect(lambda _checked=False, section=key: self._show_delivery_focus(section))
             self.delivery_focus_buttons[key] = button
-        focus_switch_row.addWidget(button)
+            focus_switch_row.addWidget(button)
         focus_switch_row.addStretch(1)
         focus_layout.addLayout(focus_switch_row)
         self.delivery_focus_status_bar = self._build_delivery_focus_status_bar()
@@ -805,8 +805,8 @@ class ReportCenterPage(QWidget):
             "summary": self.summary_row,
             "delivery": self.delivery_focus_card,
         }
-        self._show_delivery_rail_mode("summary")
         self._show_delivery_focus("gate")
+        self._show_delivery_rail_mode("summary")
         delivery_layout.addStretch(1)
         self.delivery_rail.setMinimumWidth(276)
         self.delivery_rail.setMaximumWidth(340)

@@ -125,6 +125,9 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_rail_next_note.text()
         assert "report=" not in page.delivery_rail_source_note.text()
         assert "Manifest" in page.delivery_rail_source_note.text()
+        assert page.delivery_rail_stack.currentWidget() is page.summary_row
+        assert page.delivery_rail_mode_buttons["summary"].isChecked() is True
+        assert page.delivery_focus_active_section == "gate"
         assert page.delivery_cockpit_bridge.property("cardRole") == "console"
         assert page.delivery_cockpit_bridge.property("deckRole") == "deliveryCockpitBridge"
         assert page.delivery_cockpit_bridge.property("deliveryCockpitBridge") is True
@@ -144,6 +147,20 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.delivery_focus_stack.currentWidget() is page.inner_inspector
         assert page.inspector_stack.currentWidget() is page.file_card
         page._show_delivery_focus("gate")
+        assert page.delivery_rail_stack.currentWidget() is page.delivery_focus_card
+        assert page.delivery_rail_mode_buttons["delivery"].isChecked() is True
+        focus_switch_layout = page.delivery_focus_card.layout().itemAt(1).layout()
+        focus_switch_widgets = [
+            focus_switch_layout.itemAt(index).widget()
+            for index in range(focus_switch_layout.count())
+            if focus_switch_layout.itemAt(index).widget() is not None
+        ]
+        assert focus_switch_widgets == [
+            page.delivery_focus_buttons["gate"],
+            page.delivery_focus_buttons["details"],
+            page.delivery_focus_buttons["batch"],
+        ]
+        assert page.delivery_focus_buttons["gate"].isChecked() is True
         assert page.delivery_rail_mode_dock.property("deliveryRailModeDock") is True
         assert all(button.property("deliveryRailModeSwitch") is True for button in page.delivery_rail_mode_buttons.values())
         assert page.delivery_rail_action_bar.property("deckRole") == "deliveryRailActionBar"
