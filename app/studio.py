@@ -2613,7 +2613,7 @@ class StudioController(QObject):
             entry["last_hit_at"] = datetime.now().isoformat()
             self._record_fixture_pack_cache_state(status="hit", key=key, artifact="summary")
             return key, entry
-        summary = build_fixture_pack_summary(active_pack, workspace_root=active_root)
+        summary = build_fixture_pack_summary(active_pack, workspace_root=active_root, use_cache=not force)
         entry = {
             "summary": summary,
             "manifest": None,

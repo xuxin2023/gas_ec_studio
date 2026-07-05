@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import subprocess
+from collections import Counter
 from pathlib import Path
 
+from core.comparison import eddypro_source_inventory as source_inventory_module
 from core.comparison.eddypro_source_inventory import (
     ENGINE_URL,
     EXPECTED_FEATURES,
@@ -41,6 +43,41 @@ def test_eddypro_source_inventory_warns_when_official_modules_are_missing(tmp_pa
     assert inventory["missing_feature_count"] == len(EXPECTED_FEATURES)
     assert "spectral_massman_horst_ibrom_fratini" in inventory["missing_features"]
     assert "Presence of a source module is not numerical parity" in inventory["known_limitations"][0]
+
+
+def test_eddypro_source_inventory_cache_reuses_until_source_signature_changes(monkeypatch, tmp_path: Path) -> None:
+    calls: Counter[str] = Counter()
+    engine_root = tmp_path / "engine-cache"
+    gui_root = tmp_path / "gui-cache"
+    _materialize_reference_repo(engine_root, "engine", f"{ENGINE_URL}.git")
+    _materialize_reference_repo(gui_root, "gui", f"{GUI_URL}.git")
+
+    original_git_value = source_inventory_module._git_value
+
+    def counted_git_value(*args, **kwargs) -> str:
+        calls["git"] += 1
+        return original_git_value(*args, **kwargs)
+
+    monkeypatch.setattr(source_inventory_module, "_git_value", counted_git_value)
+
+    first = source_inventory_module.build_eddypro_source_inventory(
+        engine_root=engine_root,
+        gui_root=gui_root,
+        use_cache=False,
+    )
+    first["missing_features"].append("mutated")
+    first_git_calls = calls["git"]
+    second = source_inventory_module.build_eddypro_source_inventory(engine_root=engine_root, gui_root=gui_root)
+
+    assert first_git_calls > 0
+    assert calls["git"] == first_git_calls
+    assert "mutated" not in second["missing_features"]
+
+    changed_path = engine_root / str(EXPECTED_FEATURES[0]["paths"][0])
+    changed_path.write_text(changed_path.read_text(encoding="utf-8") + "\n! changed\n", encoding="utf-8")
+    source_inventory_module.build_eddypro_source_inventory(engine_root=engine_root, gui_root=gui_root)
+
+    assert calls["git"] > first_git_calls
 
 
 def _materialize_reference_repo(root: Path, repository: str, remote_url: str) -> None:

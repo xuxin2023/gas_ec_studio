@@ -460,6 +460,11 @@ def _coerce_cell_temp_c(value: float) -> float:
 
 
 def _load_payload(payload: str) -> dict[str, Any] | None:
+    return _load_payload_cached(payload)
+
+
+@lru_cache(maxsize=65536)
+def _load_payload_cached(payload: str) -> dict[str, Any] | None:
     if not payload:
         return None
     try:
@@ -539,7 +544,7 @@ def _payload_bool_series(
 
 
 def _payload_lookup(payload: Any, aliases: tuple[str, ...]) -> Any:
-    normalized_aliases = {_normalize_payload_key(alias) for alias in aliases}
+    normalized_aliases = _normalized_payload_aliases(aliases)
     index = _payload_normalized_index(payload)
     for alias in normalized_aliases:
         if alias in index:
@@ -600,8 +605,20 @@ def _payload_normalized_index(payload: Any) -> dict[str, Any]:
     return {_normalize_payload_key(""): payload}
 
 
+@lru_cache(maxsize=4096)
+def _normalized_payload_aliases(aliases: tuple[str, ...]) -> frozenset[str]:
+    return frozenset(_normalize_payload_key(alias) for alias in aliases)
+
+
 def _normalize_payload_key(key: object) -> str:
+    if isinstance(key, str):
+        return _normalize_payload_key_string(key)
     return _normalize_payload_key_cached(str(key).strip().lower())
+
+
+@lru_cache(maxsize=32768)
+def _normalize_payload_key_string(key: str) -> str:
+    return _normalize_payload_key_cached(key.strip().lower())
 
 
 @lru_cache(maxsize=16384)

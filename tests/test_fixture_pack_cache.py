@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app import studio as studio_module
 from app.studio import StudioController
+from core.comparison import fixture_pack as fixture_pack_module
 from core.exports import result_exporter as result_exporter_module
 from core.exports.result_exporter import ResultExporter
 
@@ -27,6 +28,107 @@ def _manifest() -> dict:
         "assets": [{"fixture_id": "cache_fixture", "readiness_level": "synthetic_guardrail"}],
         "evidence_matrix": {"rows": [{"fixture_id": "cache_fixture", "tier": "raw_to_final_parity"}]},
     }
+
+
+def test_fixture_pack_summary_builder_cache_reuses_file_signature(monkeypatch, tmp_path: Path) -> None:
+    calls: Counter[str] = Counter()
+
+    def fake_validate(asset: dict, **_kwargs) -> dict:
+        calls["validate"] += 1
+        return {
+            "fixture_id": asset.get("fixture_id", ""),
+            "tier": asset.get("tier", ""),
+            "status": "pass",
+            "errors": [],
+            "raw_to_final_parity": {"status": "pass"},
+        }
+
+    def public_summary(**_kwargs) -> dict:
+        return {"status": "pass", "fixture_count": 0, "valid_fixture_count": 0, "errors": []}
+
+    monkeypatch.setattr(fixture_pack_module, "validate_fixture_asset", fake_validate)
+    monkeypatch.setattr(
+        fixture_pack_module,
+        "build_eddypro_source_inventory",
+        lambda: {"feature_count": 0, "present_feature_count": 0, "missing_feature_count": 0, "repositories": {}},
+    )
+    monkeypatch.setattr(fixture_pack_module, "build_public_spectral_fixture_summary", public_summary)
+    monkeypatch.setattr(fixture_pack_module, "build_public_full_output_fixture_summary", public_summary)
+    monkeypatch.setattr(fixture_pack_module, "build_public_official_raw_fixture_summary", public_summary)
+    monkeypatch.setattr(fixture_pack_module, "build_public_raw_search_summary", public_summary)
+    monkeypatch.setattr(
+        fixture_pack_module,
+        "build_public_eddypro_fixture_catalog",
+        lambda **_kwargs: {"status": "pass", "fixture_count": 0, "valid_fixture_count": 0, "errors": []},
+    )
+
+    pack_path = tmp_path / "fixture_pack.json"
+    pack_path.write_text(
+        '{"fixture_pack_id":"unit","version":"1","assets":[{"fixture_id":"cache_fixture","tier":"raw_to_final_parity"}]}',
+        encoding="utf-8",
+    )
+
+    first = fixture_pack_module.build_fixture_pack_summary(pack_path, workspace_root=tmp_path, use_cache=False)
+    first["assets"][0]["fixture_id"] = "mutated"
+    second = fixture_pack_module.build_fixture_pack_summary(pack_path, workspace_root=tmp_path)
+
+    assert calls["validate"] == 1
+    assert second["assets"][0]["fixture_id"] == "cache_fixture"
+
+    pack_path.write_text(
+        (
+            '{"fixture_pack_id":"unit","version":"2",'
+            '"assets":[{"fixture_id":"cache_fixture","tier":"raw_to_final_parity"}]}'
+        ),
+        encoding="utf-8",
+    )
+    fixture_pack_module.build_fixture_pack_summary(pack_path, workspace_root=tmp_path)
+
+    assert calls["validate"] == 2
+
+
+def test_raw_to_final_asset_validation_reuses_harness_cache(monkeypatch, tmp_path: Path) -> None:
+    calls: Counter[str] = Counter()
+    cache_dir = tmp_path / "raw_to_final_cache"
+    raw_path = tmp_path / "raw.csv"
+    reference_path = tmp_path / "reference.json"
+    raw_path.write_text("timestamp,co2\n2026-01-01T00:00:00,410\n", encoding="utf-8")
+    reference_path.write_text('{"reference_id":"ref","windows":[]}', encoding="utf-8")
+    asset = {
+        "fixture_id": "cache_raw_to_final",
+        "tier": "raw_to_final_parity",
+        "raw_file": str(raw_path),
+        "reference_json": str(reference_path),
+    }
+
+    def fake_harness(**_kwargs) -> dict:
+        calls["harness"] += 1
+        return {
+            "artifact_type": "eddypro_raw_to_final_parity_v1",
+            "fixture_id": "cache_raw_to_final",
+            "status": "pass",
+            "raw_input": {"row_count": 1, "import_summary": {"format": "csv"}},
+            "pipeline": {"window_count": 0},
+            "reference": {"reference_window_count": 0},
+            "benchmark_summary": {"status": "pass", "pass_rate": 1.0, "failed_fields": []},
+            "trace_gas_parity": {},
+            "trace_gas_provenance_summary": {},
+            "li7700_level_parity": {},
+            "parity_diagnostics": {"artifact_type": "raw_to_final_parity_diagnostics_v1", "status": "ok"},
+            "known_limitations": [],
+            "truthfulness_note": "cache unit test",
+        }
+
+    monkeypatch.setenv("GAS_EC_RAW_TO_FINAL_CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr(fixture_pack_module, "run_raw_to_final_parity_harness", fake_harness)
+
+    first = fixture_pack_module.validate_fixture_asset(asset, workspace_root=tmp_path)
+    second = fixture_pack_module.validate_fixture_asset(asset, workspace_root=tmp_path)
+
+    assert first["status"] == "pass"
+    assert second["status"] == "pass"
+    assert second["raw_to_final_cache"]["status"] == "hit"
+    assert calls["harness"] == 1
 
 
 def test_studio_fixture_pack_cache_reuses_summary_manifest_and_detail(monkeypatch, tmp_path: Path) -> None:

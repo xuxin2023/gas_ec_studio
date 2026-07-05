@@ -3,12 +3,15 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 
 ENGINE_URL = "https://github.com/LI-COR-Environmental/eddypro-engine"
 GUI_URL = "https://github.com/LI-COR-Environmental/eddypro-gui"
+_SOURCE_INVENTORY_CACHE_MAX_ENTRIES = 8
+_SOURCE_INVENTORY_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
 
 
 EXPECTED_FEATURES: tuple[dict[str, Any], ...] = (
@@ -108,6 +111,7 @@ def build_eddypro_source_inventory(
     *,
     engine_root: str | Path | None = None,
     gui_root: str | Path | None = None,
+    use_cache: bool = True,
 ) -> dict[str, Any]:
     """Inventory official EddyPro source anchors without copying upstream code.
 
@@ -119,6 +123,9 @@ def build_eddypro_source_inventory(
         "engine": _default_root(engine_root, "eddypro-engine-reference"),
         "gui": _default_root(gui_root, "eddypro-gui-reference"),
     }
+    cache_key = _source_inventory_cache_key(roots)
+    if use_cache and cache_key in _SOURCE_INVENTORY_CACHE:
+        return deepcopy(_SOURCE_INVENTORY_CACHE[cache_key])
     repositories = {
         "engine": _repository_summary(
             label="EddyPro Engine",
@@ -139,7 +146,7 @@ def build_eddypro_source_inventory(
     ]
     missing_features = [item["feature_id"] for item in feature_checks if item["status"] != "present"]
     missing_repositories = [key for key, repo in repositories.items() if repo["status"] != "present"]
-    return {
+    inventory = {
         "artifact_type": "eddypro_official_source_inventory",
         "inventory_id": "eddypro_official_source_inventory_v1",
         "status": "pass" if not missing_features and not missing_repositories else "warning",
@@ -159,6 +166,61 @@ def build_eddypro_source_inventory(
             "Local repository clones may lag upstream unless refreshed by the operator.",
         ],
     }
+    _cache_source_inventory(cache_key, inventory)
+    return inventory
+
+
+def _source_inventory_cache_key(roots: dict[str, Path]) -> tuple[Any, ...]:
+    signatures: list[tuple[Any, ...]] = []
+    for label in ("engine", "gui"):
+        root = roots[label]
+        signatures.append((label, "root", _resolved_path_text(root), root.exists()))
+        signatures.extend((label, "git", *item) for item in _repo_signature(root))
+    for feature in EXPECTED_FEATURES:
+        repository = str(feature.get("repository", ""))
+        root = roots.get(repository, Path())
+        for relative_path in [str(item) for item in feature.get("paths", [])]:
+            signatures.append((repository, relative_path, *_file_signature(root / relative_path)))
+    return ("eddypro_source_inventory_v1", tuple(signatures))
+
+
+def _repo_signature(root: Path) -> tuple[tuple[str, int, int], ...]:
+    git_dir = root / ".git"
+    signatures = [_file_signature(git_dir / "HEAD"), _file_signature(git_dir / "config")]
+    try:
+        head = (git_dir / "HEAD").read_text(encoding="utf-8", errors="ignore").strip()
+    except OSError:
+        head = ""
+    if head.startswith("ref:"):
+        ref_path = head.removeprefix("ref:").strip()
+        if ref_path:
+            signatures.append(_file_signature(git_dir / ref_path))
+    return tuple(signatures)
+
+
+def _resolved_path_text(path: Path) -> str:
+    try:
+        return str(path.resolve())
+    except OSError:
+        return str(path.absolute())
+
+
+def _file_signature(path: Path) -> tuple[str, int, int]:
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path.absolute()
+    try:
+        stat = resolved.stat()
+        return (str(resolved), int(stat.st_mtime_ns), int(stat.st_size))
+    except OSError:
+        return (str(resolved), 0, -1)
+
+
+def _cache_source_inventory(cache_key: tuple[Any, ...], inventory: dict[str, Any]) -> None:
+    if cache_key not in _SOURCE_INVENTORY_CACHE and len(_SOURCE_INVENTORY_CACHE) >= _SOURCE_INVENTORY_CACHE_MAX_ENTRIES:
+        _SOURCE_INVENTORY_CACHE.pop(next(iter(_SOURCE_INVENTORY_CACHE)))
+    _SOURCE_INVENTORY_CACHE[cache_key] = deepcopy(inventory)
 
 
 def _default_root(value: str | Path | None, dirname: str) -> Path:

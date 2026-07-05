@@ -10,8 +10,10 @@ from http.cookiejar import CookieJar
 from io import BytesIO
 import json
 import math
+import os
 from pathlib import Path
 import re
+import tempfile
 from typing import Any
 from urllib.parse import unquote, urlparse
 from urllib.request import HTTPCookieProcessor, Request, build_opener, url2pathname, urlopen
@@ -34,6 +36,31 @@ OFFICIAL_RAW_BUNDLE_MANIFEST_NAMES = (
     "fixture_bundle.json",
     "manifest.json",
 )
+_FIXTURE_PACK_SUMMARY_CACHE_MAX_ENTRIES = 16
+_FIXTURE_PACK_SUMMARY_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
+_FIXTURE_PACK_SUMMARY_FILE_FIELDS = (
+    "reference_json",
+    "source_csv",
+    "provenance_json",
+    "protocol_log",
+    "metadata_json",
+    "raw_file",
+    "raw_ghg_file",
+    "tob1_file",
+    "slt_file",
+    "native_binary_file",
+    "eddypro_project_file",
+    "project_file",
+    "settings_file",
+    "official_full_output",
+    "full_output_csv",
+)
+_FIXTURE_PACK_SUMMARY_PUBLIC_MANIFESTS = (
+    DEFAULT_PUBLIC_SPECTRAL_MANIFEST_PATH,
+    DEFAULT_PUBLIC_FULL_OUTPUT_MANIFEST_PATH,
+    DEFAULT_PUBLIC_OFFICIAL_RAW_MANIFEST_PATH,
+    DEFAULT_PUBLIC_RAW_SEARCH_MANIFEST_PATH,
+)
 
 
 def load_fixture_pack(path: str | Path | None = None) -> dict[str, Any]:
@@ -43,10 +70,64 @@ def load_fixture_pack(path: str | Path | None = None) -> dict[str, Any]:
     return payload
 
 
-def build_fixture_pack_summary(path: str | Path | None = None, *, workspace_root: str | Path | None = None) -> dict[str, Any]:
+def _resolved_path_text(path: Path) -> str:
+    try:
+        return str(path.resolve())
+    except OSError:
+        return str(path.absolute())
+
+
+def _file_signature(path: Path) -> tuple[str, int, int]:
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path.absolute()
+    try:
+        stat = resolved.stat()
+        return (str(resolved), int(stat.st_mtime_ns), int(stat.st_size))
+    except OSError:
+        return (str(resolved), 0, -1)
+
+
+def _fixture_pack_summary_cache_key(pack_path: Path, root: Path, pack: dict[str, Any]) -> tuple[Any, ...]:
+    file_signatures: list[tuple[Any, ...]] = [("pack", *_file_signature(pack_path))]
+    file_signatures.extend(
+        (str(manifest_path), *_file_signature(root / manifest_path))
+        for manifest_path in _FIXTURE_PACK_SUMMARY_PUBLIC_MANIFESTS
+    )
+    for asset in list(pack.get("assets", []) or []):
+        asset_payload = dict(asset or {})
+        fixture_id = str(asset_payload.get("fixture_id", ""))
+        for field_name in _FIXTURE_PACK_SUMMARY_FILE_FIELDS:
+            value = str(asset_payload.get(field_name, "") or "").strip()
+            if value:
+                file_signatures.append((fixture_id, field_name, *_file_signature(_resolve(root, value))))
+    return (
+        "fixture_pack_summary_v1",
+        _resolved_path_text(pack_path),
+        _resolved_path_text(root),
+        tuple(file_signatures),
+    )
+
+
+def _cache_fixture_pack_summary(cache_key: tuple[Any, ...], summary: dict[str, Any]) -> None:
+    if cache_key not in _FIXTURE_PACK_SUMMARY_CACHE and len(_FIXTURE_PACK_SUMMARY_CACHE) >= _FIXTURE_PACK_SUMMARY_CACHE_MAX_ENTRIES:
+        _FIXTURE_PACK_SUMMARY_CACHE.pop(next(iter(_FIXTURE_PACK_SUMMARY_CACHE)))
+    _FIXTURE_PACK_SUMMARY_CACHE[cache_key] = deepcopy(summary)
+
+
+def build_fixture_pack_summary(
+    path: str | Path | None = None,
+    *,
+    workspace_root: str | Path | None = None,
+    use_cache: bool = True,
+) -> dict[str, Any]:
     root = _workspace_root_for_pack(path, workspace_root)
     pack_path = Path(path) if path is not None else root / DEFAULT_FIXTURE_PACK_PATH
     pack = load_fixture_pack(pack_path)
+    cache_key = _fixture_pack_summary_cache_key(pack_path, root, pack)
+    if use_cache and cache_key in _FIXTURE_PACK_SUMMARY_CACHE:
+        return deepcopy(_FIXTURE_PACK_SUMMARY_CACHE[cache_key])
     assets = []
     errors: list[str] = []
     tier_counts: Counter[str] = Counter()
@@ -77,7 +158,7 @@ def build_fixture_pack_summary(path: str | Path | None = None, *, workspace_root
     errors.extend(str(item) for item in public_full_output_summary.get("errors", []))
     errors.extend(str(item) for item in public_official_raw_summary.get("errors", []))
     errors.extend(str(item) for item in public_raw_search_summary.get("errors", []))
-    return {
+    summary = {
         "fixture_pack_id": pack.get("fixture_pack_id", ""),
         "version": pack.get("version", ""),
         "status": "pass" if not errors else "fail",
@@ -109,6 +190,8 @@ def build_fixture_pack_summary(path: str | Path | None = None, *, workspace_root
         "truthfulness_note": pack.get("truthfulness_note", ""),
         "errors": errors,
     }
+    _cache_fixture_pack_summary(cache_key, summary)
+    return summary
 
 
 def build_public_full_output_fixture_summary(
@@ -2467,16 +2550,25 @@ def _validate_raw_to_final_asset(asset: dict[str, Any], result: dict[str, Any], 
             provenance_payload = json.loads(provenance_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             result["errors"].append(f"provenance_json invalid: {exc}")
-    harness = run_raw_to_final_parity_harness(
-        raw_path=raw_path,
-        metadata=metadata_payload,
-        rp_config=dict(asset.get("rp_config", {}) or {}),
-        reference_json_path=reference_path,
-        fixture_id=str(asset.get("fixture_id", "")),
-        thresholds=dict(asset.get("thresholds", {}) or {}),
-        data_source=str(asset.get("fixture_id", "raw_to_final_fixture")),
-        time_range=str(asset.get("time_range", "")),
-    )
+    cache_key = _raw_to_final_harness_cache_key(asset, result)
+    harness = _read_raw_to_final_harness_cache(cache_key)
+    if harness is None:
+        harness = run_raw_to_final_parity_harness(
+            raw_path=raw_path,
+            metadata=metadata_payload,
+            rp_config=dict(asset.get("rp_config", {}) or {}),
+            reference_json_path=reference_path,
+            fixture_id=str(asset.get("fixture_id", "")),
+            thresholds=dict(asset.get("thresholds", {}) or {}),
+            data_source=str(asset.get("fixture_id", "raw_to_final_fixture")),
+            time_range=str(asset.get("time_range", "")),
+        )
+        _write_raw_to_final_harness_cache(cache_key, harness)
+    else:
+        result["raw_to_final_cache"] = {
+            "status": "hit",
+            "cache_key": cache_key,
+        }
     result["reference_id"] = reference_payload.get("reference_id", "")
     result["raw_row_count"] = harness.get("raw_input", {}).get("row_count", 0)
     result["window_count"] = harness.get("pipeline", {}).get("window_count", 0)
@@ -2547,6 +2639,79 @@ def _validate_raw_to_final_asset(asset: dict[str, Any], result: dict[str, Any], 
     if harness.get("status") != "pass":
         failed_fields = harness.get("benchmark_summary", {}).get("failed_fields", [])
         result["errors"].append(f"raw-to-final parity failed: failed_fields={failed_fields}")
+
+
+def _raw_to_final_harness_cache_key(asset: dict[str, Any], result: dict[str, Any]) -> str:
+    payload = {
+        "cache_schema": "raw_to_final_harness_cache_v1",
+        "fixture_id": str(asset.get("fixture_id", "")),
+        "tier": str(asset.get("tier", "")),
+        "raw_role": _first_available_asset_key(
+            asset,
+            ["raw_file", "raw_ghg_file", "tob1_file", "slt_file", "native_binary_file"],
+        ),
+        "files": dict(sorted((result.get("hashes", {}) or {}).items())),
+        "rp_config": dict(asset.get("rp_config", {}) or {}),
+        "thresholds": dict(asset.get("thresholds", {}) or {}),
+        "time_range": str(asset.get("time_range", "")),
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest().upper()
+
+
+def _raw_to_final_harness_cache_dir() -> Path | None:
+    if str(os.environ.get("GAS_EC_DISABLE_RAW_TO_FINAL_CACHE", "")).strip().lower() in {"1", "true", "yes", "on"}:
+        return None
+    configured = str(os.environ.get("GAS_EC_RAW_TO_FINAL_CACHE_DIR", "") or "").strip()
+    if configured:
+        return Path(configured)
+    return Path(tempfile.gettempdir()) / "gas_ec_studio" / "raw_to_final_harness_cache"
+
+
+def _raw_to_final_harness_cache_path(cache_key: str) -> Path | None:
+    cache_dir = _raw_to_final_harness_cache_dir()
+    if cache_dir is None:
+        return None
+    return cache_dir / f"{cache_key}.json"
+
+
+def _read_raw_to_final_harness_cache(cache_key: str) -> dict[str, Any] | None:
+    path = _raw_to_final_harness_cache_path(cache_key)
+    if path is None or not path.exists():
+        return None
+    try:
+        wrapper = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if str(wrapper.get("cache_key", "")) != cache_key:
+        return None
+    payload = wrapper.get("payload", {})
+    if not isinstance(payload, dict) or payload.get("artifact_type") != "eddypro_raw_to_final_parity_v1":
+        return None
+    return payload
+
+
+def _write_raw_to_final_harness_cache(cache_key: str, payload: dict[str, Any]) -> None:
+    path = _raw_to_final_harness_cache_path(cache_key)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "artifact_type": "raw_to_final_harness_cache_entry_v1",
+                    "cache_key": cache_key,
+                    "created_at": datetime.now().isoformat(),
+                    "payload": payload,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        return
 
 
 def _load_public_fixture_manifest_for_acquisition(path: Path) -> dict[str, Any]:
