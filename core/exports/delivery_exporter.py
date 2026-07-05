@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -36,7 +37,7 @@ def export_delivery_package(
         evidence_root = Path(str(evidence_bundle["root_dir"]))
         if evidence_root.exists():
             target_root = package_root / "evidence"
-            shutil.copytree(evidence_root, target_root, dirs_exist_ok=True)
+            shutil.copytree(evidence_root, target_root, dirs_exist_ok=True, copy_function=_copy_file_fast)
             file_list.extend(_list_relative_files(target_root, package_root))
         else:
             notes.append("evidence bundle 路径不存在，已跳过复制。")
@@ -143,7 +144,7 @@ def export_delivery_package(
     manifest["file_list"] = sorted(set(file_list))
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    with ZipFile(zip_path, "w", compression=ZIP_DEFLATED) as archive:
+    with ZipFile(zip_path, "w", compression=ZIP_DEFLATED, compresslevel=1) as archive:
         for path in sorted(package_root.rglob("*")):
             if path.is_file():
                 archive.write(path, arcname=path.relative_to(package_root.parent))
@@ -185,10 +186,18 @@ def _copy_declared_files(
         if not path.exists() or not path.is_file():
             continue
         target = package_root / path.name
-        shutil.copy2(path, target)
+        _copy_file_fast(path, target)
         file_list.append(str(target.relative_to(package_root)))
         file_index[index_key]["package_relative_path"] = str(target.relative_to(package_root))
         file_index[index_key]["packaged"] = True
+
+
+def _copy_file_fast(src: str | Path, dst: str | Path) -> str:
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copyfile(src, dst)
+    return str(dst)
 
 
 def _list_relative_files(root: Path, package_root: Path) -> list[str]:
