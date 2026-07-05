@@ -6,6 +6,7 @@ import zipfile
 from bisect import bisect_left
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -470,8 +471,8 @@ def _casefold_lookup(row: dict[str, str]) -> dict[str, str]:
 
 
 def _first_lookup_value(lookup: dict[str, str], aliases: tuple[str, ...]) -> str | None:
-    for alias in aliases:
-        value = lookup.get(alias.lower())
+    for alias in _lower_aliases(aliases):
+        value = lookup.get(alias)
         if value not in (None, ""):
             return value
     return None
@@ -513,11 +514,16 @@ def _normalize_licor_time(value: Any) -> str:
 
 
 def _first_lookup_item(lookup: dict[str, str], aliases: tuple[str, ...]) -> tuple[str, str] | None:
-    for alias in aliases:
-        value = lookup.get(alias.lower())
+    for alias in _lower_aliases(aliases):
+        value = lookup.get(alias)
         if value not in (None, ""):
-            return alias.lower(), value
+            return alias, value
     return None
+
+
+@lru_cache(maxsize=256)
+def _lower_aliases(aliases: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(alias.lower() for alias in aliases)
 
 
 def _optional_ch4_ppb(lookup: dict[str, str]) -> float | None:

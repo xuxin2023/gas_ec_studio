@@ -658,8 +658,7 @@ def _payload_status_flags(payloads: list[dict[str, Any]]) -> list[str]:
     }
     fault_tokens = ("fault", "fail", "error", "blocked", "dirty", "unlocked", "not_locked", "no_lock", "bad")
     for payload in payloads:
-        for key, value in _flatten_payload(payload):
-            normalized = _normalize_payload_key(key)
+        for normalized, value in _payload_normalized_index(payload).items():
             if normalized not in status_aliases and not normalized.endswith("_status"):
                 continue
             text = str(value).strip().lower()
@@ -3088,10 +3087,10 @@ def compute_licor_co2h2o_primary_analyzer_diagnostics(
 
 def _payload_profile_hint(payloads: list[dict[str, Any]]) -> str:
     aliases = ("profile_id", "gas_analyzer_profile", "gas_analyzer_profile_id", "instrument_model", "instrument_family")
+    normalized_aliases = _normalized_payload_aliases(aliases)
     for payload in payloads:
-        for key, value in _flatten_payload(payload):
-            normalized = _normalize_payload_key(key)
-            if normalized not in {_normalize_payload_key(alias) for alias in aliases}:
+        for normalized, value in _payload_normalized_index(payload).items():
+            if normalized not in normalized_aliases:
                 continue
             text = str(value).strip().lower().replace("-", "").replace("_", "")
             if "li7500" in text:
@@ -3104,8 +3103,7 @@ def _payload_profile_hint(payloads: list[dict[str, Any]]) -> str:
 
 
 def _payload_looks_like_licor_co2h2o(payload: dict[str, Any], profile_id: str) -> bool:
-    flattened = _flatten_payload(payload)
-    normalized_keys = {_normalize_payload_key(key) for key, _value in flattened}
+    normalized_keys = set(_payload_normalized_index(payload))
     marker_keys = {
         "licor_primary_analyzer_import",
         "licor_diagnostic_import",
@@ -3203,8 +3201,8 @@ def _primary_analyzer_status_bit_map(config: dict[str, Any]) -> dict[int, str]:
 
 
 def _payload_looks_like_ygas(payload: dict[str, Any]) -> bool:
-    flattened = _flatten_payload(payload)
-    normalized_keys = {_normalize_payload_key(key) for key, _value in flattened}
+    normalized_index = _payload_normalized_index(payload)
+    normalized_keys = set(normalized_index)
     marker_keys = {
         "ygas_protocol_import",
         "ygas_primary_analyzer",
@@ -3227,8 +3225,7 @@ def _payload_looks_like_ygas(payload: dict[str, Any]) -> bool:
     }
     if normalized_keys & marker_keys:
         return True
-    for key, value in flattened:
-        normalized = _normalize_payload_key(key)
+    for normalized, value in normalized_index.items():
         if normalized in {"profile_id", "gas_analyzer_profile", "gas_analyzer_profile_id", "instrument_family"}:
             if "ygas" in str(value).strip().lower():
                 return True
