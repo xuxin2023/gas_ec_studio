@@ -636,6 +636,7 @@ class ECProcessingPage(QWidget):
         mode_row.setContentsMargins(0, 0, 0, 0)
         mode_row.setSpacing(TOKENS.spacing_xs)
         for mode, text in (
+            ("summary", "总览"),
             ("workflow", "流程"),
             ("cockpit", "状态"),
             ("closure", "闭合"),
@@ -670,7 +671,7 @@ class ECProcessingPage(QWidget):
             self.desktop_rail_stack.addWidget(card)
         inspector_layout.addWidget(self.desktop_rail_stack)
         inspector_layout.addStretch(1)
-        self._show_desktop_rail_mode("workflow")
+        self._show_desktop_rail_mode("summary")
         body_layout.addWidget(self.desktop_rail_inspector)
         body_layout.addStretch(1)
         self.desktop_rail_scroll.setWidget(rail_body)
@@ -771,7 +772,7 @@ class ECProcessingPage(QWidget):
         card.setProperty("deckRole", "ecMethodShortcutDeck")
         card.setProperty("ecMethodShortcutDeck", True)
         card.setProperty("methodShortcutCommandDeck", True)
-        card.setMaximumHeight(96)
+        card.setMaximumHeight(90)
         card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
@@ -1243,11 +1244,21 @@ class ECProcessingPage(QWidget):
     def _show_desktop_rail_mode(self, mode: str) -> None:
         if not hasattr(self, "desktop_rail_sections"):
             return
+        summary_mode = mode == "summary"
         card = self.desktop_rail_sections.get(mode)
-        if card is None:
+        if not summary_mode and card is None:
             return
-        self.desktop_rail_stack.setCurrentWidget(card)
+        if summary_mode:
+            default_card = self.desktop_rail_sections.get("workflow")
+            if default_card is not None:
+                self.desktop_rail_stack.setCurrentWidget(default_card)
+        else:
+            self.desktop_rail_stack.setCurrentWidget(card)
+        if hasattr(self, "desktop_rail_status_strip"):
+            self.desktop_rail_status_strip.setVisible(not summary_mode)
+        self.desktop_rail_stack.setVisible(not summary_mode)
         mode_heights = {
+            "summary": 0,
             "workflow": 210,
             "cockpit": 420,
             "closure": 470,

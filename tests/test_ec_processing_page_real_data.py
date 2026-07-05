@@ -159,6 +159,13 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         assert page.desktop_rail_inspector.property("ecRailInspectorCockpit") is True
         assert page.desktop_rail_stack.count() == 3
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
+        assert set(page.desktop_rail_mode_buttons) == {"summary", "workflow", "cockpit", "closure"}
+        assert page.desktop_rail_mode_buttons["summary"].isChecked() is True
+        assert page.desktop_rail_status_strip.isHidden() is True
+        assert page.desktop_rail_stack.isHidden() is True
+        page._show_desktop_rail_mode("workflow")
+        assert page.desktop_rail_status_strip.isHidden() is False
+        assert page.desktop_rail_stack.isHidden() is False
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
         assert set(page.desktop_rail_status_tiles) == {"step", "run", "closure"}
         assert page.desktop_rail_action_button.property("railAction") is True
@@ -373,6 +380,7 @@ def test_ec_processing_page_refreshes_with_empty_state(monkeypatch, tmp_path) ->
         page.desktop_rail_risk_button.click()
         assert controller.ec_nav_step == "uncertainty"
         assert page.desktop_rail_stack.currentWidget() is page.workflow_lens_card
+        assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
         assert page.step_items["uncertainty"].text(1) == "复核"
         assert page.step_items["output"].text(1) == "复核"
         assert page.step_items["uncertainty"].data(1, Qt.UserRole) == "danger"
@@ -512,10 +520,14 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             page.refresh()
             page.step_tree.setCurrentItem(page.step_items["window_sampling"])
             app.processEvents()
+            page._show_desktop_rail_mode("summary")
+            app.processEvents()
 
             assert page.desktop_rail.width() <= page.desktop_rail.maximumWidth()
             assert page.desktop_rail.width() >= page.desktop_rail.minimumWidth()
             assert page.desktop_rail_scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+            assert page.desktop_rail_scroll.verticalScrollBar().maximum() == 0
+            assert page.desktop_rail_mode_buttons["summary"].isChecked() is True
             assert page.step_tree.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
             assert_contained(page, page.rp_closure_deck, page)
             assert_contained(page, page.tree_card, page)
@@ -534,6 +546,8 @@ def test_ec_processing_viewport_layout_keeps_cockpit_and_rails_stable(monkeypatc
             page._show_rp_closure_mode("compact")
             app.processEvents()
 
+            page._show_desktop_rail_mode("workflow")
+            app.processEvents()
             assert_contained(page.desktop_rail_scroll.viewport(), page.desktop_rail_status_strip, page)
             assert_contained(page.desktop_rail_scroll.viewport(), page.desktop_rail_action_button, page)
             assert_contained(page.desktop_rail_scroll.viewport(), page.desktop_rail_risk_button, page)

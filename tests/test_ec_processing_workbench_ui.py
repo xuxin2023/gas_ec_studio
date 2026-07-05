@@ -54,7 +54,7 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.method_shortcut_card.property("deckRole") == "ecMethodShortcutDeck"
         assert page.method_shortcut_card.property("ecMethodShortcutDeck") is True
         assert page.method_shortcut_card.property("methodShortcutCommandDeck") is True
-        assert page.method_shortcut_card.maximumHeight() == 96
+        assert page.method_shortcut_card.maximumHeight() == 90
         assert set(page.method_shortcut_buttons) == {"footprint", "uncertainty", "spectral"}
         assert all(button.property("methodShortcut") is True for button in page.method_shortcut_buttons.values())
         assert page.method_shortcut_value.property("methodShortcutValue") is True
@@ -76,7 +76,11 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
             button.property("methodTone") in {"success", "accent", "warning", "danger"}
             for button in page.method_shortcut_buttons.values()
         )
-        assert page.desktop_rail_stack.maximumHeight() == 210
+        assert set(page.desktop_rail_mode_buttons) == {"summary", "workflow", "cockpit", "closure"}
+        assert page.desktop_rail_mode_buttons["summary"].isChecked() is True
+        assert page.desktop_rail_status_strip.isHidden() is True
+        assert page.desktop_rail_stack.isHidden() is True
+        assert page.desktop_rail_stack.maximumHeight() == 0
         assert set(page.desktop_rail_status_values) == {"step", "run", "closure"}
         assert page.desktop_rail_status_values["step"].text()
         assert page.desktop_rail_status_values["run"].text() == "待运行"
@@ -150,6 +154,10 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert page.workflow_lens_card.property("processingWorkflowLensDeck") is True
         assert page.rail_focus_card.property("processingClosureFocusDeck") is True
         assert page.cockpit_card.property("processingCockpitWorkbench") is True
+        page._show_desktop_rail_mode("workflow")
+        assert page.desktop_rail_status_strip.isHidden() is False
+        assert page.desktop_rail_stack.isHidden() is False
+        assert page.desktop_rail_stack.maximumHeight() == 210
         assert page.desktop_rail_mode_buttons["workflow"].isChecked() is True
         assert page.rail_focus_stack.count() == 2
         assert page.rail_focus_stack.currentWidget() is page.readiness_card
