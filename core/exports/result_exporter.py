@@ -11,7 +11,7 @@ from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, ClassVar
 
 from core.acquisition.runtime_install import (
     build_installable_runtime_profile,
@@ -371,12 +371,15 @@ FULL_OUTPUT_SCHEMA = [
 
 
 class ResultExporter:
+    _shared_fixture_pack_cache: ClassVar[dict[tuple[str, str, int, int], dict[str, Any]]] = {}
+    _shared_eddypro_artifact_cache: ClassVar[dict[tuple[str, str, int, int, str], dict[str, Any]]] = {}
+
     def __init__(self, runtime_root: Path) -> None:
         self.runtime_root = Path(runtime_root)
         self.exports_root = self.runtime_root / "exports" / "results"
         self.exports_root.mkdir(parents=True, exist_ok=True)
-        self._fixture_pack_cache: dict[tuple[str, str, int, int], dict[str, Any]] = {}
-        self._eddypro_artifact_cache: dict[tuple[str, str, int, int, str], dict[str, Any]] = {}
+        self._fixture_pack_cache = self._shared_fixture_pack_cache
+        self._eddypro_artifact_cache = self._shared_eddypro_artifact_cache
 
     def _fixture_pack_cache_key(
         self,

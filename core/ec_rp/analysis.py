@@ -6,6 +6,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -539,30 +540,73 @@ def _payload_bool_series(
 
 def _payload_lookup(payload: Any, aliases: tuple[str, ...]) -> Any:
     normalized_aliases = {_normalize_payload_key(alias) for alias in aliases}
-    for key, value in _flatten_payload(payload):
-        if _normalize_payload_key(key) in normalized_aliases:
-            return value
+    index = _payload_normalized_index(payload)
+    for alias in normalized_aliases:
+        if alias in index:
+            return index[alias]
     return None
 
 
+_PAYLOAD_FLATTEN_CACHE_MAX = 8192
+_PAYLOAD_FLATTEN_CACHE: dict[int, tuple[Any, list[tuple[str, Any]], dict[str, Any]]] = {}
+
+
 def _flatten_payload(payload: Any, prefix: str = "") -> list[tuple[str, Any]]:
+    if not prefix and isinstance(payload, (dict, list)):
+        return list(_payload_flattened_items(payload))
+    return _flatten_payload_uncached(payload, prefix)
+
+
+def _flatten_payload_uncached(payload: Any, prefix: str = "") -> list[tuple[str, Any]]:
     if isinstance(payload, dict):
         items: list[tuple[str, Any]] = []
         for key, value in payload.items():
             joined = f"{prefix}_{key}" if prefix else str(key)
-            items.extend(_flatten_payload(value, joined))
+            items.extend(_flatten_payload_uncached(value, joined))
         return items
     if isinstance(payload, list):
         items: list[tuple[str, Any]] = []
         for index, value in enumerate(payload):
             joined = f"{prefix}_{index}" if prefix else str(index)
-            items.extend(_flatten_payload(value, joined))
+            items.extend(_flatten_payload_uncached(value, joined))
         return items
     return [(prefix, payload)]
 
 
-def _normalize_payload_key(key: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", str(key).strip().lower()).strip("_")
+def _payload_cache_entry(payload: Any) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
+    cache_key = id(payload)
+    cached = _PAYLOAD_FLATTEN_CACHE.get(cache_key)
+    if cached is not None and cached[0] is payload:
+        return cached[1], cached[2]
+    flattened = _flatten_payload_uncached(payload)
+    index: dict[str, Any] = {}
+    for key, value in flattened:
+        normalized = _normalize_payload_key(key)
+        if normalized and normalized not in index:
+            index[normalized] = value
+    if len(_PAYLOAD_FLATTEN_CACHE) >= _PAYLOAD_FLATTEN_CACHE_MAX:
+        _PAYLOAD_FLATTEN_CACHE.clear()
+    _PAYLOAD_FLATTEN_CACHE[cache_key] = (payload, flattened, index)
+    return flattened, index
+
+
+def _payload_flattened_items(payload: Any) -> list[tuple[str, Any]]:
+    return _payload_cache_entry(payload)[0]
+
+
+def _payload_normalized_index(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, (dict, list)):
+        return _payload_cache_entry(payload)[1]
+    return {_normalize_payload_key(""): payload}
+
+
+def _normalize_payload_key(key: object) -> str:
+    return _normalize_payload_key_cached(str(key).strip().lower())
+
+
+@lru_cache(maxsize=16384)
+def _normalize_payload_key_cached(normalized_source: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", normalized_source).strip("_")
 
 
 def _coerce_payload_bool(
