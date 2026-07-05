@@ -4793,6 +4793,7 @@ class StudioController(QObject):
 
     def _build_report_payloads_from_run(self, run_result: SpectralRunResult) -> dict:
         reports = self._empty_report_payloads()
+        selected_report = str(self.report_center_workspace.get("selected_report", "run_summary") or "run_summary")
         batch_label = self._batch_label(run_result)
         summary = run_result.summary
         windows = run_result.windows
@@ -5374,7 +5375,12 @@ class StudioController(QObject):
             "usage": ["工程诊断和审计留痕优先导出此项。"],
         }
 
-        reports["fixture_pack"] = self._fixture_pack_report_payload(
+        fixture_payload_builder = (
+            self._fixture_pack_report_payload
+            if selected_report == "fixture_pack"
+            else self._fixture_pack_deferred_report_payload
+        )
+        reports["fixture_pack"] = fixture_payload_builder(
             run_result=run_result,
             updated_at=updated_at,
             batch_label=batch_label,
@@ -5469,6 +5475,84 @@ class StudioController(QObject):
                 "Use this card to verify which EC computation families are ready before making reference-overlap claims.",
                 "Use the stress suite artifact for audit-level detail and the scope audit for claim-boundary wording.",
             ],
+        }
+
+    def _fixture_pack_deferred_report_payload(
+        self,
+        *,
+        run_result: SpectralRunResult,
+        updated_at: str,
+        batch_label: str,
+        result_export_files: dict,
+        file_info_for,
+    ) -> dict:
+        active_pack_path = self._active_fixture_pack_path()
+        active_pack_root = self._active_fixture_pack_workspace_root()
+        fixture_pack_cache_state = dict(self.report_center_workspace.get("fixture_pack_cache", {}) or {})
+        public_fixture_state = dict(
+            self.report_center_workspace.get("public_eddypro_fixtures", {}) or self._default_public_eddypro_fixture_state()
+        )
+        file_info = {
+            **file_info_for("fixture_pack"),
+            **({"Fixture Pack Summary Artifact": str(result_export_files.get("fixture_pack_summary_artifact"))} if result_export_files.get("fixture_pack_summary_artifact") else {}),
+            **({"Official Raw Manifest Artifact": str(result_export_files.get("official_raw_fixture_manifest_artifact"))} if result_export_files.get("official_raw_fixture_manifest_artifact") else {}),
+            **({"EddyPro Coverage Audit Artifact": str(result_export_files.get("eddypro_coverage_audit_artifact"))} if result_export_files.get("eddypro_coverage_audit_artifact") else {}),
+            "Active fixture pack": str(active_pack_path),
+            "Fixture pack workspace": str(active_pack_root),
+        }
+        return {
+            "title": "Fixture Pack",
+            "source": f"{active_pack_path} / {batch_label}",
+            "updated_at": updated_at,
+            "report_key": "fixture_pack",
+            "deferred": True,
+            "metrics": [
+                ("status", "deferred"),
+                ("cache", str(fixture_pack_cache_state.get("status", "cold"))),
+                ("export_artifact", "present" if result_export_files.get("fixture_pack_summary_artifact") else "not_exported"),
+            ],
+            "plot_series": [],
+            "table_headers": ["artifact", "status / value", "detail"],
+            "table_rows": [
+                (
+                    "fixture_pack",
+                    "deferred",
+                    "Full EddyPro fixture validation is hydrated when the fixture-pack report is selected.",
+                ),
+                (
+                    "active_fixture_pack",
+                    str(active_pack_path),
+                    "Report Center and exporter use this fixture pack path for the current session.",
+                ),
+                (
+                    "fixture_pack_cache",
+                    str(fixture_pack_cache_state.get("status", "cold")),
+                    (
+                        f"entries={fixture_pack_cache_state.get('entry_count', 0)}; "
+                        f"artifact={fixture_pack_cache_state.get('artifact', '--')}; "
+                        f"updated={fixture_pack_cache_state.get('updated_at', '--')}"
+                    ),
+                ),
+            ],
+            "conclusions": [
+                "Fixture-pack validation is deferred during non-fixture report refreshes to keep routine result export responsive.",
+                "Exported delivery artifacts still build the real fixture_pack_summary.json and related EddyPro evidence files.",
+            ],
+            "export_options": ["Export current report", "Export evidence package"],
+            "file_info": file_info,
+            "versions": [
+                f"Run ID: {run_result.run_id}",
+                f"Registry: {active_pack_path}",
+                "Hydration: select or refresh fixture_pack to build the full validation card.",
+            ],
+            "usage": [
+                "Use this entry as the lightweight Report Center navigation target for the fixture-pack validation view.",
+                "Open the fixture-pack report to hydrate the full matrix, coverage audit, and official raw readiness details.",
+            ],
+            "fixture_pack_cache": fixture_pack_cache_state,
+            "public_eddypro_fixture_catalog": dict(public_fixture_state.get("catalog", {}) or {}),
+            "public_eddypro_fixture_acquisition": dict(public_fixture_state.get("acquisition", {}) or {}),
+            "public_ec_acquisition_closure": dict(public_fixture_state.get("public_ec_acquisition_closure", {}) or {}),
         }
 
     def _fixture_pack_report_payload(

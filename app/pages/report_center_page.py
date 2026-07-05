@@ -833,6 +833,11 @@ class ReportCenterPage(QWidget):
 
     def refresh(self) -> None:
         workspace = self.controller.report_center_workspace
+        selected_report = str(workspace.get("selected_report", "run_summary"))
+        selected_payload = dict(dict(workspace.get("reports", {}) or {}).get(selected_report, {}) or {})
+        if selected_report == "fixture_pack" and selected_payload.get("deferred"):
+            self.controller.refresh_report_center()
+            workspace = self.controller.report_center_workspace
         filters = workspace["filters"]
         summary = workspace["summary"]
 
