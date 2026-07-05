@@ -492,12 +492,64 @@ class SpectralQCPage(QWidget):
         card = CardFrame(muted=True, role="rail")
         card.setProperty("spectralFocusRail", True)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md, TOKENS.spacing_md)
-        layout.setSpacing(TOKENS.spacing_sm)
+        layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
+        layout.setSpacing(TOKENS.spacing_xs)
 
-        layout.addWidget(section_title("分析焦点", "把当前窗口、风险和下一步动作固定在图谱右侧。"))
+        focus_header = QHBoxLayout()
+        focus_header.setContentsMargins(0, 0, 0, 0)
+        focus_header.setSpacing(TOKENS.spacing_xs)
+        focus_title = QLabel("分析焦点")
+        focus_title.setObjectName("metricLabel")
+        focus_header.addWidget(focus_title)
         self.spectral_focus_chip = chip("待运行", "warning")
-        layout.addWidget(self.spectral_focus_chip)
+        self.spectral_focus_chip.setMaximumHeight(20)
+        focus_header.addWidget(self.spectral_focus_chip)
+        focus_header.addStretch(1)
+        self.spectral_focus_mode_buttons: dict[str, QToolButton] = {}
+        for mode, text in (("summary", "总览"), ("detail", "明细")):
+            button = QToolButton()
+            button.setText(text)
+            button.setCheckable(True)
+            button.setProperty("viewSwitch", True)
+            button.clicked.connect(lambda _checked=False, key=mode: self._show_focus_rail_mode(key))
+            self.spectral_focus_mode_buttons[mode] = button
+            focus_header.addWidget(button)
+        layout.addLayout(focus_header)
+
+        self.spectral_focus_summary_card = CardFrame(muted=True, role="tile")
+        self.spectral_focus_summary_card.setProperty("spectralFocusSummaryCard", True)
+        self.spectral_focus_summary_card.setMaximumHeight(78)
+        summary_layout = QGridLayout(self.spectral_focus_summary_card)
+        summary_layout.setContentsMargins(TOKENS.spacing_sm, 3, TOKENS.spacing_sm, 3)
+        summary_layout.setHorizontalSpacing(TOKENS.spacing_xs)
+        summary_layout.setVerticalSpacing(0)
+        self.spectral_focus_summary_values: dict[str, QLabel] = {}
+        for column, (key, title) in enumerate((("window", "窗口"), ("risk", "风险"), ("next", "下一步"))):
+            label = QLabel(title)
+            label.setObjectName("metricLabel")
+            value = QLabel("--")
+            value.setObjectName("metricValue")
+            value.setProperty("compactMetric", True)
+            value.setWordWrap(False)
+            value.setMinimumWidth(0)
+            value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            summary_layout.addWidget(label, 0, column)
+            summary_layout.addWidget(value, 1, column)
+            summary_layout.setColumnStretch(column, 1)
+            self.spectral_focus_summary_values[key] = value
+        layout.addWidget(self.spectral_focus_summary_card)
+
+        self.spectral_focus_detail_scroll = QScrollArea()
+        self.spectral_focus_detail_scroll.setObjectName("spectralFocusDetailScroll")
+        self.spectral_focus_detail_scroll.setWidgetResizable(True)
+        self.spectral_focus_detail_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.spectral_focus_detail_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.spectral_focus_detail_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        detail_body = QWidget()
+        detail_layout = QVBoxLayout(detail_body)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+        detail_layout.setSpacing(TOKENS.spacing_xs)
+        self.spectral_focus_detail_widgets: list[QWidget] = []
 
         self.spectral_focus_tiles: list[CardFrame] = []
         self.spectral_focus_values: dict[str, tuple[QLabel, QLabel]] = {}
@@ -508,7 +560,9 @@ class SpectralQCPage(QWidget):
             ("correction", "修正"),
             ("provenance", "来源"),
         ):
-            layout.addWidget(self._focus_tile(key, title))
+            tile = self._focus_tile(key, title)
+            detail_layout.addWidget(tile)
+            self.spectral_focus_detail_widgets.append(tile)
 
         self.spectral_focus_next_card = CardFrame(muted=True, role="tile")
         self.spectral_focus_next_card.setProperty("spectralFocusNextCard", True)
@@ -528,12 +582,15 @@ class SpectralQCPage(QWidget):
         next_layout.addWidget(next_label)
         next_layout.addWidget(self.spectral_focus_next_value)
         next_layout.addWidget(self.spectral_focus_next_note)
-        layout.addWidget(self.spectral_focus_next_card)
+        detail_layout.addWidget(self.spectral_focus_next_card)
+        self.spectral_focus_detail_widgets.append(self.spectral_focus_next_card)
 
+        actions_widget = QWidget()
         actions = QGridLayout()
         actions.setContentsMargins(0, 0, 0, 0)
         actions.setHorizontalSpacing(TOKENS.spacing_xs)
         actions.setVerticalSpacing(TOKENS.spacing_xs)
+        actions_widget.setLayout(actions)
         self.spectral_focus_buttons: dict[str, QToolButton] = {}
         for index, (key, text, target) in enumerate(
             (
@@ -551,9 +608,31 @@ class SpectralQCPage(QWidget):
             button.clicked.connect(lambda _checked=False, section=target: self._activate_focus_target(section))
             self.spectral_focus_buttons[key] = button
             actions.addWidget(button, index // 2, index % 2)
-        layout.addLayout(actions)
-        layout.addStretch(1)
+        detail_layout.addWidget(actions_widget)
+        self.spectral_focus_detail_widgets.append(actions_widget)
+        detail_layout.addStretch(1)
+        self.spectral_focus_detail_scroll.setWidget(detail_body)
+        layout.addWidget(self.spectral_focus_detail_scroll, 1)
+        card.setProperty("focusRailMode", "summary")
+        self._show_focus_rail_mode("summary")
         return card
+
+    def _show_focus_rail_mode(self, mode: str) -> None:
+        summary_mode = mode != "detail"
+        if hasattr(self, "spectral_focus_summary_card"):
+            self.spectral_focus_summary_card.setVisible(summary_mode)
+        if hasattr(self, "spectral_focus_detail_scroll"):
+            self.spectral_focus_detail_scroll.setVisible(not summary_mode)
+        for key, button in getattr(self, "spectral_focus_mode_buttons", {}).items():
+            button.blockSignals(True)
+            button.setChecked((key == "summary" and summary_mode) or (key == "detail" and not summary_mode))
+            button.blockSignals(False)
+            button.style().unpolish(button)
+            button.style().polish(button)
+        if hasattr(self, "spectral_focus_rail"):
+            self.spectral_focus_rail.setProperty("focusRailMode", "summary" if summary_mode else "detail")
+            self.spectral_focus_rail.style().unpolish(self.spectral_focus_rail)
+            self.spectral_focus_rail.style().polish(self.spectral_focus_rail)
 
     def _focus_tile(self, key: str, title: str) -> CardFrame:
         tile = CardFrame(muted=True, role="tile")
@@ -1578,6 +1657,22 @@ class SpectralQCPage(QWidget):
         self.spectral_focus_next_card.style().unpolish(self.spectral_focus_next_card)
         self.spectral_focus_next_card.style().polish(self.spectral_focus_next_card)
         self._set_chip(self.spectral_focus_chip, "证据闭合" if tone == "success" else "待复核", tone)
+        if hasattr(self, "spectral_focus_summary_values"):
+            summary_values = {
+                "window": str(row.get("label") or row.get("window_id") or "未选择"),
+                "risk": risk_text,
+                "next": next_value,
+            }
+            for key, value in summary_values.items():
+                label = self.spectral_focus_summary_values.get(key)
+                if label is None:
+                    continue
+                max_chars = 14 if key == "next" else 12
+                label.setText(self._compact_text(value, max_chars))
+                label.setToolTip(next_note if key == "next" else value)
+            self.spectral_focus_summary_card.setProperty("railTone", tone)
+            self.spectral_focus_summary_card.style().unpolish(self.spectral_focus_summary_card)
+            self.spectral_focus_summary_card.style().polish(self.spectral_focus_summary_card)
 
         for button in self.spectral_focus_buttons.values():
             button.setProperty("actionTone", "")

@@ -110,6 +110,16 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert len(page.spectral_focus_tiles) == 5
         assert all(tile.property("spectralFocusTile") is True for tile in page.spectral_focus_tiles)
         assert all(tile.maximumHeight() == 58 for tile in page.spectral_focus_tiles)
+        assert set(page.spectral_focus_mode_buttons) == {"summary", "detail"}
+        assert page.spectral_focus_mode_buttons["summary"].isChecked() is True
+        assert page.spectral_focus_mode_buttons["detail"].isChecked() is False
+        assert page.spectral_focus_rail.property("focusRailMode") == "summary"
+        assert page.spectral_focus_summary_card.property("spectralFocusSummaryCard") is True
+        assert page.spectral_focus_summary_card.isHidden() is False
+        assert set(page.spectral_focus_summary_values) == {"window", "risk", "next"}
+        assert all(value.text() for value in page.spectral_focus_summary_values.values())
+        assert page.spectral_focus_detail_scroll.objectName() == "spectralFocusDetailScroll"
+        assert page.spectral_focus_detail_scroll.isHidden() is True
         assert page.spectral_focus_next_card.property("spectralFocusNextCard") is True
         assert page.spectral_focus_next_card.property("railTone") == "warning"
         assert set(page.spectral_focus_buttons) == {"lag", "tf", "detail", "export"}
@@ -132,6 +142,12 @@ def test_spectral_qc_page_refreshes_with_empty_result(monkeypatch, tmp_path) -> 
         assert page.lag_curve.xData is None or len(page.lag_curve.xData) == 0
         assert page.power_curve.xData is None or len(page.power_curve.xData) == 0
 
+        page._show_focus_rail_mode("detail")
+        assert page.spectral_focus_mode_buttons["summary"].isChecked() is False
+        assert page.spectral_focus_mode_buttons["detail"].isChecked() is True
+        assert page.spectral_focus_rail.property("focusRailMode") == "detail"
+        assert page.spectral_focus_summary_card.isHidden() is True
+        assert page.spectral_focus_detail_scroll.isHidden() is False
         page.spectral_focus_buttons["lag"].click()
         assert controller.spectral_qc_nav_section == "lag_phase"
         assert page.content_stack.currentIndex() == page.section_indexes["lag_phase"]
@@ -164,6 +180,8 @@ def test_spectral_qc_page_refreshes_with_real_result(monkeypatch, tmp_path) -> N
         assert page.ogive_curve.xData is not None and len(page.ogive_curve.xData) > 0
         assert page.spectral_focus_next_card.property("railTone") in {"accent", "success", "warning", "danger"}
         assert page.spectral_focus_values["window"][0].text() != "--"
+        assert page.spectral_focus_summary_values["window"].text() != "--"
+        assert page.spectral_focus_summary_card.property("railTone") in {"accent", "success", "warning", "danger"}
     finally:
         controller.shutdown()
 
@@ -207,9 +225,16 @@ def test_spectral_qc_viewport_layout_keeps_evidence_decks_stable(monkeypatch, tm
             for card in page.summary_metric_cards:
                 assert_contained(page.summary_row, card, page)
             assert_no_visual_overlap(page.summary_metric_cards, page)
-            for tile in page.spectral_focus_tiles:
-                assert_contained(page.spectral_focus_rail, tile, page)
-            assert_no_visual_overlap(page.spectral_focus_tiles, page)
+            assert page.spectral_focus_mode_buttons["summary"].isChecked() is True
+            assert page.spectral_focus_summary_card.isHidden() is False
+            assert page.spectral_focus_detail_scroll.isHidden() is True
+            assert_contained(page.spectral_focus_rail, page.spectral_focus_summary_card, page)
+            page._show_focus_rail_mode("detail")
+            app.processEvents()
+            assert page.spectral_focus_mode_buttons["detail"].isChecked() is True
+            assert page.spectral_focus_detail_scroll.isHidden() is False
+            assert_contained(page.spectral_focus_rail, page.spectral_focus_detail_scroll, page)
+            page._show_focus_rail_mode("summary")
             assert_no_visible_competitor_name(page)
     finally:
         page.close()
