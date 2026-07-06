@@ -19,9 +19,14 @@ from urllib.parse import unquote, urlparse
 from urllib.request import HTTPCookieProcessor, Request, build_opener, url2pathname, urlopen
 import zipfile
 
+from core.comparison import raw_to_final_parity as raw_to_final_parity_module
 from core.comparison.eddypro_source_inventory import build_eddypro_source_inventory
 from core.comparison.official_raw_fixture_bundle import official_raw_fixture_bundle_schema
 from core.comparison.raw_to_final_parity import run_raw_to_final_parity_harness
+from core.ec_rp import analysis as ec_rp_analysis_module
+from core.ec_rp import pipeline as ec_rp_pipeline_module
+from core.storage import ghg_bundle as ghg_bundle_module
+from core.storage import raw_importer as raw_importer_module
 from core.storage.raw_importer import load_raw_text_frames
 from models.station_models import MetadataBundle
 
@@ -61,6 +66,15 @@ _FIXTURE_PACK_SUMMARY_PUBLIC_MANIFESTS = (
     DEFAULT_PUBLIC_OFFICIAL_RAW_MANIFEST_PATH,
     DEFAULT_PUBLIC_RAW_SEARCH_MANIFEST_PATH,
 )
+_FIXTURE_PACK_SUMMARY_PERSISTENT_CACHE_SCHEMA = "fixture_pack_summary_cache_v2"
+_PUBLIC_MANIFEST_LOCAL_PATH_KEYS = {
+    "fixture_pack_path",
+    "metadata_file",
+    "path",
+    "provenance_file",
+    "raw_file",
+    "reference_file",
+}
 
 
 def load_fixture_pack(path: str | Path | None = None) -> dict[str, Any]:
@@ -89,12 +103,60 @@ def _file_signature(path: Path) -> tuple[str, int, int]:
         return (str(resolved), 0, -1)
 
 
+def _module_file_signature(module: Any) -> tuple[str, int, int]:
+    filename = str(getattr(module, "__file__", "") or "")
+    return _file_signature(Path(filename)) if filename else ("", 0, -1)
+
+
+def _fixture_pack_summary_code_signatures() -> tuple[tuple[Any, ...], ...]:
+    return (
+        ("fixture_pack.py", *_file_signature(Path(__file__))),
+        ("raw_to_final_parity.py", *_module_file_signature(raw_to_final_parity_module)),
+        ("ec_rp_analysis.py", *_module_file_signature(ec_rp_analysis_module)),
+        ("ec_rp_pipeline.py", *_module_file_signature(ec_rp_pipeline_module)),
+        ("ghg_bundle.py", *_module_file_signature(ghg_bundle_module)),
+        ("raw_importer.py", *_module_file_signature(raw_importer_module)),
+    )
+
+
+def _fixture_pack_summary_public_manifest_file_signatures(root: Path, manifest_path: Path) -> tuple[tuple[Any, ...], ...]:
+    absolute_manifest = root / manifest_path
+    try:
+        manifest = json.loads(absolute_manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ()
+
+    signatures: list[tuple[Any, ...]] = []
+
+    def visit(value: Any, trail: tuple[str, ...]) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                normalized_key = str(key)
+                if normalized_key in _PUBLIC_MANIFEST_LOCAL_PATH_KEYS and isinstance(child, str):
+                    path_text = child.strip()
+                    if path_text and "://" not in path_text:
+                        signatures.append(
+                            (
+                                str(manifest_path),
+                                ".".join((*trail, normalized_key)),
+                                *_file_signature(_resolve(root, path_text)),
+                            )
+                        )
+                visit(child, (*trail, normalized_key))
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                visit(item, (*trail, str(index)))
+
+    visit(manifest, ())
+    return tuple(sorted(signatures))
+
+
 def _fixture_pack_summary_cache_key(pack_path: Path, root: Path, pack: dict[str, Any]) -> tuple[Any, ...]:
     file_signatures: list[tuple[Any, ...]] = [("pack", *_file_signature(pack_path))]
-    file_signatures.extend(
-        (str(manifest_path), *_file_signature(root / manifest_path))
-        for manifest_path in _FIXTURE_PACK_SUMMARY_PUBLIC_MANIFESTS
-    )
+    file_signatures.extend(("code", *signature) for signature in _fixture_pack_summary_code_signatures())
+    for manifest_path in _FIXTURE_PACK_SUMMARY_PUBLIC_MANIFESTS:
+        file_signatures.append((str(manifest_path), *_file_signature(root / manifest_path)))
+        file_signatures.extend(_fixture_pack_summary_public_manifest_file_signatures(root, manifest_path))
     for asset in list(pack.get("assets", []) or []):
         asset_payload = dict(asset or {})
         fixture_id = str(asset_payload.get("fixture_id", ""))
@@ -116,6 +178,70 @@ def _cache_fixture_pack_summary(cache_key: tuple[Any, ...], summary: dict[str, A
     _FIXTURE_PACK_SUMMARY_CACHE[cache_key] = deepcopy(summary)
 
 
+def _fixture_pack_summary_persistent_cache_dir() -> Path | None:
+    disabled = str(os.environ.get("GAS_EC_DISABLE_FIXTURE_PACK_SUMMARY_CACHE", "")).strip().lower()
+    if disabled in {"1", "true", "yes", "on"}:
+        return None
+    configured = str(os.environ.get("GAS_EC_FIXTURE_PACK_SUMMARY_CACHE_DIR", "") or "").strip()
+    if configured:
+        return Path(configured)
+    return Path(tempfile.gettempdir()) / "gas_ec_studio" / "fixture_pack_summary_cache"
+
+
+def _fixture_pack_summary_persistent_cache_hash(cache_key: tuple[Any, ...]) -> str:
+    encoded = json.dumps(cache_key, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest().upper()
+
+
+def _fixture_pack_summary_persistent_cache_path(cache_key: tuple[Any, ...]) -> tuple[Path | None, str]:
+    cache_hash = _fixture_pack_summary_persistent_cache_hash(cache_key)
+    cache_dir = _fixture_pack_summary_persistent_cache_dir()
+    if cache_dir is None:
+        return None, cache_hash
+    return cache_dir / f"{cache_hash}.json", cache_hash
+
+
+def _read_fixture_pack_summary_persistent_cache(cache_key: tuple[Any, ...]) -> dict[str, Any] | None:
+    path, cache_hash = _fixture_pack_summary_persistent_cache_path(cache_key)
+    if path is None or not path.exists():
+        return None
+    try:
+        wrapper = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if wrapper.get("artifact_type") != _FIXTURE_PACK_SUMMARY_PERSISTENT_CACHE_SCHEMA:
+        return None
+    if str(wrapper.get("cache_hash", "")) != cache_hash:
+        return None
+    payload = wrapper.get("summary", {})
+    return deepcopy(payload) if isinstance(payload, dict) else None
+
+
+def _write_fixture_pack_summary_persistent_cache(cache_key: tuple[Any, ...], summary: dict[str, Any]) -> None:
+    path, cache_hash = _fixture_pack_summary_persistent_cache_path(cache_key)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp_path.write_text(
+            json.dumps(
+                {
+                    "artifact_type": _FIXTURE_PACK_SUMMARY_PERSISTENT_CACHE_SCHEMA,
+                    "cache_hash": cache_hash,
+                    "created_at": datetime.now().isoformat(),
+                    "summary": summary,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        tmp_path.replace(path)
+    except OSError:
+        return
+
+
 def build_fixture_pack_summary(
     path: str | Path | None = None,
     *,
@@ -128,6 +254,11 @@ def build_fixture_pack_summary(
     cache_key = _fixture_pack_summary_cache_key(pack_path, root, pack)
     if use_cache and cache_key in _FIXTURE_PACK_SUMMARY_CACHE:
         return deepcopy(_FIXTURE_PACK_SUMMARY_CACHE[cache_key])
+    if use_cache:
+        cached_summary = _read_fixture_pack_summary_persistent_cache(cache_key)
+        if cached_summary is not None:
+            _cache_fixture_pack_summary(cache_key, cached_summary)
+            return cached_summary
     assets = []
     errors: list[str] = []
     tier_counts: Counter[str] = Counter()
@@ -191,6 +322,7 @@ def build_fixture_pack_summary(
         "errors": errors,
     }
     _cache_fixture_pack_summary(cache_key, summary)
+    _write_fixture_pack_summary_persistent_cache(cache_key, summary)
     return summary
 
 
