@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 import math
+import os
 import shutil
 import struct
 from collections import Counter
@@ -11,6 +12,7 @@ from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from pathlib import Path
+import tempfile
 from typing import Any, Callable, ClassVar
 
 from core.acquisition.runtime_install import (
@@ -373,6 +375,8 @@ FULL_OUTPUT_SCHEMA = [
 class ResultExporter:
     _shared_fixture_pack_cache: ClassVar[dict[tuple[str, str, int, int], dict[str, Any]]] = {}
     _shared_eddypro_artifact_cache: ClassVar[dict[tuple[str, str, int, int, str], dict[str, Any]]] = {}
+    _persistent_eddypro_artifact_names: ClassVar[set[str]] = {"eddypro_computation_stress_suite"}
+    _persistent_eddypro_artifact_schema: ClassVar[str] = "eddypro_export_artifact_cache_v1"
 
     def __init__(self, runtime_root: Path) -> None:
         self.runtime_root = Path(runtime_root)
@@ -466,6 +470,20 @@ class ResultExporter:
             cache["hit_count"] = int(entry.get("hit_count", 0) or 0)
             cache["last_hit_at"] = str(entry.get("last_hit_at", ""))
             return deepcopy(dict(entry.get("payload", {}) or {})), cache
+        persistent_payload = self._read_persistent_eddypro_export_artifact(artifact_name, cache_key)
+        if persistent_payload is not None:
+            cache = {
+                "artifact": artifact_name,
+                "status": "persistent_hit",
+                "pack_path": cache_key[0],
+                "workspace_root": cache_key[1],
+                "mtime_ns": cache_key[2],
+                "size_bytes": cache_key[3],
+                "created_at": datetime.now().isoformat(),
+                "hit_count": 0,
+            }
+            self._eddypro_artifact_cache[key] = {"payload": persistent_payload, "cache": cache, "hit_count": 0}
+            return deepcopy(persistent_payload), deepcopy(cache)
         payload = dict(builder() or {})
         cache = {
             "artifact": artifact_name,
@@ -478,7 +496,132 @@ class ResultExporter:
             "hit_count": 0,
         }
         self._eddypro_artifact_cache[key] = {"payload": payload, "cache": cache, "hit_count": 0}
+        self._write_persistent_eddypro_export_artifact(artifact_name, cache_key, payload)
         return deepcopy(payload), deepcopy(cache)
+
+    @staticmethod
+    def _file_signature(path: Path) -> tuple[str, int, int]:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path.absolute()
+        try:
+            stat = resolved.stat()
+            return (str(resolved), int(stat.st_mtime_ns), int(stat.st_size))
+        except OSError:
+            return (str(resolved), 0, -1)
+
+    @classmethod
+    def _persistent_eddypro_artifact_code_signatures(cls, artifact_name: str) -> tuple[tuple[Any, ...], ...]:
+        repo_root = Path(__file__).resolve().parents[2]
+        relative_paths = [
+            "core/exports/result_exporter.py",
+        ]
+        if artifact_name == "eddypro_computation_stress_suite":
+            relative_paths.extend(
+                [
+                    "core/comparison/eddypro_computation_stress_suite.py",
+                    "core/comparison/synthetic_parity.py",
+                    "core/ec_rp/analysis.py",
+                    "core/ec_rp/pipeline.py",
+                    "core/headless_batch_runner.py",
+                    "core/storage/raw_importer.py",
+                    "core/storage/ghg_bundle.py",
+                ]
+            )
+        return tuple((relative_path, *cls._file_signature(repo_root / relative_path)) for relative_path in relative_paths)
+
+    @classmethod
+    def _persistent_eddypro_artifact_cache_dir(cls) -> Path | None:
+        disabled = str(os.environ.get("GAS_EC_DISABLE_EDDYPRO_ARTIFACT_CACHE", "")).strip().lower()
+        if disabled in {"1", "true", "yes", "on"}:
+            return None
+        configured = str(os.environ.get("GAS_EC_EDDYPRO_ARTIFACT_CACHE_DIR", "") or "").strip()
+        if configured:
+            return Path(configured)
+        return Path(tempfile.gettempdir()) / "gas_ec_studio" / "eddypro_export_artifact_cache"
+
+    @classmethod
+    def _persistent_eddypro_artifact_cache_hash(
+        cls,
+        artifact_name: str,
+        cache_key: tuple[str, str, int, int],
+    ) -> str:
+        payload = {
+            "artifact_name": artifact_name,
+            "cache_key": cache_key,
+            "code_signatures": cls._persistent_eddypro_artifact_code_signatures(artifact_name),
+            "schema": cls._persistent_eddypro_artifact_schema,
+        }
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest().upper()
+
+    @classmethod
+    def _persistent_eddypro_artifact_cache_path(
+        cls,
+        artifact_name: str,
+        cache_key: tuple[str, str, int, int],
+    ) -> tuple[Path | None, str]:
+        cache_hash = cls._persistent_eddypro_artifact_cache_hash(artifact_name, cache_key)
+        cache_dir = cls._persistent_eddypro_artifact_cache_dir()
+        if cache_dir is None:
+            return None, cache_hash
+        return cache_dir / artifact_name / f"{cache_hash}.json", cache_hash
+
+    @classmethod
+    def _read_persistent_eddypro_export_artifact(
+        cls,
+        artifact_name: str,
+        cache_key: tuple[str, str, int, int],
+    ) -> dict[str, Any] | None:
+        if artifact_name not in cls._persistent_eddypro_artifact_names:
+            return None
+        path, cache_hash = cls._persistent_eddypro_artifact_cache_path(artifact_name, cache_key)
+        if path is None or not path.exists():
+            return None
+        try:
+            wrapper = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if wrapper.get("artifact_type") != cls._persistent_eddypro_artifact_schema:
+            return None
+        if str(wrapper.get("cache_hash", "")) != cache_hash:
+            return None
+        payload = wrapper.get("payload", {})
+        return deepcopy(payload) if isinstance(payload, dict) else None
+
+    @classmethod
+    def _write_persistent_eddypro_export_artifact(
+        cls,
+        artifact_name: str,
+        cache_key: tuple[str, str, int, int],
+        payload: dict[str, Any],
+    ) -> None:
+        if artifact_name not in cls._persistent_eddypro_artifact_names:
+            return
+        path, cache_hash = cls._persistent_eddypro_artifact_cache_path(artifact_name, cache_key)
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+            tmp_path.write_text(
+                json.dumps(
+                    {
+                        "artifact_type": cls._persistent_eddypro_artifact_schema,
+                        "artifact_name": artifact_name,
+                        "cache_hash": cache_hash,
+                        "created_at": datetime.now().isoformat(),
+                        "payload": payload,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            tmp_path.replace(path)
+        except OSError:
+            return
 
     def export_minimal_bundle(
         self,

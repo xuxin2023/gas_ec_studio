@@ -247,3 +247,39 @@ def test_result_exporter_eddypro_artifact_cache_reuses_until_pack_signature_chan
     assert third["call_count"] == 2
     assert third_cache["status"] == "miss"
     assert calls["stress_suite"] == 2
+
+
+def test_result_exporter_eddypro_artifact_persistent_cache_reuses_across_instances(monkeypatch, tmp_path: Path) -> None:
+    calls: Counter[str] = Counter()
+    cache_dir = tmp_path / "persistent_eddypro_artifact_cache"
+    pack_path = tmp_path / "fixture_pack.json"
+    pack_path.write_text('{"assets": []}', encoding="utf-8")
+    monkeypatch.setenv("GAS_EC_EDDYPRO_ARTIFACT_CACHE_DIR", str(cache_dir))
+    ResultExporter._shared_eddypro_artifact_cache.clear()
+
+    def build_artifact() -> dict:
+        calls["stress_suite"] += 1
+        return {"artifact_type": "eddypro_computation_stress_suite_v1", "call_count": calls["stress_suite"]}
+
+    first_exporter = ResultExporter(tmp_path / "runtime_one")
+    first_key = first_exporter._fixture_pack_cache_key(pack_path, tmp_path)
+    first, first_cache = first_exporter._cached_eddypro_export_artifact(
+        "eddypro_computation_stress_suite",
+        first_key,
+        build_artifact,
+    )
+
+    ResultExporter._shared_eddypro_artifact_cache.clear()
+    second_exporter = ResultExporter(tmp_path / "runtime_two")
+    second_key = second_exporter._fixture_pack_cache_key(pack_path, tmp_path)
+    second, second_cache = second_exporter._cached_eddypro_export_artifact(
+        "eddypro_computation_stress_suite",
+        second_key,
+        build_artifact,
+    )
+
+    assert first["call_count"] == 1
+    assert second["call_count"] == 1
+    assert first_cache["status"] == "miss"
+    assert second_cache["status"] == "persistent_hit"
+    assert calls["stress_suite"] == 1
