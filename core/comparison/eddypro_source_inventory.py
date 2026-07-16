@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 import hashlib
+import json
 import os
 import subprocess
+import tempfile
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -12,6 +15,7 @@ ENGINE_URL = "https://github.com/LI-COR-Environmental/eddypro-engine"
 GUI_URL = "https://github.com/LI-COR-Environmental/eddypro-gui"
 _SOURCE_INVENTORY_CACHE_MAX_ENTRIES = 8
 _SOURCE_INVENTORY_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
+_SOURCE_INVENTORY_PERSISTENT_CACHE_SCHEMA = "eddypro_source_inventory_cache_v2"
 
 
 EXPECTED_FEATURES: tuple[dict[str, Any], ...] = (
@@ -126,6 +130,11 @@ def build_eddypro_source_inventory(
     cache_key = _source_inventory_cache_key(roots)
     if use_cache and cache_key in _SOURCE_INVENTORY_CACHE:
         return deepcopy(_SOURCE_INVENTORY_CACHE[cache_key])
+    if use_cache:
+        cached_inventory = _read_source_inventory_persistent_cache(cache_key)
+        if cached_inventory is not None:
+            _cache_source_inventory(cache_key, cached_inventory)
+            return cached_inventory
     repositories = {
         "engine": _repository_summary(
             label="EddyPro Engine",
@@ -167,11 +176,12 @@ def build_eddypro_source_inventory(
         ],
     }
     _cache_source_inventory(cache_key, inventory)
+    _write_source_inventory_persistent_cache(cache_key, inventory)
     return inventory
 
 
 def _source_inventory_cache_key(roots: dict[str, Path]) -> tuple[Any, ...]:
-    signatures: list[tuple[Any, ...]] = []
+    signatures: list[tuple[Any, ...]] = [("code", *_file_signature(Path(__file__)))]
     for label in ("engine", "gui"):
         root = roots[label]
         signatures.append((label, "root", _resolved_path_text(root), root.exists()))
@@ -221,6 +231,70 @@ def _cache_source_inventory(cache_key: tuple[Any, ...], inventory: dict[str, Any
     if cache_key not in _SOURCE_INVENTORY_CACHE and len(_SOURCE_INVENTORY_CACHE) >= _SOURCE_INVENTORY_CACHE_MAX_ENTRIES:
         _SOURCE_INVENTORY_CACHE.pop(next(iter(_SOURCE_INVENTORY_CACHE)))
     _SOURCE_INVENTORY_CACHE[cache_key] = deepcopy(inventory)
+
+
+def _source_inventory_persistent_cache_dir() -> Path | None:
+    disabled = str(os.environ.get("GAS_EC_DISABLE_EDDYPRO_SOURCE_INVENTORY_CACHE", "")).strip().lower()
+    if disabled in {"1", "true", "yes", "on"}:
+        return None
+    configured = str(os.environ.get("GAS_EC_EDDYPRO_SOURCE_INVENTORY_CACHE_DIR", "") or "").strip()
+    if configured:
+        return Path(configured)
+    return Path(tempfile.gettempdir()) / "gas_ec_studio" / "eddypro_source_inventory_cache"
+
+
+def _source_inventory_persistent_cache_hash(cache_key: tuple[Any, ...]) -> str:
+    encoded = json.dumps(cache_key, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest().upper()
+
+
+def _source_inventory_persistent_cache_path(cache_key: tuple[Any, ...]) -> tuple[Path | None, str]:
+    cache_hash = _source_inventory_persistent_cache_hash(cache_key)
+    cache_dir = _source_inventory_persistent_cache_dir()
+    if cache_dir is None:
+        return None, cache_hash
+    return cache_dir / f"{cache_hash}.json", cache_hash
+
+
+def _read_source_inventory_persistent_cache(cache_key: tuple[Any, ...]) -> dict[str, Any] | None:
+    path, cache_hash = _source_inventory_persistent_cache_path(cache_key)
+    if path is None or not path.exists():
+        return None
+    try:
+        wrapper = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if wrapper.get("artifact_type") != _SOURCE_INVENTORY_PERSISTENT_CACHE_SCHEMA:
+        return None
+    if str(wrapper.get("cache_hash", "")) != cache_hash:
+        return None
+    payload = wrapper.get("inventory", {})
+    return deepcopy(payload) if isinstance(payload, dict) else None
+
+
+def _write_source_inventory_persistent_cache(cache_key: tuple[Any, ...], inventory: dict[str, Any]) -> None:
+    path, cache_hash = _source_inventory_persistent_cache_path(cache_key)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp_path.write_text(
+            json.dumps(
+                {
+                    "artifact_type": _SOURCE_INVENTORY_PERSISTENT_CACHE_SCHEMA,
+                    "cache_hash": cache_hash,
+                    "created_at": datetime.now().isoformat(),
+                    "inventory": inventory,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        tmp_path.replace(path)
+    except OSError:
+        return
 
 
 def _default_root(value: str | Path | None, dirname: str) -> Path:

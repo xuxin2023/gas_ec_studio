@@ -80,6 +80,41 @@ def test_eddypro_source_inventory_cache_reuses_until_source_signature_changes(mo
     assert calls["git"] > first_git_calls
 
 
+def test_eddypro_source_inventory_persistent_cache_reuses_across_memory_resets(monkeypatch, tmp_path: Path) -> None:
+    calls: Counter[str] = Counter()
+    engine_root = tmp_path / "engine-persistent-cache"
+    gui_root = tmp_path / "gui-persistent-cache"
+    cache_dir = tmp_path / "source-inventory-cache"
+    _materialize_reference_repo(engine_root, "engine", f"{ENGINE_URL}.git")
+    _materialize_reference_repo(gui_root, "gui", f"{GUI_URL}.git")
+    monkeypatch.setenv("GAS_EC_EDDYPRO_SOURCE_INVENTORY_CACHE_DIR", str(cache_dir))
+
+    original_git_value = source_inventory_module._git_value
+
+    def counted_git_value(*args, **kwargs) -> str:
+        calls["git"] += 1
+        return original_git_value(*args, **kwargs)
+
+    monkeypatch.setattr(source_inventory_module, "_git_value", counted_git_value)
+    source_inventory_module._SOURCE_INVENTORY_CACHE.clear()
+
+    first = source_inventory_module.build_eddypro_source_inventory(
+        engine_root=engine_root,
+        gui_root=gui_root,
+        use_cache=False,
+    )
+    first_git_calls = calls["git"]
+    source_inventory_module._SOURCE_INVENTORY_CACHE.clear()
+    first["missing_features"].append("mutated")
+
+    second = source_inventory_module.build_eddypro_source_inventory(engine_root=engine_root, gui_root=gui_root)
+
+    assert first_git_calls > 0
+    assert calls["git"] == first_git_calls
+    assert "mutated" not in second["missing_features"]
+    assert second["status"] == "pass"
+
+
 def _materialize_reference_repo(root: Path, repository: str, remote_url: str) -> None:
     for feature in EXPECTED_FEATURES:
         if feature["repository"] != repository:
