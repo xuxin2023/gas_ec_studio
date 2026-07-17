@@ -3,6 +3,8 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint, QRect
 from PySide6.QtWidgets import QAbstractButton, QComboBox, QLabel, QPlainTextEdit, QTextEdit, QTreeWidget, QWidget
 
+from core.exports.public_text import PUBLIC_FORBIDDEN_TOKENS
+
 
 def widget_bounds(widget: QWidget, root: QWidget) -> QRect:
     return QRect(widget.mapTo(root, QPoint(0, 0)), widget.size())
@@ -56,7 +58,7 @@ def assert_no_visible_competitor_name(root: QWidget) -> None:
                 texts.append(item.text(0))
                 texts.append(item.toolTip(0))
     text = "\n".join(texts)
-    for forbidden in ("EddyPro", "EDDYPRO", "eddypro", "行业参考", "raw-to-final"):
+    for forbidden in PUBLIC_FORBIDDEN_TOKENS:
         assert forbidden not in text
 
 

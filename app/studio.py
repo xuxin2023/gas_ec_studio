@@ -78,6 +78,11 @@ from models.station_models import (
 )
 
 
+INTERNAL_VALIDATION_REPORT_KEYS = frozenset(
+    {"fixture_pack", "eddypro_compare", "benchmark_cockpit", "computation_surface"}
+)
+
+
 @dataclass(slots=True)
 class ManagedDevice:
     config: DeviceConnectionConfig
@@ -100,8 +105,14 @@ class StudioController(QObject):
     spectral_qc_changed = Signal()
     report_changed = Signal()
 
-    def __init__(self, *, workspace_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        workspace_root: Path | None = None,
+        expose_internal_validation: bool = True,
+    ) -> None:
         super().__init__()
+        self.expose_internal_validation = bool(expose_internal_validation)
         self.workspace_root = Path(workspace_root or Path.cwd())
         self.runtime_root = self.workspace_root / "runtime_data"
         self.runtime_root.mkdir(parents=True, exist_ok=True)
@@ -191,6 +202,8 @@ class StudioController(QObject):
         self.selection_changed.emit()
 
     def set_report_nav_section(self, section_key: str) -> None:
+        if not self.expose_internal_validation and section_key in INTERNAL_VALIDATION_REPORT_KEYS:
+            section_key = "method_provenance"
         self.report_center_workspace["selected_report"] = section_key
         self.report_changed.emit()
         self.selection_changed.emit()
@@ -2329,7 +2342,7 @@ class StudioController(QObject):
         report_key = str(workspace.get("selected_report", "run_summary"))
         current = reports.get(report_key, {})
         summary = workspace.get("summary", {})
-        return {
+        result = {
             "view_mode": workspace.get("filters", {}).get("view_mode", "工程诊断"),
             "report_key": report_key,
             "title": current.get("title", "报告"),
@@ -2342,9 +2355,11 @@ class StudioController(QObject):
             "usage": current.get("usage", []),
             "conclusions": current.get("conclusions", []),
             "batch_compare": workspace.get("batch_compare", {}),
-            "eddypro_compare": workspace.get("eddypro_compare", {}),
-            "eddypro_attribution": workspace.get("eddypro_attribution", {}),
         }
+        if self.expose_internal_validation:
+            result["eddypro_compare"] = workspace.get("eddypro_compare", {})
+            result["eddypro_attribution"] = workspace.get("eddypro_attribution", {})
+        return result
 
     def current_eddypro_compare_result(self) -> EddyProCompareResult | None:
         return self.latest_eddypro_compare_result
@@ -4255,7 +4270,8 @@ class StudioController(QObject):
             }
             filters["batch"] = ""
             workspace["reports"] = self._empty_report_payloads()
-            workspace["reports"]["eddypro_compare"] = self._eddypro_report_payload()
+            if self.expose_internal_validation:
+                workspace["reports"]["eddypro_compare"] = self._eddypro_report_payload()
             workspace["batch_compare"] = (
                 self.latest_batch_compare.to_dict()
                 if self.latest_batch_compare is not None
@@ -4268,7 +4284,8 @@ class StudioController(QObject):
 
         filters["batch"] = self._batch_label(run_result)
         reports = self._build_report_payloads_from_run(run_result)
-        reports["eddypro_compare"] = self._eddypro_report_payload()
+        if self.expose_internal_validation:
+            reports["eddypro_compare"] = self._eddypro_report_payload()
         selected_report = str(workspace.get("selected_report", "run_summary"))
         if selected_report not in reports:
             selected_report = "run_summary"
@@ -5324,13 +5341,14 @@ class StudioController(QObject):
             ],
         }
 
-        reports["computation_surface"] = self._computation_surface_report_payload(
-            run_result=run_result,
-            updated_at=updated_at,
-            batch_label=batch_label,
-            result_export_files=result_export_files,
-            file_info_for=file_info_for,
-        )
+        if self.expose_internal_validation:
+            reports["computation_surface"] = self._computation_surface_report_payload(
+                run_result=run_result,
+                updated_at=updated_at,
+                batch_label=batch_label,
+                result_export_files=result_export_files,
+                file_info_for=file_info_for,
+            )
 
         included_files = evidence.get("included_files", [])
         evidence_plot = []
@@ -5371,19 +5389,20 @@ class StudioController(QObject):
             "usage": ["工程诊断和审计留痕优先导出此项。"],
         }
 
-        fixture_payload_builder = (
-            self._fixture_pack_report_payload
-            if selected_report == "fixture_pack"
-            else self._fixture_pack_deferred_report_payload
-        )
-        reports["fixture_pack"] = fixture_payload_builder(
-            run_result=run_result,
-            updated_at=updated_at,
-            batch_label=batch_label,
-            result_export_files=result_export_files,
-            file_info_for=file_info_for,
-        )
-        reports["benchmark_cockpit"] = self._benchmark_cockpit_payload(run_result)
+        if self.expose_internal_validation:
+            fixture_payload_builder = (
+                self._fixture_pack_report_payload
+                if selected_report == "fixture_pack"
+                else self._fixture_pack_deferred_report_payload
+            )
+            reports["fixture_pack"] = fixture_payload_builder(
+                run_result=run_result,
+                updated_at=updated_at,
+                batch_label=batch_label,
+                result_export_files=result_export_files,
+                file_info_for=file_info_for,
+            )
+            reports["benchmark_cockpit"] = self._benchmark_cockpit_payload(run_result)
 
         return reports
 
@@ -7201,6 +7220,9 @@ class StudioController(QObject):
             "method_compare": "方法对比",
             "computation_surface": "计算能力面板",
         }
+        if not self.expose_internal_validation:
+            for report_key in INTERNAL_VALIDATION_REPORT_KEYS:
+                payloads.pop(report_key, None)
         return {
             key: {
                 "title": title,
@@ -7209,8 +7231,8 @@ class StudioController(QObject):
                 "metrics": [("状态", "未运行"), ("批次", "--"), ("窗口", "0"), ("导出", "未生成")],
                 "plot_series": [],
                 "table_headers": ["项目", "数值", "说明"],
-                "table_rows": [("状态", "未生成", "请先运行谱分析或准备行业参考对标结果。")],
-                "conclusions": ["当前页面仅显示真实运行结果，请先运行谱分析或生成行业参考对标结果。"],
+                "table_rows": [("状态", "未生成", "请先运行谱分析生成真实结果。")],
+                "conclusions": ["当前页面仅显示真实运行结果，请先运行谱分析。"],
                 "export_options": ["导出当前报告", "导出证据包"],
                 "file_info": {"状态": "尚未导出"},
                 "versions": [],

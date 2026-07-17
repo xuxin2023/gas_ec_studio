@@ -30,9 +30,16 @@ PUBLIC_REFERENCE_REPLACEMENTS = (
     ("eddypro", "validation"),
 )
 
+PUBLIC_FORBIDDEN_TOKENS = ("EddyPro", "EDDYPRO", "eddypro", "行业参考", "raw-to-final")
+
 
 def public_safe_text(value: object) -> str:
     text = str(value)
     for old, new in PUBLIC_REFERENCE_REPLACEMENTS:
         text = text.replace(old, new)
     return text
+
+
+def find_public_text_violations(values: object) -> list[str]:
+    text = "\n".join(str(value) for value in values) if isinstance(values, (list, tuple, set)) else str(values)
+    return [token for token in PUBLIC_FORBIDDEN_TOKENS if token in text]

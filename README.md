@@ -24,17 +24,18 @@ python -m app.main
 pytest
 ```
 
-## EddyPro Parity Gates
+## Windows RC 构建
 
-This repository keeps two EddyPro parity claims separate:
-
-- `can_release_full_eddypro_parity`: strict official parity. It stays blocked until complete EddyPro/SmartFlux breadth, official EddyPro executable-run raw-to-final evidence, and accepted evidence-pack provenance pass together.
-- `can_release_source_derived_functional_parity`: source-derived functional parity. It can pass when public real raw or hardware evidence is unavailable, using EddyPro-source-derived conformance fixtures, the accepted public official anchor, and delivery-chain tests.
-
-Use:
+RC 使用单文件 Windows EXE，并附带 ZIP、SHA-256 清单和离线启动报告：
 
 ```powershell
-python scripts/run_eddypro_release_gate.py --workspace-root . --output artifacts/eddypro_release_gate/eddypro_release_gate.json --skip-acceptance
+python scripts/build_windows_rc.py
 ```
 
-The second gate is a truthful engineering closure, not a substitute for official field numeric parity or hardware/vendor certification. Current public data discovery status is tracked in `docs/benchmark/public_ec_data_discovery.md`.
+独立 DPI 验证：
+
+```powershell
+python scripts/validate_rc_dpi.py
+```
+
+内部一致性数据仅用于开发回归和历史格式兼容，不在用户界面或人可读交付报告中展示。
