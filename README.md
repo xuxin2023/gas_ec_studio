@@ -38,4 +38,15 @@ python scripts/build_windows_rc.py
 python scripts/validate_rc_dpi.py
 ```
 
+签名环境审计与失败关闭预检：
+
+```powershell
+python scripts/build_windows_rc.py --signing-audit
+python scripts/build_windows_rc.py --require-signature --signing-preflight-only `
+  --certificate-thumbprint <SHA1> `
+  --timestamp-url <RFC3161_URL>
+```
+
+使用可信证书签名 RC 时，优先从 Windows 证书存储区按 thumbprint 选择硬件或系统保护的私钥。也可用 `--pfx`，密码必须通过 `GAS_EC_SIGN_PFX_PASSWORD` 环境变量提供。正式版晋级必须同时满足签名状态 `Valid`、可信时间戳、打包烟测通过和清单提交号一致。
+
 内部一致性数据仅用于开发回归和历史格式兼容，不在用户界面或人可读交付报告中展示。

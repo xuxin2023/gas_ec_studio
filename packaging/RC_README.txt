@@ -5,4 +5,4 @@ Gas EC Studio {{VERSION}}
 用户数据：默认保存在 %LOCALAPPDATA%\GasECStudio\runtime_data。
 
 本包为候选发布版本，用于现场流程、导出链和高 DPI 显示验收。
-当前可执行文件未进行商业代码签名，Windows 可能显示未知发布者提示。
+{{SIGNING_NOTE}}

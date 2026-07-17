@@ -17,6 +17,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.version import APP_VERSION  # noqa: E402
+from scripts.windows_signing import (  # noqa: E402
+    SigningError,
+    authenticode_info,
+    find_signtool,
+    list_code_signing_certificates,
+    prepare_signing_request,
+    sign_and_verify,
+)
 
 
 RC_RUNTIME_MODULES = (
@@ -62,22 +70,15 @@ def _git_commit() -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _authenticode_status(path: Path) -> str:
-    if os.name != "nt":
-        return "not_checked"
-    escaped = str(path).replace("'", "''")
-    result = subprocess.run(
-        [
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            f"(Get-AuthenticodeSignature -LiteralPath '{escaped}').Status.ToString()",
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    return result.stdout.strip() if result.returncode == 0 else "not_checked"
+def _certificate_is_usable(certificate: dict[str, object]) -> bool:
+    if not bool(certificate.get("has_private_key")):
+        return False
+    try:
+        expires_at = datetime.fromisoformat(str(certificate["not_after"]))
+    except (KeyError, TypeError, ValueError):
+        return False
+    now = datetime.now(expires_at.tzinfo) if expires_at.tzinfo else datetime.now()
+    return expires_at > now
 
 
 def main() -> int:
@@ -85,7 +86,62 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT / "artifacts" / "windows_rc")
     parser.add_argument("--work-root", type=Path, default=PROJECT_ROOT / ".build" / "windows_rc")
     parser.add_argument("--incremental", action="store_true", help="Reuse the existing PyInstaller analysis cache.")
+    parser.add_argument("--require-signature", action="store_true", help="Fail unless the output is validly signed and timestamped.")
+    parser.add_argument("--certificate-thumbprint", default="", help="SHA-1 thumbprint in the Windows certificate store.")
+    parser.add_argument("--certificate-store", choices=("CurrentUser", "LocalMachine"), default="CurrentUser")
+    parser.add_argument("--pfx", type=Path, help="PFX code-signing certificate path.")
+    parser.add_argument("--pfx-password-env", default="GAS_EC_SIGN_PFX_PASSWORD")
+    parser.add_argument("--timestamp-url", default=os.environ.get("GAS_EC_TIMESTAMP_URL", ""))
+    parser.add_argument("--signtool", type=Path, help="Explicit signtool.exe path.")
+    parser.add_argument("--signing-preflight-only", action="store_true", help="Validate signing inputs without building.")
+    parser.add_argument("--signing-audit", action="store_true", help="List local signing tools and certificates without building.")
     args = parser.parse_args()
+
+    if args.signing_audit:
+        tool = find_signtool(args.signtool)
+        certificates = list_code_signing_certificates()
+        usable_certificates = [certificate for certificate in certificates if _certificate_is_usable(certificate)]
+        timestamp_url = str(args.timestamp_url or "").strip()
+        timestamp_ready = timestamp_url.startswith(("https://", "http://"))
+        blockers = [
+            *([] if tool else ["signtool_not_found"]),
+            *([] if usable_certificates else ["usable_code_signing_certificate_not_found"]),
+            *([] if timestamp_ready else ["timestamp_url_not_configured"]),
+        ]
+        payload = {
+            "status": "ready" if not blockers else "blocked",
+            "signtool": str(tool or ""),
+            "timestamp_url": timestamp_url,
+            "certificates": certificates,
+            "usable_certificate_count": len(usable_certificates),
+            "blockers": blockers,
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if payload["status"] == "ready" else 2
+
+    signing_request, signing_certificate = prepare_signing_request(
+        signtool=args.signtool,
+        timestamp_url=args.timestamp_url,
+        certificate_thumbprint=args.certificate_thumbprint,
+        certificate_store=args.certificate_store,
+        pfx_path=args.pfx,
+        pfx_password_env=args.pfx_password_env,
+        require_signature=args.require_signature or args.signing_preflight_only,
+    )
+    if args.signing_preflight_only:
+        print(
+            json.dumps(
+                {
+                    "status": "ready",
+                    "signtool": str(signing_request.signtool if signing_request else ""),
+                    "certificate": signing_certificate,
+                    "timestamp_url": signing_request.timestamp_url if signing_request else "",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
 
     missing_modules = [module for module in RC_RUNTIME_MODULES if importlib.util.find_spec(module) is None]
     if missing_modules:
@@ -126,9 +182,27 @@ def main() -> int:
     exe_path = output_root / built_exe.name
     shutil.copy2(built_exe, exe_path)
 
+    if signing_request is not None:
+        signing = sign_and_verify(exe_path, signing_request)
+    else:
+        signing = authenticode_info(exe_path)
+        signing["identity_mode"] = "none"
+        signing["verification"] = "authenticode_only"
+    signing_status = str(signing.get("status", "not_checked"))
+    if args.require_signature and signing_status != "Valid":
+        raise SigningError(f"A valid signature is required, received: {signing_status}")
+
     readme_template = (PROJECT_ROOT / "packaging" / "RC_README.txt").read_text(encoding="utf-8")
     readme_path = output_root / "RC_README.txt"
-    readme_path.write_text(readme_template.replace("{{VERSION}}", display_version), encoding="utf-8")
+    signing_note = (
+        f"本可执行文件已完成代码签名与时间戳验证，签名者：{signing.get('signer_subject', '--')}。"
+        if signing_status == "Valid"
+        else "当前可执行文件未进行商业代码签名，Windows 可能显示未知发布者提示。"
+    )
+    readme_path.write_text(
+        readme_template.replace("{{VERSION}}", display_version).replace("{{SIGNING_NOTE}}", signing_note),
+        encoding="utf-8",
+    )
 
     smoke_report = output_root / "packaged-smoke-report.json"
     smoke_screenshot = output_root / "packaged-smoke-report-center.png"
@@ -162,7 +236,6 @@ def main() -> int:
 
     files = [exe_path, zip_path, readme_path, smoke_report, smoke_screenshot]
     hashes = {path.name: {"bytes": path.stat().st_size, "sha256": _sha256(path)} for path in files}
-    signing_status = _authenticode_status(exe_path)
     manifest = {
         "status": "pass",
         "product": "Gas EC Studio",
@@ -174,6 +247,7 @@ def main() -> int:
         "git_commit": _git_commit(),
         "platform": sys.platform,
         "signing_status": signing_status,
+        "signing": signing,
         "smoke_status": smoke_payload.get("status"),
         "smoke_workspace": str(smoke_workspace),
         "files": hashes,
@@ -190,4 +264,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SigningError as exc:
+        print(f"Signing gate blocked: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
