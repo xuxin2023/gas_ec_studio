@@ -293,6 +293,7 @@ def test_delivery_package_includes_compare_and_attribution(monkeypatch, tmp_path
 
         delivery_dir = _latest_delivery_dir(tmp_path)
         manifest = json.loads((delivery_dir / "package_manifest.json").read_text(encoding="utf-8"))
+        readme = (delivery_dir / "README.txt").read_text(encoding="utf-8")
 
         assert (delivery_dir / "compare_summary.json").exists()
         assert (delivery_dir / "compare_windows.csv").exists()
@@ -300,6 +301,9 @@ def test_delivery_package_includes_compare_and_attribution(monkeypatch, tmp_path
         assert (delivery_dir / "attribution_summary.json").exists()
         assert manifest["compare_id"]
         assert manifest["attribution_id"]
+        assert "EddyPro" not in readme
+        assert "eddypro" not in readme
+        assert "行业参考" not in readme
 
         zip_path = _latest_delivery_zip(tmp_path)
         with ZipFile(zip_path, "r") as archive:

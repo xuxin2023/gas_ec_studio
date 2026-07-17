@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication
 from app.main_window import StudioMainWindow
 from app.studio import StudioController
 from app.theme import apply_app_theme
-from tests.ui_geometry_helpers import assert_contained, assert_no_visual_overlap
+from tests.ui_geometry_helpers import assert_contained, assert_no_visible_competitor_name, assert_no_visual_overlap
 
 
 def _app() -> QApplication:
@@ -37,6 +37,7 @@ def test_main_window_shell_fits_common_desktop_viewports(monkeypatch, tmp_path) 
             assert window._compact_shell is compact
             assert window.inspector.isVisible() is not compact
             assert window.header_status.isVisible() is not compact
+            assert window.navigation.principle_footer.isVisible() is not compact
             assert window.log_panel.maximumHeight() == 44
             assert window.log_panel.latest_line.isVisible() is True
 
@@ -50,7 +51,8 @@ def test_main_window_shell_fits_common_desktop_viewports(monkeypatch, tmp_path) 
 
             nav_widgets = [window.navigation.nav_mission_chip, *window.navigation._buttons.values(), window.navigation.principle_footer]
             for widget in nav_widgets:
-                assert_contained(window.navigation, widget, root)
+                if widget.isVisible():
+                    assert_contained(window.navigation, widget, root)
             assert_no_visual_overlap(nav_widgets, root)
 
             visible_header_widgets = [
@@ -89,6 +91,13 @@ def test_main_window_switches_every_page_without_expanding_viewport(monkeypatch,
             assert window.height() <= 900
             assert window._compact_shell is True
             assert window.inspector.isVisible() is False
+            assert_no_visible_competitor_name(page)
+            if page_key == "report_center":
+                assert window.report_center_page.delivery_rail.isVisible() is False
+                assert window.report_center_page.filter_title.isVisible() is False
+                assert window.report_center_page.report_nav_focus_card.isVisible() is False
+                assert window.report_center_page.report_nav_task_map.isVisible() is False
+                assert window.report_center_page.report_nav_scope_card.isVisible() is False
     finally:
         window.close()
         controller.shutdown()
@@ -117,6 +126,10 @@ def test_main_window_hides_outer_inspector_for_embedded_workbench_pages(monkeypa
             assert window._compact_shell is False
             assert window.inspector.isVisible() is False
             assert window.stack.width() >= 1180
+            if page_key == "report_center":
+                assert window.report_center_page.delivery_rail.isVisible() is True
+                assert window.report_center_page.filter_title.isVisible() is True
+                assert window.report_center_page.report_nav_focus_card.isVisible() is True
     finally:
         window.close()
         controller.shutdown()

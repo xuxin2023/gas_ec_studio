@@ -597,8 +597,8 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         ]
         assert len(route_tiles) == 4
         assert all(tile.maximumHeight() == 58 for tile in route_tiles)
-        assert set(page.empty_state_route_tiles) == {"运行处理", "生成报告", "导出", "打开验证包"}
-        assert set(page.empty_state_route_status_chips) == {"运行处理", "生成报告", "导出", "打开验证包"}
+        assert set(page.empty_state_route_tiles) == {"运行处理", "生成报告", "导出", "查看方法"}
+        assert set(page.empty_state_route_status_chips) == {"运行处理", "生成报告", "导出", "查看方法"}
         assert all(tile.property("launchRouteTile") is True for tile in page.empty_state_route_tiles.values())
         assert all(chip.property("launchRouteStatusChip") is True for chip in page.empty_state_route_status_chips.values())
         assert all(button.property("launchRouteButton") is True for button in page.empty_state_action_buttons.values())
@@ -607,7 +607,7 @@ def test_report_center_delivery_gate_stays_honest_on_empty_state(monkeypatch, tm
         assert page.empty_state_route_status_chips["运行处理"].text() == "可启动"
         assert page.empty_state_route_status_chips["生成报告"].text() == "锁定"
         assert page.empty_state_action_buttons["运行处理"].isEnabled() is True
-        assert page.empty_state_action_buttons["打开验证包"].isEnabled() is True
+        assert page.empty_state_action_buttons["查看方法"].isEnabled() is True
         assert page.empty_state_action_buttons["生成报告"].isEnabled() is False
         assert page.empty_state_action_buttons["导出"].isEnabled() is False
         assert set(page.delivery_gate_values) == {
@@ -1210,7 +1210,7 @@ def test_report_center_delivery_gate_closes_when_delivery_chain_is_ready(monkeyp
         assert page.empty_state_route_tiles["运行处理"].property("routeTone") == "accent"
         assert page.empty_state_route_tiles["生成报告"].property("routeTone") == "success"
         assert page.empty_state_route_tiles["导出"].property("routeTone") == "success"
-        assert page.empty_state_route_tiles["打开验证包"].property("routeTone") == "success"
+        assert page.empty_state_route_tiles["查看方法"].property("routeTone") == "success"
         assert page.empty_state_route_status_chips["生成报告"].text() == "可生成"
         assert page.empty_state_route_status_chips["导出"].text() == "可导出"
     finally:

@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication, QLabel
 
 from app.main_window import StudioMainWindow
-from app.pages.report_center_page import ReportCenterPage, _ui_safe_text
+from app.pages.report_center_page import INTERNAL_VALIDATION_REPORT_KEYS, ReportCenterPage, _ui_safe_text
 from app.studio import StudioController
 from app.widgets.context_inspector import ContextInspector
 
@@ -36,10 +36,10 @@ def test_report_center_ui_safe_text_maps_reference_internal_keys() -> None:
 
     safe = _ui_safe_text(text)
 
-    assert "public_reference_fixture_catalog" in safe
-    assert "official_reference_run" in safe
-    assert "reference_computation_stress_suite" in safe
-    assert "references/reference/official_raw/site_001" in safe
+    assert "public_validation_fixture_catalog" in safe
+    assert "official_validation_run" in safe
+    assert "validation_computation_stress_suite" in safe
+    assert "references/validation/official_raw/site_001" in safe
     assert "eddypro" not in safe
     assert "industry_reference" not in safe
 
@@ -155,21 +155,14 @@ def test_report_center_empty_state_without_compare_result(monkeypatch, tmp_path:
         assert page.delivery_rail.property("cardRole") == "rail"
         assert page.batch_card.property("cardRole") == "panel"
         assert page.report_tree.objectName() == "workflowTree"
-        assert "EddyPro" not in page.preview_title_label.text()
+        assert controller.report_center_workspace["selected_report"] == "run_summary"
+        assert INTERNAL_VALIDATION_REPORT_KEYS.isdisjoint(page.report_items)
         _assert_no_forbidden_ui_text(page)
-        assert page.preview_table.rowCount() >= 1
-        found = False
-        for row in range(page.preview_table.rowCount()):
-            item = page.preview_table.item(row, 2)
-            if item and "当前还没有" in item.text() and "EddyPro" not in item.text():
-                found = True
-                break
-        assert found, "Expected neutral empty compare message in table"
     finally:
         controller.shutdown()
 
 
-def test_report_center_displays_real_compare_summary(monkeypatch, tmp_path: Path) -> None:
+def test_report_center_keeps_real_compare_summary_internal(monkeypatch, tmp_path: Path) -> None:
     _app()
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
     controller = StudioController(workspace_root=tmp_path)
@@ -187,29 +180,15 @@ def test_report_center_displays_real_compare_summary(monkeypatch, tmp_path: Path
         page = ReportCenterPage(controller)
         page.refresh()
 
-        assert "EddyPro" not in page.preview_title_label.text()
+        assert controller.report_center_workspace["eddypro_compare"]["status"] == "ready"
+        assert controller.report_center_workspace["selected_report"] == "run_summary"
+        assert INTERNAL_VALIDATION_REPORT_KEYS.isdisjoint(page.report_items)
         _assert_no_forbidden_ui_text(page)
-        assert "report_center_compare_fixture" in page.preview_source_label.text()
-        assert str(current_export_dir) not in page.preview_source_label.text()
-        assert str(current_export_dir) not in page.preview_delivery_trail_note.text()
-        table_text = " ".join(
-            page.preview_table.item(row, col).text()
-            for row in range(page.preview_table.rowCount())
-            for col in range(page.preview_table.columnCount())
-            if page.preview_table.item(row, col) is not None
-        )
-        assert "report_center_compare_fixture" in table_text
-        assert "reference" in table_text
-        assert str(current_export_dir) not in table_text
-        assert str(reference_dir) not in table_text
-        assert page.preview_metric_values[0].text() != "0"
-        assert page.preview_table.rowCount() > 5
-        assert any(page.preview_table.item(row, 0).text() == "compare_id" for row in range(page.preview_table.rowCount()))
     finally:
         controller.shutdown()
 
 
-def test_context_inspector_returns_eddypro_compare_inspector(monkeypatch, tmp_path: Path) -> None:
+def test_context_inspector_uses_public_report_after_internal_compare_selection(monkeypatch, tmp_path: Path) -> None:
     _app()
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
     controller = StudioController(workspace_root=tmp_path)
@@ -224,14 +203,15 @@ def test_context_inspector_returns_eddypro_compare_inspector(monkeypatch, tmp_pa
         )
         controller.set_report_nav_section("eddypro_compare")
         controller.set_selected_page("report_center")
+        page = ReportCenterPage(controller)
+        page.refresh()
 
         context = controller.context_snapshot()
         inspector = ContextInspector()
         inspector.refresh(context)
 
-        assert "eddypro_compare_inspector" in context
-        assert context["eddypro_compare_inspector"]["compare_id"]
-        assert context["eddypro_compare_inspector"]["actions"]
+        assert "report_inspector" in context
+        assert "eddypro_compare_inspector" not in context
         _assert_no_forbidden_ui_text(inspector)
     finally:
         controller.shutdown()
@@ -277,7 +257,8 @@ def test_main_window_report_center_page_smoke_with_eddypro_compare(monkeypatch, 
         window._refresh_shell()
 
         assert window.stack.currentWidget() is window.report_center_page
-        assert "EddyPro" not in window.report_center_page.preview_title_label.text()
+        assert controller.report_center_workspace["selected_report"] == "run_summary"
+        assert INTERNAL_VALIDATION_REPORT_KEYS.isdisjoint(window.report_center_page.report_items)
         _assert_no_forbidden_ui_text(window.report_center_page)
         window.close()
     finally:

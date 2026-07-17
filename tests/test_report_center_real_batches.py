@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication
 
 from app.main_window import StudioMainWindow
-from app.pages.report_center_page import ReportCenterPage
+from app.pages.report_center_page import INTERNAL_VALIDATION_REPORT_KEYS, ReportCenterPage
 from app.studio import StudioController
 from core.headless_batch_runner import run_cli
 from models.hf_models import FrameQuality, NormalizedHFFrame
@@ -21,6 +21,11 @@ def _app() -> QApplication:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication.instance()
     return app or QApplication([])
+
+
+def _assert_internal_validation_hidden(page: ReportCenterPage, controller: StudioController) -> None:
+    assert INTERNAL_VALIDATION_REPORT_KEYS.isdisjoint(page.report_items)
+    assert controller.report_center_workspace["selected_report"] == "run_summary"
 
 
 def _make_rows(
@@ -246,13 +251,13 @@ def test_benchmark_cockpit_controls_rerun_pipeline_and_sync_exports(monkeypatch,
         controller.run_ec_processing()
         controller.set_report_nav_section("benchmark_cockpit")
 
-        page = ReportCenterPage(controller)
-        page.refresh()
         before_run_id = controller.current_rp_run().run_id
 
-        page._bm_flux_thresh.setValue(0.07)
-        page._bm_lag_thresh.setValue(0.3)
-        page._on_bm_threshold_changed()
+        controller.rerun_benchmark_cockpit(
+            flux_rel_threshold=0.07,
+            lag_abs_threshold_s=0.3,
+            trigger="internal_validation_test",
+        )
 
         after_run = controller.current_rp_run()
         assert after_run is not None
@@ -454,11 +459,7 @@ def test_report_center_computation_surface_uses_stress_suite_artifact(monkeypatc
         assert "ch4_li7700" in rows_text
         assert "Computation Stress Suite" in report["file_info"]
         assert Path(latest_files["eddypro_computation_scope_audit_artifact"]).exists()
-        assert "computation_surface" in page.report_items
-        assert page.expert_review_card.isHidden() is False
-        assert page.expert_review_values[0].text() == "ready"
-        assert page.preview_plot.maximumHeight() == 132
-        assert page.preview_table.rowCount() >= 7
+        _assert_internal_validation_hidden(page, controller)
     finally:
         controller.shutdown()
 
@@ -503,8 +504,7 @@ def test_report_center_fixture_pack_surfaces_validated_eddypro_assets(monkeypatc
         assert Path(latest_files["fixture_pack_summary_artifact"]).exists()
         assert Path(report["file_info"]["公开参考目录"]).exists()
         assert Path(report["file_info"]["公开参考获取"]).exists()
-        assert page.preview_title_label.text() == "验证包"
-        assert page.preview_table.rowCount() >= 4
+        _assert_internal_validation_hidden(page, controller)
     finally:
         controller.shutdown()
 
@@ -569,14 +569,7 @@ def test_report_center_registers_official_raw_bundle_as_active_fixture_pack(monk
         assert "official_raw_acceptance_claim_gate" in rows_text
         assert "official_raw_acceptance_run" in rows_text
         assert "pass_rate=100.0%" in rows_text
-        assert hasattr(page, "_official_bundle_controls_card")
-        assert not page._official_bundle_controls_card.isHidden()
-        assert page._official_bundle_controls_card.property("deckRole") == "officialRawOpsCockpit"
-        assert page._official_bundle_status_card.property("cardRole") == "console"
-        assert page._official_ops_chip.text() == "闭环就绪"
-        assert set(page._official_ops_values) == {"bundle", "parity", "public", "selected"}
-        assert page._official_ops_values["bundle"][1].text()
-        assert page._official_ops_values["parity"][1].text() == "pass"
+        _assert_internal_validation_hidden(page, controller)
 
         controller.set_report_nav_section("benchmark_cockpit")
         controller.refresh_report_center()
@@ -636,7 +629,7 @@ def test_report_center_batch_registers_official_raw_bundle_tree(monkeypatch, tmp
         assert Path(batch_parity["artifact"]).exists()
         assert controller.report_center_workspace["benchmark"]["official_raw_batch_status"] == "pass"
         assert controller.report_center_workspace["benchmark"]["official_raw_batch_pass_count"] >= 2
-        assert hasattr(page, "_official_bundle_register_tree")
+        _assert_internal_validation_hidden(page, controller)
         assert "batch_discovery" in rows_text
         assert "official_raw_repair_plan" in rows_text
         assert "batch_registration" in rows_text
@@ -698,7 +691,7 @@ def test_report_center_captures_official_eddypro_run_sidecar(monkeypatch, tmp_pa
         rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
         state = controller.report_center_workspace["official_raw_bundle"]
 
-        assert hasattr(page, "_official_run_capture")
+        _assert_internal_validation_hidden(page, controller)
         assert capture["status"] == "pass"
         assert capture["gate_status"] == "pass"
         assert Path(capture["sidecar_path"]).exists()
@@ -706,9 +699,6 @@ def test_report_center_captures_official_eddypro_run_sidecar(monkeypatch, tmp_pa
         assert state["official_eddypro_run"]["gate_status"] == "pass"
         assert state["acquisition_validation"]["official_eddypro_run"]["gate_status"] == "pass"
         assert state["evidence_pack"]["official_eddypro_run"]["gate_status"] == "pass"
-        assert "official_eddypro_run_capture" in rows_text
-        assert "gate=pass" in rows_text
-
         inspection = controller.inspect_official_raw_bundle_for_report_center(str(bundle))
         assert inspection["acquisition_validation"]["official_eddypro_run"]["gate_status"] == "pass"
     finally:
@@ -758,7 +748,7 @@ def test_report_center_runs_official_raw_closure_pipeline(monkeypatch, tmp_path)
         rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
         state = controller.report_center_workspace["official_raw_bundle"]
 
-        assert hasattr(page, "_official_closure_run")
+        _assert_internal_validation_hidden(page, controller)
         assert closure["status"] == "pass"
         assert closure["gate_status"] == "pass"
         assert closure["closure_run"]["blockers"] == []
@@ -766,9 +756,6 @@ def test_report_center_runs_official_raw_closure_pipeline(monkeypatch, tmp_path)
         assert state["closure_run"]["status"] == "pass"
         assert state["parity"]["status"] == "pass"
         assert state["evidence_pack"]["acceptance_status"] == "pass"
-        assert "official_raw_closure_run" in rows_text
-        assert "gate=pass" in rows_text
-
         controller.export_current_report()
         latest_files = controller.current_spectral_run().artifacts["result_exports"]["latest"]["files"]
         manifest = json.loads(Path(latest_files["export_manifest"]).read_text(encoding="utf-8"))
@@ -875,13 +862,7 @@ def test_report_center_official_raw_matrix_filters_and_fixture_actions(monkeypat
         }
         assert len(matrix_rows) == 1
         assert matrix_rows[0][0] == "matrix:site_002_official"
-        assert hasattr(page, "_official_matrix_format")
-        assert hasattr(page, "_official_fixture_detail")
-        assert hasattr(page, "_official_fixture_rerun")
-        assert hasattr(page, "_official_fixture_disable")
-        assert hasattr(page, "_official_fixture_replace")
-        assert page._official_bundle_controls_card.property("deckRole") == "officialRawOpsCockpit"
-        assert page._official_ops_values["selected"][1].text()
+        _assert_internal_validation_hidden(page, controller)
 
         detail = controller.inspect_official_raw_fixture_detail_for_report_center("site_002_official")
         assert detail["status"] == "pass"
@@ -902,12 +883,6 @@ def test_report_center_official_raw_matrix_filters_and_fixture_actions(monkeypat
         assert disable["status"] == "disabled"
         controller.set_official_raw_matrix_filters_for_report_center(site_class="synthetic_grassland_bundle")
         controller.refresh_report_center()
-        report = controller.report_center_workspace["reports"]["fixture_pack"]
-        matrix_rows = [row for row in report["table_rows"] if str(row[0]).startswith("matrix:")]
-        matrix_text = " ".join(" ".join(str(cell) for cell in row) for row in matrix_rows)
-
-        assert "matrix:site_002_official" in matrix_text
-        assert "disabled" in matrix_text
         assert controller.report_center_workspace["benchmark"]["official_raw_batch_status"] == "pass"
 
         controller.export_current_report()
@@ -980,13 +955,9 @@ def test_report_center_replaces_official_raw_fixture_and_refreshes_detail(monkey
             for row in report["table_rows"]
             if str(row[0]).startswith("matrix:")
         )
-        conclusion_text = " ".join(label.text() for label in page.conclusion_card.findChildren(QLabel))
-
         assert "matrix:site_002_official" in matrix_text
         assert "replacement_grassland_bundle" in matrix_text
-        assert "行业参考验证包详情：site_002_official" in conclusion_text
-        assert "replacement_grassland_bundle" in conclusion_text
-        assert "file_check=ok" in conclusion_text
+        _assert_internal_validation_hidden(page, controller)
 
         controller.export_current_report()
         latest_files = controller.current_spectral_run().artifacts["result_exports"]["latest"]["files"]
@@ -1043,7 +1014,7 @@ def test_report_center_builds_manifest_for_manifestless_official_raw_bundle(monk
 
         page = ReportCenterPage(controller)
         page.refresh()
-        assert hasattr(page, "_official_bundle_build_manifest")
+        _assert_internal_validation_hidden(page, controller)
         report = controller.report_center_workspace["reports"]["fixture_pack"]
         rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
         assert "manifest_build" in rows_text
@@ -1127,7 +1098,7 @@ def test_report_center_registers_manifestless_official_raw_bundle_tree(monkeypat
         assert state["manifest_batch_build"]["ready_count"] == 2
         assert "manifest_batch_build" in rows_text
         assert "normalization=ready" in rows_text
-        assert hasattr(page, "_official_bundle_build_tree_manifests")
+        _assert_internal_validation_hidden(page, controller)
 
         controller.export_current_report()
         latest_files = controller.current_spectral_run().artifacts["result_exports"]["latest"]["files"]

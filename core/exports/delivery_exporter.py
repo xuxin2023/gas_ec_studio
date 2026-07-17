@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from core.exports.public_text import public_safe_text
+
 
 def export_delivery_package(
     *,
@@ -221,7 +223,7 @@ def _build_readme(
         "目录结构说明：",
         "1. formal_report.html / formal_report_snapshot.json / report_manifest.json：正式报告与其快照、manifest。",
         "2. rp_results.csv / spectral_qc_results.csv / summary.json / config_snapshot.json / project_site_snapshot.json / report_snapshot.json：结果表与运行快照。",
-        "3. compare_summary.json / compare_windows.csv / compare_manifest.json：EddyPro 对标结果。",
+        "3. compare_summary.json / compare_windows.csv / compare_manifest.json：结果一致性验证文件。",
         "4. evidence/ 子目录：谱修正与 QC 证据包，包括 manifest、summary、qc_windows 等。",
         "5. attribution_summary.json：自动归因结果摘要。",
         "6. delivery_audit.json：交付链审计摘要，校验 result manifest、artifact、network validation 与包内文件一致性。",
@@ -235,8 +237,8 @@ def _build_readme(
         "rp_results.csv 为 RP 窗口结果表；spectral_qc_results.csv 为谱修正/QC 窗口结果表。",
         "若存在 method_parity_matrix.json、spectral_assessment.json、footprint_2d_contour.svg、performance_profile.json，则它们来自 result bundle 并由 delivery_audit.json 统一索引。",
         "",
-        "对标结果说明：",
-        "若当前批次存在 EddyPro compare，则 compare 相关文件会出现在包内。",
+        "结果验证说明：",
+        "若当前批次存在系统验证结果，则 compare 相关文件会出现在包内。",
         "",
         "证据包说明：",
         "若当前批次存在 evidence bundle，则 evidence/ 子目录包含对应证据导出。",
@@ -289,7 +291,7 @@ def _build_readme(
             ]
         )
     lines.append("")
-    return "\n".join(lines)
+    return public_safe_text("\n".join(lines))
 
 
 def _build_delivery_audit(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtWidgets import QAbstractButton, QComboBox, QLabel, QPlainTextEdit, QTextEdit, QTreeWidget, QWidget
 
 
 def widget_bounds(widget: QWidget, root: QWidget) -> QRect:
@@ -36,9 +36,28 @@ def visible_label_text(root: QWidget) -> str:
 
 
 def assert_no_visible_competitor_name(root: QWidget) -> None:
-    text = visible_label_text(root)
-    assert "EddyPro" not in text
-    assert "eddypro" not in text
+    texts = [visible_label_text(root)]
+    for widget in root.findChildren(QWidget):
+        if not widget.isVisibleTo(root):
+            continue
+        if widget.toolTip():
+            texts.append(widget.toolTip())
+        if isinstance(widget, QAbstractButton):
+            texts.append(widget.text())
+        elif isinstance(widget, QComboBox):
+            texts.extend(widget.itemText(index) for index in range(widget.count()))
+        elif isinstance(widget, QPlainTextEdit):
+            texts.append(widget.toPlainText())
+        elif isinstance(widget, QTextEdit):
+            texts.append(widget.toPlainText())
+        elif isinstance(widget, QTreeWidget):
+            for index in range(widget.topLevelItemCount()):
+                item = widget.topLevelItem(index)
+                texts.append(item.text(0))
+                texts.append(item.toolTip(0))
+    text = "\n".join(texts)
+    for forbidden in ("EddyPro", "EDDYPRO", "eddypro", "行业参考", "raw-to-final"):
+        assert forbidden not in text
 
 
 def _widget_name(widget: QWidget) -> str:

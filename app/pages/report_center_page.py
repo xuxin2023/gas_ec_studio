@@ -44,19 +44,19 @@ REPORT_SECTIONS = [
     ("anomaly_events", "异常事件报告", "把日志与事件整理成可汇报的异常视图。"),
     ("site_method", "站点方法说明", "作为正式报告附录，说明结论来自哪些方法配置。"),
     ("evidence_pack", "证据包", "统一导出图表、表格与日志证据。"),
-    ("fixture_pack", "验证包", "验证行业参考集、raw-to-final readiness、合成回归集与 YGAS 协议样例。"),
-    ("eddypro_compare", "行业参考对标报告", "集中查看当前结果与行业参考结果的对标摘要和窗口差异。"),
-    ("benchmark_cockpit", "基准驾驶舱", "查看参考对标结果：通过率、阈值、偏差详情。"),
     ("method_provenance", "方法溯源", "查看 Footprint、不确定度、谱修正的方法来源、局限性和溯源信息。"),
-    ("method_compare", "方法对比", "查看方法族对比、参考方法 parity matrix、2D footprint contour 与长窗口性能 profile。"),
-    ("computation_surface", "计算能力面板", "查看行业参考计算核心族 ready/blocked 状态、stress suite 与声明边界。"),
+    ("method_compare", "方法对比", "查看方法族差异、2D footprint contour 与长窗口性能 profile。"),
 ]
+
+INTERNAL_VALIDATION_REPORT_KEYS = frozenset(
+    {"fixture_pack", "eddypro_compare", "benchmark_cockpit", "computation_surface"}
+)
 
 REPORT_NAV_PHASES = [
     ("run", "运行", "采集到结果", ("run_summary", "device_status", "acquisition_quality", "ec_results")),
     ("qc", "质控", "频谱与异常", ("spectral_qc", "anomaly_events", "site_method")),
-    ("delivery", "交付", "报告与证据", ("evidence_pack", "fixture_pack", "eddypro_compare", "benchmark_cockpit")),
-    ("method", "方法", "方法与算力", ("method_provenance", "method_compare", "computation_surface")),
+    ("delivery", "交付", "报告与证据", ("evidence_pack",)),
+    ("method", "方法", "方法与算力", ("method_provenance", "method_compare")),
 ]
 
 
@@ -116,18 +116,23 @@ class ReportCenterPage(QWidget):
         tree_layout = QVBoxLayout(self.tree_card)
         tree_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
         tree_layout.setSpacing(TOKENS.spacing_xs)
-        tree_header = QHBoxLayout()
+        tree_header = QVBoxLayout()
         tree_header.setContentsMargins(0, 0, 0, 0)
         tree_header.setSpacing(TOKENS.spacing_xs)
-        tree_header.addWidget(section_title("报告目录", "按场景组织，快速跳转。"), 1)
+        self.report_tree_title = section_title("报告目录", "按场景组织，快速跳转。")
+        tree_header.addWidget(self.report_tree_title)
+        tree_status = QHBoxLayout()
+        tree_status.setContentsMargins(0, 0, 0, 0)
+        tree_status.setSpacing(TOKENS.spacing_xs)
         self.report_tree_count_chip = chip("0 项", "accent")
         self.report_tree_count_chip.setMinimumHeight(20)
         self.report_tree_count_chip.setMaximumHeight(22)
         self.report_tree_active_chip = chip("运行摘要", "success")
         self.report_tree_active_chip.setMinimumHeight(20)
         self.report_tree_active_chip.setMaximumHeight(22)
-        tree_header.addWidget(self.report_tree_count_chip)
-        tree_header.addWidget(self.report_tree_active_chip)
+        tree_status.addWidget(self.report_tree_count_chip)
+        tree_status.addWidget(self.report_tree_active_chip, 1)
+        tree_header.addLayout(tree_status)
         tree_layout.addLayout(tree_header)
         self.report_nav_phase_strip = self._build_report_nav_phase_strip()
         tree_layout.addWidget(self.report_nav_phase_strip)
@@ -823,7 +828,19 @@ class ReportCenterPage(QWidget):
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
+        self._apply_responsive_layout()
         self._position_delivery_gate_detail_drawer()
+
+    def _apply_responsive_layout(self) -> None:
+        compact = self.width() < 1180
+        short = self.height() < 620
+        self.delivery_rail.setVisible(not compact)
+        self.filter_title.setVisible(not compact)
+        self.report_command_summary_card.setVisible(not compact)
+        for widget in (self.report_nav_focus_card, self.report_nav_task_map, self.report_nav_scope_card):
+            widget.setVisible(not compact and not short)
+        self.tree_card.setMinimumWidth(184 if compact else 200)
+        self.tree_card.setMaximumWidth(220 if compact else 248)
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
         if event.key() == Qt.Key_Escape and self._close_delivery_overlays(clear_pin=True):
@@ -834,6 +851,9 @@ class ReportCenterPage(QWidget):
     def refresh(self) -> None:
         workspace = self.controller.report_center_workspace
         selected_report = str(workspace.get("selected_report", "run_summary"))
+        if selected_report not in self.report_items:
+            selected_report = "run_summary"
+            workspace["selected_report"] = selected_report
         selected_payload = dict(dict(workspace.get("reports", {}) or {}).get(selected_report, {}) or {})
         if selected_report == "fixture_pack" and selected_payload.get("deferred"):
             self.controller.refresh_report_center()
@@ -1066,12 +1086,12 @@ class ReportCenterPage(QWidget):
         layout = QHBoxLayout(card)
         layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_sm, TOKENS.spacing_lg, TOKENS.spacing_sm)
         layout.setSpacing(TOKENS.spacing_sm)
-        title = section_title("报告筛选", "从真实项目与运行批次驱动预览、导出和交付检查。")
-        title.setProperty("compactFilterTitle", True)
-        title.setMinimumWidth(180)
-        title.setMaximumWidth(220)
-        title.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        layout.addWidget(title)
+        self.filter_title = section_title("报告筛选", "从真实项目与运行批次驱动预览、导出和交付检查。")
+        self.filter_title.setProperty("compactFilterTitle", True)
+        self.filter_title.setMinimumWidth(180)
+        self.filter_title.setMaximumWidth(220)
+        self.filter_title.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        layout.addWidget(self.filter_title)
         layout.addStretch(1)
 
         self.project_combo = QComboBox()
@@ -1761,7 +1781,7 @@ class ReportCenterPage(QWidget):
             ("1", "运行 EC 处理", "从当前高频缓存生成真实窗口和 RP 结果。", "运行处理", self._run_ec_processing_from_report_center),
             ("2", "生成报告", "把最新运行结果同步到报告中心和右侧交付门槛。", "生成报告", self._generate_report),
             ("3", "导出交付包", "写出报告、manifest、网络校验和证据文件。", "导出", self._export_current_report),
-            ("4", "检查验证包", "打开验证包页，注册或审计行业参考 raw-to-final 证据。", "打开验证包", self._open_fixture_pack_report),
+            ("4", "检查方法来源", "打开方法溯源页，确认方法、版本和适用边界。", "查看方法", self._open_fixture_pack_report),
         ]
         self.empty_state_action_buttons: dict[str, QPushButton] = {}
         self.empty_state_route_tiles: dict[str, CardFrame] = {}
@@ -2365,7 +2385,7 @@ class ReportCenterPage(QWidget):
         self._show_info("批次对比已更新", result["message"])
 
     def _open_fixture_pack_report(self) -> None:
-        self.controller.set_report_nav_section("fixture_pack")
+        self.controller.set_report_nav_section("method_provenance")
 
     @staticmethod
     def _compact_report_source(source: object, *, max_chars: int = 56) -> str:
@@ -4506,7 +4526,7 @@ class ReportCenterPage(QWidget):
         elif key in {"manifest", "network"}:
             self._open_delivery_detail_section("file")
         elif key == "benchmark":
-            self.controller.set_report_nav_section("benchmark_cockpit")
+            self.controller.set_report_nav_section("method_provenance")
             self.refresh()
             self._show_delivery_focus("gate")
         elif key == "methods":
@@ -4550,7 +4570,7 @@ class ReportCenterPage(QWidget):
             self.refresh()
             self._show_delivery_focus("gate")
         elif target == "benchmark":
-            self.controller.set_report_nav_section("benchmark_cockpit")
+            self.controller.set_report_nav_section("method_provenance")
             self.refresh()
             self._show_delivery_focus("gate")
         elif target == "export":
@@ -4805,14 +4825,14 @@ class ReportCenterPage(QWidget):
                 "运行处理": ("可启动", "accent"),
                 "生成报告": ("锁定", "warning"),
                 "导出": ("锁定", "warning"),
-                "打开验证包": ("可打开", "accent"),
+                "查看方法": ("可打开", "accent"),
             }
             if not has_real_result
             else {
                 "运行处理": ("可重跑", "accent"),
                 "生成报告": ("可生成", "success"),
                 "导出": ("可导出", "success"),
-                "打开验证包": ("可审计", "success"),
+                "查看方法": ("可复核", "success"),
             }
         )
         for key, (status, tone) in route_states.items():

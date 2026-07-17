@@ -9,6 +9,8 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
+from core.exports.public_text import public_safe_text
+
 
 REPORT_VERSION = "formal_report_v1"
 _TEMPLATE_DIR = Path(__file__).with_name("templates")
@@ -792,9 +794,9 @@ def _build_formal_report_snapshot(
             ],
         },
         {
-            "id": "eddypro-summary",
-            "title": "EddyPro 对标摘要",
-            "intro": "若存在对标结果，则展示当前批次与参考结果的窗口匹配与偏差摘要。",
+            "id": "validation-summary",
+            "title": "结果一致性摘要",
+            "intro": "若存在验证结果，则展示当前批次与验证结果的窗口匹配与偏差摘要。",
             "tables": [
                 {
                     "title": "对标结果",
@@ -1231,10 +1233,11 @@ def _render_formal_report_html(snapshot: dict[str, Any]) -> str:
 
     template = _load_template("report_template.html", _DEFAULT_TEMPLATE)
     styles = _load_template("report_styles.css", _DEFAULT_STYLES)
-    return template.replace("{{REPORT_TITLE}}", escape(header["title"])).replace("{{INLINE_STYLES}}", styles).replace(
+    html = template.replace("{{REPORT_TITLE}}", escape(header["title"])).replace("{{INLINE_STYLES}}", styles).replace(
         "{{REPORT_BODY}}",
         "\n".join(section_html),
     )
+    return public_safe_text(html)
 
 
 def _load_template(filename: str, fallback: str) -> str:

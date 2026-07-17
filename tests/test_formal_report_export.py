@@ -244,7 +244,10 @@ def test_formal_report_contains_compare_and_attribution_sections(monkeypatch, tm
         html = (export_dir / "formal_report.html").read_text(encoding="utf-8")
         manifest = json.loads((export_dir / "report_manifest.json").read_text(encoding="utf-8"))
 
-        assert "EddyPro 对标摘要" in html
+        assert "结果一致性摘要" in html
+        assert "EddyPro" not in html
+        assert "eddypro" not in html
+        assert "行业参考" not in html
         assert "差异自动归因" in html
         assert "matched_window_count" in html
         assert "dominant_causes" in html

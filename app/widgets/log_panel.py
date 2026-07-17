@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.theme import CardFrame, TOKENS, chip
+from app.ui_text import ui_safe_text
 
 
 class LogPanel(CardFrame):
@@ -77,9 +78,10 @@ class LogPanel(CardFrame):
         self.set_expanded(False)
 
     def set_lines(self, lines: list[str]) -> None:
-        self.editor.setPlainText("\n".join(lines))
-        self.log_count_chip.setText(f"{len(lines)} 条")
-        self.latest_line.setText(lines[0] if lines else "暂无日志。")
+        safe_lines = [ui_safe_text(line) for line in lines]
+        self.editor.setPlainText("\n".join(safe_lines))
+        self.log_count_chip.setText(f"{len(safe_lines)} 条")
+        self.latest_line.setText(safe_lines[0] if safe_lines else "暂无日志。")
         self.latest_line.setToolTip(self.latest_line.text())
         cursor = self.editor.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)

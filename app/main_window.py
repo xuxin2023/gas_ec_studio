@@ -375,6 +375,7 @@ class StudioMainWindow(QMainWindow):
         self._compact_shell = compact
         self._inspector_visible = inspector_visible
         self.header_status.setVisible(not compact)
+        self.navigation.principle_footer.setVisible(not compact)
         self.inspector.setVisible(inspector_visible)
         if not inspector_visible:
             self.inner_splitter.setSizes([1, 0])

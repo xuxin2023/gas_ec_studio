@@ -69,7 +69,7 @@ class EddyProBridgeExporter:
             "export_root": str(export_root),
             "ascii_path": str(ascii_path),
             "metadata_path": str(metadata_path),
-            "summary_text": f"Exported EddyPro bridge skeleton with {len(rows)} HF rows.",
+            "summary_text": f"Exported validation bridge skeleton with {len(rows)} HF rows.",
         }
 
     def _headers(self) -> list[str]:
