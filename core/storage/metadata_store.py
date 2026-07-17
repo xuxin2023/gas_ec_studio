@@ -228,6 +228,36 @@ class MetadataStore:
                 (doc_key, json.dumps(payload, ensure_ascii=False, indent=2), updated_at),
             )
 
+    def save_metadata_snapshot(self, *, active_profile: str, payload: dict) -> None:
+        updated_at = datetime.now().isoformat()
+        document_rows = [
+            ("active_metadata", json.dumps(payload, ensure_ascii=False, indent=2), updated_at),
+            ("dynamic_metadata", json.dumps(payload.get("dynamic_metadata", {}), ensure_ascii=False, indent=2), updated_at),
+            ("biomet_source", json.dumps(payload.get("biomet", {}), ensure_ascii=False, indent=2), updated_at),
+            ("active_profile", json.dumps({"profile_name": active_profile}, ensure_ascii=False, indent=2), updated_at),
+        ]
+        with self._connect() as conn:
+            conn.executemany(
+                """
+                insert into metadata_documents(doc_key, payload_json, updated_at)
+                values (?, ?, ?)
+                on conflict(doc_key) do update set
+                    payload_json=excluded.payload_json,
+                    updated_at=excluded.updated_at
+                """,
+                document_rows,
+            )
+            conn.execute(
+                """
+                insert into alternative_metadata(profile_name, payload_json, updated_at)
+                values (?, ?, ?)
+                on conflict(profile_name) do update set
+                    payload_json=excluded.payload_json,
+                    updated_at=excluded.updated_at
+                """,
+                (active_profile, json.dumps(payload, ensure_ascii=False, indent=2), updated_at),
+            )
+
     def load_metadata_document(self, doc_key: str) -> dict | None:
         with self._connect() as conn:
             row = conn.execute(

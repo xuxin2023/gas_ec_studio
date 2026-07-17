@@ -632,7 +632,6 @@ class StudioController(QObject):
 
     def _persist_metadata_bundle(self) -> None:
         payload = self.metadata_bundle().to_dict()
-        self.metadata_store.save_metadata_document("active_metadata", payload)
         active_profile = (
             self.project_workspace.get("metadata", {})
             .get("alternative_metadata", {})
@@ -640,10 +639,7 @@ class StudioController(QObject):
             or self.project_profile.code
             or "default"
         )
-        self.metadata_store.save_metadata_document("dynamic_metadata", payload.get("dynamic_metadata", {}))
-        self.metadata_store.save_metadata_document("biomet_source", payload.get("biomet", {}))
-        self.metadata_store.save_metadata_document("active_profile", {"profile_name": active_profile})
-        self.metadata_store.save_alternative_metadata(str(active_profile), payload)
+        self.metadata_store.save_metadata_snapshot(active_profile=str(active_profile), payload=payload)
 
     def _ensure_metadata_workspace(self, payload: dict) -> dict:
         metadata = payload.setdefault("metadata", {})

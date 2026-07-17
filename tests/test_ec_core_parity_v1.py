@@ -100,6 +100,12 @@ def test_metadata_store_and_headless_runner_are_deterministic(tmp_path: Path) ->
     loaded = store.load_alternative_metadata("parity")
     assert loaded is not None
     assert loaded.project.code == "PARITY-001"
+    store.save_metadata_snapshot(active_profile="parity", payload=bundle.to_dict())
+    assert store.load_metadata_document("active_metadata")["project"]["code"] == "PARITY-001"
+    assert store.load_metadata_document("active_profile")["profile_name"] == "parity"
+    snapshot = store.load_alternative_metadata("parity")
+    assert snapshot is not None
+    assert snapshot.site.station_code == "SITE-P"
 
     rows = _make_rows()
     config = {
