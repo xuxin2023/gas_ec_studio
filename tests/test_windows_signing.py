@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
-from scripts import build_windows_rc, windows_signing
+from scripts import bootstrap_windows_signing_tools, build_windows_rc, windows_signing
 
 
 def test_certificate_usability_requires_private_key_and_future_expiry() -> None:
@@ -24,6 +26,46 @@ def test_normalize_thumbprint_accepts_spacing_and_rejects_invalid() -> None:
     assert windows_signing.normalize_thumbprint(source) == source.replace(" ", "")
     with pytest.raises(windows_signing.SigningError, match="40-character"):
         windows_signing.normalize_thumbprint("not-a-thumbprint")
+
+
+def test_find_signtool_uses_pinned_build_cache(monkeypatch, tmp_path: Path) -> None:
+    cache_root = tmp_path / "windows-sdk"
+    monkeypatch.setattr(windows_signing, "WINDOWS_SDK_BUILD_TOOLS_ROOT", cache_root)
+    monkeypatch.setattr(windows_signing.shutil, "which", lambda _name: None)
+    tool = windows_signing.bundled_signtool_path()
+    tool.parent.mkdir(parents=True)
+    tool.write_bytes(b"tool")
+    monkeypatch.setattr(windows_signing, "WINDOWS_SDK_SIGNTOOL_SHA256", hashlib.sha256(b"tool").hexdigest().upper())
+
+    assert windows_signing.find_signtool() == tool.resolve()
+
+
+def test_find_signtool_rejects_tampered_build_cache(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(windows_signing, "WINDOWS_SDK_BUILD_TOOLS_ROOT", tmp_path / "windows-sdk")
+    tool = windows_signing.bundled_signtool_path()
+    tool.parent.mkdir(parents=True)
+    tool.write_bytes(b"tampered")
+
+    with pytest.raises(windows_signing.SigningError, match="Bundled SignTool SHA-256 mismatch"):
+        windows_signing.find_signtool()
+
+
+def test_signing_tool_hash_validation_fails_closed(tmp_path: Path) -> None:
+    payload = tmp_path / "package.nupkg"
+    payload.write_bytes(b"unexpected")
+
+    with pytest.raises(windows_signing.SigningError, match="SHA-256 mismatch"):
+        bootstrap_windows_signing_tools._assert_hash(payload, "0" * 64, "test package")
+
+
+def test_signing_tool_extraction_rejects_parent_traversal(tmp_path: Path) -> None:
+    package = tmp_path / "unsafe.nupkg"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("../outside.txt", "unsafe")
+
+    with pytest.raises(windows_signing.SigningError, match="unsafe path"):
+        bootstrap_windows_signing_tools._extract_package(package, tmp_path / "extract")
+    assert not (tmp_path / "outside.txt").exists()
 
 
 def test_prepare_signing_request_fails_closed_without_identity() -> None:

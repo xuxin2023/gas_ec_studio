@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -9,6 +10,31 @@ from pathlib import Path
 
 
 CODE_SIGNING_EKU = "1.3.6.1.5.5.7.3.3"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+WINDOWS_SDK_BUILD_TOOLS_VERSION = "10.0.28000.2270"
+WINDOWS_SDK_BIN_VERSION = "10.0.28000.0"
+WINDOWS_SDK_BUILD_TOOLS_ROOT = PROJECT_ROOT / ".build" / "tools" / "windows-sdk"
+WINDOWS_SDK_SIGNTOOL_SHA256 = "EB2C41BFA718DF21AB773FE0AAE119C79B6E8BA8A9CD475512B7DD42306FE7B7"
+
+
+def bundled_signtool_path() -> Path:
+    return (
+        WINDOWS_SDK_BUILD_TOOLS_ROOT
+        / WINDOWS_SDK_BUILD_TOOLS_VERSION
+        / "package"
+        / "bin"
+        / WINDOWS_SDK_BIN_VERSION
+        / "x64"
+        / "signtool.exe"
+    )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest().upper()
 
 
 class SigningError(RuntimeError):
@@ -63,6 +89,16 @@ def find_signtool(explicit: Path | str | None = None) -> Path | None:
             raise SigningError(f"SignTool was not found at the configured path: {candidate}")
         return candidate
 
+    bundled = bundled_signtool_path()
+    if bundled.is_file():
+        actual_hash = _file_sha256(bundled)
+        if actual_hash != WINDOWS_SDK_SIGNTOOL_SHA256:
+            raise SigningError(
+                "Bundled SignTool SHA-256 mismatch: "
+                f"expected {WINDOWS_SDK_SIGNTOOL_SHA256}, received {actual_hash}"
+            )
+        return bundled.resolve()
+
     discovered = shutil.which("signtool.exe") or shutil.which("signtool")
     if discovered:
         return Path(discovered).resolve()
@@ -80,12 +116,12 @@ def find_signtool(explicit: Path | str | None = None) -> Path | None:
 
 
 def list_code_signing_certificates() -> list[dict[str, object]]:
-    command = rf"""
+    command = r"""
 $rows = @()
-foreach ($store in @('Cert:\CurrentUser\My', 'Cert:\LocalMachine\My')) {{
-    $scope = if ($store -like '*LocalMachine*') {{ 'LocalMachine' }} else {{ 'CurrentUser' }}
-    foreach ($cert in @(Get-ChildItem -Path $store -CodeSigningCert -ErrorAction SilentlyContinue)) {{
-        $rows += [pscustomobject]@{{
+foreach ($store in @('Cert:\CurrentUser\My', 'Cert:\LocalMachine\My')) {
+    $scope = if ($store -like '*LocalMachine*') { 'LocalMachine' } else { 'CurrentUser' }
+    foreach ($cert in @(Get-ChildItem -Path $store -CodeSigningCert -ErrorAction SilentlyContinue)) {
+        $rows += [pscustomobject]@{
             store = $scope
             subject = $cert.Subject
             issuer = $cert.Issuer
@@ -93,9 +129,9 @@ foreach ($store in @('Cert:\CurrentUser\My', 'Cert:\LocalMachine\My')) {{
             has_private_key = [bool]$cert.HasPrivateKey
             not_before = $cert.NotBefore.ToString('o')
             not_after = $cert.NotAfter.ToString('o')
-        }}
-    }}
-}}
+        }
+    }
+}
 @($rows) | ConvertTo-Json -Compress
 """
     payload = _powershell_json(command)
