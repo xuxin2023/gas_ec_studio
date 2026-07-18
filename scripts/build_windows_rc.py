@@ -42,6 +42,7 @@ RC_RUNTIME_MODULES = (
     "morecantile",
     "rio_cogeo",
 )
+PACKAGED_SMOKE_TIMEOUT_SECONDS = 480
 
 
 def _sha256(path: Path) -> str:
@@ -58,6 +59,44 @@ def _safe_reset_dir(path: Path) -> None:
     if resolved.exists():
         shutil.rmtree(resolved)
     resolved.mkdir(parents=True, exist_ok=True)
+
+
+def _terminate_process_tree(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    else:  # pragma: no cover - Windows is the release target
+        process.kill()
+    try:
+        process.wait(timeout=30)
+    except subprocess.TimeoutExpired:  # pragma: no cover - defensive fallback
+        process.kill()
+        process.wait(timeout=30)
+
+
+def _run_packaged_smoke(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout: int = PACKAGED_SMOKE_TIMEOUT_SECONDS,
+) -> None:
+    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+    process = subprocess.Popen(command, cwd=cwd, env=env, creationflags=creationflags)
+    try:
+        return_code = process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _terminate_process_tree(process)
+        raise
+    if return_code != 0:
+        raise subprocess.CalledProcessError(return_code, command)
 
 
 def _git_commit() -> str:
@@ -229,10 +268,11 @@ def main() -> int:
     smoke_report = output_root / "packaged-smoke-report.json"
     smoke_screenshot = output_root / "packaged-smoke-report-center.png"
     smoke_workspace = work_root / "smoke_workspace"
+    _safe_reset_dir(smoke_workspace)
     smoke_env = os.environ.copy()
     smoke_env["QT_QPA_PLATFORM"] = "offscreen"
     smoke_env["QT_SCALE_FACTOR_ROUNDING_POLICY"] = "PassThrough"
-    subprocess.run(
+    _run_packaged_smoke(
         [
             str(exe_path),
             "--workspace-root",
@@ -244,8 +284,6 @@ def main() -> int:
         ],
         cwd=output_root,
         env=smoke_env,
-        timeout=240,
-        check=True,
     )
     smoke_payload = json.loads(smoke_report.read_text(encoding="utf-8"))
     if smoke_payload.get("status") != "pass":

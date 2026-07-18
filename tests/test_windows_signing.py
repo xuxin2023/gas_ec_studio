@@ -26,6 +26,52 @@ def test_release_channel_detection_distinguishes_prerelease_versions() -> None:
     assert build_windows_rc._release_channel_for_version("0.1.0") == "final"
 
 
+def test_packaged_smoke_waits_for_success(monkeypatch, tmp_path: Path) -> None:
+    observed: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = 123
+
+        def wait(self, *, timeout: int) -> int:
+            observed["timeout"] = timeout
+            return 0
+
+    def fake_popen(command, **kwargs):
+        observed["command"] = command
+        observed["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(build_windows_rc.subprocess, "Popen", fake_popen)
+
+    build_windows_rc._run_packaged_smoke(
+        ["app.exe", "--smoke-report", "report.json"],
+        cwd=tmp_path,
+        env={"QT_QPA_PLATFORM": "offscreen"},
+    )
+
+    assert observed["timeout"] == build_windows_rc.PACKAGED_SMOKE_TIMEOUT_SECONDS
+    assert observed["command"] == ["app.exe", "--smoke-report", "report.json"]
+
+
+def test_packaged_smoke_terminates_process_tree_on_timeout(monkeypatch, tmp_path: Path) -> None:
+    terminated: list[object] = []
+
+    class FakeProcess:
+        pid = 456
+
+        def wait(self, *, timeout: int) -> int:
+            raise subprocess.TimeoutExpired(["app.exe"], timeout)
+
+    process = FakeProcess()
+    monkeypatch.setattr(build_windows_rc.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(build_windows_rc, "_terminate_process_tree", terminated.append)
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        build_windows_rc._run_packaged_smoke(["app.exe"], cwd=tmp_path, env={})
+
+    assert terminated == [process]
+
+
 def test_normalize_thumbprint_accepts_spacing_and_rejects_invalid() -> None:
     source = "AA BB CC DD EE FF 00 11 22 33 44 55 66 77 88 99 AA BB CC DD"
 
