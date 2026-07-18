@@ -4,6 +4,7 @@ from datetime import datetime
 import hashlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 from copy import deepcopy
@@ -13,9 +14,13 @@ from typing import Any
 
 ENGINE_URL = "https://github.com/LI-COR-Environmental/eddypro-engine"
 GUI_URL = "https://github.com/LI-COR-Environmental/eddypro-gui"
+DEFAULT_SOURCE_INVENTORY_SNAPSHOT_PATH = (
+    Path(__file__).resolve().parents[2] / "references" / "eddypro" / "source_inventory_snapshot_v1.json"
+)
 _SOURCE_INVENTORY_CACHE_MAX_ENTRIES = 8
 _SOURCE_INVENTORY_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
-_SOURCE_INVENTORY_PERSISTENT_CACHE_SCHEMA = "eddypro_source_inventory_cache_v2"
+_SOURCE_INVENTORY_PERSISTENT_CACHE_SCHEMA = "eddypro_source_inventory_cache_v3"
+_SOURCE_INVENTORY_SNAPSHOT_SCHEMA = "eddypro_official_source_inventory_snapshot_v1"
 
 
 EXPECTED_FEATURES: tuple[dict[str, Any], ...] = (
@@ -115,6 +120,7 @@ def build_eddypro_source_inventory(
     *,
     engine_root: str | Path | None = None,
     gui_root: str | Path | None = None,
+    snapshot_path: str | Path | None = None,
     use_cache: bool = True,
 ) -> dict[str, Any]:
     """Inventory official EddyPro source anchors without copying upstream code.
@@ -123,11 +129,18 @@ def build_eddypro_source_inventory(
     and token-level feature presence. It lets benchmark reports say exactly
     which public EddyPro source revision guided parity work.
     """
+    use_retained_snapshot = engine_root in (None, "") and gui_root in (None, "")
+    retained_snapshot_path = (
+        Path(snapshot_path) if snapshot_path not in (None, "") else DEFAULT_SOURCE_INVENTORY_SNAPSHOT_PATH
+    )
     roots = {
         "engine": _default_root(engine_root, "eddypro-engine-reference"),
         "gui": _default_root(gui_root, "eddypro-gui-reference"),
     }
-    cache_key = _source_inventory_cache_key(roots)
+    cache_key = _source_inventory_cache_key(
+        roots,
+        snapshot_path=retained_snapshot_path if use_retained_snapshot else None,
+    )
     if use_cache and cache_key in _SOURCE_INVENTORY_CACHE:
         return deepcopy(_SOURCE_INVENTORY_CACHE[cache_key])
     if use_cache:
@@ -149,16 +162,24 @@ def build_eddypro_source_inventory(
             root=roots["gui"],
         ),
     }
+    missing_repositories = [key for key, repo in repositories.items() if repo["status"] != "present"]
+    if use_retained_snapshot and len(missing_repositories) == len(repositories):
+        snapshot_inventory = _inventory_from_retained_snapshot(retained_snapshot_path)
+        if snapshot_inventory is not None:
+            _cache_source_inventory(cache_key, snapshot_inventory)
+            _write_source_inventory_persistent_cache(cache_key, snapshot_inventory)
+            return snapshot_inventory
     feature_checks = [
         _feature_check(feature, roots.get(str(feature.get("repository", "")), Path()))
         for feature in EXPECTED_FEATURES
     ]
     missing_features = [item["feature_id"] for item in feature_checks if item["status"] != "present"]
-    missing_repositories = [key for key, repo in repositories.items() if repo["status"] != "present"]
     inventory = {
         "artifact_type": "eddypro_official_source_inventory",
         "inventory_id": "eddypro_official_source_inventory_v1",
         "status": "pass" if not missing_features and not missing_repositories else "warning",
+        "inventory_mode": "live_checkout",
+        "live_source_checkout_available": not missing_repositories,
         "source_repositories": repositories,
         "feature_count": len(feature_checks),
         "present_feature_count": len(feature_checks) - len(missing_features),
@@ -180,8 +201,14 @@ def build_eddypro_source_inventory(
     return inventory
 
 
-def _source_inventory_cache_key(roots: dict[str, Path]) -> tuple[Any, ...]:
+def _source_inventory_cache_key(
+    roots: dict[str, Path],
+    *,
+    snapshot_path: Path | None = None,
+) -> tuple[Any, ...]:
     signatures: list[tuple[Any, ...]] = [("code", *_file_signature(Path(__file__)))]
+    if snapshot_path is not None:
+        signatures.append(("retained_snapshot", *_file_signature(snapshot_path)))
     for label in ("engine", "gui"):
         root = roots[label]
         signatures.append((label, "root", _resolved_path_text(root), root.exists()))
@@ -191,7 +218,138 @@ def _source_inventory_cache_key(roots: dict[str, Path]) -> tuple[Any, ...]:
         root = roots.get(repository, Path())
         for relative_path in [str(item) for item in feature.get("paths", [])]:
             signatures.append((repository, relative_path, *_file_signature(root / relative_path)))
-    return ("eddypro_source_inventory_v1", tuple(signatures))
+    return ("eddypro_source_inventory_v2", tuple(signatures))
+
+
+def _inventory_from_retained_snapshot(path: Path) -> dict[str, Any] | None:
+    try:
+        snapshot = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not _valid_retained_snapshot(snapshot):
+        return None
+
+    repositories = {}
+    snapshot_repositories = dict(snapshot.get("source_repositories", {}) or {})
+    for key, label, url in (
+        ("engine", "EddyPro Engine", ENGINE_URL),
+        ("gui", "EddyPro GUI", GUI_URL),
+    ):
+        repository = dict(snapshot_repositories[key])
+        clone_url = f"{url}.git"
+        commit = str(repository["commit"])
+        repositories[key] = {
+            "label": label,
+            "url": url,
+            "clone_url": clone_url,
+            "local_path": "",
+            "status": "retained_snapshot",
+            "branch": "",
+            "commit": commit,
+            "origin_master_commit": commit,
+            "remote_url": clone_url,
+            "remote_url_matches_official": True,
+        }
+
+    feature_checks = []
+    snapshot_features = {
+        str(item.get("feature_id", "")): dict(item)
+        for item in list(snapshot.get("feature_checks", []) or [])
+    }
+    for expected in EXPECTED_FEATURES:
+        item = snapshot_features[str(expected["feature_id"])]
+        feature_checks.append(
+            {
+                "feature_id": str(expected["feature_id"]),
+                "repository": str(expected["repository"]),
+                "family": str(expected["family"]),
+                "status": "present",
+                "files": [
+                    {
+                        "relative_path": str(file_item["relative_path"]),
+                        "exists": True,
+                        "sha256": str(file_item["sha256"]).upper(),
+                        "size_bytes": int(file_item["size_bytes"]),
+                    }
+                    for file_item in list(item.get("files", []) or [])
+                ],
+                "tokens": {str(token): True for token in list(item.get("tokens", []) or [])},
+                "missing_paths": [],
+                "missing_tokens": [],
+            }
+        )
+
+    return {
+        "artifact_type": "eddypro_official_source_inventory",
+        "inventory_id": "eddypro_official_source_inventory_v1",
+        "status": "pass",
+        "inventory_mode": "retained_snapshot",
+        "live_source_checkout_available": False,
+        "retained_snapshot": {
+            "snapshot_id": str(snapshot.get("snapshot_id", "")),
+            "captured_at": str(snapshot.get("captured_at", "")),
+            "artifact_path": str(snapshot.get("artifact_path", "")),
+            "sha256": _sha256(path),
+        },
+        "source_repositories": repositories,
+        "feature_count": len(feature_checks),
+        "present_feature_count": len(feature_checks),
+        "missing_feature_count": 0,
+        "missing_features": [],
+        "feature_checks": feature_checks,
+        "truthfulness_note": (
+            "This inventory uses a repository-retained snapshot of public source-code anchors when "
+            "live reference checkouts are unavailable. It does not import, copy, execute, or claim "
+            "bit-for-bit numerical parity with the reference software."
+        ),
+        "known_limitations": [
+            "The retained snapshot records pinned revisions and hashes; it does not rescan upstream source in this run.",
+            "Presence of a source module is not numerical parity.",
+            "Real raw fixtures with official outputs are still required for final parity claims.",
+        ],
+    }
+
+
+def _valid_retained_snapshot(snapshot: Any) -> bool:
+    if not isinstance(snapshot, dict) or snapshot.get("artifact_type") != _SOURCE_INVENTORY_SNAPSHOT_SCHEMA:
+        return False
+    if not str(snapshot.get("snapshot_id", "")).strip():
+        return False
+    repositories = dict(snapshot.get("source_repositories", {}) or {})
+    for key, url in (("engine", ENGINE_URL), ("gui", GUI_URL)):
+        repository = dict(repositories.get(key, {}) or {})
+        if str(repository.get("url", "")).rstrip("/") != url.rstrip("/"):
+            return False
+        if re.fullmatch(r"[0-9a-fA-F]{40}", str(repository.get("commit", ""))) is None:
+            return False
+
+    expected_by_id = {str(item["feature_id"]): item for item in EXPECTED_FEATURES}
+    feature_items = [dict(item or {}) for item in list(snapshot.get("feature_checks", []) or [])]
+    feature_by_id = {str(item.get("feature_id", "")): item for item in feature_items}
+    if len(feature_by_id) != len(feature_items) or set(feature_by_id) != set(expected_by_id):
+        return False
+    for feature_id, expected in expected_by_id.items():
+        item = feature_by_id[feature_id]
+        if str(item.get("repository", "")) != str(expected["repository"]):
+            return False
+        if str(item.get("family", "")) != str(expected["family"]):
+            return False
+        files = [dict(file_item or {}) for file_item in list(item.get("files", []) or [])]
+        files_by_path = {str(file_item.get("relative_path", "")): file_item for file_item in files}
+        if len(files_by_path) != len(files) or set(files_by_path) != set(expected["paths"]):
+            return False
+        for file_item in files_by_path.values():
+            if re.fullmatch(r"[0-9a-fA-F]{64}", str(file_item.get("sha256", ""))) is None:
+                return False
+            try:
+                size_bytes = int(file_item.get("size_bytes", 0) or 0)
+            except (TypeError, ValueError):
+                return False
+            if size_bytes <= 0:
+                return False
+        if set(str(token) for token in list(item.get("tokens", []) or [])) != set(expected["tokens"]):
+            return False
+    return True
 
 
 def _repo_signature(root: Path) -> tuple[tuple[str, int, int], ...]:

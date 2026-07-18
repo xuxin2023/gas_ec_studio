@@ -1,0 +1,234 @@
+{
+  "artifact_type": "eddypro_official_source_inventory_snapshot_v1",
+  "snapshot_id": "eddypro_official_source_inventory_snapshot_v1",
+  "captured_at": "2026-07-18T12:00:00+08:00",
+  "artifact_path": "references/eddypro/source_inventory_snapshot_v1.json",
+  "source_repositories": {
+    "engine": {
+      "url": "https://github.com/LI-COR-Environmental/eddypro-engine",
+      "commit": "3cabe637ca387e10254f1bd4a546341bf9be33b5"
+    },
+    "gui": {
+      "url": "https://github.com/LI-COR-Environmental/eddypro-gui",
+      "commit": "b5d66b1909270190b68a5b9f1b9c75cc691fa893"
+    }
+  },
+  "feature_checks": [
+    {
+      "feature_id": "raw_import_licor_ghg",
+      "repository": "engine",
+      "family": "raw_ingestion",
+      "files": [
+        {
+          "relative_path": "src/src_rp/read_licor_ghg_archive.f90",
+          "sha256": "54CD5A85E9BA591F8ACC3A7A719E211125B0A677C34BDAA59B99E473700F961D",
+          "size_bytes": 6187
+        },
+        {
+          "relative_path": "src/src_rp/import_current_period.f90",
+          "sha256": "989CEC1AEA1F5B9E008BECB92B85268F0FE7443ECE1C05C493D75D4CFD5F7A30",
+          "size_bytes": 11558
+        }
+      ],
+      "tokens": ["licor_ghg"]
+    },
+    {
+      "feature_id": "raw_import_tob1_fp2",
+      "repository": "engine",
+      "family": "raw_ingestion",
+      "files": [
+        {
+          "relative_path": "src/src_common/import_tob1.f90",
+          "sha256": "940BE78066E64EF7B16B8BB0B555AB2622F086ECDC93A982E7DF783BE9ACE52D",
+          "size_bytes": 16294
+        },
+        {
+          "relative_path": "src/src_common/m_fp2_to_float.f90",
+          "sha256": "F3DE7D5108441D1A99C8793786499CC317A33C97D3F857B7231E991CB82FE868",
+          "size_bytes": 429357
+        }
+      ],
+      "tokens": ["IEEE4", "FP2"]
+    },
+    {
+      "feature_id": "raw_import_slt_binary_ascii",
+      "repository": "engine",
+      "family": "raw_ingestion",
+      "files": [
+        {
+          "relative_path": "src/src_common/import_ascii.f90",
+          "sha256": "0C2928BA466BB2A55BC8E9748ADD90870BF50DC5363C96B6EB54BEA83C30B7E9",
+          "size_bytes": 5125
+        },
+        {
+          "relative_path": "src/src_common/import_binary.f90",
+          "sha256": "26D1CAB9F5933F894C2480B9E7D9554EFD33A786EEA46575F37F05E0D939615B",
+          "size_bytes": 6764
+        },
+        {
+          "relative_path": "src/src_common/import_slt_edisol.f90",
+          "sha256": "F8F9550621938FBFC2AA20FF03ADA0E342540B4A99B278EB8E2C5D8449AFC567",
+          "size_bytes": 3832
+        },
+        {
+          "relative_path": "src/src_common/import_slt_eddysoft.f90",
+          "sha256": "A20D2951E1BA0003ED4FBD82E52A515A0DDF06DE3977A30102C51DBF76DE57D2",
+          "size_bytes": 4651
+        }
+      ],
+      "tokens": ["generic ASCII", "generic binary", "ImportSLTEdiSol", "ImportSLTEddySoft"]
+    },
+    {
+      "feature_id": "axis_rotation_planar_fit",
+      "repository": "engine",
+      "family": "preprocessing",
+      "files": [
+        {
+          "relative_path": "src/src_rp/tilt_correction.f90",
+          "sha256": "5C63ED80913C8BFE2C52CC2B120F3A444336005E0F9816B752D21B5DC0977390",
+          "size_bytes": 13354
+        },
+        {
+          "relative_path": "src/src_common/planarfit_rotation_matrix.f90",
+          "sha256": "5903774E74BCA38F1A407E68185947DA8AA2D8A9E04D3507C0EF947F31FC054E",
+          "size_bytes": 3411
+        },
+        {
+          "relative_path": "src/src_rp/read_planar_fit_file.f90",
+          "sha256": "0505E3CEB75181BF35C515B1ADE93D9F093FD3DF160D6040438A02D4C94B5C54",
+          "size_bytes": 5973
+        }
+      ],
+      "tokens": ["double_rotation", "triple_rotation", "planar_fit"]
+    },
+    {
+      "feature_id": "angle_of_attack_and_crosswind",
+      "repository": "engine",
+      "family": "preprocessing",
+      "files": [
+        {
+          "relative_path": "src/src_rp/aoa_calibration.f90",
+          "sha256": "3B6AF0E4A4A2E88C846E105D9837CD96CEA0F43FA472D84116D59B0877229750",
+          "size_bytes": 10618
+        },
+        {
+          "relative_path": "src/src_rp/aoa_cal_nakai_2012.f90",
+          "sha256": "5E77BC80AC59EA1C01845854459490C97E1F2B0CA28F78B498ACD8D3DD08F166",
+          "size_bytes": 9915
+        },
+        {
+          "relative_path": "src/src_common/cross_wind_corr.f90",
+          "sha256": "35850B4ACE3A21CD355C3AF5D13413942D1C91E4D6E4699A0F64A254680823B4",
+          "size_bytes": 6442
+        }
+      ],
+      "tokens": ["angle-of-attack", "cross-wind"]
+    },
+    {
+      "feature_id": "spectral_massman_horst_ibrom_fratini",
+      "repository": "engine",
+      "family": "spectral_correction",
+      "files": [
+        {
+          "relative_path": "src/src_common/bpcf_massman_00.f90",
+          "sha256": "7E73EDE9014A7F93F0F76AD6D81135E51AF3D06D423FCA6043FCB5AFAA049245",
+          "size_bytes": 11085
+        },
+        {
+          "relative_path": "src/src_common/bpcf_Horst_97.f90",
+          "sha256": "065650D9148F83DEC2D68E6CD0046842C8A3C18A3C398CC7F65BEE609C96D295",
+          "size_bytes": 5948
+        },
+        {
+          "relative_path": "src/src_common/bpcf_Ibrom_07.f90",
+          "sha256": "270DBB48EC1FF72B8C5B97AE0C26792FB770BC5AA1A31D1F11D05D3AB24E7797",
+          "size_bytes": 6294
+        },
+        {
+          "relative_path": "src/src_common/bpcf_fratini_12.f90",
+          "sha256": "544607092F9136B0CF3290B78EEC21C39264799CBD74FA2BCD00F19F1E1622A8",
+          "size_bytes": 12908
+        },
+        {
+          "relative_path": "src/src_common/bpcf_read_full_cos_wt.f90",
+          "sha256": "8271631CCDC9E75372D6043E76A875F34DEF159AFBD6BC047235517A50BAFC9B",
+          "size_bytes": 6935
+        }
+      ],
+      "tokens": ["massman_00", "horst_97", "ibrom_07", "fratini_12"]
+    },
+    {
+      "feature_id": "footprint_engine_output",
+      "repository": "engine",
+      "family": "footprint",
+      "files": [
+        {
+          "relative_path": "src/src_common/footprint_handle.f90",
+          "sha256": "57BB3D94E062BB49E8ACBAEFC13C85165C595D51B3AA82935B0669664BBB355F",
+          "size_bytes": 15156
+        },
+        {
+          "relative_path": "src/src_rp/write_out_full.f90",
+          "sha256": "AE263968A2DDACE3F56CF4690A2D5461C25367AD99AEFEB6CD16B61C026FED2D",
+          "size_bytes": 30844
+        }
+      ],
+      "tokens": ["footprint", "Foot%peak", "Foot%x90"]
+    },
+    {
+      "feature_id": "gui_processing_controls",
+      "repository": "gui",
+      "family": "gui",
+      "files": [
+        {
+          "relative_path": "src/advprocessingoptions.cpp",
+          "sha256": "21E7B77157A93DC2332A51E07631487BE0340B95748825F3B1DF67AB6961CE86",
+          "size_bytes": 78733
+        },
+        {
+          "relative_path": "src/advprocessingoptions.h",
+          "sha256": "FB7CD776ED3118CF4C5567BC37176B4AD8E5DC49F6B760FE95093F6C9A58B6A3",
+          "size_bytes": 7997
+        }
+      ],
+      "tokens": ["Double rotation", "Footprint estimation", "Compensate density fluctuations"]
+    },
+    {
+      "feature_id": "gui_spectral_controls",
+      "repository": "gui",
+      "family": "gui",
+      "files": [
+        {
+          "relative_path": "src/advspectraloptions.cpp",
+          "sha256": "8D675F103F18DE428B1F861C3AECD13F35DF5127F5B9B3663E8EB69954B348DC",
+          "size_bytes": 97084
+        },
+        {
+          "relative_path": "src/advspectraloptions.h",
+          "sha256": "0CFE256A800A81363172D75BCAFF30B20B76436E8B3B5E978976BD670F4D92EF",
+          "size_bytes": 8238
+        }
+      ],
+      "tokens": ["Binned (co)spectra", "spectral attenuations"]
+    },
+    {
+      "feature_id": "gui_statistical_screening_controls",
+      "repository": "gui",
+      "family": "gui",
+      "files": [
+        {
+          "relative_path": "src/advstatisticaloptions.cpp",
+          "sha256": "D9BB5938FA49CDA69F3A50145B47A02E8A3BCB91BC9413C7EF18F2FAB4FF27E6",
+          "size_bytes": 137372
+        },
+        {
+          "relative_path": "src/advstatisticaloptions.h",
+          "sha256": "BFB25E8AC6A9D2D58EE58433CA7DA5A9A9F28179C23D9CA8A534D6EB61308FAE",
+          "size_bytes": 14271
+        }
+      ],
+      "tokens": ["Statistical tests for raw data screening", "Vickers and Mahrt"]
+    }
+  ],
+  "truthfulness_note": "This snapshot preserves repository revisions and source-anchor hashes for clean-checkout validation. It is not a substitute for a live source scan or numerical fixture evidence."
+}

@@ -23,6 +23,8 @@ def test_eddypro_source_inventory_passes_with_feature_complete_source_tree(tmp_p
 
     assert inventory["artifact_type"] == "eddypro_official_source_inventory"
     assert inventory["status"] == "pass"
+    assert inventory["inventory_mode"] == "live_checkout"
+    assert inventory["live_source_checkout_available"] is True
     assert inventory["feature_count"] == len(EXPECTED_FEATURES)
     assert inventory["present_feature_count"] == len(EXPECTED_FEATURES)
     assert inventory["missing_features"] == []
@@ -43,6 +45,45 @@ def test_eddypro_source_inventory_warns_when_official_modules_are_missing(tmp_pa
     assert inventory["missing_feature_count"] == len(EXPECTED_FEATURES)
     assert "spectral_massman_horst_ibrom_fratini" in inventory["missing_features"]
     assert "Presence of a source module is not numerical parity" in inventory["known_limitations"][0]
+
+
+def test_eddypro_source_inventory_uses_retained_snapshot_without_default_checkouts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("TEMP", str(tmp_path))
+    source_inventory_module._SOURCE_INVENTORY_CACHE.clear()
+
+    inventory = build_eddypro_source_inventory(use_cache=False)
+
+    assert inventory["status"] == "pass"
+    assert inventory["inventory_mode"] == "retained_snapshot"
+    assert inventory["live_source_checkout_available"] is False
+    assert inventory["present_feature_count"] == len(EXPECTED_FEATURES)
+    assert inventory["missing_features"] == []
+    assert inventory["retained_snapshot"]["snapshot_id"] == "eddypro_official_source_inventory_snapshot_v1"
+    assert len(inventory["retained_snapshot"]["sha256"]) == 64
+    assert inventory["source_repositories"]["engine"]["status"] == "retained_snapshot"
+    assert inventory["source_repositories"]["gui"]["commit"] == "b5d66b1909270190b68a5b9f1b9c75cc691fa893"
+
+
+def test_eddypro_source_inventory_rejects_invalid_retained_snapshot(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("TEMP", str(tmp_path / "references-missing"))
+    invalid_snapshot = tmp_path / "invalid-snapshot.json"
+    invalid_snapshot.write_text('{"artifact_type": "unexpected"}', encoding="utf-8")
+    source_inventory_module._SOURCE_INVENTORY_CACHE.clear()
+
+    inventory = build_eddypro_source_inventory(
+        snapshot_path=invalid_snapshot,
+        use_cache=False,
+    )
+
+    assert inventory["status"] == "warning"
+    assert inventory["inventory_mode"] == "live_checkout"
+    assert inventory["live_source_checkout_available"] is False
 
 
 def test_eddypro_source_inventory_cache_reuses_until_source_signature_changes(monkeypatch, tmp_path: Path) -> None:

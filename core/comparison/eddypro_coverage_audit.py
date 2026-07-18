@@ -633,9 +633,14 @@ def _family_subprogress_ratio(items: list[dict[str, Any]]) -> float:
 
 def _source_summary(source_inventory: dict[str, Any]) -> dict[str, Any]:
     repositories = dict(source_inventory.get("source_repositories", {}) or {})
+    retained_snapshot = dict(source_inventory.get("retained_snapshot", {}) or {})
     return {
         "inventory_id": str(source_inventory.get("inventory_id", "")),
         "status": str(source_inventory.get("status", "")),
+        "inventory_mode": str(source_inventory.get("inventory_mode", "")),
+        "live_source_checkout_available": bool(source_inventory.get("live_source_checkout_available", False)),
+        "retained_snapshot_id": str(retained_snapshot.get("snapshot_id", "")),
+        "retained_snapshot_sha256": str(retained_snapshot.get("sha256", "")),
         "feature_count": int(source_inventory.get("feature_count", 0) or 0),
         "present_feature_count": int(source_inventory.get("present_feature_count", 0) or 0),
         "missing_feature_count": int(source_inventory.get("missing_feature_count", 0) or 0),
