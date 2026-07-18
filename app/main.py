@@ -107,6 +107,15 @@ def _probe_runtime_modules() -> dict[str, dict[str, str]]:
     return results
 
 
+def _navigation_guard_summary(results: dict[str, bool]) -> dict[str, int | bool]:
+    blocked_count = sum(1 for blocked in results.values() if blocked)
+    return {
+        "checked_route_count": len(results),
+        "blocked_route_count": blocked_count,
+        "all_blocked": blocked_count == len(results),
+    }
+
+
 def _write_smoke_report(
     *,
     app: QApplication,
@@ -190,7 +199,7 @@ def _write_smoke_report(
                 "report_count": len(release_reports),
                 "internal_reports": internal_reports,
                 "internal_tree_items": internal_tree_items,
-                "navigation_guard": navigation_guard,
+                "navigation_guard": _navigation_guard_summary(navigation_guard),
             },
             "runtime_modules": module_probes,
             "pages": page_results,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import app.main as app_main
@@ -37,6 +38,24 @@ def test_rc_runtime_modules_are_available() -> None:
 
     assert set(probes) == set(app_main.RC_RUNTIME_MODULES)
     assert all(probe["status"] == "pass" for probe in probes.values())
+
+
+def test_packaged_smoke_navigation_guard_uses_public_summary() -> None:
+    summary = app_main._navigation_guard_summary(
+        {
+            "eddypro_compare": True,
+            "fixture_pack": True,
+            "benchmark_cockpit": True,
+            "computation_surface": True,
+        }
+    )
+
+    assert summary == {
+        "checked_route_count": 4,
+        "blocked_route_count": 4,
+        "all_blocked": True,
+    }
+    assert find_public_text_violations(json.dumps(summary, ensure_ascii=False)) == []
 
 
 def test_release_controller_excludes_internal_validation_reports(tmp_path: Path) -> None:
