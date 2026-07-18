@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
+from time import monotonic, sleep
 
-from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from app.main_window import StudioMainWindow
@@ -18,25 +18,33 @@ def _app() -> QApplication:
     return app
 
 
+def _wait_for_events(app: QApplication, duration_ms: int) -> None:
+    deadline = monotonic() + (duration_ms / 1000.0)
+    while monotonic() < deadline:
+        app.processEvents()
+        sleep(0.005)
+    app.processEvents()
+
+
 def test_coalesced_refresh_limits_signal_storm_and_defers_hidden_widget() -> None:
-    _app()
+    app = _app()
     owner = QWidget()
     calls: list[int] = []
     refresh = CoalescedWidgetRefresh(owner, lambda: calls.append(len(calls)), interval_ms=20)
 
     for _ in range(40):
         refresh.request()
-    QTest.qWait(40)
+    _wait_for_events(app, 40)
     assert calls == []
 
     owner.show()
-    QTest.qWait(40)
+    _wait_for_events(app, 40)
     assert len(calls) == 1
     assert owner.updatesEnabled() is True
 
     for _ in range(40):
         refresh.request()
-    QTest.qWait(40)
+    _wait_for_events(app, 40)
     assert len(calls) == 2
     owner.close()
 
@@ -76,7 +84,7 @@ def test_main_window_coalesces_live_updates_and_reuses_device_cards(monkeypatch,
 
         for _ in range(40):
             controller.devices_changed.emit()
-        QTest.qWait(400)
+        _wait_for_events(app, 400)
 
         assert 1 <= window._live_shell_refresh.flush_count - shell_count <= 2
         assert 1 <= device_center._live_refresh.flush_count - page_count <= 2
@@ -84,12 +92,12 @@ def test_main_window_coalesces_live_updates_and_reuses_device_cards(monkeypatch,
         assert device_center._device_card_widgets[uid] is original_card
 
         window._set_page("realtime")
-        QTest.qWait(40)
+        _wait_for_events(app, 40)
         realtime_count = window.realtime_page._live_refresh.flush_count
         for _ in range(40):
             controller.frame_received.emit(None)
             controller.devices_changed.emit()
-        QTest.qWait(400)
+        _wait_for_events(app, 400)
         assert 1 <= window.realtime_page._live_refresh.flush_count - realtime_count <= 2
     finally:
         if window is not None:

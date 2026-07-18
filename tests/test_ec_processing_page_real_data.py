@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication, QPushButton
 from app.main_window import StudioMainWindow
 from app.pages.ec_processing_page import EC_STEPS, ECProcessingPage
 from app.studio import StudioController
+from app.theme import apply_app_theme
 from models.hf_models import FrameQuality, NormalizedHFFrame
 from tests.ui_geometry_helpers import (
     assert_contained,
@@ -23,7 +24,9 @@ from tests.ui_geometry_helpers import (
 def _app() -> QApplication:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication.instance()
-    return app or QApplication([])
+    app = app or QApplication([])
+    apply_app_theme(app)
+    return app
 
 
 def _make_rows(sample_hz: float = 10.0, samples: int = 600) -> list[NormalizedHFFrame]:
@@ -667,6 +670,7 @@ def test_ec_processing_method_console_controls_are_visible_in_main_shell(monkeyp
         assert page.method_result_card.geometry().y() > page.method_family_card.geometry().y()
         assert family_rect.top() < viewport_rect.bottom()
         assert stack_rect.top() < viewport_rect.bottom()
+        assert scroll.verticalScrollBar().value() > 0
         assert_contained(scroll.viewport(), page.footprint_enable_combo, page)
         assert_contained(scroll.viewport(), page.footprint_method_combo, page)
         assert_contained(scroll.viewport(), page.method_field_labels[0], page)

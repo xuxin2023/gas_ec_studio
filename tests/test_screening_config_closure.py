@@ -15,8 +15,6 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from core.ec_rp.pipeline import _extract_screening_config
 from core.exports.result_exporter import FULL_OUTPUT_SCHEMA, ResultExporter
 from core.headless_batch_runner import build_batch_manifest
@@ -430,22 +428,28 @@ class TestScreeningDefaultConfigRegression:
     def test_studio_default_screening_step_has_all_keys(self):
         from app.studio import StudioController
         controller = StudioController(workspace_root=Path("tmp_test_studio_v3a1"))
-        screening_step = controller.ec_processing["steps"]["screening"]
-        for key in self.EXPECTED_DEFAULTS:
-            assert key in screening_step, f"studio default screening step missing key: {key}"
-            assert screening_step[key] == self.EXPECTED_DEFAULTS[key], (
-                f"studio default for {key}: expected {self.EXPECTED_DEFAULTS[key]}, got {screening_step[key]}"
-            )
-        assert "absolute_limits_text" in screening_step
+        try:
+            screening_step = controller.ec_processing["steps"]["screening"]
+            for key in self.EXPECTED_DEFAULTS:
+                assert key in screening_step, f"studio default screening step missing key: {key}"
+                assert screening_step[key] == self.EXPECTED_DEFAULTS[key], (
+                    f"studio default for {key}: expected {self.EXPECTED_DEFAULTS[key]}, got {screening_step[key]}"
+                )
+            assert "absolute_limits_text" in screening_step
+        finally:
+            controller.shutdown()
 
     def test_studio_config_snapshot_screening_roundtrip(self):
         from app.studio import StudioController
         controller = StudioController(workspace_root=Path("tmp_test_studio_v3a1_snap"))
-        controller.ec_processing["steps"]["screening"]["skewness_threshold"] = 3.5
-        controller.ec_processing["steps"]["screening"]["absolute_limits_text"] = '{"co2_ppm": [0, 1200]}'
-        snapshot = controller._rp_config_snapshot(precheck_only=False)
-        assert snapshot["screening"]["skewness_threshold"] == 3.5
-        assert snapshot["screening"]["absolute_limits"] == {"co2_ppm": [0, 1200]}
+        try:
+            controller.ec_processing["steps"]["screening"]["skewness_threshold"] = 3.5
+            controller.ec_processing["steps"]["screening"]["absolute_limits_text"] = '{"co2_ppm": [0, 1200]}'
+            snapshot = controller._rp_config_snapshot(precheck_only=False)
+            assert snapshot["screening"]["skewness_threshold"] == 3.5
+            assert snapshot["screening"]["absolute_limits"] == {"co2_ppm": [0, 1200]}
+        finally:
+            controller.shutdown()
 
 
 # ---------------------------------------------------------------------------

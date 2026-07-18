@@ -1928,12 +1928,6 @@ class ResultExporter:
             "spectral_correction_summary": method_summary.get("spectral_correction_summary", {}),
             "spectral_correction_provenance": method_summary.get("spectral_correction_summary", {}).get("provenance", ""),
             "method_rollup": method_summary,
-            "planar_fit_library": planar_fit_library_summary,
-            "planar_fit_library_artifact": str(planar_fit_library_path) if planar_fit_library_path is not None else "",
-            "planar_fit_library_status": planar_fit_library_summary.get("status", ""),
-            "planar_fit_library_source": planar_fit_library_summary.get("source", ""),
-            "planar_fit_library_path": planar_fit_library_summary.get("coefficient_library_path", ""),
-            "planar_fit_valid_sector_count": int(planar_fit_library_summary.get("valid_sector_count", 0) or 0),
             "trace_gas_summary": trace_gas_summary,
             "trace_gas_provenance": trace_gas_provenance,
             "trace_gas_provenance_artifact": str(trace_gas_provenance_path) if trace_gas_provenance_path is not None else "",
@@ -2963,7 +2957,6 @@ class ResultExporter:
                 "planar_fit_selected_sector_r_squared": diagnostics.get("planar_fit_selected_sector_r_squared", "") if diagnostics else "",
                 "planar_fit_wind_direction_deg": diagnostics.get("planar_fit_wind_direction_deg", "") if diagnostics else "",
                 "planar_fit_library_detail": json.dumps(diagnostics.get("planar_fit_library_detail", {}), ensure_ascii=False) if diagnostics and diagnostics.get("planar_fit_library_detail") else "",
-                "lag_fallback_reason": diagnostics.get("lag_fallback_reason", "") if diagnostics else "",
                 "screening_summary": diagnostics.get("screening_summary", "") if diagnostics else "",
                 "qc_details": json.dumps(diagnostics.get("qc_details", {}), ensure_ascii=False) if diagnostics and diagnostics.get("qc_details") else "",
                 "metadata_summary": json.dumps(diagnostics.get("metadata_summary", {}), ensure_ascii=False) if diagnostics and diagnostics.get("metadata_summary") else "",
@@ -5425,7 +5418,6 @@ class ResultExporter:
         rows: list[dict[str, Any]] = []
         for window in rp_result.windows:
             turb = window.turbulence_detail or {}
-            stat = window.stationarity_detail or {}
             row = {
                 "window_id": window.window_id,
                 "start_time": window.start_time.isoformat(),
@@ -5570,7 +5562,6 @@ class ResultExporter:
     ) -> Path | None:
         if not rp_result or not rp_result.windows:
             return None
-        from datetime import timedelta
         rows: list[dict[str, Any]] = []
         for window in rp_result.windows:
             row = self._fluxnet_half_hourly_row(
@@ -5631,7 +5622,6 @@ class ResultExporter:
         start_utc = window.start_time
         end_utc = window.end_time
         local_start = start_utc + timedelta(hours=timezone_offset_hours)
-        local_end = end_utc + timedelta(hours=timezone_offset_hours)
         if timestamp_refers_to == "end":
             ts_start = end_utc.strftime("%Y%m%d%H%M")
             ts_end = (end_utc + timedelta(minutes=30)).strftime("%Y%m%d%H%M")
@@ -5951,6 +5941,7 @@ class ResultExporter:
         if not rp_result or not rp_result.windows:
             return None
         from datetime import timedelta
+
         rows: list[dict[str, Any]] = []
         for window in rp_result.windows:
             internal_row = self._fluxnet_half_hourly_row(
@@ -6025,7 +6016,6 @@ class ResultExporter:
     ) -> Path | None:
         if not rp_result or not rp_result.windows:
             return None
-        from datetime import timedelta
         rows: list[dict[str, Any]] = []
         for window in rp_result.windows:
             internal_row = self._fluxnet_half_hourly_row(

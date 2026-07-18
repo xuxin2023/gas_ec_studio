@@ -46,3 +46,9 @@ def _close_qt_widgets() -> None:
         _QT_APP.processEvents()
     except Exception:
         pass
+    try:
+        from core.acquisition.acquisition_service import shutdown_all_acquisition_services
+
+        shutdown_all_acquisition_services()
+    except Exception:
+        pass

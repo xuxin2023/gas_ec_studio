@@ -4,7 +4,7 @@ import json
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -3784,6 +3784,14 @@ class ECProcessingPage(QWidget):
         self._refresh_step_active_chip(str(key))
         self._refresh_step_tree_statuses()
         self._refresh_run_bar()
+        QTimer.singleShot(0, lambda step_key=str(key): self._ensure_step_focus_visible(step_key))
+
+    def _ensure_step_focus_visible(self, step_key: str) -> None:
+        if step_key != "uncertainty":
+            return
+        scroll = self.content_stack.currentWidget()
+        if isinstance(scroll, QScrollArea):
+            scroll.ensureWidgetVisible(self.footprint_enable_combo, 0, TOKENS.spacing_sm)
 
     def _sync_step_from_controller(self) -> None:
         key = self.controller.ec_nav_step
@@ -3798,6 +3806,7 @@ class ECProcessingPage(QWidget):
         self._refresh_step_active_chip(str(key))
         self._refresh_workflow_lens()
         self._refresh_step_tree_statuses()
+        QTimer.singleShot(0, lambda step_key=str(key): self._ensure_step_focus_visible(step_key))
 
     def _collect_payload(self) -> dict:
         return {
@@ -4573,7 +4582,6 @@ class ECProcessingPage(QWidget):
         diagnostics = current.diagnostics or {}
         screening_detail = diagnostics.get("screening_detail", {})
         issues = diagnostics.get("issues", [])
-        screening_issues = [i for i in issues if not i.startswith("spike_") or "screening" in str(diagnostics.get("screening_config", {}))]
         if screening_detail:
             lines = []
             for var_name, detail in screening_detail.items():
