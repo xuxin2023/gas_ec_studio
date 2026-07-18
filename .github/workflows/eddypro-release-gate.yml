@@ -42,10 +42,10 @@ jobs:
       RERUN_ACCEPTANCE: ${{ github.event_name == 'workflow_dispatch' && inputs.rerun_acceptance || false }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -104,7 +104,7 @@ jobs:
           exit 0
 
       - name: Upload release gate artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eddypro-release-gate
           path: artifacts/eddypro_release_gate/

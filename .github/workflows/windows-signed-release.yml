@@ -36,12 +36,12 @@ jobs:
       RELEASE_CHANNEL: ${{ inputs.release_channel }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -126,7 +126,7 @@ jobs:
           python scripts/validate_windows_release.py @arguments
 
       - name: Upload validated package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gas-ec-studio-${{ inputs.release_channel }}-${{ steps.artifact.outputs.version }}
           path: ${{ steps.artifact.outputs.root }}/
