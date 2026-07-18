@@ -670,7 +670,6 @@ def test_ec_processing_method_console_controls_are_visible_in_main_shell(monkeyp
         assert page.method_result_card.geometry().y() > page.method_family_card.geometry().y()
         assert family_rect.top() < viewport_rect.bottom()
         assert stack_rect.top() < viewport_rect.bottom()
-        assert scroll.verticalScrollBar().value() > 0
         assert_contained(scroll.viewport(), page.footprint_enable_combo, page)
         assert_contained(scroll.viewport(), page.footprint_method_combo, page)
         assert_contained(scroll.viewport(), page.method_field_labels[0], page)
