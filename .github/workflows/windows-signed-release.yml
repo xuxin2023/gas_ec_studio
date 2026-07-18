@@ -33,7 +33,6 @@ jobs:
       GAS_EC_SIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
       GAS_EC_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
       WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
-      SIGNING_PFX: ${{ runner.temp }}\GasECStudio-signing.pfx
       RELEASE_CHANNEL: ${{ inputs.release_channel }}
     steps:
       - name: Checkout
@@ -49,6 +48,7 @@ jobs:
       - name: Validate protected release inputs
         shell: pwsh
         run: |
+          "SIGNING_PFX=$env:RUNNER_TEMP\GasECStudio-signing.pfx" >> $env:GITHUB_ENV
           if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_PFX_BASE64)) {
             throw "WINDOWS_SIGNING_PFX_BASE64 secret is not configured."
           }

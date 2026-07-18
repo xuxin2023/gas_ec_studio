@@ -1,0 +1,3 @@
+# Preserve byte-exact public reference assets whose manifest hashes include CRLF.
+references/eddypro/public_spectral/*.csv -text
+references/eddypro/public_full_output/NAMORS_EC_2005-2019_v2.head.txt -text

@@ -110,29 +110,32 @@ def _prepare_current_compare_export(controller: StudioController) -> Path:
     return export_dir
 
 
-def test_report_center_empty_state_without_attribution_result(monkeypatch, tmp_path: Path) -> None:
+def test_report_center_redirects_internal_attribution_empty_state(monkeypatch, tmp_path: Path) -> None:
     _app()
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
-    controller = StudioController(workspace_root=tmp_path)
+    controller = StudioController(workspace_root=tmp_path, expose_internal_validation=False)
     try:
         controller.set_report_nav_section("eddypro_compare")
+        assert controller.report_center_workspace["selected_report"] == "method_provenance"
         page = ReportCenterPage(controller)
         page.refresh()
 
         assert "EddyPro" not in page.preview_title_label.text()
         assert page.preview_table.rowCount() >= 1
-        detail_text = " ".join(
-            page.preview_table.item(row, 2).text() for row in range(page.preview_table.rowCount()) if page.preview_table.item(row, 2)
+        assert all(
+            "EddyPro" not in page.preview_table.item(row, column).text()
+            for row in range(page.preview_table.rowCount())
+            for column in range(page.preview_table.columnCount())
+            if page.preview_table.item(row, column)
         )
-        assert "当前还没有对标归因结果" in detail_text
     finally:
         controller.shutdown()
 
 
-def test_report_center_displays_real_attribution_summary(monkeypatch, tmp_path: Path) -> None:
+def test_report_center_keeps_internal_attribution_off_public_surface(monkeypatch, tmp_path: Path) -> None:
     _app()
     monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
-    controller = StudioController(workspace_root=tmp_path)
+    controller = StudioController(workspace_root=tmp_path, expose_internal_validation=False)
     try:
         current_export_dir = _prepare_current_compare_export(controller)
         reference_dir = tmp_path / "reference"
@@ -143,23 +146,19 @@ def test_report_center_displays_real_attribution_summary(monkeypatch, tmp_path: 
             mapping={"window_csv": "eddypro_windows.csv", "summary_json": "eddypro_summary.json"},
         )
         controller.set_report_nav_section("eddypro_compare")
+        assert controller.latest_eddypro_attribution_result is not None
+        assert controller.report_center_workspace["selected_report"] == "method_provenance"
 
         page = ReportCenterPage(controller)
         page.refresh()
 
-        all_rows = [
-            (
-                page.preview_table.item(row, 0).text(),
-                page.preview_table.item(row, 1).text(),
-                page.preview_table.item(row, 2).text(),
-            )
+        assert "EddyPro" not in page.preview_title_label.text()
+        assert all(
+            "EddyPro" not in page.preview_table.item(row, column).text()
             for row in range(page.preview_table.rowCount())
-        ]
-        keys = {row[0] for row in all_rows}
-        assert "dominant_causes" in keys
-        assert "risk_level" in keys
-        assert "summary_text" in keys
-        assert any("window_alignment" in row[1] or "lag_method_or_lag_quality" in row[1] for row in all_rows if row[0] == "dominant_causes")
+            for column in range(page.preview_table.columnCount())
+            if page.preview_table.item(row, column)
+        )
     finally:
         controller.shutdown()
 
