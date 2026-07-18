@@ -362,8 +362,13 @@ def test_headless_cli_writes_eddypro_coverage_audit(tmp_path: Path) -> None:
     assert payload["closure_gate"]["status"] == "blocked"
     assert payload["closure_plan"]["next_action_count"] >= 1
     assert payload["surrogate_evidence_closure"]["artifact_type"] == "eddypro_surrogate_evidence_closure_v1"
-    assert payload["surrogate_evidence_closure"]["status"] == "pass", payload["surrogate_evidence_closure"].get(
-        "external_evidence_checks", []
+    assert payload["surrogate_evidence_closure"]["status"] == "pass", json.dumps(
+        {
+            "external_evidence_checks": payload["surrogate_evidence_closure"].get("external_evidence_checks", []),
+            "missing_items": payload["surrogate_evidence_closure"].get("missing_items", []),
+        },
+        ensure_ascii=False,
+        indent=2,
     )
     assert payload["surrogate_evidence_closure"]["accepted_item_count"] == 10
     assert payload["surrogate_evidence_closure"]["missing_item_count"] == 0
