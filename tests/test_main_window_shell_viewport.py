@@ -61,12 +61,21 @@ def test_main_window_shell_fits_common_desktop_viewports(monkeypatch, tmp_path) 
                 window.header_telemetry_strip,
                 window.operator_btn,
                 window.engineer_btn,
+                window.about_btn,
             ]
             if window.header_status.isVisible():
                 visible_header_widgets.insert(0, window.header_status)
             for widget in visible_header_widgets:
                 assert_contained(window.header, widget, root)
             assert_no_visual_overlap(visible_header_widgets, root)
+
+        window.about_btn.click()
+        app.processEvents()
+        assert window.about_dialog is not None
+        assert window.about_dialog.isVisible() is True
+        assert window.about_dialog.tabs.count() == 3
+        assert window.about_dialog.tabs.tabText(2) == "更新日志"
+        window.about_dialog.close()
     finally:
         window.close()
         controller.shutdown()

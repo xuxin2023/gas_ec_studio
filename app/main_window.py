@@ -3,17 +3,20 @@ from __future__ import annotations
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QSizePolicy,
     QSplitter,
     QStackedWidget,
+    QStyle,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from app.about_dialog import AboutDialog
 from app.pages.device_center_page import DeviceCenterPage
 from app.pages.device_detail_page import DeviceDetailPage
 from app.pages.ec_processing_page import ECProcessingPage
@@ -21,6 +24,7 @@ from app.pages.project_site_page import ProjectSitePage
 from app.pages.realtime_page import RealtimePage
 from app.pages.report_center_page import ReportCenterPage
 from app.pages.spectral_qc_page import SpectralQCPage
+from app.resources import application_icon
 from app.studio import StudioController
 from app.theme import CardFrame, TOKENS
 from app.widgets.context_inspector import ContextInspector
@@ -43,11 +47,13 @@ class StudioMainWindow(QMainWindow):
         super().__init__()
         self.controller = controller
         self.setWindowTitle("Gas EC Studio")
+        self.setWindowIcon(application_icon())
         self.resize(1440, 900)
         self.setMinimumSize(1180, 720)
         self._compact_shell: bool | None = None
         self._inspector_visible: bool | None = None
         self._active_page_key = "device_center"
+        self.about_dialog: AboutDialog | None = None
         self._embedded_inspector_pages = {"device_detail", "project_site", "ec_processing", "report_center"}
         self._route_context = {
             "device_center": ("field", "Field", "Device Center", "Connect instruments and verify live status"),
@@ -158,9 +164,16 @@ class StudioMainWindow(QMainWindow):
         title_holder.setProperty("shellBrandBlock", True)
         title_holder.setMaximumWidth(300)
         title_holder.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
-        title_box = QVBoxLayout()
-        title_box.setContentsMargins(0, 0, 0, 0)
-        title_box.setSpacing(TOKENS.spacing_xs)
+        brand_layout = QGridLayout(title_holder)
+        brand_layout.setContentsMargins(0, 0, 0, 0)
+        brand_layout.setHorizontalSpacing(TOKENS.spacing_sm)
+        brand_layout.setVerticalSpacing(TOKENS.spacing_xs)
+        self.brand_icon = QLabel()
+        self.brand_icon.setProperty("shellBrandIcon", True)
+        self.brand_icon.setFixedSize(30, 30)
+        self.brand_icon.setAlignment(Qt.AlignCenter)
+        self.brand_icon.setPixmap(self.windowIcon().pixmap(QSize(28, 28)))
+        brand_layout.addWidget(self.brand_icon, 0, 0)
         title = QLabel("Gas EC Studio")
         title.setObjectName("pageTitle")
         subtitle = QLabel("独立的气体分析仪高端工程工作台，兼顾现场操作、协议诊断和高频采集。")
@@ -168,9 +181,9 @@ class StudioMainWindow(QMainWindow):
         subtitle.setWordWrap(True)
         subtitle.setMinimumWidth(0)
         subtitle.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Minimum)
-        title_box.addWidget(title)
-        title_box.addWidget(subtitle)
-        title_holder.setLayout(title_box)
+        brand_layout.addWidget(title, 0, 1)
+        brand_layout.addWidget(subtitle, 1, 0, 1, 2)
+        brand_layout.setColumnStretch(1, 1)
         layout.addWidget(title_holder)
 
         self.route_cockpit = self._build_route_cockpit()
@@ -250,7 +263,26 @@ class StudioMainWindow(QMainWindow):
         group.addButton(self.engineer_btn)
         layout.addWidget(self.operator_btn)
         layout.addWidget(self.engineer_btn)
+
+        self.about_btn = QToolButton()
+        self.about_btn.setObjectName("aboutButton")
+        self.about_btn.setProperty("shellAboutButton", True)
+        self.about_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation))
+        self.about_btn.setIconSize(QSize(20, 20))
+        self.about_btn.setToolTip("关于、使用说明与更新日志")
+        self.about_btn.setAccessibleName("关于、使用说明与更新日志")
+        self.about_btn.setFixedWidth(44)
+        self.about_btn.setMaximumHeight(54)
+        self.about_btn.clicked.connect(self._show_about_dialog)
+        layout.addWidget(self.about_btn)
         return card
+
+    def _show_about_dialog(self) -> None:
+        if self.about_dialog is None:
+            self.about_dialog = AboutDialog(self)
+        self.about_dialog.show()
+        self.about_dialog.raise_()
+        self.about_dialog.activateWindow()
 
     def _build_route_cockpit(self) -> QWidget:
         cockpit = QWidget()

@@ -157,7 +157,7 @@ def build_stylesheet() -> str:
     }}
     QFrame#card[cardRole="hero"] QLabel#pageTitle {{
         color: #f7fcfd;
-        letter-spacing: 0.4px;
+        letter-spacing: 0;
     }}
     QFrame#card[cardRole="hero"] QLabel#subtitle {{
         color: #d6edf2;
@@ -167,6 +167,11 @@ def build_stylesheet() -> str:
     }}
     QFrame#card[cardRole="hero"] QLabel#subtitle[heroStatus="true"] {{
         color: #214254;
+    }}
+    QLabel[shellBrandIcon="true"] {{
+        background: transparent;
+        border: none;
+        padding: 0;
     }}
     QFrame#card[cardRole="panel"] {{
         background: qlineargradient(
@@ -922,6 +927,57 @@ def build_stylesheet() -> str:
         background: #ffffff;
         border: 1px solid #9bc9d2;
         color: #073746;
+    }}
+    QToolButton[shellAboutButton="true"] {{
+        min-height: 52px;
+        min-width: 44px;
+        max-width: 44px;
+        border-radius: 16px;
+        padding: 0;
+        background: rgba(255, 255, 255, 0.58);
+        border: 1px solid rgba(126, 179, 189, 0.72);
+    }}
+    QToolButton[shellAboutButton="true"]:hover {{
+        background: #ffffff;
+        border-color: #78adb8;
+    }}
+    QDialog[aboutDialog="true"] {{
+        background: #eaf2f6;
+    }}
+    QWidget[aboutHeader="true"] {{
+        background: #ffffff;
+        border: 1px solid #bfd1dc;
+        border-radius: 8px;
+    }}
+    QLabel[aboutIcon="true"] {{
+        background: transparent;
+        border: none;
+    }}
+    QLabel[aboutTitle="true"] {{
+        color: #0c2230;
+        font-size: 20px;
+        font-weight: 800;
+    }}
+    QLabel[aboutSubtitle="true"] {{
+        color: #506b7d;
+        font-size: 12px;
+    }}
+    QLabel[aboutVersionBadge="true"] {{
+        min-width: 82px;
+        min-height: 28px;
+        padding: 0 10px;
+        color: #0b6678;
+        background: #d8f3f4;
+        border: 1px solid #a7ccd5;
+        border-radius: 8px;
+        font-weight: 800;
+    }}
+    QTextBrowser[aboutText="true"] {{
+        background: #ffffff;
+        border: 1px solid #bfd1dc;
+        border-radius: 8px;
+        padding: 12px;
+        color: #0c2230;
     }}
     QFrame#cardMuted[ecMethodShortcutDeck="true"] {{
         border-radius: 16px;

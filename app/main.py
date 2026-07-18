@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.main_window import StudioMainWindow
+from app.resources import application_icon
 from app.studio import INTERNAL_VALIDATION_REPORT_KEYS, StudioController
 from app.theme import apply_app_theme
 from app.version import APP_VERSION
@@ -220,6 +221,7 @@ def main() -> int:
     app.setApplicationDisplayName("Gas EC Studio")
     app.setApplicationVersion(APP_VERSION)
     app.setOrganizationName("Gas EC Studio")
+    app.setWindowIcon(application_icon())
     apply_app_theme(app)
     controller = StudioController(
         workspace_root=_default_workspace_root(args.workspace_root),
