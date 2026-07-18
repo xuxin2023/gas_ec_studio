@@ -4,6 +4,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QButtonGroup, QFrame, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from app.theme import CardFrame, TOKENS, section_title
+from app.ui_refresh import set_dynamic_property, set_text_if_changed
 
 
 class NavigationRail(CardFrame):
@@ -99,10 +100,8 @@ class NavigationRail(CardFrame):
 
     def set_route_context(self, phase_key: str, page_label: str) -> None:
         phase = phase_key if phase_key in {"field", "site", "compute", "delivery"} else "field"
-        self.nav_mission_chip.setText(f"{phase.upper()} · {page_label}")
-        self.nav_mission_chip.setProperty("navMissionPhase", phase)
-        self.nav_mission_chip.style().unpolish(self.nav_mission_chip)
-        self.nav_mission_chip.style().polish(self.nav_mission_chip)
+        set_text_if_changed(self.nav_mission_chip, f"{phase.upper()} · {page_label}")
+        set_dynamic_property(self.nav_mission_chip, "navMissionPhase", phase)
 
     def _emit_page(self, page_key: str, checked: bool) -> None:
         if checked:

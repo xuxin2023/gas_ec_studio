@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from app.studio import StudioController
 from app.theme import CardFrame, TOKENS, chip, section_title
+from app.ui_refresh import CoalescedWidgetRefresh, set_dynamic_property, set_text_if_changed
 
 
 class DeviceDetailPage(QWidget):
@@ -161,10 +162,11 @@ class DeviceDetailPage(QWidget):
         self._build_coeff_tab()
         self._build_diagnostic_tab()
 
-        self.controller.devices_changed.connect(self.refresh)
+        self._live_refresh = CoalescedWidgetRefresh(self, self.refresh, interval_ms=250)
+        self.controller.devices_changed.connect(self._live_refresh.request)
         self.controller.selection_changed.connect(self.refresh)
-        self.controller.transactions_changed.connect(self.refresh)
-        self.controller.events_changed.connect(self.refresh)
+        self.controller.transactions_changed.connect(self._live_refresh.request)
+        self.controller.events_changed.connect(self._live_refresh.request)
         self.controller.view_mode_changed.connect(lambda _mode: self.refresh())
         self.refresh()
 
@@ -206,10 +208,12 @@ class DeviceDetailPage(QWidget):
         )
         self.summary_values["data_state"].setText(entry.runtime.last_message)
 
-        self.overview_status_chip.setText("在线" if entry.runtime.connected else "离线")
-        self.overview_status_chip.setProperty("chipTone", "success" if entry.runtime.connected else "warning")
-        self.overview_status_chip.style().unpolish(self.overview_status_chip)
-        self.overview_status_chip.style().polish(self.overview_status_chip)
+        set_text_if_changed(self.overview_status_chip, "在线" if entry.runtime.connected else "离线")
+        set_dynamic_property(
+            self.overview_status_chip,
+            "chipTone",
+            "success" if entry.runtime.connected else "warning",
+        )
 
         if latest_numeric:
             self.overview_metrics["co2"].setText(f"{latest_numeric.co2_ppm:.2f} ppm")
@@ -522,13 +526,11 @@ class DeviceDetailPage(QWidget):
         target: str,
         tone: str,
     ) -> None:
-        button.setText(self._compact_device_ops_text(value, 8))
+        set_text_if_changed(button, self._compact_device_ops_text(value, 8))
         button.setToolTip(note)
-        button.setProperty("targetAction", target)
-        button.setProperty("actionTone", tone)
+        set_dynamic_property(button, "targetAction", target)
+        set_dynamic_property(button, "actionTone", tone)
         button.setEnabled(bool(target))
-        button.style().unpolish(button)
-        button.style().polish(button)
 
     def _activate_device_ops_action(self) -> None:
         self._activate_device_ops_target(self.device_ops_action_button)
@@ -561,10 +563,8 @@ class DeviceDetailPage(QWidget):
             return
 
     def _set_device_ops_chip(self, text: str, tone: str) -> None:
-        self.device_ops_chip.setText(text)
-        self.device_ops_chip.setProperty("chipTone", tone)
-        self.device_ops_chip.style().unpolish(self.device_ops_chip)
-        self.device_ops_chip.style().polish(self.device_ops_chip)
+        set_text_if_changed(self.device_ops_chip, text)
+        set_dynamic_property(self.device_ops_chip, "chipTone", tone)
 
     def _build_overview_tab(self) -> None:
         layout = QVBoxLayout(self.overview_tab)

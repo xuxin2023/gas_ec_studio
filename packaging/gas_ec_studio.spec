@@ -5,7 +5,7 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 
 PROJECT_ROOT = Path(SPECPATH).resolve().parent
-BUILD_NAME = os.environ.get("GAS_EC_BUILD_NAME", "GasECStudio-0.1.0-rc2-win64")
+BUILD_NAME = os.environ.get("GAS_EC_BUILD_NAME", "GasECStudio-0.1.0-rc3-win64")
 
 pyqtgraph_datas = collect_data_files("pyqtgraph")
 rasterio_datas, rasterio_binaries, rasterio_hiddenimports = collect_all("rasterio")

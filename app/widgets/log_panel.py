@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.theme import CardFrame, TOKENS, chip
+from app.ui_refresh import set_text_if_changed
 from app.ui_text import ui_safe_text
 
 
@@ -19,6 +20,7 @@ class LogPanel(CardFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(muted=True, role="console", parent=parent)
         self._expanded = False
+        self._last_lines: tuple[str, ...] = ()
         self.setProperty("logPanelCompactDock", True)
         self._collapsed_height = 44
         self._expanded_min_height = 180
@@ -78,19 +80,23 @@ class LogPanel(CardFrame):
         self.set_expanded(False)
 
     def set_lines(self, lines: list[str]) -> None:
-        safe_lines = [ui_safe_text(line) for line in lines]
+        safe_lines = tuple(ui_safe_text(line) for line in lines)
+        if safe_lines == self._last_lines:
+            return
+        self._last_lines = safe_lines
         self.editor.setPlainText("\n".join(safe_lines))
-        self.log_count_chip.setText(f"{len(safe_lines)} 条")
-        self.latest_line.setText(safe_lines[0] if safe_lines else "暂无日志。")
+        set_text_if_changed(self.log_count_chip, f"{len(safe_lines)} 条")
+        set_text_if_changed(self.latest_line, safe_lines[0] if safe_lines else "暂无日志。")
         self.latest_line.setToolTip(self.latest_line.text())
         cursor = self.editor.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
         self.editor.setTextCursor(cursor)
 
     def clear(self) -> None:
+        self._last_lines = ()
         self.editor.clear()
-        self.log_count_chip.setText("0 条")
-        self.latest_line.setText("暂无日志。")
+        set_text_if_changed(self.log_count_chip, "0 条")
+        set_text_if_changed(self.latest_line, "暂无日志。")
         self.latest_line.setToolTip(self.latest_line.text())
 
     def toggle(self) -> None:

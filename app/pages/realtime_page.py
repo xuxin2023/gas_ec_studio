@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
-    QPushButton,
     QSizePolicy,
     QTextEdit,
     QToolButton,
@@ -25,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from app.studio import StudioController
 from app.theme import CardFrame, PLOT_SERIES_COLORS, TOKENS, chip, configure_plot_theme, section_title
+from app.ui_refresh import CoalescedWidgetRefresh, set_dynamic_property, set_text_if_changed
 
 
 class RealtimePage(QWidget):
@@ -63,10 +63,11 @@ class RealtimePage(QWidget):
         self.bottom_card = self._build_bottom_area()
         layout.addWidget(self.bottom_card, 1)
 
-        self.controller.frame_received.connect(lambda _frame: self.refresh())
-        self.controller.devices_changed.connect(self.refresh)
+        self._live_refresh = CoalescedWidgetRefresh(self, self.refresh, interval_ms=250)
+        self.controller.frame_received.connect(self._live_refresh.request)
+        self.controller.devices_changed.connect(self._live_refresh.request)
         self.controller.selection_changed.connect(self.refresh)
-        self.controller.events_changed.connect(self.refresh)
+        self.controller.events_changed.connect(self._live_refresh.request)
         self.controller.view_mode_changed.connect(lambda _mode: self.refresh())
         self.refresh()
 
@@ -110,16 +111,19 @@ class RealtimePage(QWidget):
             self._set_session_chip("采集中", "success")
         else:
             self._set_session_chip("等待帧", "warning")
-        self.session_device_value.setText(entry.config.label)
-        self.session_window_note.setText(
+        set_text_if_changed(self.session_device_value, entry.config.label)
+        set_text_if_changed(
+            self.session_window_note,
             f"{entry.config.port} · {self.window_combo.currentText()} · buffer={row_count} frames"
         )
-        self.session_health_note.setText(
+        set_text_if_changed(
+            self.session_health_note,
             f"valid={valid_rate:.2f}/s，residual={residual_rate:.2f}/s，anomaly={anomaly_count}"
         )
         if hasattr(self, "capture_status_value"):
-            self.capture_status_value.setText("在线" if connected else "离线")
-            self.capture_status_note.setText(
+            set_text_if_changed(self.capture_status_value, "在线" if connected else "离线")
+            set_text_if_changed(
+                self.capture_status_note,
                 f"{row_count} 帧 · valid {valid_rate:.2f}/s · residual {residual_rate:.2f}/s"
             )
             self.capture_status_note.setToolTip(
@@ -128,15 +132,11 @@ class RealtimePage(QWidget):
                 f"buffer={row_count}; valid={valid_rate:.2f}/s; residual={residual_rate:.2f}/s; anomaly={anomaly_count}"
             )
             tone = "danger" if anomaly_count > 0 or residual_rate > valid_rate else "success" if connected and row_count else "warning"
-            self.capture_status_panel.setProperty("evidenceTone", tone)
-            self.capture_status_panel.style().unpolish(self.capture_status_panel)
-            self.capture_status_panel.style().polish(self.capture_status_panel)
+            set_dynamic_property(self.capture_status_panel, "evidenceTone", tone)
 
     def _set_session_chip(self, text: str, tone: str) -> None:
-        self.session_state_chip.setText(text)
-        self.session_state_chip.setProperty("chipTone", tone)
-        self.session_state_chip.style().unpolish(self.session_state_chip)
-        self.session_state_chip.style().polish(self.session_state_chip)
+        set_text_if_changed(self.session_state_chip, text)
+        set_dynamic_property(self.session_state_chip, "chipTone", tone)
 
     def _build_control_bar(self) -> CardFrame:
         card = CardFrame(role="command")

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gas-ec-studio"
-version = "0.1.0rc2"
+version = "0.1.0rc3"
 description = "Independent gas analyzer engineering cockpit for acquisition, diagnostics, and EC pipeline integration."
 readme = "README.md"
 requires-python = ">=3.11"

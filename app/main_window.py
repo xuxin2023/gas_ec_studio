@@ -27,6 +27,7 @@ from app.pages.spectral_qc_page import SpectralQCPage
 from app.resources import application_icon
 from app.studio import StudioController
 from app.theme import CardFrame, TOKENS
+from app.ui_refresh import CoalescedWidgetRefresh, set_dynamic_property, set_text_if_changed
 from app.widgets.context_inspector import ContextInspector
 from app.widgets.log_panel import LogPanel
 from app.widgets.navigation import NavigationRail
@@ -132,7 +133,20 @@ class StudioMainWindow(QMainWindow):
         self.device_detail_page.back_requested.connect(lambda: self._set_page("device_center"))
         self.device_detail_page.open_realtime_requested.connect(lambda: self._set_page("realtime"))
 
-        self.controller.devices_changed.connect(self._refresh_shell)
+        self._live_shell_refresh = CoalescedWidgetRefresh(
+            self,
+            self._refresh_live_shell,
+            interval_ms=250,
+            visible_only=False,
+            stabilize_updates=False,
+        )
+        self._live_inspector_refresh = CoalescedWidgetRefresh(
+            self.inspector,
+            self._refresh_inspector,
+            interval_ms=2000,
+        )
+        self.controller.devices_changed.connect(self._live_shell_refresh.request)
+        self.controller.devices_changed.connect(self._live_inspector_refresh.request)
         self.controller.selection_changed.connect(self._refresh_shell)
         self.controller.logs_changed.connect(self._refresh_shell)
         self.controller.events_changed.connect(self._refresh_shell)
@@ -341,17 +355,13 @@ class StudioMainWindow(QMainWindow):
         return tile
 
     def _set_header_tile(self, tile: QLabel, label: str, value: str, tone: str = "neutral") -> None:
-        tile.setText(f"{label}\n{value}")
-        tile.setProperty("shellTone", tone)
-        tile.style().unpolish(tile)
-        tile.style().polish(tile)
+        set_text_if_changed(tile, f"{label}\n{value}")
+        set_dynamic_property(tile, "shellTone", tone)
 
     def _set_closure_stage(self, key: str, label: str, value: str, tone: str = "neutral") -> None:
         tile = self.header_closure_tiles[key]
-        tile.setText(f"{label}\n{value}")
-        tile.setProperty("closureTone", tone)
-        tile.style().unpolish(tile)
-        tile.style().polish(tile)
+        set_text_if_changed(tile, f"{label}\n{value}")
+        set_dynamic_property(tile, "closureTone", tone)
 
     def _set_page(self, page_key: str) -> None:
         mapping = {
@@ -377,13 +387,21 @@ class StudioMainWindow(QMainWindow):
         self._set_page("device_detail")
 
     def _refresh_shell(self) -> None:
+        self._refresh_shell_content()
+        self._refresh_inspector()
+
+    def _refresh_live_shell(self) -> None:
+        self._refresh_shell_content()
+
+    def _refresh_shell_content(self) -> None:
         summary = self.controller.status_summary()
         view_label = "操作员" if self.controller.view_mode == "operator" else "工程师"
-        self.header_status.setText(
+        set_text_if_changed(
+            self.header_status,
             f"在线 {summary['online_devices']} / {summary['total_devices']} 台 · "
             f"异常 {summary['abnormal_devices']} 台 · "
             f"采集中 {summary['sampling_devices']} 台 · "
-            f"最近告警：{summary['recent_alarm']}"
+            f"最近告警：{summary['recent_alarm']}",
         )
         alarm_tone = "success" if summary["abnormal_devices"] == 0 else "danger"
         sampling_tone = "success" if summary["sampling_devices"] > 0 else "warning"
@@ -394,10 +412,13 @@ class StudioMainWindow(QMainWindow):
         self._refresh_closure_strip(summary)
         self.operator_btn.setChecked(self.controller.view_mode == "operator")
         self.engineer_btn.setChecked(self.controller.view_mode == "engineer")
-        self.inspector.refresh(self.controller.context_snapshot())
         self.log_panel.set_lines(self.controller.log_lines())
         self._refresh_route_cockpit()
         self._apply_responsive_shell()
+
+    def _refresh_inspector(self) -> None:
+        if self.inspector.isVisible():
+            self.inspector.refresh(self.controller.context_snapshot())
 
     def _apply_responsive_shell(self, force: bool = False) -> None:
         compact = self.width() < 1500
@@ -421,13 +442,13 @@ class StudioMainWindow(QMainWindow):
             self._active_page_key,
             self._route_context["device_center"],
         )
-        self.route_progress_label.setText(f"{phase_label} / {page_label}")
+        set_text_if_changed(self.route_progress_label, f"{phase_label} / {page_label}")
         self.route_progress_label.setToolTip(detail)
         for key, tile in self.route_stage_tiles.items():
-            tile.setProperty("routeActive", key == phase)
-            tile.setProperty("routeTone", key)
-            tile.style().unpolish(tile)
-            tile.style().polish(tile)
+            changed = set_dynamic_property(tile, "routeActive", key == phase)
+            changed = set_dynamic_property(tile, "routeTone", key) or changed
+            if changed:
+                tile.update()
         self.navigation.set_route_context(phase, page_label)
 
     def _refresh_closure_strip(self, summary: dict) -> None:

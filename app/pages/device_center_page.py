@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from app.studio import StudioController
 from app.theme import CardFrame, TOKENS, chip, section_title
+from app.ui_refresh import CoalescedWidgetRefresh, set_dynamic_property, set_text_if_changed
 
 
 class DeviceCenterPage(QWidget):
@@ -34,6 +35,8 @@ class DeviceCenterPage(QWidget):
         super().__init__(parent)
         self.setProperty("pageSurface", True)
         self.controller = controller
+        self._device_card_widgets: dict[str, CardFrame] = {}
+        self._empty_device_card: CardFrame | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -145,10 +148,16 @@ class DeviceCenterPage(QWidget):
         self._install_operations_deck()
         self.layout.addStretch(1)
 
-        self.controller.devices_changed.connect(self.refresh)
+        self._live_refresh = CoalescedWidgetRefresh(
+            self,
+            self.refresh,
+            interval_ms=250,
+            stabilize_updates=False,
+        )
+        self.controller.devices_changed.connect(self._live_refresh.request)
         self.controller.selection_changed.connect(self.refresh)
-        self.controller.transactions_changed.connect(self.refresh)
-        self.controller.events_changed.connect(self.refresh)
+        self.controller.transactions_changed.connect(self._live_refresh.request)
+        self.controller.events_changed.connect(self._live_refresh.request)
         self.controller.view_mode_changed.connect(lambda _mode: self.refresh())
         self.refresh()
 
@@ -212,9 +221,7 @@ class DeviceCenterPage(QWidget):
             card = self.status_metric_cards_by_key.get(key)
             if card is None:
                 continue
-            card.setProperty("fleetMetricTone", tone)
-            card.style().unpolish(card)
-            card.style().polish(card)
+            set_dynamic_property(card, "fleetMetricTone", tone)
 
     def _build_field_readiness(self) -> CardFrame:
         card = CardFrame(role="panel")
@@ -369,12 +376,10 @@ class DeviceCenterPage(QWidget):
             target_action = "realtime"
             tone = "success"
 
-        self.fleet_next_button.setText("下一步")
+        set_text_if_changed(self.fleet_next_button, "下一步")
         self.fleet_next_button.setToolTip(f"{next_text}: {next_note}")
-        self.fleet_next_button.setProperty("targetAction", target_action)
-        self.fleet_next_button.setProperty("actionTone", tone)
-        self.fleet_next_button.style().unpolish(self.fleet_next_button)
-        self.fleet_next_button.style().polish(self.fleet_next_button)
+        set_dynamic_property(self.fleet_next_button, "targetAction", target_action)
+        set_dynamic_property(self.fleet_next_button, "actionTone", tone)
 
         has_selected = selected is not None
         self.fleet_detail_button.setEnabled(has_selected)
@@ -832,10 +837,8 @@ class DeviceCenterPage(QWidget):
 
     def _refresh_operator_mission_route(self, active_stage: str, mission_tones: dict[str, str]) -> None:
         for stage, card in self.operator_mission_tile_cards.items():
-            card.setProperty("activeMissionStage", stage == active_stage)
-            card.setProperty("missionTone", mission_tones.get(stage, "warning"))
-            card.style().unpolish(card)
-            card.style().polish(card)
+            set_dynamic_property(card, "activeMissionStage", stage == active_stage)
+            set_dynamic_property(card, "missionTone", mission_tones.get(stage, "warning"))
 
     def _build_operator_evidence_card(self) -> CardFrame:
         card = CardFrame(role="panel")
@@ -968,9 +971,7 @@ class DeviceCenterPage(QWidget):
             tile = self.operator_evidence_tile_cards.get(key)
             if tile is None:
                 continue
-            tile.setProperty("evidenceTone", tone)
-            tile.style().unpolish(tile)
-            tile.style().polish(tile)
+            set_dynamic_property(tile, "evidenceTone", tone)
 
     def _compact_setup_grid(self, fields: list[tuple[str, QWidget]]) -> QGridLayout:
         grid = QGridLayout()
@@ -998,14 +999,16 @@ class DeviceCenterPage(QWidget):
         return grid
 
     def _rebuild_device_cards(self) -> None:
-        while self.device_grid.count():
-            item = self.device_grid.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.setParent(None)
-                widget.deleteLater()
-
         cards = self.controller.device_cards()
+        card_uids = [str(data["uid"]) for data in cards]
+        existing_uids = list(self._device_card_widgets)
+
+        if card_uids == existing_uids:
+            for data in cards:
+                self._update_device_summary_card(self._device_card_widgets[str(data["uid"])], data)
+            return
+
+        self._clear_device_grid()
         if not cards:
             empty = CardFrame(muted=True, role="tile")
             empty.setMaximumHeight(92)
@@ -1013,17 +1016,29 @@ class DeviceCenterPage(QWidget):
             empty_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
             empty_layout.addWidget(section_title("暂无设备", "先添加一台设备，首页摘要卡会自动生成。"))
             self.device_grid.addWidget(empty, 0, 0)
+            self._empty_device_card = empty
             empty.show()
             return
 
         single_card = len(cards) == 1
         for index, data in enumerate(cards):
             card = self._device_summary_card(data)
+            self._device_card_widgets[str(data["uid"])] = card
             if single_card:
                 self.device_grid.addWidget(card, 0, 0)
             else:
                 self.device_grid.addWidget(card, index // 2, index % 2)
             card.show()
+
+    def _clear_device_grid(self) -> None:
+        while self.device_grid.count():
+            item = self.device_grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        self._device_card_widgets.clear()
+        self._empty_device_card = None
 
     def _device_summary_card(self, data: dict) -> CardFrame:
         card = CardFrame(muted=not data["is_selected"], role="cockpit" if data["is_selected"] else "tile")
@@ -1035,38 +1050,32 @@ class DeviceCenterPage(QWidget):
         layout.setHorizontalSpacing(TOKENS.spacing_sm)
         layout.setVerticalSpacing(TOKENS.spacing_xs)
 
-        title = QLabel(data["label"])
+        title = QLabel()
         title.setObjectName("sectionTitle")
         title.setMaximumHeight(22)
         layout.addWidget(title, 0, 0, 1, 2)
-        layout.addWidget(chip(data["status_text"], data["status_level"]), 0, 2)
+        status_chip = chip("", "neutral")
+        layout.addWidget(status_chip, 0, 2)
 
-        meta = QLabel(
-            f"{data['analyzer_profile_label']} · {data['port']} · {data['baudrate']} bps · "
-            f"ID {data['device_id']} · MODE{data['mode']} · {'主动输出' if data['active_send'] else '按需读取'}"
-        )
+        meta = QLabel()
         meta.setObjectName("subtitle")
         meta.setWordWrap(False)
         meta.setMaximumHeight(18)
         layout.addWidget(meta, 0, 3, 1, 4)
 
-        for column, (label, value) in enumerate(
-            (
-                ("CO2", f"{data['co2_ppm']:.2f} ppm" if data["co2_ppm"] is not None else "--"),
-                ("H2O", f"{data['h2o_mmol']:.2f} mmol" if data["h2o_mmol"] is not None else "--"),
-                ("压力", f"{data['pressure_kpa']:.2f} kPa" if data["pressure_kpa"] is not None else "--"),
-            )
-        ):
-            layout.addWidget(self._mini_metric(label, value), 1, column)
+        metric_labels: dict[str, QLabel] = {}
+        for column, (key, label) in enumerate((("co2", "CO2"), ("h2o", "H2O"), ("pressure", "压力"))):
+            metric_card = self._mini_metric(label, "--")
+            metric_labels[key] = metric_card._value_label
+            layout.addWidget(metric_card, 1, column)
 
         button_row = QHBoxLayout()
         button_row.setContentsMargins(0, 0, 0, 0)
         button_row.setSpacing(TOKENS.spacing_xs)
         select_btn = QPushButton("设为当前")
         select_btn.clicked.connect(lambda _checked=False, uid=data["uid"]: self.controller.select_device(uid))
-        link_btn = QPushButton("断开" if data["connected"] else "连接")
-        action = self.controller.disconnect_device if data["connected"] else self.controller.connect_device
-        link_btn.clicked.connect(lambda _checked=False, uid=data["uid"], fn=action: self._safe_call(lambda: fn(uid)))
+        link_btn = QPushButton()
+        link_btn.clicked.connect(lambda _checked=False, uid=data["uid"]: self._toggle_device_connection(uid))
         read_btn = QPushButton("读取一帧")
         read_btn.clicked.connect(lambda _checked=False, uid=data["uid"]: self._safe_call(lambda: self.controller.read_frame_once(uid)))
         detail_btn = QPushButton("查看详情")
@@ -1077,7 +1086,45 @@ class DeviceCenterPage(QWidget):
         layout.addLayout(button_row, 1, 3, 1, 4)
         for column in range(7):
             layout.setColumnStretch(column, 1)
+        card._summary_widgets = {
+            "title": title,
+            "status": status_chip,
+            "meta": meta,
+            "metrics": metric_labels,
+            "link": link_btn,
+        }
+        self._update_device_summary_card(card, data)
         return card
+
+    def _update_device_summary_card(self, card: CardFrame, data: dict) -> None:
+        widgets = card._summary_widgets
+        is_selected = bool(data["is_selected"])
+        object_name = "card" if is_selected else "cardMuted"
+        if card.objectName() != object_name:
+            card.setObjectName(object_name)
+            card.style().unpolish(card)
+            card.style().polish(card)
+        set_dynamic_property(card, "cardRole", "cockpit" if is_selected else "tile")
+        set_text_if_changed(widgets["title"], str(data["label"]))
+        set_text_if_changed(widgets["status"], str(data["status_text"]))
+        set_dynamic_property(widgets["status"], "chipTone", str(data["status_level"]))
+        set_text_if_changed(
+            widgets["meta"],
+            f"{data['analyzer_profile_label']} · {data['port']} · {data['baudrate']} bps · "
+            f"ID {data['device_id']} · MODE{data['mode']} · {'主动输出' if data['active_send'] else '按需读取'}",
+        )
+        metrics = widgets["metrics"]
+        set_text_if_changed(metrics["co2"], f"{data['co2_ppm']:.2f} ppm" if data["co2_ppm"] is not None else "--")
+        set_text_if_changed(metrics["h2o"], f"{data['h2o_mmol']:.2f} mmol" if data["h2o_mmol"] is not None else "--")
+        set_text_if_changed(metrics["pressure"], f"{data['pressure_kpa']:.2f} kPa" if data["pressure_kpa"] is not None else "--")
+        set_text_if_changed(widgets["link"], "断开" if data["connected"] else "连接")
+
+    def _toggle_device_connection(self, uid: str) -> None:
+        entry = self.controller.devices.get(uid)
+        if entry is None:
+            return
+        action = self.controller.disconnect_device if entry.runtime.connected else self.controller.connect_device
+        self._safe_call(lambda: action(uid))
 
     def _rebuild_device_cards_legacy(self) -> None:
         while self.device_grid.count():
@@ -1177,6 +1224,7 @@ class DeviceCenterPage(QWidget):
         value_label.setProperty("compactMetric", True)
         layout.addWidget(title_label)
         layout.addWidget(value_label)
+        card._value_label = value_label
         return card
 
     def _refresh_recent_activity(self) -> None:
