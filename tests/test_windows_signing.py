@@ -20,6 +20,12 @@ def test_certificate_usability_requires_private_key_and_future_expiry() -> None:
     assert not build_windows_rc._certificate_is_usable({"has_private_key": True, "not_after": past})
 
 
+def test_release_channel_detection_distinguishes_prerelease_versions() -> None:
+    assert build_windows_rc._release_channel_for_version("0.1.0rc1") == "rc"
+    assert build_windows_rc._release_channel_for_version("0.1.0.dev2") == "rc"
+    assert build_windows_rc._release_channel_for_version("0.1.0") == "final"
+
+
 def test_normalize_thumbprint_accepts_spacing_and_rejects_invalid() -> None:
     source = "AA BB CC DD EE FF 00 11 22 33 44 55 66 77 88 99 AA BB CC DD"
 

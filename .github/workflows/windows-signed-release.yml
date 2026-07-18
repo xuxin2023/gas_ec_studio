@@ -1,0 +1,168 @@
+name: Windows Signed Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_channel:
+        description: "Release channel"
+        required: true
+        type: choice
+        options:
+          - rc
+          - final
+        default: rc
+      publish_release:
+        description: "Publish a GitHub release after final validation"
+        required: true
+        type: boolean
+        default: false
+      release_tag:
+        description: "Release tag used only when publishing, for example v0.1.0"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build-sign-validate:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      GAS_EC_SIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+      GAS_EC_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+      WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+      SIGNING_PFX: ${{ runner.temp }}\GasECStudio-signing.pfx
+      RELEASE_CHANNEL: ${{ inputs.release_channel }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Validate protected release inputs
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_PFX_BASE64)) {
+            throw "WINDOWS_SIGNING_PFX_BASE64 secret is not configured."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:GAS_EC_SIGN_PFX_PASSWORD)) {
+            throw "WINDOWS_SIGNING_PFX_PASSWORD secret is not configured."
+          }
+          if ($env:GAS_EC_TIMESTAMP_URL -notmatch '^https?://') {
+            throw "WINDOWS_TIMESTAMP_URL repository variable is not configured."
+          }
+          if ('${{ inputs.publish_release }}' -eq 'true') {
+            if ($env:RELEASE_CHANNEL -ne 'final') {
+              throw "Only the final channel can publish a GitHub release."
+            }
+            if ('${{ inputs.release_tag }}' -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
+              throw "Final publishing requires a release_tag such as v0.1.0."
+            }
+          }
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,gis]"
+          python -m pip install "pyinstaller>=6.19"
+
+      - name: Bootstrap pinned signing tools
+        run: python scripts/bootstrap_windows_signing_tools.py
+
+      - name: Materialize protected signing certificate
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String($env:WINDOWS_SIGNING_PFX_BASE64)
+          [IO.File]::WriteAllBytes($env:SIGNING_PFX, $bytes)
+
+      - name: Preflight certificate and release channel
+        shell: pwsh
+        run: |
+          python scripts/build_windows_rc.py `
+            --release-channel $env:RELEASE_CHANNEL `
+            --require-signature `
+            --signing-preflight-only `
+            --pfx $env:SIGNING_PFX `
+            --timestamp-url $env:GAS_EC_TIMESTAMP_URL
+
+      - name: Build, sign, and smoke test package
+        shell: pwsh
+        run: |
+          python scripts/build_windows_rc.py `
+            --release-channel $env:RELEASE_CHANNEL `
+            --require-signature `
+            --pfx $env:SIGNING_PFX `
+            --timestamp-url $env:GAS_EC_TIMESTAMP_URL
+
+      - name: Resolve artifact path
+        id: artifact
+        shell: pwsh
+        run: |
+          $appVersion = python -c "from app.version import APP_VERSION; print(APP_VERSION)"
+          $displayVersion = python -c "from app.version import APP_VERSION; print(APP_VERSION.replace('rc', '-rc'))"
+          "root=artifacts/windows_rc/$displayVersion" >> $env:GITHUB_OUTPUT
+          "app_version=$appVersion" >> $env:GITHUB_OUTPUT
+          "version=$displayVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Validate signed release package
+        shell: pwsh
+        run: |
+          $arguments = @(
+            '--artifact-root', '${{ steps.artifact.outputs.root }}',
+            '--expected-commit', $env:GITHUB_SHA,
+            '--expected-version', '${{ steps.artifact.outputs.app_version }}'
+          )
+          if ($env:RELEASE_CHANNEL -eq 'final') {
+            $arguments += '--require-final'
+          }
+          python scripts/validate_windows_release.py @arguments
+
+      - name: Upload validated package
+        uses: actions/upload-artifact@v4
+        with:
+          name: gas-ec-studio-${{ inputs.release_channel }}-${{ steps.artifact.outputs.version }}
+          path: ${{ steps.artifact.outputs.root }}/
+          if-no-files-found: error
+
+      - name: Publish final GitHub release
+        if: inputs.publish_release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $root = '${{ steps.artifact.outputs.root }}'
+          $tag = '${{ inputs.release_tag }}'
+          $expectedTag = 'v${{ steps.artifact.outputs.app_version }}'
+          if ($tag -ne $expectedTag) {
+            throw "Release tag $tag does not match application version $expectedTag."
+          }
+          $tagCommit = git rev-list -n 1 $tag
+          if ($LASTEXITCODE -ne 0 -or $tagCommit -ne $env:GITHUB_SHA) {
+            throw "Release tag $tag must already point to workflow commit $env:GITHUB_SHA."
+          }
+          $assets = @(
+            (Get-ChildItem -LiteralPath $root -Filter '*.exe').FullName
+            (Get-ChildItem -LiteralPath $root -Filter '*.zip').FullName
+            (Join-Path $root 'SHA256SUMS.txt')
+            (Join-Path $root 'release-validation.json')
+          )
+          gh release create $tag @assets `
+            --title "Gas EC Studio $tag" `
+            --generate-notes `
+            --verify-tag
+
+      - name: Remove signing certificate
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath $env:SIGNING_PFX) {
+            Remove-Item -LiteralPath $env:SIGNING_PFX -Force
+          }

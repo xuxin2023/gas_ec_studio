@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -81,8 +82,12 @@ def _certificate_is_usable(certificate: dict[str, object]) -> bool:
     return expires_at > now
 
 
+def _release_channel_for_version(version: str) -> str:
+    return "rc" if re.search(r"(?:a|b|rc|dev)\d*", version, flags=re.IGNORECASE) else "final"
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build and verify the Windows RC package.")
+    parser = argparse.ArgumentParser(description="Build and verify a Windows release package.")
     parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT / "artifacts" / "windows_rc")
     parser.add_argument("--work-root", type=Path, default=PROJECT_ROOT / ".build" / "windows_rc")
     parser.add_argument("--incremental", action="store_true", help="Reuse the existing PyInstaller analysis cache.")
@@ -95,7 +100,17 @@ def main() -> int:
     parser.add_argument("--signtool", type=Path, help="Explicit signtool.exe path.")
     parser.add_argument("--signing-preflight-only", action="store_true", help="Validate signing inputs without building.")
     parser.add_argument("--signing-audit", action="store_true", help="List local signing tools and certificates without building.")
+    parser.add_argument("--release-channel", choices=("auto", "rc", "final"), default="auto")
     args = parser.parse_args()
+
+    detected_release_channel = _release_channel_for_version(APP_VERSION)
+    release_channel = detected_release_channel if args.release_channel == "auto" else args.release_channel
+    if release_channel != detected_release_channel:
+        raise SigningError(
+            f"Release channel {release_channel!r} does not match APP_VERSION {APP_VERSION!r} "
+            f"({detected_release_channel})."
+        )
+    require_signature = args.require_signature or release_channel == "final"
 
     if args.signing_audit:
         tool = find_signtool(args.signtool)
@@ -126,7 +141,7 @@ def main() -> int:
         certificate_store=args.certificate_store,
         pfx_path=args.pfx,
         pfx_password_env=args.pfx_password_env,
-        require_signature=args.require_signature or args.signing_preflight_only,
+        require_signature=require_signature or args.signing_preflight_only,
     )
     if args.signing_preflight_only:
         print(
@@ -189,18 +204,25 @@ def main() -> int:
         signing["identity_mode"] = "none"
         signing["verification"] = "authenticode_only"
     signing_status = str(signing.get("status", "not_checked"))
-    if args.require_signature and signing_status != "Valid":
+    if require_signature and signing_status != "Valid":
         raise SigningError(f"A valid signature is required, received: {signing_status}")
 
     readme_template = (PROJECT_ROOT / "packaging" / "RC_README.txt").read_text(encoding="utf-8")
     readme_path = output_root / "RC_README.txt"
+    package_note = (
+        "本包为正式发布版本，已通过现场流程、导出链和高 DPI 显示验收。"
+        if release_channel == "final"
+        else "本包为候选发布版本，用于现场流程、导出链和高 DPI 显示验收。"
+    )
     signing_note = (
         f"本可执行文件已完成代码签名与时间戳验证，签名者：{signing.get('signer_subject', '--')}。"
         if signing_status == "Valid"
         else "当前可执行文件未进行商业代码签名，Windows 可能显示未知发布者提示。"
     )
     readme_path.write_text(
-        readme_template.replace("{{VERSION}}", display_version).replace("{{SIGNING_NOTE}}", signing_note),
+        readme_template.replace("{{VERSION}}", display_version)
+        .replace("{{PACKAGE_NOTE}}", package_note)
+        .replace("{{SIGNING_NOTE}}", signing_note),
         encoding="utf-8",
     )
 
@@ -241,6 +263,8 @@ def main() -> int:
         "product": "Gas EC Studio",
         "version": APP_VERSION,
         "display_version": display_version,
+        "release_channel": release_channel,
+        "is_prerelease": release_channel != "final",
         "built_at": datetime.now().isoformat(),
         "python": sys.version,
         "pyinstaller": subprocess.check_output([sys.executable, "-m", "PyInstaller", "--version"], text=True).strip(),
