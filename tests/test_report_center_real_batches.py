@@ -483,6 +483,8 @@ def test_report_center_fixture_pack_surfaces_validated_eddypro_assets(monkeypatc
         report = controller.report_center_workspace["reports"]["fixture_pack"]
         rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
         latest_files = controller.current_spectral_run().artifacts["result_exports"]["latest"]["files"]
+        fixture_summary = json.loads(Path(latest_files["fixture_pack_summary_artifact"]).read_text(encoding="utf-8"))
+        external_anchor_ready = fixture_summary["optional_external_disabled_count"] == 0
 
         assert report["report_key"] == "fixture_pack"
         assert report["metrics"][0] == ("status", "pass")
@@ -494,7 +496,7 @@ def test_report_center_fixture_pack_surfaces_validated_eddypro_assets(monkeypatc
         assert "official_eddypro_executable_run" in rows_text
         assert "official_eddypro_run_checklist" in rows_text
         assert "official_run_normalization" in rows_text
-        assert "official_run_norm=normalized" in rows_text
+        assert ("official_run_norm=normalized" in rows_text) is external_anchor_ready
         assert report["public_eddypro_fixture_catalog"]["status"] == "pass"
         assert report["public_eddypro_fixture_catalog"]["fixture_count"] == 6
         assert report["public_eddypro_fixture_acquisition"]["status"] == "pass"
@@ -687,8 +689,6 @@ def test_report_center_captures_official_eddypro_run_sidecar(monkeypatch, tmp_pa
             output_files="eddypro/eddypro_full_output.csv",
         )
         page.refresh()
-        report = controller.report_center_workspace["reports"]["fixture_pack"]
-        rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
         state = controller.report_center_workspace["official_raw_bundle"]
 
         _assert_internal_validation_hidden(page, controller)
@@ -744,8 +744,6 @@ def test_report_center_runs_official_raw_closure_pipeline(monkeypatch, tmp_path)
             acceptance_timeout_s=120,
         )
         page.refresh()
-        report = controller.report_center_workspace["reports"]["fixture_pack"]
-        rows_text = " ".join(" ".join(str(cell) for cell in row) for row in report["table_rows"])
         state = controller.report_center_workspace["official_raw_bundle"]
 
         _assert_internal_validation_hidden(page, controller)

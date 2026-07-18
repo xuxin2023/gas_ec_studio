@@ -139,6 +139,9 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert snapshot["delivery_audit"]["artifact_index"]["eddypro_release_gate_artifact"]["exists"] is True
         assert snapshot["delivery_audit"]["artifact_index"]["flux_correction_ledger_artifact"]["exists"] is True
         assert snapshot["delivery_audit"]["fixture_pack_summary"]["status"] == "pass"
+        external_anchor_ready = snapshot["delivery_audit"]["fixture_pack_summary"]["optional_external_disabled_count"] == 0
+        expected_evidence_status = "pass" if external_anchor_ready else "blocked"
+        expected_normalization_status = "normalized" if external_anchor_ready else ""
         assert snapshot["delivery_audit"]["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 8
         assert snapshot["delivery_audit"]["official_raw_fixture_detail"]["artifact_type"] == "official_raw_fixture_detail_v1"
         assert snapshot["delivery_audit"]["official_raw_acquisition_validation"]["artifact_type"] == "official_raw_fixture_acquisition_validation_v1"
@@ -154,21 +157,24 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_evidence_pack_acceptance_status"] == "not_run"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_normalization_status"] in {"present", "ready"}
         assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_qc_mapping_strategy"]
-        assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_official_run_normalization_status"] == "normalized"
-        assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_official_run_qc_mapping_strategy"] == "EddyPro 0/1/2 -> gas_ec_studio A/B/C"
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_official_run_normalization_status"] == expected_normalization_status
+        if external_anchor_ready:
+            assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_official_run_qc_mapping_strategy"]
+        else:
+            assert snapshot["delivery_audit"]["result_manifest_summary"]["official_raw_official_run_qc_mapping_strategy"] == ""
         assert snapshot["delivery_audit"]["eddypro_source_inventory"]["inventory_id"] == "eddypro_official_source_inventory_v1"
         assert snapshot["delivery_audit"]["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
         assert snapshot["delivery_audit"]["eddypro_computation_surface"]["status"] == "ready"
         assert snapshot["delivery_audit"]["eddypro_computation_summary"]["computation_surface_status"] == "ready"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_computation_surface_ready_family_count"] == 10
         assert snapshot["delivery_audit"]["eddypro_surrogate_evidence_closure"]["artifact_type"] == "eddypro_surrogate_evidence_closure_v1"
-        assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_surrogate_evidence_closure_status"] == "pass"
-        assert snapshot["delivery_audit"]["result_manifest_summary"]["can_claim_source_derived_functional_parity"] is True
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_surrogate_evidence_closure_status"] == expected_evidence_status
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["can_claim_source_derived_functional_parity"] is external_anchor_ready
         assert snapshot["delivery_audit"]["eddypro_release_gate"]["artifact_type"] == "eddypro_release_gate_v1"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["can_release_full_eddypro_parity"] is False
-        assert snapshot["delivery_audit"]["result_manifest_summary"]["can_release_source_derived_functional_parity"] is True
-        assert snapshot["delivery_audit"]["result_manifest_summary"]["can_release_source_derived_computational_superiority"] is True
-        assert snapshot["delivery_audit"]["result_manifest_summary"]["source_derived_computation_gate_status"] == "pass"
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["can_release_source_derived_functional_parity"] is external_anchor_ready
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["can_release_source_derived_computational_superiority"] is external_anchor_ready
+        assert snapshot["delivery_audit"]["result_manifest_summary"]["source_derived_computation_gate_status"] == expected_evidence_status
         assert snapshot["delivery_audit"]["eddypro_closure_gate"]["artifact_type"] == "eddypro_closure_gate_v1"
         assert snapshot["delivery_audit"]["result_manifest_summary"]["eddypro_closure_gate_status"] == "blocked"
         assert snapshot["delivery_audit"]["spectral_assessment"]["artifact_type"] == "spectral_assessment_export_v1"
@@ -210,10 +216,10 @@ def test_formal_report_exports_files_without_compare(monkeypatch, tmp_path: Path
         assert delivery_audit["eddypro_computation_surface"]["status"] == "ready"
         assert delivery_audit["result_manifest_summary"]["eddypro_computation_surface_status"] == "ready"
         assert delivery_audit["eddypro_computation_summary"]["computation_surface_blocked_family_count"] == 0
-        assert delivery_audit["eddypro_surrogate_evidence_closure"]["status"] == "pass"
+        assert delivery_audit["eddypro_surrogate_evidence_closure"]["status"] == expected_evidence_status
         assert delivery_audit["eddypro_release_gate"]["status"] == "blocked"
-        assert delivery_audit["result_manifest_summary"]["can_release_source_derived_computational_superiority"] is True
-        assert delivery_audit["result_manifest_summary"]["source_derived_computation_gate_status"] == "pass"
+        assert delivery_audit["result_manifest_summary"]["can_release_source_derived_computational_superiority"] is external_anchor_ready
+        assert delivery_audit["result_manifest_summary"]["source_derived_computation_gate_status"] == expected_evidence_status
         assert delivery_audit["eddypro_closure_plan"]["next_action_count"] >= 1
         assert delivery_audit["spectral_assessment"]["status"] == "ok"
         assert delivery_audit["spectral_assessment_library"]["status"] == "ok"

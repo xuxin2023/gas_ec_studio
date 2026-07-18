@@ -1,4 +1,4 @@
-name: EddyPro Release Gate
+name: Validation Release Gate
 
 on:
   pull_request:

@@ -231,6 +231,7 @@
     {
       "fixture_id": "ghg_sample_data_2021_licor_public_raw_candidate",
       "tier": "raw_to_final_parity",
+      "optional_external": true,
       "site_class": "licor_public_ghg_sample",
       "software": "EddyPro",
       "software_version": "EddyPro source 3cabe637",

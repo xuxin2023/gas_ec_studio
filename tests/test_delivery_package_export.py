@@ -154,6 +154,9 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert "trace_gas_status" in manifest["result_manifest_summary"]
         assert audit["trace_gas_provenance"]["artifact_type"] == "trace_gas_provenance_v1"
         assert manifest["fixture_pack_summary"]["status"] == "pass"
+        external_anchor_ready = manifest["fixture_pack_summary"]["optional_external_disabled_count"] == 0
+        expected_evidence_status = "pass" if external_anchor_ready else "blocked"
+        expected_normalization_status = "normalized" if external_anchor_ready else ""
         assert manifest["public_eddypro_fixture_catalog"]["status"] == "pass"
         assert manifest["public_eddypro_fixture_catalog"]["fixture_count"] == 6
         assert manifest["official_raw_fixture_manifest"]["status"] == "needs_official_raw_fixtures"
@@ -176,11 +179,11 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["eddypro_computation_summary"]["computation_surface_status"] == "ready"
         assert manifest["eddypro_computation_summary"]["computation_surface_ready_family_count"] == 10
         assert manifest["eddypro_computation_summary"]["computation_surface_blocked_family_count"] == 0
-        assert manifest["eddypro_computation_summary"]["can_claim_source_derived_computational_superiority"] is True
+        assert manifest["eddypro_computation_summary"]["can_claim_source_derived_computational_superiority"] is external_anchor_ready
         assert manifest["eddypro_surrogate_evidence_closure"]["artifact_type"] == "eddypro_surrogate_evidence_closure_v1"
-        assert manifest["result_manifest_summary"]["eddypro_surrogate_evidence_closure_status"] == "pass"
-        assert manifest["result_manifest_summary"]["can_claim_source_derived_functional_parity"] is True
-        assert manifest["result_manifest_summary"]["can_claim_source_derived_computational_superiority"] is True
+        assert manifest["result_manifest_summary"]["eddypro_surrogate_evidence_closure_status"] == expected_evidence_status
+        assert manifest["result_manifest_summary"]["can_claim_source_derived_functional_parity"] is external_anchor_ready
+        assert manifest["result_manifest_summary"]["can_claim_source_derived_computational_superiority"] is external_anchor_ready
         assert manifest["result_manifest_summary"]["computation_core_algorithm_blocker_count"] == 0
         assert manifest["eddypro_release_gate"]["artifact_type"] == "eddypro_release_gate_v1"
         assert manifest["eddypro_partial_capability_closure"]["artifact_type"] == "eddypro_partial_capability_closure_v1"
@@ -188,10 +191,10 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["result_manifest_summary"]["eddypro_ready_public_raw_candidate_count"] == 0
         assert manifest["result_manifest_summary"]["can_claim_full_eddypro_parity"] is False
         assert manifest["result_manifest_summary"]["can_release_full_eddypro_parity"] is False
-        assert manifest["result_manifest_summary"]["can_release_source_derived_functional_parity"] is True
-        assert manifest["result_manifest_summary"]["can_release_source_derived_computational_superiority"] is True
-        assert manifest["result_manifest_summary"]["source_derived_computation_gate_status"] == "pass"
-        assert manifest["result_manifest_summary"]["source_derived_computation_ci_exit_code"] == 0
+        assert manifest["result_manifest_summary"]["can_release_source_derived_functional_parity"] is external_anchor_ready
+        assert manifest["result_manifest_summary"]["can_release_source_derived_computational_superiority"] is external_anchor_ready
+        assert manifest["result_manifest_summary"]["source_derived_computation_gate_status"] == expected_evidence_status
+        assert manifest["result_manifest_summary"]["source_derived_computation_ci_exit_code"] == (0 if external_anchor_ready else 2)
         assert manifest["result_manifest_summary"]["eddypro_release_gate_status"] == "blocked"
         assert manifest["eddypro_closure_gate"]["artifact_type"] == "eddypro_closure_gate_v1"
         assert manifest["result_manifest_summary"]["eddypro_closure_gate_status"] == "blocked"
@@ -211,9 +214,13 @@ def test_delivery_package_exports_minimal_bundle(monkeypatch, tmp_path: Path) ->
         assert manifest["result_manifest_summary"]["official_eddypro_run_gate_status"] == "blocked"
         assert manifest["result_manifest_summary"]["official_raw_normalization_status"] in {"present", "ready"}
         assert manifest["result_manifest_summary"]["official_raw_qc_mapping_strategy"]
-        assert manifest["result_manifest_summary"]["official_raw_official_run_normalization_status"] == "normalized"
-        assert manifest["result_manifest_summary"]["official_raw_official_run_qc_mapping_strategy"] == "EddyPro 0/1/2 -> gas_ec_studio A/B/C"
-        assert manifest["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
+        assert manifest["result_manifest_summary"]["official_raw_official_run_normalization_status"] == expected_normalization_status
+        if external_anchor_ready:
+            assert manifest["result_manifest_summary"]["official_raw_official_run_qc_mapping_strategy"]
+            assert manifest["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
+        else:
+            assert manifest["result_manifest_summary"]["official_raw_official_run_qc_mapping_strategy"] == ""
+            assert manifest["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] == 0
         assert manifest["official_raw_fixture_detail"]["trace_gas_parity_status"] == "pass"
         assert manifest["official_raw_fixture_detail"]["trace_gas_coefficient_profile_source_file"].endswith(
             "synthetic_li7700_trace_gas_001_reference.json"

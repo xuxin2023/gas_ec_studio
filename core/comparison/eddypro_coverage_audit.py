@@ -511,6 +511,7 @@ def _surrogate_external_evidence_checks(
     acceptance_summary: dict[str, Any],
 ) -> list[dict[str, Any]]:
     registered_count = int(fixture_evidence_summary.get("registered_raw_to_final_fixture_count", 0) or 0)
+    active_count = int(fixture_evidence_summary.get("raw_to_final_fixture_count", 0) or 0)
     pass_count = int(fixture_evidence_summary.get("raw_to_final_pass_count", 0) or 0)
     source_derived_count = int(dict(fixture_evidence_summary.get("readiness_counts", {}) or {}).get("source_derived_conformance", 0) or 0)
     checks = [
@@ -528,9 +529,9 @@ def _surrogate_external_evidence_checks(
         },
         {
             "check_id": "registered_raw_to_final_passes",
-            "status": "pass" if registered_count > 0 and pass_count >= registered_count else "fail",
-            "measured": {"registered": registered_count, "pass": pass_count},
-            "threshold": "all registered raw-to-final fixtures pass",
+            "status": "pass" if active_count > 0 and pass_count >= active_count else "fail",
+            "measured": {"registered": registered_count, "active": active_count, "pass": pass_count},
+            "threshold": "all active raw-to-final fixtures pass",
         },
         {
             "check_id": "source_derived_conformance_breadth",

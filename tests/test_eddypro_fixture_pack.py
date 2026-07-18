@@ -58,8 +58,10 @@ def test_fixture_pack_summary_validates_hashes_windows_and_protocol_rows() -> No
     assert summary["tier_counts"]["raw_to_final_parity"] == 8
     assert summary["real_reference_window_count"] == 11
     assert summary["protocol_validation_row_count"] == 2
-    assert summary["raw_to_final_fixture_count"] == 8
-    assert summary["raw_to_final_pass_count"] == 8
+    assert summary["raw_to_final_fixture_count"] in {7, 8}
+    assert summary["raw_to_final_pass_count"] == summary["raw_to_final_fixture_count"]
+    assert summary["optional_external_fixture_count"] == 1
+    assert summary["optional_external_disabled_count"] in {0, 1}
     assert summary["public_spectral_status"] == "pass"
     assert summary["public_spectral_fixture_count"] == 3
     assert summary["public_full_output_status"] == "pass"
@@ -713,6 +715,32 @@ def test_fixture_pack_asset_validation_fails_on_wrong_expected_hash(tmp_path: Pa
     assert any("sha256 mismatch" in error for error in result["errors"])
 
 
+def test_optional_external_fixture_is_disabled_only_when_bundle_is_absent(tmp_path: Path) -> None:
+    raw_path = tmp_path / "external" / "raw.csv"
+    asset = {
+        "fixture_id": "optional_external_fixture",
+        "tier": "raw_to_final_parity",
+        "optional_external": True,
+        "raw_file": str(raw_path),
+        "reference_json": str(tmp_path / "external" / "reference.json"),
+        "expected_sha256": {"raw_file": "0" * 64, "reference_json": "1" * 64},
+    }
+
+    missing = validate_fixture_asset(asset, workspace_root=tmp_path)
+
+    assert missing["status"] == "disabled"
+    assert missing["optional_external_present_file_count"] == 0
+    assert not missing["errors"]
+
+    raw_path.parent.mkdir(parents=True)
+    raw_path.write_text("timestamp,value\n", encoding="utf-8")
+    partial = validate_fixture_asset(asset, workspace_root=tmp_path)
+
+    assert partial["status"] == "fail"
+    assert partial["optional_external_present_file_count"] == 1
+    assert any("missing" in error for error in partial["errors"])
+
+
 def test_headless_manifest_includes_fixture_pack_summary() -> None:
     rows = [
         NormalizedHFFrame(
@@ -741,7 +769,7 @@ def test_headless_manifest_includes_fixture_pack_summary() -> None:
 
     assert manifest["fixture_pack_summary"]["status"] == "pass"
     assert manifest["fixture_pack_summary"]["real_reference_window_count"] == 11
-    assert manifest["fixture_pack_summary"]["raw_to_final_pass_count"] == 8
+    assert manifest["fixture_pack_summary"]["raw_to_final_pass_count"] == manifest["fixture_pack_summary"]["raw_to_final_fixture_count"]
     assert manifest["fixture_pack_summary"]["public_spectral_status"] == "pass"
     assert manifest["fixture_pack_summary"]["public_full_output_status"] == "pass"
     assert manifest["fixture_pack_summary"]["public_eddypro_fixture_catalog_status"] == "pass"
@@ -759,8 +787,8 @@ def test_fixture_pack_summary_exposes_manifest_ready_counts() -> None:
 
     assert summary["status"] == "pass"
     assert summary["protocol_validation_row_count"] == 2
-    assert summary["raw_to_final_fixture_count"] == 8
-    assert summary["raw_to_final_pass_count"] == 8
+    assert summary["raw_to_final_fixture_count"] in {7, 8}
+    assert summary["raw_to_final_pass_count"] == summary["raw_to_final_fixture_count"]
     assert summary["public_spectral_fixture_count"] == 3
     assert summary["public_full_output_fixture_count"] == 3
     assert summary["public_eddypro_fixture_catalog_status"] == "pass"

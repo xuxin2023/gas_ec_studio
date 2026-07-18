@@ -300,6 +300,10 @@ def build_fixture_pack_summary(
         "raw_to_final_fixture_count": raw_to_final_fixture_count,
         "raw_to_final_pass_count": raw_to_final_pass_count,
         "disabled_fixture_count": sum(1 for asset in assets if asset.get("status") == "disabled"),
+        "optional_external_fixture_count": sum(1 for asset in assets if asset.get("optional_external")),
+        "optional_external_disabled_count": sum(
+            1 for asset in assets if asset.get("optional_external") and asset.get("status") == "disabled"
+        ),
         "assets": assets,
         "public_spectral_fixture_summary": public_spectral_summary,
         "public_spectral_fixture_count": int(public_spectral_summary.get("fixture_count", 0) or 0),
@@ -2538,6 +2542,8 @@ def validate_fixture_asset(asset: dict[str, Any], *, workspace_root: str | Path 
         "errors": [],
         "known_limitations": list(asset.get("known_limitations", [])),
     }
+    if _disable_missing_optional_external_asset(asset, result, root):
+        return result
     if bool(asset.get("disabled", False)):
         result["status"] = "disabled"
         result["disabled"] = True
@@ -2554,6 +2560,35 @@ def validate_fixture_asset(asset: dict[str, Any], *, workspace_root: str | Path 
     if result["errors"]:
         result["status"] = "fail"
     return result
+
+
+def _disable_missing_optional_external_asset(
+    asset: dict[str, Any],
+    result: dict[str, Any],
+    root: Path,
+) -> bool:
+    if not bool(asset.get("optional_external", False)):
+        return False
+
+    declared_paths = {
+        role: _resolve(root, asset.get(role))
+        for role in dict(asset.get("expected_sha256", {}) or {})
+        if str(asset.get(role, "") or "").strip()
+    }
+    present_count = sum(1 for path in declared_paths.values() if path.exists())
+    result["optional_external"] = True
+    result["optional_external_declared_file_count"] = len(declared_paths)
+    result["optional_external_present_file_count"] = present_count
+    if not declared_paths or present_count:
+        return False
+
+    result["status"] = "disabled"
+    result["disabled"] = True
+    result["disabled_reason"] = str(
+        asset.get("disabled_reason", "optional external fixture is not present in this workspace")
+    )
+    result["files"] = {role: str(path) for role, path in declared_paths.items()}
+    return True
 
 
 def _validate_reference_asset(asset: dict[str, Any], result: dict[str, Any], root: Path) -> None:

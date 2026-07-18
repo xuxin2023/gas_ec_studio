@@ -126,14 +126,21 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["trace_gas_provenance"]["artifact_type"] == "trace_gas_provenance_v1"
         assert summary_payload["trace_gas_provenance_artifact"].endswith("trace_gas_provenance.json")
         assert summary_payload["flux_correction_ledger_summary"]["status"] == "ok"
+        external_anchor_ready = summary_payload["fixture_pack_summary"]["optional_external_disabled_count"] == 0
+        expected_evidence_status = "pass" if external_anchor_ready else "blocked"
+        expected_normalization_status = "normalized" if external_anchor_ready else ""
         assert summary_payload["public_eddypro_fixture_catalog"]["status"] == "pass"
         assert summary_payload["public_eddypro_fixture_catalog_artifact"].endswith("public_eddypro_fixture_catalog.json")
         assert summary_payload["public_eddypro_fixture_count"] == 6
         assert summary_payload["public_eddypro_valid_fixture_count"] == 6
         assert summary_payload["official_raw_fixture_manifest"]["status"] == "needs_official_raw_fixtures"
         assert summary_payload["official_raw_fixture_manifest"]["evidence_matrix"]["row_count"] >= 1
-        assert summary_payload["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
-        assert summary_payload["official_raw_fixture_manifest"]["evidence_matrix"]["official_run_normalization_status_counts"]["normalized"] >= 1
+        if external_anchor_ready:
+            assert summary_payload["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
+            assert summary_payload["official_raw_fixture_manifest"]["evidence_matrix"]["official_run_normalization_status_counts"]["normalized"] >= 1
+        else:
+            assert summary_payload["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] == 0
+            assert summary_payload["official_raw_fixture_manifest"]["evidence_matrix"]["official_run_normalization_status_counts"].get("normalized", 0) == 0
         assert summary_payload["official_raw_closure_run"]["artifact_type"] == "official_raw_closure_run_v1"
         assert summary_payload["official_raw_closure_run_artifact"].endswith("official_raw_closure_run.json")
         assert summary_payload["official_raw_closure_run_status"] == "not_available"
@@ -157,8 +164,11 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["official_raw_evidence_pack_acceptance_status"] == "not_run"
         assert summary_payload["official_eddypro_run_status"] == "not_available"
         assert summary_payload["official_eddypro_run_gate_status"] == "blocked"
-        assert summary_payload["official_raw_official_run_normalization_status"] == "normalized"
-        assert summary_payload["official_raw_official_run_reference_json"].endswith("official_eddypro_run_reference.json")
+        assert summary_payload["official_raw_official_run_normalization_status"] == expected_normalization_status
+        if external_anchor_ready:
+            assert summary_payload["official_raw_official_run_reference_json"].endswith("official_eddypro_run_reference.json")
+        else:
+            assert summary_payload["official_raw_official_run_reference_json"] == ""
         assert summary_payload["eddypro_source_inventory"]["inventory_id"] == "eddypro_official_source_inventory_v1"
         assert summary_payload["eddypro_coverage_audit"]["artifact_type"] == "eddypro_coverage_audit_v1"
         assert summary_payload["eddypro_coverage_audit"]["can_claim_full_eddypro_parity"] is False
@@ -176,17 +186,17 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert summary_payload["eddypro_computation_surface_family_status"]["rotation_lag"] == "pass"
         assert summary_payload["eddypro_computation_scope_audit"]["artifact_type"] == "eddypro_computation_scope_audit_v1"
         assert summary_payload["eddypro_computation_scope_audit_artifact"].endswith("eddypro_computation_scope_audit.json")
-        assert summary_payload["can_claim_source_derived_computational_superiority"] is True
+        assert summary_payload["can_claim_source_derived_computational_superiority"] is external_anchor_ready
         assert summary_payload["eddypro_surrogate_evidence_closure"]["artifact_type"] == "eddypro_surrogate_evidence_closure_v1"
-        assert summary_payload["eddypro_surrogate_evidence_closure_status"] == "pass"
-        assert summary_payload["can_claim_source_derived_functional_parity"] is True
+        assert summary_payload["eddypro_surrogate_evidence_closure_status"] == expected_evidence_status
+        assert summary_payload["can_claim_source_derived_functional_parity"] is external_anchor_ready
         assert summary_payload["eddypro_release_gate"]["artifact_type"] == "eddypro_release_gate_v1"
         assert summary_payload["eddypro_release_gate_status"] == "blocked"
         assert summary_payload["can_release_full_eddypro_parity"] is False
-        assert summary_payload["can_release_source_derived_functional_parity"] is True
-        assert summary_payload["can_release_source_derived_computational_superiority"] is True
-        assert summary_payload["source_derived_computation_gate_status"] == "pass"
-        assert summary_payload["source_derived_computation_ci_exit_code"] == 0
+        assert summary_payload["can_release_source_derived_functional_parity"] is external_anchor_ready
+        assert summary_payload["can_release_source_derived_computational_superiority"] is external_anchor_ready
+        assert summary_payload["source_derived_computation_gate_status"] == expected_evidence_status
+        assert summary_payload["source_derived_computation_ci_exit_code"] == (0 if external_anchor_ready else 2)
         assert summary_payload["eddypro_partial_capability_closure"]["artifact_type"] == "eddypro_partial_capability_closure_v1"
         assert summary_payload["eddypro_partial_capability_closure_status"] == "source_derived_closed_real_evidence_pending"
         assert summary_payload["eddypro_partial_capability_count"] == 5
@@ -251,10 +261,15 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["official_eddypro_run_gate_status"] == "blocked"
         assert manifest_payload["official_raw_normalization_status"] in {"present", "ready"}
         assert manifest_payload["official_raw_qc_mapping_strategy"]
-        assert manifest_payload["official_raw_official_run_normalization_status"] == "normalized"
-        assert manifest_payload["official_raw_official_run_qc_mapping_strategy"] == "EddyPro 0/1/2 -> gas_ec_studio A/B/C"
+        assert manifest_payload["official_raw_official_run_normalization_status"] == expected_normalization_status
+        if external_anchor_ready:
+            assert manifest_payload["official_raw_official_run_qc_mapping_strategy"]
+        else:
+            assert manifest_payload["official_raw_official_run_qc_mapping_strategy"] == ""
         assert manifest_payload["official_raw_fixture_manifest"]["registered_raw_to_final_fixture_count"] == 8
-        assert manifest_payload["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] >= 1
+        assert manifest_payload["official_raw_fixture_manifest"]["official_run_normalization_ready_count"] == (
+            1 if external_anchor_ready else 0
+        )
         assert manifest_payload["official_raw_fixture_manifest"]["evidence_matrix"]["raw_format_counts"]["csv"] >= 1
         assert manifest_payload["official_raw_fixture_detail"]["trace_gas_parity_status"] == "pass"
         assert manifest_payload["official_raw_fixture_detail"]["trace_gas_coefficient_profile_id"] == "synthetic_li7700_profile"
@@ -286,18 +301,18 @@ def test_result_export_bundle_writes_real_files(monkeypatch, tmp_path: Path) -> 
         assert manifest_payload["eddypro_computation_surface_family_status"]["multi_gas_final_flux"] == "pass"
         assert manifest_payload["eddypro_computation_surface_family_status"]["spectral_correction"] == "pass"
         assert manifest_payload["eddypro_computation_scope_audit_artifact"].endswith("eddypro_computation_scope_audit.json")
-        assert manifest_payload["eddypro_computation_scope_audit"]["claim_boundary"]["can_claim_source_derived_computational_superiority"] is True
+        assert manifest_payload["eddypro_computation_scope_audit"]["claim_boundary"]["can_claim_source_derived_computational_superiority"] is external_anchor_ready
         assert manifest_payload["eddypro_computation_scope_audit"]["claim_boundary"]["can_claim_official_field_numeric_parity"] is False
         assert manifest_payload["eddypro_surrogate_evidence_closure_artifact"].endswith("eddypro_surrogate_evidence_closure.json")
-        assert manifest_payload["eddypro_surrogate_evidence_closure"]["status"] == "pass"
-        assert manifest_payload["can_claim_source_derived_functional_parity"] is True
+        assert manifest_payload["eddypro_surrogate_evidence_closure"]["status"] == expected_evidence_status
+        assert manifest_payload["can_claim_source_derived_functional_parity"] is external_anchor_ready
         assert manifest_payload["eddypro_release_gate_artifact"].endswith("eddypro_release_gate.json")
         assert manifest_payload["eddypro_release_gate"]["status"] == "blocked"
         assert manifest_payload["can_release_full_eddypro_parity"] is False
-        assert manifest_payload["can_release_source_derived_functional_parity"] is True
-        assert manifest_payload["can_release_source_derived_computational_superiority"] is True
-        assert manifest_payload["source_derived_computation_gate_status"] == "pass"
-        assert manifest_payload["source_derived_computation_ci_exit_code"] == 0
+        assert manifest_payload["can_release_source_derived_functional_parity"] is external_anchor_ready
+        assert manifest_payload["can_release_source_derived_computational_superiority"] is external_anchor_ready
+        assert manifest_payload["source_derived_computation_gate_status"] == expected_evidence_status
+        assert manifest_payload["source_derived_computation_ci_exit_code"] == (0 if external_anchor_ready else 2)
         assert manifest_payload["eddypro_partial_capability_closure_artifact"].endswith("eddypro_partial_capability_closure.json")
         assert manifest_payload["eddypro_partial_capability_closure"]["partial_capability_count"] == 5
         assert manifest_payload["eddypro_partial_capability_closure"]["closure_decision"]["current_round_closed"] is True

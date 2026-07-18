@@ -1,3 +1,6 @@
-# Preserve byte-exact public reference assets whose manifest hashes include CRLF.
+# Preserve byte-exact registered fixture assets whose manifest hashes include CRLF.
+references/eddypro/raw_to_final/* -text
+references/eddypro/source_derived/*.csv -text
+references/eddypro/source_derived/*.json -text
 references/eddypro/public_spectral/*.csv -text
 references/eddypro/public_full_output/NAMORS_EC_2005-2019_v2.head.txt -text
