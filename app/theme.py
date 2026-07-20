@@ -173,6 +173,14 @@ def build_stylesheet() -> str:
         border: none;
         padding: 0;
     }}
+    QLabel[shellVersionLabel="true"] {{
+        color: #d6edf2;
+        background: transparent;
+        border: none;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 0;
+    }}
     QFrame#card[cardRole="panel"] {{
         background: qlineargradient(
             x1: 0, y1: 0, x2: 1, y2: 1,

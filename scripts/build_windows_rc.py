@@ -17,7 +17,7 @@ from zipfile import ZIP_STORED, ZipFile
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.version import APP_VERSION  # noqa: E402
+from app.version import APP_VERSION, DISPLAY_VERSION  # noqa: E402
 from scripts.windows_signing import (  # noqa: E402
     SigningError,
     authenticode_info,
@@ -125,6 +125,71 @@ def _release_channel_for_version(version: str) -> str:
     return "rc" if re.search(r"(?:a|b|rc|dev)\d*", version, flags=re.IGNORECASE) else "final"
 
 
+def _windows_version_tuple(version: str) -> tuple[int, int, int, int]:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?", version, flags=re.IGNORECASE)
+    if match is None:
+        raise ValueError(f"Unsupported Windows release version: {version!r}")
+    major, minor, patch, candidate = match.groups()
+    return int(major), int(minor), int(patch), int(candidate or 0)
+
+
+def _write_windows_version_info(path: Path, *, app_version: str, display_version: str) -> None:
+    file_version = _windows_version_tuple(app_version)
+    version_tuple = ", ".join(str(value) for value in file_version)
+    payload = f"""VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=({version_tuple}),
+    prodvers=({version_tuple}),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        u'040904B0',
+        [
+          StringStruct(u'CompanyName', u'Gas EC Studio'),
+          StringStruct(u'FileDescription', u'Gas EC Studio Scientific Workbench'),
+          StringStruct(u'FileVersion', u'{display_version}'),
+          StringStruct(u'InternalName', u'GasECStudio'),
+          StringStruct(u'OriginalFilename', u'GasECStudio.exe'),
+          StringStruct(u'ProductName', u'Gas EC Studio'),
+          StringStruct(u'ProductVersion', u'{display_version}')
+        ]
+      )
+    ]),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)
+"""
+    path.write_text(payload, encoding="utf-8")
+
+
+def _windows_executable_version_info(path: Path) -> dict[str, str]:
+    if os.name != "nt":  # pragma: no cover - Windows is the release target
+        return {}
+    escaped_path = str(path.resolve()).replace("'", "''")
+    script = (
+        f"(Get-Item -LiteralPath '{escaped_path}').VersionInfo | "
+        "Select-Object FileVersion,ProductVersion,FileDescription,ProductName | ConvertTo-Json -Compress"
+    )
+    completed = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"Unable to read Windows version metadata: {completed.stderr.strip()}")
+    payload = json.loads(completed.stdout)
+    return {str(key): str(value or "") for key, value in dict(payload or {}).items()}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build and verify a Windows release package.")
     parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT / "artifacts" / "windows_rc")
@@ -212,6 +277,11 @@ def main() -> int:
     _safe_reset_dir(output_root)
     dist_root = work_root / "dist"
     pyinstaller_work = work_root / "pyinstaller"
+    _write_windows_version_info(
+        PROJECT_ROOT / "packaging" / "version_info.txt",
+        app_version=APP_VERSION,
+        display_version=DISPLAY_VERSION,
+    )
 
     env = os.environ.copy()
     env["GAS_EC_BUILD_NAME"] = build_name
@@ -235,6 +305,13 @@ def main() -> int:
         raise RuntimeError(f"PyInstaller output is missing or unexpectedly small: {built_exe}")
     exe_path = output_root / built_exe.name
     shutil.copy2(built_exe, exe_path)
+    executable_version_info = _windows_executable_version_info(exe_path)
+    for field in ("FileVersion", "ProductVersion"):
+        if executable_version_info.get(field) != DISPLAY_VERSION:
+            raise RuntimeError(
+                f"Windows {field} mismatch: expected {DISPLAY_VERSION!r}, "
+                f"received {executable_version_info.get(field, '')!r}"
+            )
 
     if signing_request is not None:
         signing = sign_and_verify(exe_path, signing_request)
@@ -308,6 +385,7 @@ def main() -> int:
         "pyinstaller": subprocess.check_output([sys.executable, "-m", "PyInstaller", "--version"], text=True).strip(),
         "git_commit": _git_commit(),
         "platform": sys.platform,
+        "windows_version_info": executable_version_info,
         "signing_status": signing_status,
         "signing": signing,
         "smoke_status": smoke_payload.get("status"),

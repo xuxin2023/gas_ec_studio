@@ -28,6 +28,7 @@ from app.resources import application_icon
 from app.studio import StudioController
 from app.theme import CardFrame, TOKENS
 from app.ui_refresh import CoalescedWidgetRefresh, set_dynamic_property, set_text_if_changed
+from app.version import DISPLAY_VERSION
 from app.widgets.context_inspector import ContextInspector
 from app.widgets.log_panel import LogPanel
 from app.widgets.navigation import NavigationRail
@@ -47,7 +48,7 @@ class StudioMainWindow(QMainWindow):
     def __init__(self, controller: StudioController) -> None:
         super().__init__()
         self.controller = controller
-        self.setWindowTitle("Gas EC Studio")
+        self.setWindowTitle(f"Gas EC Studio {DISPLAY_VERSION}")
         self.setWindowIcon(application_icon())
         self.resize(1440, 900)
         self.setMinimumSize(1180, 720)
@@ -190,13 +191,20 @@ class StudioMainWindow(QMainWindow):
         brand_layout.addWidget(self.brand_icon, 0, 0)
         title = QLabel("Gas EC Studio")
         title.setObjectName("pageTitle")
+        self.version_label = QLabel(DISPLAY_VERSION)
+        self.version_label.setProperty("shellVersionLabel", True)
+        self.version_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+        self.version_label.setAccessibleName(f"应用版本 {DISPLAY_VERSION}")
+        self.version_label.setToolTip(f"当前版本 {DISPLAY_VERSION}")
+        self.version_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         subtitle = QLabel("独立的气体分析仪高端工程工作台，兼顾现场操作、协议诊断和高频采集。")
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
         subtitle.setMinimumWidth(0)
         subtitle.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Minimum)
         brand_layout.addWidget(title, 0, 1)
-        brand_layout.addWidget(subtitle, 1, 0, 1, 2)
+        brand_layout.addWidget(self.version_label, 0, 2)
+        brand_layout.addWidget(subtitle, 1, 0, 1, 3)
         brand_layout.setColumnStretch(1, 1)
         layout.addWidget(title_holder)
 

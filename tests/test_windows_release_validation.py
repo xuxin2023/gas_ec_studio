@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from zipfile import ZIP_STORED, ZipFile
 
+from scripts.build_windows_rc import _windows_version_tuple, _write_windows_version_info
 from scripts import validate_windows_release
 
 
@@ -60,6 +61,24 @@ def _valid_authenticode(_path: Path) -> dict[str, object]:
         "signer_thumbprint": "B" * 40,
         "timestamp_subject": "CN=Timestamp",
     }
+
+
+def test_windows_version_info_is_generated_from_application_version(tmp_path: Path) -> None:
+    version_info = tmp_path / "version_info.txt"
+
+    _write_windows_version_info(
+        version_info,
+        app_version="0.1.0rc6",
+        display_version="0.1.0 RC6",
+    )
+
+    content = version_info.read_text(encoding="utf-8")
+    assert _windows_version_tuple("0.1.0rc6") == (0, 1, 0, 6)
+    assert _windows_version_tuple("1.2.3") == (1, 2, 3, 0)
+    assert "filevers=(0, 1, 0, 6)" in content
+    assert "prodvers=(0, 1, 0, 6)" in content
+    assert "StringStruct(u'FileVersion', u'0.1.0 RC6')" in content
+    assert "StringStruct(u'ProductVersion', u'0.1.0 RC6')" in content
 
 
 def test_signed_rc_release_validation_passes(monkeypatch, tmp_path: Path) -> None:

@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication
 from app.main_window import StudioMainWindow
 from app.studio import StudioController
 from app.theme import apply_app_theme
+from app.version import DISPLAY_VERSION
 from tests.ui_geometry_helpers import assert_contained, assert_no_visible_competitor_name, assert_no_visual_overlap
 
 
@@ -27,6 +28,11 @@ def test_main_window_shell_fits_common_desktop_viewports(monkeypatch, tmp_path) 
         window = StudioMainWindow(controller)
         window.show()
         app.processEvents()
+
+        assert DISPLAY_VERSION in window.windowTitle()
+        assert window.version_label.text() == DISPLAY_VERSION
+        assert window.version_label.accessibleName() == f"应用版本 {DISPLAY_VERSION}"
+        assert window.version_label.isVisible() is True
 
         for width, height, compact in ((1366, 768, True), (1440, 900, True), (1600, 900, False)):
             window.resize(width, height)
@@ -56,6 +62,7 @@ def test_main_window_shell_fits_common_desktop_viewports(monkeypatch, tmp_path) 
             assert_no_visual_overlap(nav_widgets, root)
 
             visible_header_widgets = [
+                window.version_label,
                 window.route_cockpit,
                 window.header_closure_strip,
                 window.header_telemetry_strip,
