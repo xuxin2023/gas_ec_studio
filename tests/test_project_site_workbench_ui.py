@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QLabel
 
 from app.pages.project_site_page import ProjectSitePage
@@ -153,6 +154,8 @@ def test_project_site_viewport_layout_keeps_directory_and_closure_rail_stable(
             assert page.tree_card.width() >= page.tree_card.minimumWidth()
             assert page.site_ops_rail.width() <= page.site_ops_rail.maximumWidth()
             assert page.site_ops_rail.width() >= page.site_ops_rail.minimumWidth()
+            assert page.site_ops_rail.widgetResizable() is True
+            assert page.site_ops_rail.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
 
             assert_contained(page, page.top_bar, page)
             assert_contained(page, page.tree_card, page)

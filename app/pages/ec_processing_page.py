@@ -7,6 +7,7 @@ import pyqtgraph as pg
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
@@ -232,6 +233,10 @@ class ECProcessingPage(QWidget):
         self.lag_search_window_spin.setValue(float(lag_step.get("search_window_s", 8.0) or 8.0))
         self.lag_expected_spin.setValue(float(lag_step.get("expected_lag_s", 2.4) or 2.4))
         self._set_combo_text(self.lag_strategy_combo, str(lag_step.get("lag_strategy", "协方差最大")))
+        h2o_rh_lag = dict(lag_step.get("h2o_rh_optimization", {}) or {})
+        self.h2o_rh_lag_checkbox.setChecked(bool(h2o_rh_lag.get("enabled", False)))
+        self.h2o_rh_class_count_spin.setValue(int(h2o_rh_lag.get("class_count", 10) or 10))
+        self.h2o_rh_min_samples_spin.setValue(int(h2o_rh_lag.get("min_samples_per_class", 3) or 3))
 
         self._set_combo_text(self.rotation_mode_combo, str(steps["rotation"].get("rotation_mode", "双旋转")))
         crosswind_step = steps.get("crosswind_correction", {})
@@ -2671,9 +2676,19 @@ class ECProcessingPage(QWidget):
         self.lag_strategy_combo.addItems(["协方差最大", "协方差最大带默认", "固定滞后", "无滞后"])
         self.lag_search_window_spin = self._double_spin(1.0, 30.0, 1, suffix=" s")
         self.lag_expected_spin = self._double_spin(0.0, 20.0, 1, suffix=" s")
+        self.h2o_rh_lag_checkbox = QCheckBox("启用")
+        self.h2o_rh_class_count_spin = QSpinBox()
+        self.h2o_rh_class_count_spin.setRange(2, 20)
+        self.h2o_rh_class_count_spin.setValue(10)
+        self.h2o_rh_min_samples_spin = QSpinBox()
+        self.h2o_rh_min_samples_spin.setRange(1, 100)
+        self.h2o_rh_min_samples_spin.setValue(3)
         form.addRow("滞后策略", self.lag_strategy_combo)
         form.addRow("搜索窗口", self.lag_search_window_spin)
         form.addRow("预期 lag", self.lag_expected_spin)
+        form.addRow("H₂O 湿度分级", self.h2o_rh_lag_checkbox)
+        form.addRow("RH 分级数", self.h2o_rh_class_count_spin)
+        form.addRow("每级最少窗口", self.h2o_rh_min_samples_spin)
         self.lag_strategy_combo.currentIndexChanged.connect(self._on_lag_strategy_changed)
         param_layout.addLayout(form)
         row.addWidget(param_card, 2)
@@ -2685,7 +2700,7 @@ class ECProcessingPage(QWidget):
         plot_layout = QVBoxLayout(plot_card)
         plot_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         plot_layout.setSpacing(TOKENS.spacing_sm)
-        plot_layout.addWidget(section_title("Covariance 曲线区", "预留协方差曲线区，让 lag 的峰值选择可见可解释。"))
+        plot_layout.addWidget(section_title("Covariance 曲线区", "显示当前窗口的协方差曲线、峰值位置与时滞可信度。"))
         self.lag_status_chip = chip("preview", "warning")
         plot_layout.addWidget(self.lag_status_chip, 0, Qt.AlignRight)
         metric_grid = QGridLayout()
@@ -2884,7 +2899,7 @@ class ECProcessingPage(QWidget):
         preview_layout = QVBoxLayout(preview_card)
         preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         preview_layout.setSpacing(TOKENS.spacing_sm)
-        preview_layout.addWidget(section_title("中间结果", "当前仅保留说明区，后续可接入频谱与残差预览。"))
+        preview_layout.addWidget(section_title("中间结果", "汇总当前去趋势方法、窗口数量与通量变化。"))
         self.detrend_status_chip = chip("preview", "warning")
         preview_layout.addWidget(self.detrend_status_chip, 0, Qt.AlignRight)
         metric_grid = QGridLayout()
@@ -2959,7 +2974,7 @@ class ECProcessingPage(QWidget):
         preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         preview_layout.setHorizontalSpacing(TOKENS.spacing_sm)
         preview_layout.setVerticalSpacing(TOKENS.spacing_sm)
-        preview_layout.addWidget(section_title("中间结果", "预留主要协方差结果位，便于后续接入真实中间量。"), 0, 0, 1, 3)
+        preview_layout.addWidget(section_title("中间结果", "显示当前窗口的主要协方差与原始通量。"), 0, 0, 1, 3)
         self.covariance_status_chip = chip("preview", "warning")
         preview_layout.addWidget(self.covariance_status_chip, 0, 3, Qt.AlignRight)
         self.covariance_metric_tiles: dict[str, CardFrame] = {}
@@ -3025,7 +3040,7 @@ class ECProcessingPage(QWidget):
         compare_layout = QVBoxLayout(compare_card)
         compare_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         compare_layout.setSpacing(TOKENS.spacing_sm)
-        compare_layout.addWidget(section_title("修正前后对比区", "预留修正前后对比区，帮助用户理解修正影响。"))
+        compare_layout.addWidget(section_title("修正前后对比区", "对比原始通量、修正因子与最终主通量。"))
         self.density_status_chip = chip("preview", "warning")
         compare_layout.addWidget(self.density_status_chip, 0, Qt.AlignRight)
         metric_grid = QGridLayout()
@@ -3101,7 +3116,7 @@ class ECProcessingPage(QWidget):
         preview_layout = QVBoxLayout(preview_card)
         preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         preview_layout.setSpacing(TOKENS.spacing_sm)
-        preview_layout.addWidget(section_title("中间结果", "预留稳态等级和解释区。"))
+        preview_layout.addWidget(section_title("中间结果", "显示稳态规则、质量等级、得分与有效窗口数。"))
         self.steadiness_status_chip = chip("preview", "warning")
         preview_layout.addWidget(self.steadiness_status_chip, 0, Qt.AlignRight)
         metric_grid = QGridLayout()
@@ -3174,7 +3189,7 @@ class ECProcessingPage(QWidget):
         preview_layout = QVBoxLayout(preview_card)
         preview_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_sm, TOKENS.spacing_md, TOKENS.spacing_sm)
         preview_layout.setSpacing(TOKENS.spacing_sm)
-        preview_layout.addWidget(section_title("中间结果", "先保留文字解释区，后续可接入稳定度散点图。"))
+        preview_layout.addWidget(section_title("中间结果", "显示摩擦速度、湍流判定和稳定度解释。"))
         self.turbulence_status_chip = chip("preview", "warning")
         preview_layout.addWidget(self.turbulence_status_chip, 0, Qt.AlignRight)
         metric_grid = QGridLayout()
@@ -3725,6 +3740,9 @@ class ECProcessingPage(QWidget):
         self.lag_search_window_spin.valueChanged.connect(self._refresh_lag_preview)
         self.lag_expected_spin.valueChanged.connect(self._refresh_lag_preview)
         self.lag_strategy_combo.currentIndexChanged.connect(self._refresh_lag_preview)
+        self.h2o_rh_lag_checkbox.toggled.connect(self._refresh_lag_preview)
+        self.h2o_rh_class_count_spin.valueChanged.connect(self._refresh_lag_preview)
+        self.h2o_rh_min_samples_spin.valueChanged.connect(self._refresh_lag_preview)
         self.covariance_mode_combo.currentIndexChanged.connect(self._refresh_covariance_preview)
         self.density_correction_combo.currentIndexChanged.connect(self._refresh_density_preview)
         self.rotation_mode_combo.currentIndexChanged.connect(self._refresh_rotation_preview)
@@ -3854,6 +3872,12 @@ class ECProcessingPage(QWidget):
                     "lag_strategy": self.lag_strategy_combo.currentText().strip(),
                     "search_window_s": self.lag_search_window_spin.value(),
                     "expected_lag_s": self.lag_expected_spin.value(),
+                    "h2o_rh_optimization": {
+                        "enabled": self.h2o_rh_lag_checkbox.isChecked(),
+                        "class_count": self.h2o_rh_class_count_spin.value(),
+                        "min_samples_per_class": self.h2o_rh_min_samples_spin.value(),
+                        "mad_multiplier": 3.5,
+                    },
                 },
                 "rotation": {
                     "title": "坐标旋转",
@@ -4606,7 +4630,8 @@ class ECProcessingPage(QWidget):
             self._set_lag_metric("confidence", "--", "warning")
             self._set_lag_metric("search", f"±{self.lag_search_window_spin.value():.1f}s", "warning")
             self._set_lag_metric("strategy", self.lag_strategy_combo.currentText().strip(), "warning")
-            self.lag_note_label.setText("暂无真实 RP 结果，运行处理后显示 lag 协方差曲线。")
+            rh_mode = "已启用" if self.h2o_rh_lag_checkbox.isChecked() else "未启用"
+            self.lag_note_label.setText(f"暂无真实 RP 结果；H₂O 湿度分级时滞{rh_mode}。")
             return
         x_values = section.get("intermediate", {}).get("lag_curve_x", [])
         y_values = section.get("intermediate", {}).get("lag_curve_y", [])
@@ -4623,8 +4648,13 @@ class ECProcessingPage(QWidget):
         if screening_detail:
             issue_vars = [k for k, v in screening_detail.items() if isinstance(v, dict) and v.get("valid_count", 0) > 0]
             screening_summary = f"；screening: {', '.join(issue_vars)}" if issue_vars else ""
+        h2o_rh_status = str(current.diagnostics.get("h2o_rh_lag_status", "fallback")) if current.diagnostics else "fallback"
+        rh_percent = current.diagnostics.get("relative_humidity_percent") if current.diagnostics else None
+        rh_summary = f"；H₂O RH-lag={h2o_rh_status}"
+        if rh_percent is not None:
+            rh_summary += f"，RH={float(rh_percent):.1f}%"
         self.lag_note_label.setText(
-            f"strategy={lag_strategy}, lag={current.lag_seconds:.3f}s, conf={current.lag_confidence:.2f}{screening_summary}。"
+            f"strategy={lag_strategy}, lag={current.lag_seconds:.3f}s, conf={current.lag_confidence:.2f}{rh_summary}{screening_summary}。"
         )
 
     def _refresh_rotation_preview(self, *_args) -> None:

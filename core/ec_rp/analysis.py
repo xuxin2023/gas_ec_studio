@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -1949,7 +1949,6 @@ def compute_flux_metrics(
 
     raw_flux = air_molar_density * cov_w_co2
     mean_co2_ppm = float(np.mean(co2_ppm))
-    mean_w = float(np.mean(w_series))
     mixing_ratio_flux = dry_air_molar_density * (cov_w_co2 + (mean_co2_ppm * 1.0e-3) * cov_w_h2o)
 
     def _optional_series(values: np.ndarray | None, expected_size: int) -> np.ndarray:
@@ -4178,6 +4177,223 @@ def optimize_lag(
     }
 
 
+def estimate_relative_humidity(
+    h2o_mmol: np.ndarray | Iterable[float],
+    temp_c: np.ndarray | Iterable[float],
+    pressure_kpa: np.ndarray | Iterable[float],
+) -> dict[str, Any]:
+    h2o = np.asarray(list(h2o_mmol) if not isinstance(h2o_mmol, np.ndarray) else h2o_mmol, dtype=float)
+    temperature = np.asarray(list(temp_c) if not isinstance(temp_c, np.ndarray) else temp_c, dtype=float)
+    pressure = np.asarray(list(pressure_kpa) if not isinstance(pressure_kpa, np.ndarray) else pressure_kpa, dtype=float)
+    n = min(h2o.size, temperature.size, pressure.size)
+    if n == 0:
+        return {"status": "insufficient_data", "rh_percent": None, "reason": "empty_input"}
+    valid = np.isfinite(h2o[:n]) & np.isfinite(temperature[:n]) & np.isfinite(pressure[:n])
+    if not np.any(valid):
+        return {"status": "insufficient_data", "rh_percent": None, "reason": "no_finite_triplets"}
+
+    mean_h2o_mmol = float(np.mean(h2o[:n][valid]))
+    mean_temp_c = float(np.mean(temperature[:n][valid]))
+    mean_pressure_kpa = float(np.mean(pressure[:n][valid]))
+    if mean_pressure_kpa <= 0.0 or mean_h2o_mmol < 0.0 or not (-90.0 < mean_temp_c < 80.0):
+        return {
+            "status": "invalid_input",
+            "rh_percent": None,
+            "reason": "nonphysical_mean_state",
+            "mean_h2o_mmol": mean_h2o_mmol,
+            "mean_temp_c": mean_temp_c,
+            "mean_pressure_kpa": mean_pressure_kpa,
+        }
+
+    mixing_ratio = mean_h2o_mmol * 1.0e-3
+    vapor_mole_fraction = mixing_ratio / (1.0 + mixing_ratio)
+    vapor_pressure_pa = vapor_mole_fraction * mean_pressure_kpa * 1000.0
+    saturation_vapor_pressure_pa = 611.21 * math.exp(
+        (18.678 - mean_temp_c / 234.5) * (mean_temp_c / (257.14 + mean_temp_c))
+    )
+    raw_rh_percent = 100.0 * vapor_pressure_pa / saturation_vapor_pressure_pa
+    rh_percent = min(100.0, max(0.0, raw_rh_percent))
+    return {
+        "status": "ok",
+        "rh_percent": rh_percent,
+        "raw_rh_percent": raw_rh_percent,
+        "mean_h2o_mmol": mean_h2o_mmol,
+        "mean_temp_c": mean_temp_c,
+        "mean_pressure_kpa": mean_pressure_kpa,
+        "vapor_pressure_pa": vapor_pressure_pa,
+        "saturation_vapor_pressure_pa": saturation_vapor_pressure_pa,
+        "input_basis": "h2o_mixing_ratio_mmol_per_mol_dry_air",
+        "method": "mixing_ratio_vapor_pressure_with_buck_saturation_v1",
+    }
+
+
+def build_h2o_lag_rh_profile(
+    observations: Iterable[dict[str, Any]],
+    *,
+    class_count: int = 10,
+    min_samples_per_class: int = 3,
+    mad_multiplier: float = 3.5,
+    search_window_s: float | None = None,
+) -> dict[str, Any]:
+    class_count = min(20, max(2, int(class_count)))
+    min_samples_per_class = max(1, int(min_samples_per_class))
+    mad_multiplier = max(1.0, float(mad_multiplier))
+    max_abs_lag = abs(float(search_window_s)) if search_window_s is not None else None
+    accepted_observations: list[tuple[float, float]] = []
+    rejected_count = 0
+    for item in observations:
+        try:
+            rh_percent = float(item.get("rh_percent"))
+            lag_seconds = float(item.get("h2o_lag_s"))
+        except (AttributeError, TypeError, ValueError):
+            rejected_count += 1
+            continue
+        if not (math.isfinite(rh_percent) and math.isfinite(lag_seconds) and 0.0 <= rh_percent <= 100.0):
+            rejected_count += 1
+            continue
+        if max_abs_lag is not None and abs(lag_seconds) > max_abs_lag + 1e-9:
+            rejected_count += 1
+            continue
+        accepted_observations.append((rh_percent, lag_seconds))
+
+    width = 100.0 / class_count
+    bins: list[list[float]] = [[] for _ in range(class_count)]
+    for rh_percent, lag_seconds in accepted_observations:
+        index = min(class_count - 1, int(rh_percent / width))
+        bins[index].append(lag_seconds)
+
+    classes: list[dict[str, Any]] = []
+    measured_indexes: list[int] = []
+    for index, values in enumerate(bins):
+        lower = index * width
+        upper = 100.0 if index == class_count - 1 else (index + 1) * width
+        arr = np.asarray(values, dtype=float)
+        robust = arr
+        median = float(np.median(arr)) if arr.size else None
+        mad = float(np.median(np.abs(arr - median))) if arr.size and median is not None else None
+        if arr.size and mad is not None and mad > 1e-12 and median is not None:
+            robust_sigma = 1.4826 * mad
+            robust = arr[np.abs(arr - median) <= mad_multiplier * robust_sigma]
+        is_measured = robust.size >= min_samples_per_class
+        if is_measured:
+            measured_indexes.append(index)
+        classes.append(
+            {
+                "class_index": index,
+                "rh_min_percent": round(lower, 6),
+                "rh_max_percent": round(upper, 6),
+                "rh_center_percent": round((lower + upper) / 2.0, 6),
+                "status": "measured" if is_measured else "sparse",
+                "source": "observed_windows" if is_measured else "unavailable",
+                "observed_count": int(arr.size),
+                "accepted_count": int(robust.size),
+                "outlier_count": int(arr.size - robust.size),
+                "median_absolute_deviation_s": mad,
+                "lag_nominal_s": float(np.median(robust)) if is_measured else None,
+                "lag_min_s": float(np.min(robust)) if is_measured else None,
+                "lag_max_s": float(np.max(robust)) if is_measured else None,
+            }
+        )
+
+    for index, item in enumerate(classes):
+        if item["status"] == "measured" or not measured_indexes:
+            continue
+        left = max((candidate for candidate in measured_indexes if candidate < index), default=None)
+        right = min((candidate for candidate in measured_indexes if candidate > index), default=None)
+        if left is not None and right is not None:
+            left_item = classes[left]
+            right_item = classes[right]
+            fraction = (index - left) / (right - left)
+            source_items = (left_item, right_item)
+            item["status"] = "interpolated"
+            item["source"] = f"classes:{left},{right}"
+            for key in ("lag_nominal_s", "lag_min_s", "lag_max_s"):
+                item[key] = float(left_item[key] + fraction * (right_item[key] - left_item[key]))
+        else:
+            source_index = left if left is not None else right
+            source_item = classes[int(source_index)]
+            source_items = (source_item,)
+            item["status"] = "extrapolated"
+            item["source"] = f"class:{source_index}"
+            for key in ("lag_nominal_s", "lag_min_s", "lag_max_s"):
+                item[key] = float(source_item[key])
+        item["source_observation_count"] = int(sum(source["accepted_count"] for source in source_items))
+
+    measured_count = len(measured_indexes)
+    inferred_count = sum(1 for item in classes if item["status"] in {"interpolated", "extrapolated"})
+    return {
+        "artifact_type": "h2o_rh_lag_profile_v1",
+        "status": "ready" if measured_count else "insufficient_data",
+        "class_count": class_count,
+        "min_samples_per_class": min_samples_per_class,
+        "mad_multiplier": mad_multiplier,
+        "search_window_s": max_abs_lag,
+        "observation_count": len(accepted_observations),
+        "rejected_observation_count": rejected_count,
+        "measured_class_count": measured_count,
+        "inferred_class_count": inferred_count,
+        "classes": classes,
+        "provenance": (
+            "H2O covariance-max lags were grouped by independently estimated relative humidity; "
+            "class medians use MAD outlier rejection and sparse classes are explicitly interpolated or extrapolated."
+        ),
+        "limitations": [
+            "Relative humidity inherits analyzer H2O, pressure, and temperature calibration uncertainty.",
+            "Interpolated and extrapolated classes are flagged and should be replaced by measured classes as coverage grows.",
+        ],
+    }
+
+
+def select_h2o_lag_from_rh_profile(
+    profile: dict[str, Any] | None,
+    rh_percent: float | None,
+    *,
+    fallback_lag_s: float,
+) -> dict[str, Any]:
+    if not isinstance(profile, dict) or profile.get("status") != "ready" or rh_percent is None:
+        return {
+            "status": "fallback",
+            "h2o_lag_s": float(fallback_lag_s),
+            "source": "window_covariance_max",
+            "reason": "profile_not_ready_or_rh_unavailable",
+        }
+    try:
+        rh_value = min(100.0, max(0.0, float(rh_percent)))
+    except (TypeError, ValueError):
+        return {
+            "status": "fallback",
+            "h2o_lag_s": float(fallback_lag_s),
+            "source": "window_covariance_max",
+            "reason": "invalid_relative_humidity",
+        }
+    for item in profile.get("classes", []):
+        lower = float(item.get("rh_min_percent", 0.0))
+        upper = float(item.get("rh_max_percent", 100.0))
+        if lower <= rh_value < upper or (rh_value == 100.0 and upper == 100.0):
+            nominal = item.get("lag_nominal_s")
+            if nominal is None:
+                break
+            return {
+                "status": "applied",
+                "h2o_lag_s": float(nominal),
+                "source": str(item.get("status", "measured")),
+                "class_index": int(item.get("class_index", 0)),
+                "rh_percent": rh_value,
+                "rh_min_percent": lower,
+                "rh_max_percent": upper,
+                "lag_min_s": item.get("lag_min_s"),
+                "lag_max_s": item.get("lag_max_s"),
+                "accepted_count": int(item.get("accepted_count", 0) or 0),
+                "source_observation_count": int(item.get("source_observation_count", 0) or 0),
+            }
+    return {
+        "status": "fallback",
+        "h2o_lag_s": float(fallback_lag_s),
+        "source": "window_covariance_max",
+        "reason": "relative_humidity_class_unavailable",
+    }
+
+
 def optimize_h2o_lag_rh(
     w_series: np.ndarray,
     h2o_series: np.ndarray,
@@ -4186,30 +4402,27 @@ def optimize_h2o_lag_rh(
     sample_rate_hz: float,
     *,
     search_window_s: float = 4.0,
+    profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     n = min(w_series.size, h2o_series.size, temp_c.size, pressure_kpa.size)
     if n < 20:
         return {"h2o_lag_s": 0.0, "rh_adjusted": False, "detail": {"reason": "insufficient_data"}}
-    mean_t = float(np.mean(temp_c[:n])) + 273.15
-    mean_p = float(np.mean(pressure_kpa[:n])) * 1000.0
-    es = 611.2 * math.exp(17.67 * (mean_t - 273.15) / (mean_t - 29.65)) if mean_t > 273.15 else 611.2
-    mean_h2o = float(np.mean(h2o_series[:n]))
-    rh_approx = min(1.0, max(0.0, (mean_h2o * mean_t * 8.314) / (es * 1000.0))) if es > 0 else 0.5
+    rh_detail = estimate_relative_humidity(h2o_series[:n], temp_c[:n], pressure_kpa[:n])
+    rh_percent = rh_detail.get("rh_percent")
     base_result = optimize_lag(w_series[:n], h2o_series[:n], h2o_series[:n], sample_rate_hz, search_window_s=search_window_s)
-    h2o_lag_s = base_result["h2o_lag_s"]
-    if rh_approx > 0.85:
-        h2o_lag_s *= 0.9
-        rh_note = "high RH (>85%): H2O lag reduced by 10% (v1 approximation)"
-    elif rh_approx < 0.30:
-        h2o_lag_s *= 1.1
-        rh_note = "low RH (<30%): H2O lag increased by 10% (v1 approximation)"
-    else:
-        rh_note = "moderate RH: no RH-dependent adjustment"
+    base_lag_s = float(base_result["h2o_lag_s"])
+    selection = select_h2o_lag_from_rh_profile(profile, rh_percent, fallback_lag_s=base_lag_s)
+    h2o_lag_s = float(selection["h2o_lag_s"])
     return {
         "h2o_lag_s": h2o_lag_s,
-        "rh_approx": rh_approx,
-        "rh_adjusted": rh_approx > 0.85 or rh_approx < 0.30,
-        "detail": {"rh_note": rh_note, "base_h2o_lag_s": base_result["h2o_lag_s"]},
+        "rh_approx": float(rh_percent) / 100.0 if rh_percent is not None else None,
+        "rh_percent": rh_percent,
+        "rh_adjusted": selection["status"] == "applied" and not math.isclose(h2o_lag_s, base_lag_s),
+        "detail": {
+            "base_h2o_lag_s": base_lag_s,
+            "relative_humidity": rh_detail,
+            "profile_selection": selection,
+        },
     }
 
 
@@ -4550,7 +4763,6 @@ def run_benchmark_comparison(
             match_strategy = "start_time_exact"
             matched_ref_id = start_iso
         if ref is None and hasattr(window, "start_time"):
-            from datetime import timedelta
             for ref_st, ref_obj in ref_by_start.items():
                 try:
                     ref_dt = datetime.fromisoformat(ref_st)

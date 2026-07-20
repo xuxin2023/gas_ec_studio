@@ -360,6 +360,16 @@ def test_report_center_method_provenance_reflects_rp_method_rollups(monkeypatch,
         assert page.expert_review_card.property("deckRole") == "expertReviewStrip"
         assert page.expert_review_values[0].text() == "3/3"
         assert page.preview_table.rowCount() >= 3
+        page.resize(1280, 760)
+        page.show()
+        app = QApplication.instance()
+        assert app is not None
+        app.processEvents()
+        assert page.preview_primary_pane.width() <= page.preview_content_splitter.width()
+        assert page.center_scroll.horizontalScrollBar().maximum() == 0
+        assert page.center_container.width() <= page.center_scroll.viewport().width()
+        assert page.preview_table.horizontalScrollBar().maximum() == 0
+        assert sum(page.preview_table.columnWidth(index) for index in range(page.preview_table.columnCount())) <= page.preview_table.viewport().width() + 3
     finally:
         controller.shutdown()
 

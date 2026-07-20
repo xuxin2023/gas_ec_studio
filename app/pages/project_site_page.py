@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
+    QFrame,
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
@@ -294,7 +295,14 @@ class ProjectSitePage(QWidget):
         layout.addLayout(button_column)
         return card
 
-    def _build_site_ops_rail(self) -> CardFrame:
+    def _build_site_ops_rail(self) -> QScrollArea:
+        scroll = QScrollArea()
+        scroll.setProperty("cardRole", "rail")
+        scroll.setProperty("projectSiteOpsRail", True)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         card = CardFrame(muted=True, role="rail")
         card.setProperty("projectSiteOpsRail", True)
         layout = QVBoxLayout(card)
@@ -384,7 +392,9 @@ class ProjectSitePage(QWidget):
         next_layout.addWidget(self.site_ops_next_note)
         layout.addWidget(next_card)
         layout.addStretch(1)
-        return card
+        scroll.setWidget(card)
+        self.site_ops_rail_content = card
+        return scroll
 
     def _site_ops_action_button(self, text: str, tooltip: str) -> QToolButton:
         button = QToolButton()
@@ -1550,7 +1560,7 @@ class ProjectSitePage(QWidget):
         self._set_site_ops_row(
             "geometry",
             f"{canopy_height:.1f} m 冠层",
-            f"塔 {mast_height:.1f} m · 声风 {sonic_height:.1f} m · Δ{height_delta:.2f} m · {orientation}°",
+            f"塔 {mast_height:.1f} m · 声风 {sonic_height:.1f} m · 分析仪 {analyzer_height:.1f} m · Δ{height_delta:.2f} m · {orientation}°",
         )
 
         tube_length = float(chain.get("tube_length_m", 0.0) or 0.0)

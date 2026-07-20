@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import UTC, datetime
-from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 

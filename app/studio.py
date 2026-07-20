@@ -656,9 +656,9 @@ class StudioController(QObject):
 
     def _ensure_metadata_workspace(self, payload: dict) -> dict:
         metadata = payload.setdefault("metadata", {})
-        site_info = payload.setdefault("site_info", {})
+        payload.setdefault("site_info", {})
         instrument_layout = payload.setdefault("instrument_layout", {})
-        sampling_chain = payload.setdefault("sampling_chain", {})
+        payload.setdefault("sampling_chain", {})
         timing = payload.setdefault("timing", {})
         overview = payload.setdefault("overview", {})
         dynamic_doc = self.metadata_store.load_metadata_document("dynamic_metadata") or {}
@@ -2787,7 +2787,6 @@ class StudioController(QObject):
         pack_path = self._active_fixture_pack_path()
         workspace_root = self._active_fixture_pack_workspace_root()
         try:
-            summary = self._cached_fixture_pack_summary(pack_path, workspace_root=workspace_root, force=write_artifact)
             manifest = self._cached_official_raw_fixture_manifest(pack_path, workspace_root=workspace_root)
         except Exception as exc:  # pragma: no cover - defensive UI/report fallback
             return {
@@ -3664,6 +3663,7 @@ class StudioController(QObject):
             "search_window_s": float(config.get("lag", {}).get("search_window_s", 4.0) or 4.0),
             "expected_lag_s": float(config.get("lag", {}).get("expected_lag_s", 0.0) or 0.0),
             "strategy": str(config.get("lag", {}).get("lag_strategy", "covariance_max")),
+            "h2o_rh_optimization": deepcopy(config.get("lag", {}).get("h2o_rh_optimization", {})),
         }
         absolute_limits_text = str(config.get("screening", {}).get("absolute_limits_text", "")).strip()
         config["screening"] = {
@@ -3943,6 +3943,9 @@ class StudioController(QObject):
             "lag_curve_y": diagnostics.get("lag_curve_y", []),
             "screening_detail": diagnostics.get("screening_detail", {}),
             "screening_config": diagnostics.get("screening_config", {}),
+            "h2o_rh_lag_status": diagnostics.get("h2o_rh_lag_status", "fallback"),
+            "h2o_rh_lag_selection": diagnostics.get("h2o_rh_lag_selection", {}),
+            "relative_humidity_percent": diagnostics.get("relative_humidity_percent"),
         }
         steps["lag"]["risks"] = [current_window.reason]
 
@@ -4810,7 +4813,6 @@ class StudioController(QObject):
         batch_label = self._batch_label(run_result)
         summary = run_result.summary
         windows = run_result.windows
-        window_rows = [self._serialize_window_for_workspace(window) for window in windows]
         device_cards = self.device_cards()
         device_online = sum(1 for card in device_cards if card["connected"])
         anomalous_windows = [window for window in windows if window.qc_grade in {"B", "C"}]
@@ -4818,7 +4820,6 @@ class StudioController(QObject):
         for window in anomalous_windows:
             anomaly_counts[window.anomaly_type] += 1
 
-        lag_series = [round(window.lag_seconds, 3) for window in windows]
         factor_series = [round(window.correction_factor, 3) for window in windows]
         flux_series = [round(window.corrected_flux_after, 4) for window in windows]
         qc_band_series = [round(window.qc_band_value, 3) for window in windows]
@@ -5511,7 +5512,7 @@ class StudioController(QObject):
             **file_info_for("fixture_pack"),
             **({"Fixture Pack Summary Artifact": str(result_export_files.get("fixture_pack_summary_artifact"))} if result_export_files.get("fixture_pack_summary_artifact") else {}),
             **({"Official Raw Manifest Artifact": str(result_export_files.get("official_raw_fixture_manifest_artifact"))} if result_export_files.get("official_raw_fixture_manifest_artifact") else {}),
-            **({"EddyPro Coverage Audit Artifact": str(result_export_files.get("eddypro_coverage_audit_artifact"))} if result_export_files.get("eddypro_coverage_audit_artifact") else {}),
+            **({"Industry Reference Coverage Artifact": str(result_export_files.get("eddypro_coverage_audit_artifact"))} if result_export_files.get("eddypro_coverage_audit_artifact") else {}),
             "Active fixture pack": str(active_pack_path),
             "Fixture pack workspace": str(active_pack_root),
         }
@@ -5532,7 +5533,7 @@ class StudioController(QObject):
                 (
                     "fixture_pack",
                     "deferred",
-                    "Full EddyPro fixture validation is hydrated when the fixture-pack report is selected.",
+                    "Full industry-reference fixture validation is hydrated when the fixture-pack report is selected.",
                 ),
                 (
                     "active_fixture_pack",
@@ -5551,7 +5552,7 @@ class StudioController(QObject):
             ],
             "conclusions": [
                 "Fixture-pack validation is deferred during non-fixture report refreshes to keep routine result export responsive.",
-                "Exported delivery artifacts still build the real fixture_pack_summary.json and related EddyPro evidence files.",
+                "Exported delivery artifacts still build the real fixture_pack_summary.json and related industry-reference evidence files.",
             ],
             "export_options": ["Export current report", "Export evidence package"],
             "file_info": file_info,
@@ -7748,7 +7749,6 @@ class StudioController(QObject):
                 "timestamp_refers_to": summary.get("fluxnet_timestamp_refers_to", first_diag.get("fluxnet_timestamp_refers_to", "start")),
                 "timezone_offset_hours": summary.get("fluxnet_timezone_offset_h", first_diag.get("fluxnet_timezone_offset_h", 0.0)),
             }
-        trace_gas_summary = dict(manifest_payload.get("trace_gas_summary", {}) or summary.get("trace_gas_summary", {}) or {})
         clock_summary = dict(
             manifest_payload.get("clock_sync_summary", {})
             or summary.get("clock_sync_summary", {})
@@ -8516,6 +8516,12 @@ class StudioController(QObject):
                     "lag_strategy": "协方差最大",
                     "search_window_s": 8.0,
                     "expected_lag_s": 2.4,
+                    "h2o_rh_optimization": {
+                        "enabled": False,
+                        "class_count": 10,
+                        "min_samples_per_class": 3,
+                        "mad_multiplier": 3.5,
+                    },
                 },
                 "rotation": {
                     "title": "坐标旋转",

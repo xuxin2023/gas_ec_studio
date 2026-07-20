@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMessageBox,
-    QPushButton,
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
@@ -1041,11 +1040,16 @@ class SpectralQCPage(QWidget):
 
     def _build_window_detail_page(self, layout: QVBoxLayout) -> None:
         filter_card = CardFrame()
-        filter_layout = QHBoxLayout(filter_card)
-        filter_layout.setContentsMargins(TOKENS.spacing_lg, TOKENS.spacing_md, TOKENS.spacing_lg, TOKENS.spacing_md)
-        filter_layout.setSpacing(TOKENS.spacing_md)
+        self.detail_filter_card = filter_card
+        filter_card.setMaximumHeight(96)
+        filter_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        filter_layout = QVBoxLayout(filter_card)
+        filter_layout.setContentsMargins(TOKENS.spacing_md, TOKENS.spacing_xs, TOKENS.spacing_md, TOKENS.spacing_xs)
+        filter_layout.setSpacing(TOKENS.spacing_xs)
         filter_layout.addWidget(section_title("窗口筛选", "先缩小时间段和异常范围，再看单个窗口证据。"))
-        filter_layout.addStretch(1)
+        filter_controls = QHBoxLayout()
+        filter_controls.setSpacing(TOKENS.spacing_sm)
+        self.detail_filter_labels: list[QLabel] = []
 
         self.detail_time_filter_combo = QComboBox()
         self.detail_time_filter_combo.addItems(["全部窗口", "00:00-02:00", "02:00-04:00", "04:00-06:00"])
@@ -1058,8 +1062,15 @@ class SpectralQCPage(QWidget):
             ("QC 等级筛选", self.detail_grade_filter_combo),
             ("异常类型筛选", self.detail_anomaly_filter_combo),
         ):
-            filter_layout.addWidget(QLabel(label))
-            filter_layout.addWidget(widget)
+            label_widget = QLabel(label)
+            label_widget.setMaximumHeight(24)
+            label_widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            widget.setMaximumHeight(28)
+            widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+            self.detail_filter_labels.append(label_widget)
+            filter_controls.addWidget(label_widget)
+            filter_controls.addWidget(widget, 1)
+        filter_layout.addLayout(filter_controls)
         layout.addWidget(filter_card)
 
         row = QHBoxLayout()

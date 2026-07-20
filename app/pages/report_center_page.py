@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QAbstractScrollArea,
     QAbstractItemView,
     QComboBox,
     QDoubleSpinBox,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLayout,
     QLineEdit,
     QCheckBox,
     QMessageBox,
@@ -107,6 +109,7 @@ class ReportCenterPage(QWidget):
         layout.addWidget(self.report_command_deck)
 
         workbench = QSplitter(Qt.Horizontal)
+        self.report_workbench = workbench
         workbench.setChildrenCollapsible(False)
         workbench.setObjectName("reportWorkbench")
         layout.addWidget(workbench, 1)
@@ -162,10 +165,17 @@ class ReportCenterPage(QWidget):
         workbench.addWidget(self.tree_card)
 
         center_scroll = QScrollArea()
+        self.center_scroll = center_scroll
         center_scroll.setWidgetResizable(True)
-        center_scroll.setMinimumWidth(500)
+        center_scroll.setMinimumWidth(420)
+        center_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        center_scroll.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         center_container = QWidget()
+        self.center_container = center_container
+        center_container.setMinimumWidth(0)
+        center_container.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         center_layout = QVBoxLayout(center_container)
+        center_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(TOKENS.spacing_md)
         center_layout.setAlignment(Qt.AlignTop)
@@ -205,7 +215,8 @@ class ReportCenterPage(QWidget):
         self.preview_deck_card = CardFrame(muted=True, role="rail")
         self.preview_deck_card.setProperty("deckRole", "reportPreviewDeck")
         self.preview_deck_card.setProperty("reportPreviewWorkbench", True)
-        self.preview_deck_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
+        self.preview_deck_card.setMinimumWidth(0)
+        self.preview_deck_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         preview_deck_layout = QVBoxLayout(self.preview_deck_card)
         preview_deck_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
         preview_deck_layout.setSpacing(TOKENS.spacing_sm)
@@ -378,7 +389,8 @@ class ReportCenterPage(QWidget):
         self.preview_content_card.setProperty("density", "desktop")
         self.preview_content_card.setProperty("previewDeliveryWorkbench", True)
         self.preview_content_card.setMaximumHeight(244)
-        self.preview_content_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.preview_content_card.setMinimumWidth(0)
+        self.preview_content_card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         content_layout = QVBoxLayout(self.preview_content_card)
         content_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm, TOKENS.spacing_sm)
         content_layout.setSpacing(TOKENS.spacing_xs)
@@ -395,11 +407,13 @@ class ReportCenterPage(QWidget):
         self.preview_content_splitter.setProperty("reportPreviewSplitPane", True)
         self.preview_content_splitter.setChildrenCollapsible(False)
         self.preview_content_splitter.setMaximumHeight(176)
-        self.preview_content_splitter.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.preview_content_splitter.setMinimumWidth(0)
+        self.preview_content_splitter.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.preview_primary_pane = CardFrame(muted=True, role="panel")
         self.preview_primary_pane.setProperty("reportPreviewPrimaryPane", True)
         self.preview_primary_pane.setProperty("analysisWorkbenchPane", True)
         self.preview_primary_pane.setMinimumWidth(300)
+        self.preview_primary_pane.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         primary_layout = QVBoxLayout(self.preview_primary_pane)
         primary_layout.setContentsMargins(TOKENS.spacing_sm, TOKENS.spacing_xs, TOKENS.spacing_sm, TOKENS.spacing_xs)
         primary_layout.setSpacing(TOKENS.spacing_xs)
@@ -411,6 +425,11 @@ class ReportCenterPage(QWidget):
         primary_layout.addWidget(self.preview_plot)
         self.preview_table = QTableWidget(0, 3)
         self.preview_table.setMaximumHeight(84)
+        self.preview_table.setMinimumWidth(0)
+        self.preview_table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
+        self.preview_table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.preview_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.preview_table.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.preview_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.preview_table.verticalHeader().setVisible(False)
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -418,6 +437,8 @@ class ReportCenterPage(QWidget):
         self.preview_table_note = QLabel("--")
         self.preview_table_note.setObjectName("subtitle")
         self.preview_table_note.setWordWrap(False)
+        self.preview_table_note.setMinimumWidth(0)
+        self.preview_table_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         primary_layout.addWidget(self.preview_table_note)
         self.preview_plot_note = QLabel("--")
         self.preview_plot_note.setObjectName("subtitle")
@@ -817,6 +838,9 @@ class ReportCenterPage(QWidget):
         self.delivery_rail.setMaximumWidth(340)
         workbench.addWidget(self.delivery_rail)
         workbench.setSizes([230, 720, 310])
+        workbench.setStretchFactor(0, 0)
+        workbench.setStretchFactor(1, 1)
+        workbench.setStretchFactor(2, 0)
 
         self._build_tree()
 
@@ -2546,7 +2570,6 @@ class ReportCenterPage(QWidget):
         benchmark_report = dict(reports.get("benchmark_cockpit", {}) or {})
         method_report = dict(reports.get("method_provenance", {}) or {})
         manifest_path = self._first_file_value(file_values, ("manifest", "export_manifest"))
-        export_done = self._export_status_is_done(export_status)
         manifest_item = self._manifest_gate_summary(manifest_path, export_status)
         network = self._network_gate_summary(workspace, benchmark_report)
         methods = self._method_gate_summary(method_report, file_values)
@@ -2717,6 +2740,7 @@ class ReportCenterPage(QWidget):
             for col, value in enumerate(row):
                 item = QTableWidgetItem(_ui_safe_text(value))
                 item.setData(Qt.UserRole, str(value))
+                item.setSizeHint(QSize(0, 0))
                 if col == 1:
                     item.setTextAlignment(Qt.AlignCenter)
                 if is_benchmark_cockpit and col == 1:
@@ -2950,12 +2974,6 @@ class ReportCenterPage(QWidget):
         self._bm_lag_thresh.blockSignals(False)
         parent = self._benchmark_controls_card.parent()
         if parent is None:
-            content_card_index = -1
-            for i in range(self.conclusion_card.parent().layout().count()):
-                item = self.conclusion_card.parent().layout().itemAt(i)
-                if item and item.widget() is self.conclusion_card:
-                    content_card_index = i
-                    break
             if hasattr(self, "preview_content_card"):
                 parent_layout = self.preview_content_card.parent().layout()
                 if parent_layout:

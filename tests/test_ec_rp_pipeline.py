@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta
 
 import numpy as np
+import pytest
 
 from core.ec_rp.pipeline import ECRPPipeline
 from models.hf_models import FrameQuality, NormalizedHFFrame
@@ -79,6 +80,48 @@ def test_rp_pipeline_generates_window_results() -> None:
     assert np.isfinite(window.density_corrected_flux)
     assert "lag_curve_x" in window.diagnostics
     assert "lag_curve_y" in window.diagnostics
+
+
+def test_rp_pipeline_builds_and_applies_h2o_rh_lag_profile() -> None:
+    rows = _make_rows(samples=600)
+    for index, row in enumerate(rows):
+        fluctuation = float(row.h2o_mmol or 0.0) - 12.0
+        row.h2o_mmol = (6.0 if index < 300 else 20.0) + fluctuation
+
+    result = ECRPPipeline().run(
+        rows=rows,
+        project=ProjectProfile(code="PRJ-RH", name="RH lag test"),
+        site=SiteProfile(station_code="SITE-RH", station_name="RH lag site"),
+        config={
+            "steps": {
+                "window_sampling": {"sample_hz": 10.0, "window_minutes": 0.5},
+                "lag": {
+                    "search_window_s": 1.5,
+                    "lag_strategy": "covariance_max",
+                    "h2o_rh_optimization": {
+                        "enabled": True,
+                        "class_count": 2,
+                        "min_samples_per_class": 1,
+                        "mad_multiplier": 3.5,
+                    },
+                },
+            }
+        },
+        data_source="unit-test",
+        time_range="two-rh-classes",
+    )
+
+    profile = result.artifacts["h2o_rh_lag_profile"]
+    assert profile["status"] == "ready"
+    assert profile["source"] == "current_run_first_pass"
+    assert profile["measured_class_count"] == 2
+    assert result.summary["h2o_rh_lag_profile"]["status"] == "ready"
+    assert len(result.windows) == 2
+    for window in result.windows:
+        selection = window.diagnostics["h2o_rh_lag_selection"]
+        assert window.diagnostics["h2o_rh_lag_status"] == "applied"
+        assert selection["source"] == "measured"
+        assert window.diagnostics["h2o_lag_seconds"] == pytest.approx(selection["h2o_lag_s"])
 
 
 def test_rp_pipeline_returns_empty_for_empty_input() -> None:

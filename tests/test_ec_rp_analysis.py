@@ -7,13 +7,59 @@ import pytest
 from core.ec_rp.analysis import (
     analyze_lag,
     apply_lag,
+    build_h2o_lag_rh_profile,
+    estimate_relative_humidity,
     normalize_detrend_mode,
     normalize_lag_strategy,
     normalize_rotation_mode,
     pick_window_slices,
     run_statistical_screening,
+    select_h2o_lag_from_rh_profile,
     _detrend,
 )
+
+
+def test_relative_humidity_uses_h2o_mixing_ratio_pressure_and_temperature() -> None:
+    detail = estimate_relative_humidity(
+        np.full(100, 20.0),
+        np.full(100, 25.0),
+        np.full(100, 101.325),
+    )
+
+    assert detail["status"] == "ok"
+    assert detail["rh_percent"] == pytest.approx(62.7, rel=0.02)
+    assert detail["input_basis"] == "h2o_mixing_ratio_mmol_per_mol_dry_air"
+
+
+def test_h2o_rh_lag_profile_rejects_outliers_and_flags_inferred_classes() -> None:
+    observations = [
+        {"rh_percent": 5.0, "h2o_lag_s": 0.80},
+        {"rh_percent": 10.0, "h2o_lag_s": 0.82},
+        {"rh_percent": 20.0, "h2o_lag_s": 0.79},
+        {"rh_percent": 15.0, "h2o_lag_s": 4.00},
+        {"rh_percent": 80.0, "h2o_lag_s": 1.75},
+        {"rh_percent": 90.0, "h2o_lag_s": 1.80},
+        {"rh_percent": 95.0, "h2o_lag_s": 1.78},
+    ]
+
+    profile = build_h2o_lag_rh_profile(
+        observations,
+        class_count=4,
+        min_samples_per_class=3,
+        search_window_s=5.0,
+    )
+
+    assert profile["status"] == "ready"
+    assert profile["measured_class_count"] == 2
+    assert profile["inferred_class_count"] == 2
+    assert profile["classes"][0]["outlier_count"] == 1
+    assert profile["classes"][1]["status"] == "interpolated"
+    assert profile["classes"][2]["status"] == "interpolated"
+
+    selection = select_h2o_lag_from_rh_profile(profile, 40.0, fallback_lag_s=0.25)
+    assert selection["status"] == "applied"
+    assert selection["source"] == "interpolated"
+    assert 0.8 < selection["h2o_lag_s"] < 1.8
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication, QSizePolicy
+from PySide6.QtWidgets import QApplication, QLabel, QSizePolicy
 
 from app.pages.ec_processing_page import ECProcessingPage
 from app.studio import StudioController
@@ -206,6 +206,20 @@ def test_ec_processing_output_coverage_uses_compact_gate(monkeypatch, tmp_path: 
         assert "当前闭合 5/6" in page.coverage_next_note.text()
         assert page.method_console_values["spectral"].text() == "disabled"
         assert page.method_console_tiles["spectral"].property("methodTone") == "accent"
+    finally:
+        page.deleteLater()
+        controller.shutdown()
+
+
+def test_ec_processing_visible_copy_has_no_development_placeholders(monkeypatch, tmp_path: Path) -> None:
+    _app()
+    monkeypatch.setattr(StudioController, "bootstrap_demo_device", lambda self: None)
+    controller = StudioController(workspace_root=tmp_path)
+    page = ECProcessingPage(controller)
+    try:
+        visible_text = "\n".join(label.text() for label in page.findChildren(QLabel))
+        for marker in ("预留", "后续接入", "后续可接入", "当前仅保留", "先保留"):
+            assert marker not in visible_text
     finally:
         page.deleteLater()
         controller.shutdown()

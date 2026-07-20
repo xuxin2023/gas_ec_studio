@@ -1,6 +1,6 @@
 {
   "artifact_type": "eddypro_capability_matrix",
-  "updated_at": "2026-05-30",
+  "updated_at": "2026-07-20",
   "overall_status": "not_full_eddypro_parity_yet",
   "truthfulness_note": "gas_ec_studio has surpassed EddyPro in several auditability and delivery-chain areas, but it does not yet implement every EddyPro/SmartFlux feature family. The strategic target is to cover the full public EddyPro engine and GUI feature surface, then exceed EddyPro in auditability, reproducibility, automation, and delivery workflows.",
   "source_repositories": [
@@ -841,10 +841,12 @@
       "evidence": [
         "core/ec_rp/analysis.py",
         "core/ec_rp/pipeline.py",
+        "tests/test_ec_rp_analysis.py",
+        "tests/test_ec_rp_pipeline.py",
         "tests/test_rp_advanced_closure.py"
       ],
       "gap": "",
-      "next_action": "Add gas-specific lag defaults and diagnostics."
+      "next_action": "Expand multi-season RH-class coverage and replace inferred H2O lag classes with measured site history where available."
     },
     {
       "id": "coordinate_rotation_planar_fit",

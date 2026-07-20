@@ -20,6 +20,7 @@ from core.ec_rp.analysis import (
     apply_crosswind_correction,
     apply_sonic_corrections,
     build_window_series,
+    build_h2o_lag_rh_profile,
     build_uncertainty_band,
     compute_ch4_flux_metrics,
     compute_flux_metrics,
@@ -37,17 +38,17 @@ from core.ec_rp.analysis import (
     compute_uncertainty_finkelstein_sims,
     compute_uncertainty_mann_lenschow,
     compute_uncertainty_metrics,
+    estimate_relative_humidity,
     infer_sample_rate,
     normalize_density_correction_mode,
     normalize_detrend_mode,
     normalize_lag_strategy,
     normalize_rotation_mode,
-    optimize_h2o_lag_rh,
-    optimize_lag,
     pick_window_slices,
     rotate_wind,
     run_method_compare,
     run_statistical_screening,
+    select_h2o_lag_from_rh_profile,
     check_amplitude_resolution,
     check_angle_of_attack,
     check_steadiness_of_horizontal_wind,
@@ -174,6 +175,8 @@ class ECRPPipeline:
         biomet_context = _build_biomet_context(config)
         dynamic_metadata_context = _build_dynamic_metadata_context(config, site=site)
         configured_ambient_context = _build_configured_ambient_context(config)
+        h2o_rh_lag_config = _extract_h2o_rh_lag_config(config)
+        h2o_rh_lag_profile = _initial_h2o_rh_lag_profile(h2o_rh_lag_config)
         benchmark_summary = _default_benchmark_summary(benchmark_config=benchmark_config, window_count=0)
         reference_provenance = _build_reference_provenance_artifact(benchmark_config.get("reference_id", ""))
         planar_fit_library_summary = _summarize_planar_fit_library(
@@ -215,6 +218,7 @@ class ECRPPipeline:
                     clock_sync_summary=clock_sync_summary,
                     performance_profile=performance_profile,
                     planar_fit_library_summary=planar_fit_library_summary,
+                    h2o_rh_lag_profile=h2o_rh_lag_profile,
                 ),
                 windows=[],
                 artifacts=_artifacts(
@@ -231,6 +235,7 @@ class ECRPPipeline:
                     clock_sync_summary=clock_sync_summary,
                     performance_profile=performance_profile,
                     planar_fit_library_summary=planar_fit_library_summary,
+                    h2o_rh_lag_profile=h2o_rh_lag_profile,
                 ),
             )
 
@@ -315,6 +320,18 @@ class ECRPPipeline:
                     planar_fit_library_summary,
                 )
 
+        h2o_rh_lag_profile = _build_run_h2o_rh_lag_profile(
+            sorted_rows=sorted_rows,
+            slices=slices,
+            sample_rate_hz=sample_rate_hz,
+            search_window_s=search_window_s,
+            rotation_mode=rotation_mode,
+            sonic_correction_config=sonic_correction_config,
+            biomet_context=biomet_context,
+            configured_ambient_context=configured_ambient_context,
+            config=h2o_rh_lag_config,
+        )
+
         for index, (start, end) in enumerate(slices, start=1):
             window_rows = sorted_rows[start:end]
             try:
@@ -349,6 +366,7 @@ class ECRPPipeline:
                         biomet_override=_biomet_override_for_rows(window_rows, biomet_context),
                         dynamic_metadata_override=_dynamic_metadata_override_for_rows(window_rows, dynamic_metadata_context),
                         configured_ambient_context=configured_ambient_context,
+                        h2o_rh_lag_profile=h2o_rh_lag_profile,
                     )
                 )
             except Exception as exc:  # pragma: no cover
@@ -399,6 +417,7 @@ class ECRPPipeline:
                 clock_sync_summary=clock_sync_summary,
                 performance_profile=performance_profile,
                 planar_fit_library_summary=planar_fit_library_summary,
+                h2o_rh_lag_profile=h2o_rh_lag_profile,
             ),
             windows=windows,
             artifacts=_artifacts(
@@ -415,6 +434,7 @@ class ECRPPipeline:
                 clock_sync_summary=clock_sync_summary,
                 performance_profile=performance_profile,
                 planar_fit_library_summary=planar_fit_library_summary,
+                h2o_rh_lag_profile=h2o_rh_lag_profile,
             ),
         )
 
@@ -450,6 +470,7 @@ class ECRPPipeline:
         biomet_override: dict[str, Any] | None = None,
         dynamic_metadata_override: dict[str, Any] | None = None,
         configured_ambient_context: dict[str, Any] | None = None,
+        h2o_rh_lag_profile: dict[str, Any] | None = None,
     ) -> WindowRPResult:
         window_timer_start = time.perf_counter()
         performance_sections: dict[str, float] = {}
@@ -502,6 +523,18 @@ class ECRPPipeline:
         else:
             rotation = rotate_wind(prepared.u, prepared.v, prepared.w, rotation_mode)
         lag_result = analyze_lag(rotation.w, prepared.co2_ppm, prepared.h2o_mmol, sample_rate_hz=sample_rate_hz, search_window_s=search_window_s, lag_strategy=lag_strategy, expected_lag_s=expected_lag_s)
+        relative_humidity_detail = estimate_relative_humidity(
+            prepared.h2o_mmol,
+            prepared.temp_c,
+            prepared.pressure_kpa,
+        )
+        h2o_rh_lag_selection = select_h2o_lag_from_rh_profile(
+            h2o_rh_lag_profile,
+            relative_humidity_detail.get("rh_percent"),
+            fallback_lag_s=lag_result.h2o_lag_seconds,
+        )
+        if h2o_rh_lag_selection.get("status") == "applied":
+            lag_result.h2o_lag_seconds = float(h2o_rh_lag_selection["h2o_lag_s"])
         lagged_co2 = apply_lag(prepared.co2_ppm, lag_result.co2_lag_seconds, sample_rate_hz)
         lagged_h2o = apply_lag(prepared.h2o_mmol, lag_result.h2o_lag_seconds, sample_rate_hz)
         flux_metrics = compute_flux_metrics(
@@ -658,6 +691,12 @@ class ECRPPipeline:
             "lag_curve_y": list(lag_result.lag_curve_y),
             "co2_lag_seconds": float(lag_result.co2_lag_seconds),
             "h2o_lag_seconds": float(lag_result.h2o_lag_seconds),
+            "h2o_rh_lag_status": str(h2o_rh_lag_selection.get("status", "fallback")),
+            "h2o_rh_lag_source": str(h2o_rh_lag_selection.get("source", "window_covariance_max")),
+            "h2o_rh_lag_selection": h2o_rh_lag_selection,
+            "h2o_rh_lag_profile_status": str((h2o_rh_lag_profile or {}).get("status", "disabled")),
+            "relative_humidity_percent": relative_humidity_detail.get("rh_percent"),
+            "relative_humidity_detail": relative_humidity_detail,
             "lag_strategy": lag_strategy,
             "lag_fallback_reason": lag_result.fallback_reason if hasattr(lag_result, "fallback_reason") else "",
             "density_correction_factor": float(density_correction_factor),
@@ -1442,6 +1481,177 @@ def _safe_int(value: Any, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return int(default)
+
+
+def _extract_h2o_rh_lag_config(config: dict[str, Any]) -> dict[str, Any]:
+    profile = _config_value(
+        config,
+        "lag_phase.h2o_rh_optimization.profile",
+        "lag.h2o_rh_optimization.profile",
+        "steps.lag.h2o_rh_optimization.profile",
+        default=None,
+    )
+    return {
+        "enabled": bool(
+            _config_value(
+                config,
+                "lag_phase.h2o_rh_optimization.enabled",
+                "lag.h2o_rh_optimization.enabled",
+                "steps.lag.h2o_rh_optimization.enabled",
+                default=False,
+            )
+        ),
+        "class_count": min(
+            20,
+            max(
+                2,
+                _safe_int(
+                    _config_value(
+                        config,
+                        "lag_phase.h2o_rh_optimization.class_count",
+                        "lag.h2o_rh_optimization.class_count",
+                        "steps.lag.h2o_rh_optimization.class_count",
+                        default=10,
+                    ),
+                    10,
+                ),
+            ),
+        ),
+        "min_samples_per_class": max(
+            1,
+            _safe_int(
+                _config_value(
+                    config,
+                    "lag_phase.h2o_rh_optimization.min_samples_per_class",
+                    "lag.h2o_rh_optimization.min_samples_per_class",
+                    "steps.lag.h2o_rh_optimization.min_samples_per_class",
+                    default=3,
+                ),
+                3,
+            ),
+        ),
+        "mad_multiplier": max(
+            1.0,
+            float(
+                _config_value(
+                    config,
+                    "lag_phase.h2o_rh_optimization.mad_multiplier",
+                    "lag.h2o_rh_optimization.mad_multiplier",
+                    "steps.lag.h2o_rh_optimization.mad_multiplier",
+                    default=3.5,
+                )
+            ),
+        ),
+        "profile": profile if isinstance(profile, dict) else None,
+    }
+
+
+def _initial_h2o_rh_lag_profile(config: dict[str, Any]) -> dict[str, Any]:
+    status = "insufficient_data" if config.get("enabled") else "disabled"
+    return {
+        "artifact_type": "h2o_rh_lag_profile_v1",
+        "status": status,
+        "source": "not_requested" if status == "disabled" else "current_run",
+        "class_count": int(config.get("class_count", 10) or 10),
+        "min_samples_per_class": int(config.get("min_samples_per_class", 3) or 3),
+        "mad_multiplier": float(config.get("mad_multiplier", 3.5) or 3.5),
+        "observation_count": 0,
+        "measured_class_count": 0,
+        "inferred_class_count": 0,
+        "classes": [],
+        "provenance": "RH-class H2O lag optimization was not applied." if status == "disabled" else "No usable windows were available to build an RH-class H2O lag profile.",
+        "limitations": [],
+    }
+
+
+def _build_run_h2o_rh_lag_profile(
+    *,
+    sorted_rows: list[NormalizedHFFrame],
+    slices: list[tuple[int, int]],
+    sample_rate_hz: float,
+    search_window_s: float,
+    rotation_mode: str,
+    sonic_correction_config: dict[str, Any] | None,
+    biomet_context: dict[str, Any] | None,
+    configured_ambient_context: dict[str, Any] | None,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    if not config.get("enabled"):
+        return _initial_h2o_rh_lag_profile(config)
+    configured_profile = config.get("profile")
+    if isinstance(configured_profile, dict) and configured_profile.get("status") == "ready":
+        return {
+            **configured_profile,
+            "artifact_type": "h2o_rh_lag_profile_v1",
+            "source": "configured_profile",
+            "loaded_for_run": True,
+        }
+
+    observations: list[dict[str, Any]] = []
+    failed_window_count = 0
+    profile_rotation_mode = (
+        "double"
+        if rotation_mode in {"planar_fit", "sector_wise_planar_fit", "sector_wise_planar_fit_no_velocity_bias"}
+        else rotation_mode
+    )
+    for window_index, (start, end) in enumerate(slices, start=1):
+        window_rows = sorted_rows[start:end]
+        if not window_rows:
+            continue
+        try:
+            prepared, _sonic_detail = _prepare_window_series(
+                window_rows,
+                sample_rate_hz,
+                sonic_correction_config,
+            )
+            biomet_override = _biomet_override_for_rows(window_rows, biomet_context or {})
+            if biomet_override:
+                _apply_biomet_override(prepared, biomet_override)
+            if configured_ambient_context:
+                _apply_configured_ambient_override(prepared, configured_ambient_context)
+            rotation = rotate_wind(prepared.u, prepared.v, prepared.w, profile_rotation_mode)
+            lag = analyze_lag(
+                rotation.w,
+                prepared.h2o_mmol,
+                prepared.h2o_mmol,
+                sample_rate_hz=sample_rate_hz,
+                search_window_s=search_window_s,
+                lag_strategy="covariance_max",
+            )
+            humidity = estimate_relative_humidity(
+                prepared.h2o_mmol,
+                prepared.temp_c,
+                prepared.pressure_kpa,
+            )
+            if humidity.get("rh_percent") is None:
+                failed_window_count += 1
+                continue
+            observations.append(
+                {
+                    "window_index": window_index,
+                    "rh_percent": humidity["rh_percent"],
+                    "h2o_lag_s": lag.h2o_lag_seconds,
+                }
+            )
+        except (TypeError, ValueError, FloatingPointError):
+            failed_window_count += 1
+
+    profile = build_h2o_lag_rh_profile(
+        observations,
+        class_count=int(config.get("class_count", 10) or 10),
+        min_samples_per_class=int(config.get("min_samples_per_class", 3) or 3),
+        mad_multiplier=float(config.get("mad_multiplier", 3.5) or 3.5),
+        search_window_s=search_window_s,
+    )
+    profile.update(
+        {
+            "source": "current_run_first_pass",
+            "first_pass_rotation_mode": profile_rotation_mode,
+            "requested_rotation_mode": rotation_mode,
+            "failed_window_count": failed_window_count,
+        }
+    )
+    return profile
 
 
 def _extract_planar_fit_library_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -2750,6 +2960,7 @@ def _empty_summary(
     clock_sync_summary: dict[str, Any] | None = None,
     performance_profile: dict[str, Any] | None = None,
     planar_fit_library_summary: dict[str, Any] | None = None,
+    h2o_rh_lag_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     summary = {
         "status": "empty",
@@ -2802,6 +3013,7 @@ def _empty_summary(
         },
         "primary_analyzer_summary": _summarize_primary_analyzer_windows([]),
         "flux_correction_ledger_summary": _summarize_flux_correction_ledgers([]),
+        "h2o_rh_lag_profile": h2o_rh_lag_profile or {},
         "project_code": project.code,
         "site_code": site.station_code,
         "config_snapshot": config,
@@ -2832,6 +3044,7 @@ def _build_summary(
     clock_sync_summary: dict[str, Any] | None = None,
     performance_profile: dict[str, Any] | None = None,
     planar_fit_library_summary: dict[str, Any] | None = None,
+    h2o_rh_lag_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not windows:
         return _empty_summary(
@@ -2847,6 +3060,7 @@ def _build_summary(
             clock_sync_summary=clock_sync_summary,
             performance_profile=performance_profile,
             planar_fit_library_summary=planar_fit_library_summary,
+            h2o_rh_lag_profile=h2o_rh_lag_profile,
         )
     summary = {
         "status": "ok",
@@ -2871,6 +3085,7 @@ def _build_summary(
         "trace_gas_summary": _summarize_trace_gas_windows(windows),
         "primary_analyzer_summary": _summarize_primary_analyzer_windows(windows),
         "flux_correction_ledger_summary": _summarize_flux_correction_ledgers(windows),
+        "h2o_rh_lag_profile": h2o_rh_lag_profile or {},
         "project_code": project.code,
         "site_code": site.station_code,
         "config_snapshot": config,
@@ -2902,6 +3117,7 @@ def _artifacts(
     clock_sync_summary: dict[str, Any] | None = None,
     performance_profile: dict[str, Any] | None = None,
     planar_fit_library_summary: dict[str, Any] | None = None,
+    h2o_rh_lag_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "project_snapshot": asdict(project),
@@ -2916,6 +3132,7 @@ def _artifacts(
         "method_provenance": method_summary or {},
         "primary_analyzer": _build_primary_analyzer_artifact(windows or []),
         "planar_fit_library": planar_fit_library_summary or {},
+        "h2o_rh_lag_profile": h2o_rh_lag_profile or {},
         "clock_sync": clock_sync_summary or {},
         "performance_profile": performance_profile or {},
         "flux_correction_ledger": _build_flux_correction_ledger_artifact(windows or []),
@@ -4000,7 +4217,6 @@ def _wpl_benchmark_status(flux_metrics: dict[str, Any]) -> dict[str, Any]:
     wpl_sh = flux_metrics.get("wpl_sensible_heat_term", 0.0)
     cell_pressure_term = flux_metrics.get("closed_path_cell_pressure_term", 0.0)
     raw = flux_metrics.get("raw_flux", 0.0)
-    corrected = flux_metrics.get("density_corrected_flux", 0.0)
     total_correction = wpl_wv + wpl_sh + cell_pressure_term
     correction_ratio = abs(total_correction / raw) if abs(raw) > 1e-15 else 0.0
     sensible_heat_dominant = abs(wpl_sh) > abs(wpl_wv)

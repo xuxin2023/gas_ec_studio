@@ -207,6 +207,11 @@ def test_spectral_qc_viewport_layout_keeps_evidence_decks_stable(monkeypatch, tm
             assert page.spectral_focus_rail.width() <= page.spectral_focus_rail.maximumWidth()
             assert page.spectral_focus_rail.width() >= page.spectral_focus_rail.minimumWidth()
 
+            page.content_stack.setCurrentIndex(page.section_indexes["window_detail"])
+            app.processEvents()
+            assert page.detail_filter_card.height() <= 96
+            assert all(label.height() <= 24 for label in page.detail_filter_labels)
+
             source_panels = [
                 page.spectral_source_panel,
                 page.spectral_action_panel,
