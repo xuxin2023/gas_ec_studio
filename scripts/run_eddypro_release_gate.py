@@ -25,6 +25,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-acceptance", action="store_true", help="Do not rerun evidence-pack acceptance commands.")
     parser.add_argument("--acceptance-timeout-s", type=float, default=300.0, help="Timeout per acceptance command.")
     parser.add_argument(
+        "--claim-scope",
+        choices=("empirical", "code"),
+        default="empirical",
+        help="Select empirical full-parity or open-source code-capability CI acceptance.",
+    )
+    parser.add_argument(
         "--summary-md",
         default="",
         help="Optional Markdown summary output. Defaults to GITHUB_STEP_SUMMARY when present.",
@@ -53,6 +59,18 @@ def main(argv: list[str] | None = None) -> int:
         run_acceptance=not bool(args.skip_acceptance),
         acceptance_timeout_s=float(args.acceptance_timeout_s),
     )
+    selected_exit_code = (
+        int(gate.get("open_source_code_capability_ci_exit_code", 2))
+        if args.claim_scope == "code"
+        else int(gate.get("ci_exit_code", 2))
+    )
+    gate["selected_claim_scope"] = args.claim_scope
+    gate["selected_claim_status"] = (
+        gate.get("open_source_code_capability_status", "blocked")
+        if args.claim_scope == "code"
+        else gate.get("status", "blocked")
+    )
+    gate["selected_ci_exit_code"] = selected_exit_code
     output_path.write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
 
     summary_path = args.summary_md or os.environ.get("GITHUB_STEP_SUMMARY", "")
@@ -60,13 +78,23 @@ def main(argv: list[str] | None = None) -> int:
         _write_summary(Path(summary_path), gate, output_path)
 
     _print_summary(gate, output_path)
-    return int(gate.get("ci_exit_code", 2) or 2)
+    return selected_exit_code
 
 
 def _print_summary(gate: dict[str, Any], output_path: Path) -> None:
     summary = dict(gate.get("summary", {}) or {})
-    print(f"EddyPro release gate: {gate.get('status', 'blocked')}")
+    selected_scope = str(gate.get("selected_claim_scope", "empirical"))
+    selected_status = str(gate.get("selected_claim_status", "blocked"))
+    print(f"EddyPro selected claim gate ({selected_scope}): {selected_status}")
+    print(f"empirical_full_parity_gate: {gate.get('status', 'blocked')}")
     print(f"can_release_full_eddypro_parity: {gate.get('can_release_full_eddypro_parity', False)}")
+    print(
+        "can_release_open_source_code_capability_parity: "
+        f"{gate.get('can_release_open_source_code_capability_parity', False)}"
+    )
+    print(f"selected_claim_scope: {gate.get('selected_claim_scope', 'empirical')}")
+    print(f"selected_claim_status: {gate.get('selected_claim_status', 'blocked')}")
+    print(f"selected_ci_exit_code: {gate.get('selected_ci_exit_code', 2)}")
     print(
         "can_release_source_derived_functional_parity: "
         f"{gate.get('can_release_source_derived_functional_parity', False)}"
@@ -84,8 +112,12 @@ def _print_summary(gate: dict[str, Any], output_path: Path) -> None:
     print(f"official_raw_closure_run_gate_status: {summary.get('official_raw_closure_run_gate_status', 'not_available')}")
     print(f"capability_completion_score: {summary.get('capability_completion_score', 0.0)}")
     print(f"artifact: {output_path}")
-    for reason in list(summary.get("blocking_reasons", []) or [])[:8]:
-        print(f"blocker: {reason}")
+    if selected_scope == "code":
+        for capability_id in list(summary.get("code_capability_evidence_pending_ids", []) or [])[:8]:
+            print(f"non_blocking_evidence_pending: {capability_id}")
+    else:
+        for reason in list(summary.get("blocking_reasons", []) or [])[:8]:
+            print(f"blocker: {reason}")
 
 
 def _write_summary(path: Path, gate: dict[str, Any], output_path: Path) -> None:
@@ -98,6 +130,11 @@ def _write_summary(path: Path, gate: dict[str, Any], output_path: Path) -> None:
         f"- Status: `{gate.get('status', 'blocked')}`",
         f"- Can release full EddyPro parity: `{gate.get('can_release_full_eddypro_parity', False)}`",
         f"- CI exit code: `{gate.get('ci_exit_code', 2)}`",
+        f"- Can release open-source code capability parity: `{gate.get('can_release_open_source_code_capability_parity', False)}`",
+        f"- Open-source code capability CI exit code: `{gate.get('open_source_code_capability_ci_exit_code', 2)}`",
+        f"- Selected claim scope: `{gate.get('selected_claim_scope', 'empirical')}`",
+        f"- Selected claim status: `{gate.get('selected_claim_status', 'blocked')}`",
+        f"- Selected CI exit code: `{gate.get('selected_ci_exit_code', 2)}`",
         f"- Can release source-derived functional parity: `{gate.get('can_release_source_derived_functional_parity', False)}`",
         f"- Source-derived CI exit code: `{gate.get('surrogate_ci_exit_code', 2)}`",
         f"- Can release source-derived computational superiority: `{gate.get('can_release_source_derived_computational_superiority', False)}`",
@@ -112,14 +149,19 @@ def _write_summary(path: Path, gate: dict[str, Any], output_path: Path) -> None:
         f"- Capability completion score: `{summary.get('capability_completion_score', 0.0)}`",
         f"- Artifact: `{output_path}`",
         "",
-        "> Source-derived functional parity and source-derived computational superiority are narrow software/evidence-chain closures. They must not be described as official field numeric parity, real hardware validation, or vendor-certified EddyPro equivalence.",
+        "> Open-source code capability parity is a source-code and software-conformance claim. It does not claim official field numeric parity, real hardware validation, or vendor certification.",
     ]
     computation_blockers = list(summary.get("source_derived_computation_blocking_reasons", []) or [])
     if computation_blockers:
         lines.extend(["", "### Computation Gate Blocking Reasons"])
         lines.extend(f"- {reason}" for reason in computation_blockers)
     if blocking_reasons:
-        lines.extend(["", "### Blocking Reasons"])
+        heading = (
+            "### Non-blocking Empirical Evidence Gaps"
+            if gate.get("selected_claim_scope") == "code"
+            else "### Blocking Reasons"
+        )
+        lines.extend(["", heading])
         lines.extend(f"- {reason}" for reason in blocking_reasons)
     else:
         lines.extend(["", "No release blockers were reported."])

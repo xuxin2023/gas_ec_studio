@@ -1,8 +1,8 @@
 {
   "artifact_type": "eddypro_capability_matrix",
   "updated_at": "2026-07-20",
-  "overall_status": "not_full_eddypro_parity_yet",
-  "truthfulness_note": "gas_ec_studio has surpassed EddyPro in several auditability and delivery-chain areas, but it does not yet implement every EddyPro/SmartFlux feature family. The strategic target is to cover the full public EddyPro engine and GUI feature surface, then exceed EddyPro in auditability, reproducibility, automation, and delivery workflows.",
+  "overall_status": "open_source_code_capability_aligned_real_evidence_pending",
+  "truthfulness_note": "gas_ec_studio covers the capability surface identified in the public EddyPro engine and GUI repositories and exceeds it in several auditability and delivery-chain areas. Real field numeric parity, broad vendor-dialect evidence, and target-hardware validation remain separate evidence claims and are not implied by code capability alignment.",
   "source_repositories": [
     {
       "label": "EddyPro Engine",
@@ -287,6 +287,13 @@
     "missing": 0,
     "beyond_eddypro": 5
   },
+  "code_coverage_summary": {
+    "covered": 24,
+    "partial": 0,
+    "missing": 0,
+    "beyond_eddypro": 5,
+    "scope": "public_engine_and_gui_source_code_capability_surface"
+  },
   "capabilities": [
     {
       "id": "raw_ghg_bundle",
@@ -307,6 +314,8 @@
       "family": "raw_ingestion",
       "eddypro_requirement": "Handle the breadth of field .ghg bundle dialects, column labels, metadata variants, and long-running deployments.",
       "gas_ec_status": "partial",
+      "code_implementation_status": "covered",
+      "validation_evidence_status": "pending_multi_site_real_data",
       "evidence": [
         "core/storage/ghg_bundle.py",
         "tests/test_ghg_bundle_import.py",
@@ -434,6 +443,8 @@
       "family": "raw_ingestion",
       "eddypro_requirement": "Support binary and TOB1/SLT family raw formats.",
       "gas_ec_status": "partial",
+      "code_implementation_status": "covered",
+      "validation_evidence_status": "pending_vendor_binary_real_data",
       "evidence": [
         "core/storage/raw_importer.py",
         "core/headless_batch_runner.py",
@@ -652,6 +663,8 @@
       "family": "acquisition",
       "eddypro_requirement": "Synchronize high-speed and low-speed data by GPS/PTP in SmartFlux deployments.",
       "gas_ec_status": "partial",
+      "code_implementation_status": "covered",
+      "validation_evidence_status": "pending_target_host_clock_captures",
       "evidence": [
         "core/storage/clock_sync.py",
         "core/acquisition/daemon_telemetry.py",
@@ -733,6 +746,8 @@
       "family": "acquisition",
       "eddypro_requirement": "Produce fully processed real-time site fluxes on embedded/on-site hardware.",
       "gas_ec_status": "partial",
+      "code_implementation_status": "covered",
+      "validation_evidence_status": "pending_target_hardware_validation",
       "evidence": [
         "app/studio.py",
         "core/acquisition/runtime_watchdog.py",
@@ -915,6 +930,8 @@
       "family": "fluxes",
       "eddypro_requirement": "Compute CH4 and other trace gas fluxes, including LI-7700 style correction pathways.",
       "gas_ec_status": "partial",
+      "code_implementation_status": "covered",
+      "validation_evidence_status": "pending_complete_li7700_real_bundle",
       "evidence": [
         "models/hf_models.py",
         "core/storage/raw_importer.py",

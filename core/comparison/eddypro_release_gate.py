@@ -176,6 +176,21 @@ def build_eddypro_release_gate(
         computation_release_gate.get("can_release_source_derived_computational_superiority", False)
     )
     computation_gate_supplied = bool(computation_audit or computation_suite)
+    open_source_code_blocking_reasons: list[str] = []
+    if not bool(coverage_audit.get("can_claim_open_source_code_capability_parity", False)):
+        open_source_code_blocking_reasons.extend(
+            list(dict(coverage_audit.get("open_source_code_claim_gate", {}) or {}).get("blocking_reasons", []) or [])
+            or ["open-source code capability coverage audit has not passed"]
+        )
+    if not surrogate_release_pass:
+        open_source_code_blocking_reasons.append("source-derived functional conformance gate has not passed")
+    if computation_gate_supplied and not computation_release_pass:
+        open_source_code_blocking_reasons.extend(
+            f"source-derived computation gate: {reason}"
+            for reason in list(computation_release_gate.get("blocking_reasons", []) or [])
+        )
+    open_source_code_blocking_reasons = _dedupe(open_source_code_blocking_reasons)
+    open_source_code_release_pass = not open_source_code_blocking_reasons
     if computation_gate_supplied and not computation_release_pass:
         blocking_reasons = _dedupe(
             [
@@ -198,6 +213,10 @@ def build_eddypro_release_gate(
         "status": "pass" if release_pass else "blocked",
         "ci_exit_code": 0 if release_pass else 2,
         "can_release_full_eddypro_parity": release_pass,
+        "open_source_code_capability_status": "pass" if open_source_code_release_pass else "blocked",
+        "open_source_code_capability_ci_exit_code": 0 if open_source_code_release_pass else 2,
+        "can_release_open_source_code_capability_parity": open_source_code_release_pass,
+        "open_source_code_capability_blocking_reasons": open_source_code_blocking_reasons,
         "surrogate_evidence_closure_status": str(surrogate_closure.get("status", "not_configured")),
         "surrogate_ci_exit_code": 0 if surrogate_release_pass else 2,
         "can_release_source_derived_functional_parity": surrogate_release_pass,
@@ -227,6 +246,21 @@ def build_eddypro_release_gate(
             ),
             "can_claim_source_derived_functional_parity": bool(
                 coverage_audit.get("can_claim_source_derived_functional_parity", False)
+            ),
+            "can_claim_open_source_code_capability_parity": bool(
+                coverage_audit.get("can_claim_open_source_code_capability_parity", False)
+            ),
+            "can_release_open_source_code_capability_parity": open_source_code_release_pass,
+            "open_source_code_capability_status": "pass" if open_source_code_release_pass else "blocked",
+            "open_source_code_capability_blocking_reasons": open_source_code_blocking_reasons,
+            "code_capability_completion_score": float(
+                dict(coverage_audit.get("code_capability_summary", {}) or {}).get("completion_score", 0.0) or 0.0
+            ),
+            "code_capability_evidence_pending_ids": list(
+                dict(coverage_audit.get("code_capability_summary", {}) or {}).get(
+                    "evidence_pending_capability_ids", []
+                )
+                or []
             ),
             "can_release_source_derived_functional_parity": surrogate_release_pass,
             "can_release_source_derived_computational_superiority": computation_release_pass,
@@ -281,7 +315,9 @@ def build_eddypro_release_gate(
             "This release gate intentionally blocks full EddyPro parity release claims unless coverage audit, "
             "official raw fixture readiness, official EddyPro executable-run provenance, source provenance, "
             "and evidence-pack acceptance all pass. Source-derived functional parity has a separate surrogate "
-            "evidence gate and must not be described as official field numeric parity."
+            "evidence gate. Open-source code capability parity combines source-surface coverage, source-derived "
+            "functional conformance, and the computation gate without requiring unavailable field or hardware data; "
+            "it must not be described as official field numeric parity or vendor certification."
         ),
     }
 

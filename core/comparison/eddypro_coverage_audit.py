@@ -73,6 +73,7 @@ def build_eddypro_coverage_audit(
         else _discover_official_raw_evidence_pack(root)
     )
     capability_summary = _capability_summary(rows, status_counts)
+    code_capability_summary = _code_capability_summary(rows)
     capability_subprogress = _capability_subprogress_summary(rows)
     family_summary = _family_summary(rows)
     source_summary = _source_summary(source_payload)
@@ -97,13 +98,30 @@ def build_eddypro_coverage_audit(
         matrix_errors=matrix_errors,
     )
     can_claim_full_parity = not blocking_reasons
+    code_claim_blockers = _open_source_code_claim_blockers(
+        code_capability_summary=code_capability_summary,
+        source_summary=source_summary,
+        matrix_errors=matrix_errors,
+    )
+    can_claim_open_source_code_parity = not code_claim_blockers
     return {
         "artifact_type": "eddypro_coverage_audit_v1",
         "audit_id": "eddypro_coverage_audit_v1",
         "generated_at": datetime.now().isoformat(),
         "status": "full_eddypro_parity_evidence_ready" if can_claim_full_parity else "not_full_eddypro_parity_yet",
         "can_claim_full_eddypro_parity": can_claim_full_parity,
+        "can_claim_open_source_code_capability_parity": can_claim_open_source_code_parity,
         "can_claim_source_derived_functional_parity": surrogate_closure.get("status") == "pass",
+        "open_source_code_claim_gate": {
+            "status": "pass" if can_claim_open_source_code_parity else "blocked",
+            "blocking_reasons": code_claim_blockers,
+            "scope": "public_engine_and_gui_source_code_capability_surface",
+            "excluded_claims": [
+                "official_field_numeric_parity",
+                "real_hardware_validated_parity",
+                "vendor_certified_equivalence",
+            ],
+        },
         "claim_gate": {
             "status": "pass" if can_claim_full_parity else "blocked",
             "blocking_reasons": blocking_reasons,
@@ -128,6 +146,7 @@ def build_eddypro_coverage_audit(
             "load_errors": matrix_errors,
         },
         "capability_summary": capability_summary,
+        "code_capability_summary": code_capability_summary,
         "capability_subprogress": capability_subprogress,
         "family_summary": family_summary,
         "source_inventory_summary": source_summary,
@@ -146,7 +165,8 @@ def build_eddypro_coverage_audit(
         "capability_rows": rows,
         "truthfulness_note": (
             "This audit is a claim gate, not a marketing score. It keeps full EddyPro parity blocked "
-            "until implementation breadth, official source anchors, and official raw-to-final fixture evidence all pass together."
+            "until implementation breadth, official source anchors, and official raw-to-final fixture evidence all pass together. "
+            "Open-source code capability parity is evaluated separately and does not require field or hardware evidence."
         ),
         "known_limitations": [
             "Capability status comes from the local docs/benchmark capability matrix and must be reviewed when upstream EddyPro changes.",
@@ -275,6 +295,7 @@ def _capability_rows(capabilities: list[dict[str, Any]]) -> list[dict[str, Any]]
     rows: list[dict[str, Any]] = []
     for capability in capabilities:
         status = str(capability.get("gas_ec_status", "") or "unknown")
+        code_status = str(capability.get("code_implementation_status", status) or "unknown")
         evidence = [str(item) for item in list(capability.get("evidence", []) or []) if str(item).strip()]
         checklist = _normalize_capability_checklist(capability.get("coverage_checklist", capability.get("subprogress", [])))
         subprogress = _capability_row_subprogress(checklist)
@@ -283,6 +304,10 @@ def _capability_rows(capabilities: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "id": str(capability.get("id", "")),
                 "family": str(capability.get("family", "") or "unclassified"),
                 "gas_ec_status": status,
+                "code_implementation_status": code_status,
+                "validation_evidence_status": str(
+                    capability.get("validation_evidence_status", "aligned_with_gas_ec_status")
+                ),
                 "status_score": float(STATUS_WEIGHTS.get(status, 0.0)),
                 "eddypro_requirement": str(capability.get("eddypro_requirement", "")),
                 "gap": str(capability.get("gap", "")),
@@ -299,6 +324,7 @@ def _capability_rows(capabilities: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "coverage_checklist": checklist,
                 "subprogress": subprogress,
                 "blocks_full_parity_claim": status in {"partial", "missing", "unknown"},
+                "blocks_open_source_code_claim": code_status in {"partial", "missing", "unknown"},
             }
         )
     return rows
@@ -319,6 +345,53 @@ def _capability_summary(rows: list[dict[str, Any]], status_counts: Counter[str])
         "completion_score": weighted / denominator if denominator else 0.0,
         "status_counts": dict(sorted(status_counts.items())),
     }
+
+
+def _code_capability_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    code_rows = [row for row in rows if row.get("code_implementation_status") != "beyond_eddypro"]
+    status_counts = Counter(str(row.get("code_implementation_status", "") or "unknown") for row in rows)
+    blocking_rows = [row for row in code_rows if bool(row.get("blocks_open_source_code_claim", False))]
+    denominator = len(code_rows)
+    weighted = sum(
+        float(STATUS_WEIGHTS.get(str(row.get("code_implementation_status", "unknown")), 0.0))
+        for row in code_rows
+    )
+    return {
+        "scope": "public_engine_and_gui_source_code_capability_surface",
+        "total_capability_count": len(rows),
+        "source_capability_count": denominator,
+        "covered_count": int(status_counts.get("covered", 0)),
+        "partial_count": int(status_counts.get("partial", 0)),
+        "missing_count": int(status_counts.get("missing", 0)),
+        "beyond_eddypro_count": int(status_counts.get("beyond_eddypro", 0)),
+        "unknown_count": int(status_counts.get("unknown", 0)),
+        "completion_score": weighted / denominator if denominator else 0.0,
+        "blocking_capability_ids": [str(row.get("id", "")) for row in blocking_rows],
+        "evidence_pending_capability_ids": [
+            str(row.get("id", ""))
+            for row in rows
+            if str(row.get("validation_evidence_status", ""))
+            not in {"", "covered", "complete", "pass", "validated", "aligned_with_gas_ec_status"}
+        ],
+        "status_counts": dict(sorted(status_counts.items())),
+    }
+
+
+def _open_source_code_claim_blockers(
+    *,
+    code_capability_summary: dict[str, Any],
+    source_summary: dict[str, Any],
+    matrix_errors: list[str],
+) -> list[str]:
+    blockers = list(matrix_errors)
+    blocking_ids = list(code_capability_summary.get("blocking_capability_ids", []) or [])
+    if blocking_ids:
+        blockers.append(f"open-source code capability rows are not covered: {', '.join(blocking_ids)}")
+    if str(source_summary.get("status", "")) != "pass":
+        blockers.append("official open-source inventory is not complete")
+    if int(source_summary.get("missing_feature_count", 0) or 0) > 0:
+        blockers.append("official open-source inventory still has missing feature anchors")
+    return blockers
 
 
 def _capability_subprogress_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:

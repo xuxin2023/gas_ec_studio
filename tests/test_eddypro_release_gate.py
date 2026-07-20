@@ -242,6 +242,44 @@ def test_eddypro_release_gate_releases_source_derived_computation_when_surface_r
     assert Path(gate["artifacts"]["eddypro_computation_scope_audit"]).exists()
 
 
+def test_eddypro_release_gate_accepts_code_scope_while_empirical_evidence_is_pending(tmp_path: Path) -> None:
+    coverage_audit = {
+        "can_claim_full_eddypro_parity": False,
+        "can_claim_open_source_code_capability_parity": True,
+        "can_claim_source_derived_functional_parity": True,
+        "open_source_code_claim_gate": {"status": "pass", "blocking_reasons": []},
+        "claim_gate": {"status": "blocked", "blocking_reasons": ["real field evidence is pending"]},
+        "closure_gate": {"status": "blocked", "open_item_count": 1},
+        "surrogate_evidence_closure": {"status": "pass", "gate_status": "pass"},
+        "official_raw_acceptance_summary": {},
+        "capability_summary": {"completion_score": 0.5},
+        "code_capability_summary": {
+            "completion_score": 1.0,
+            "evidence_pending_capability_ids": ["raw_binary_tob1_slt"],
+        },
+        "source_inventory_summary": {"status": "pass"},
+    }
+
+    gate = build_eddypro_release_gate(
+        workspace_root=tmp_path,
+        fixture_summary=_fixture_summary(),
+        official_raw_manifest=_official_manifest(),
+        source_inventory=_source_inventory(),
+        coverage_audit=coverage_audit,
+        computation_scope_audit=_computation_scope_audit(),
+        computation_stress_suite=_computation_stress_suite(),
+        run_acceptance=False,
+    )
+
+    assert gate["status"] == "blocked"
+    assert gate["can_release_full_eddypro_parity"] is False
+    assert gate["open_source_code_capability_status"] == "pass"
+    assert gate["open_source_code_capability_ci_exit_code"] == 0
+    assert gate["can_release_open_source_code_capability_parity"] is True
+    assert gate["summary"]["code_capability_completion_score"] == 1.0
+    assert gate["summary"]["code_capability_evidence_pending_ids"] == ["raw_binary_tob1_slt"]
+
+
 def test_eddypro_release_gate_blocks_supplied_computation_surface_failure(tmp_path: Path) -> None:
     matrix = tmp_path / "matrix.json"
     _write_matrix(matrix, covered=True)
@@ -416,6 +454,8 @@ def test_headless_cli_builds_eddypro_release_gate_for_current_repo(tmp_path: Pat
     assert payload["summary"]["surrogate_evidence_closure_gate_status"] == "pass"
     assert payload["can_release_source_derived_functional_parity"] is True
     assert payload["can_release_source_derived_computational_superiority"] is True
+    assert payload["can_release_open_source_code_capability_parity"] is True
+    assert payload["open_source_code_capability_ci_exit_code"] == 0
     assert payload["summary"]["source_derived_computation_gate_status"] == "pass"
     assert payload["summary"]["can_claim_source_derived_functional_parity"] is True
 
@@ -482,7 +522,8 @@ def test_release_gate_runner_script_writes_artifact_and_returns_gate_code(tmp_pa
     assert payload["artifact_type"] == "eddypro_release_gate_v1"
     assert payload["status"] == "blocked"
     assert payload["summary"]["official_raw_acceptance_gate_status"] == "pass"
-    assert "EddyPro release gate: blocked" in completed.stdout
+    assert "EddyPro selected claim gate (empirical): blocked" in completed.stdout
+    assert "empirical_full_parity_gate: blocked" in completed.stdout
     assert "can_release_source_derived_functional_parity: True" in completed.stdout
     assert "can_release_source_derived_computational_superiority: True" in completed.stdout
     assert "source_derived_computation_gate_status: pass" in completed.stdout
@@ -493,3 +534,35 @@ def test_release_gate_runner_script_writes_artifact_and_returns_gate_code(tmp_pa
     assert "Can release source-derived computational superiority: `True`" in summary_text
     assert "Source-derived computation gate: `pass`" in summary_text
     assert "Surrogate evidence closure: `pass`" in summary_text
+
+    code_output = tmp_path / "artifacts" / "eddypro_code_capability_gate.json"
+    completed_code = subprocess.run(
+        [
+            sys.executable,
+            str(Path.cwd() / "scripts" / "run_eddypro_release_gate.py"),
+            "--workspace-root",
+            str(Path.cwd()),
+            "--official-raw-evidence-pack",
+            str(evidence_pack),
+            "--skip-acceptance",
+            "--claim-scope",
+            "code",
+            "--output",
+            str(code_output),
+        ],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    code_payload = json.loads(code_output.read_text(encoding="utf-8"))
+    assert completed_code.returncode == 0
+    assert code_payload["status"] == "blocked"
+    assert code_payload["selected_claim_scope"] == "code"
+    assert code_payload["selected_claim_status"] == "pass"
+    assert code_payload["selected_ci_exit_code"] == 0
+    assert code_payload["can_release_open_source_code_capability_parity"] is True
+    assert "EddyPro selected claim gate (code): pass" in completed_code.stdout
+    assert "selected_claim_scope: code" in completed_code.stdout
+    assert "non_blocking_evidence_pending:" in completed_code.stdout

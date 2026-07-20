@@ -155,6 +155,9 @@ def test_eddypro_coverage_audit_blocks_full_claim_when_capabilities_or_fixtures_
     assert audit["capability_summary"]["partial_count"] == 1
     assert audit["capability_summary"]["beyond_eddypro_count"] == 1
     assert audit["capability_summary"]["completion_score"] == 0.75
+    assert audit["can_claim_open_source_code_capability_parity"] is False
+    assert audit["code_capability_summary"]["partial_count"] == 1
+    assert audit["code_capability_summary"]["completion_score"] == 0.75
     assert audit["capability_subprogress"]["artifact_type"] == "eddypro_capability_subprogress_v1"
     assert audit["capability_subprogress"]["claim_safe"] is True
     assert audit["capability_subprogress"]["partial_capability_count"] == 1
@@ -180,6 +183,46 @@ def test_eddypro_coverage_audit_blocks_full_claim_when_capabilities_or_fixtures_
     assert audit["closure_plan"]["status"] == "active"
     assert audit["closure_plan"]["next_actions"][0]["priority"] == "P0"
     assert audit["closure_plan"]["acceptance_command_sequence"]
+
+
+def test_eddypro_coverage_audit_separates_code_coverage_from_real_evidence(tmp_path: Path) -> None:
+    matrix = tmp_path / "capability_matrix.json"
+    _write_matrix(
+        matrix,
+        [
+            {
+                "id": "raw_binary_tob1_slt",
+                "family": "raw_ingestion",
+                "gas_ec_status": "partial",
+                "code_implementation_status": "covered",
+                "validation_evidence_status": "pending_vendor_binary_real_data",
+                "gap": "Real vendor fixtures are unavailable.",
+                "evidence": ["core/storage/raw_importer.py", "tests/test_raw_to_final_parity.py"],
+            },
+            {
+                "id": "delivery_audit_benchmark",
+                "family": "delivery",
+                "gas_ec_status": "beyond_eddypro",
+                "evidence": ["core/exports/delivery_exporter.py"],
+            },
+        ],
+    )
+
+    audit = build_eddypro_coverage_audit(
+        capability_matrix_path=matrix,
+        workspace_root=tmp_path,
+        fixture_summary=_fixture_summary(),
+        official_raw_manifest=_official_manifest(ready_count=0),
+        source_inventory=_source_inventory(),
+    )
+
+    assert audit["can_claim_full_eddypro_parity"] is False
+    assert audit["can_claim_open_source_code_capability_parity"] is True
+    assert audit["open_source_code_claim_gate"]["status"] == "pass"
+    assert audit["code_capability_summary"]["covered_count"] == 1
+    assert audit["code_capability_summary"]["partial_count"] == 0
+    assert audit["code_capability_summary"]["completion_score"] == 1.0
+    assert audit["code_capability_summary"]["evidence_pending_capability_ids"] == ["raw_binary_tob1_slt"]
 
 
 def test_eddypro_coverage_audit_allows_full_claim_only_when_all_gates_pass(tmp_path: Path) -> None:
