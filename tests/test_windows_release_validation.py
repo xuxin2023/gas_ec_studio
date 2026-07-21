@@ -13,16 +13,27 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest().upper()
 
 
-def _build_release_fixture(root: Path, *, version: str = "0.1.0rc1") -> tuple[Path, str]:
+def _build_release_fixture(
+    root: Path,
+    *,
+    version: str = "0.1.0rc1",
+    signed: bool = True,
+    include_unsigned_warning: bool = True,
+) -> tuple[Path, str]:
     root.mkdir(parents=True, exist_ok=True)
     display_version = version.replace("rc", "-rc")
     executable = root / f"GasECStudio-{display_version}-win64.exe"
     readme = root / "RC_README.txt"
     archive_path = root / f"GasECStudio-{display_version}-win64.zip"
     executable.write_bytes(b"signed-executable")
-    readme.write_text(f"Gas EC Studio {display_version}\nValidated release package.\n", encoding="utf-8")
+    readme_text = f"Gas EC Studio {display_version}\nValidated release package.\n"
+    if not signed and include_unsigned_warning:
+        readme_text += "当前候选版本未签名，Windows 可能显示未知发布者提示。\n"
+    readme.write_text(readme_text, encoding="utf-8")
     with ZipFile(archive_path, "w", compression=ZIP_STORED) as archive:
-        archive.write(executable, f"GasECStudio-{display_version}-win64/{executable.name}")
+        archive.write(
+            executable, f"GasECStudio-{display_version}-win64/{executable.name}"
+        )
         archive.write(readme, f"GasECStudio-{display_version}-win64/{readme.name}")
 
     commit = "A" * 40
@@ -30,19 +41,29 @@ def _build_release_fixture(root: Path, *, version: str = "0.1.0rc1") -> tuple[Pa
         path.name: {"bytes": path.stat().st_size, "sha256": _sha256(path)}
         for path in (executable, archive_path, readme)
     }
-    signing = {
-        "status": "Valid",
-        "verification": "signtool_and_authenticode",
-        "identity_mode": "pfx",
-        "signer_thumbprint": "B" * 40,
-        "timestamp_subject": "CN=Timestamp",
-    }
+    signing = (
+        {
+            "status": "Valid",
+            "verification": "signtool_and_authenticode",
+            "identity_mode": "pfx",
+            "signer_thumbprint": "B" * 40,
+            "timestamp_subject": "CN=Timestamp",
+        }
+        if signed
+        else {
+            "status": "NotSigned",
+            "verification": "authenticode_only",
+            "identity_mode": "none",
+            "signer_thumbprint": "",
+            "timestamp_subject": "",
+        }
+    )
     manifest = {
         "status": "pass",
         "version": version,
         "release_channel": "rc" if "rc" in version else "final",
         "git_commit": commit,
-        "signing_status": "Valid",
+        "signing_status": "Valid" if signed else "NotSigned",
         "signing": signing,
         "smoke_status": "pass",
         "files": files,
@@ -63,7 +84,9 @@ def _valid_authenticode(_path: Path) -> dict[str, object]:
     }
 
 
-def test_windows_version_info_is_generated_from_application_version(tmp_path: Path) -> None:
+def test_windows_version_info_is_generated_from_application_version(
+    tmp_path: Path,
+) -> None:
     version_info = tmp_path / "version_info.txt"
 
     _write_windows_version_info(
@@ -83,19 +106,95 @@ def test_windows_version_info_is_generated_from_application_version(tmp_path: Pa
 
 def test_signed_rc_release_validation_passes(monkeypatch, tmp_path: Path) -> None:
     _executable, commit = _build_release_fixture(tmp_path)
-    monkeypatch.setattr(validate_windows_release, "authenticode_info", _valid_authenticode)
+    monkeypatch.setattr(
+        validate_windows_release, "authenticode_info", _valid_authenticode
+    )
 
-    report = validate_windows_release.build_release_validation(tmp_path, expected_commit=commit)
+    report = validate_windows_release.build_release_validation(
+        tmp_path, expected_commit=commit
+    )
 
     assert report["status"] == "pass"
     assert report["blockers"] == []
 
 
+def test_unsigned_rc_release_validation_requires_explicit_policy(
+    tmp_path: Path,
+) -> None:
+    _executable, commit = _build_release_fixture(tmp_path, signed=False)
+
+    report = validate_windows_release.build_release_validation(
+        tmp_path,
+        expected_commit=commit,
+        verify_authenticode=False,
+    )
+
+    assert report["status"] == "blocked"
+    assert "signature_status_not_valid" in report["blockers"]
+
+
+def test_unsigned_rc_release_validation_passes_with_disclosed_policy(
+    tmp_path: Path,
+) -> None:
+    _executable, commit = _build_release_fixture(tmp_path, signed=False)
+
+    report = validate_windows_release.build_release_validation(
+        tmp_path,
+        expected_commit=commit,
+        allow_unsigned_prerelease=True,
+        verify_authenticode=False,
+    )
+
+    assert report["status"] == "pass"
+    assert report["release_policy"] == "unsigned_prerelease"
+    assert report["blockers"] == []
+
+
+def test_unsigned_rc_release_validation_requires_readme_warning(tmp_path: Path) -> None:
+    _executable, commit = _build_release_fixture(
+        tmp_path,
+        signed=False,
+        include_unsigned_warning=False,
+    )
+
+    report = validate_windows_release.build_release_validation(
+        tmp_path,
+        expected_commit=commit,
+        allow_unsigned_prerelease=True,
+        verify_authenticode=False,
+    )
+
+    assert report["status"] == "blocked"
+    assert "unsigned_prerelease_warning_missing" in report["blockers"]
+
+
+def test_unsigned_final_release_cannot_use_prerelease_policy(tmp_path: Path) -> None:
+    _executable, commit = _build_release_fixture(
+        tmp_path, version="0.1.0", signed=False
+    )
+
+    report = validate_windows_release.build_release_validation(
+        tmp_path,
+        expected_commit=commit,
+        require_final=True,
+        allow_unsigned_prerelease=True,
+        verify_authenticode=False,
+    )
+
+    assert report["status"] == "blocked"
+    assert "unsigned_prerelease_policy_requires_rc" in report["blockers"]
+    assert "signature_status_not_valid" in report["blockers"]
+
+
 def test_final_validation_rejects_rc_version(monkeypatch, tmp_path: Path) -> None:
     _executable, commit = _build_release_fixture(tmp_path)
-    monkeypatch.setattr(validate_windows_release, "authenticode_info", _valid_authenticode)
+    monkeypatch.setattr(
+        validate_windows_release, "authenticode_info", _valid_authenticode
+    )
 
-    report = validate_windows_release.build_release_validation(tmp_path, expected_commit=commit, require_final=True)
+    report = validate_windows_release.build_release_validation(
+        tmp_path, expected_commit=commit, require_final=True
+    )
 
     assert report["status"] == "blocked"
     assert "final_version_required" in report["blockers"]
@@ -103,7 +202,9 @@ def test_final_validation_rejects_rc_version(monkeypatch, tmp_path: Path) -> Non
 
 def test_signed_final_release_validation_passes(monkeypatch, tmp_path: Path) -> None:
     _executable, commit = _build_release_fixture(tmp_path, version="0.1.0")
-    monkeypatch.setattr(validate_windows_release, "authenticode_info", _valid_authenticode)
+    monkeypatch.setattr(
+        validate_windows_release, "authenticode_info", _valid_authenticode
+    )
 
     report = validate_windows_release.build_release_validation(
         tmp_path,
@@ -116,9 +217,13 @@ def test_signed_final_release_validation_passes(monkeypatch, tmp_path: Path) -> 
     assert report["release_channel"] == "final"
 
 
-def test_release_validation_rejects_version_mismatch(monkeypatch, tmp_path: Path) -> None:
+def test_release_validation_rejects_version_mismatch(
+    monkeypatch, tmp_path: Path
+) -> None:
     _executable, commit = _build_release_fixture(tmp_path)
-    monkeypatch.setattr(validate_windows_release, "authenticode_info", _valid_authenticode)
+    monkeypatch.setattr(
+        validate_windows_release, "authenticode_info", _valid_authenticode
+    )
 
     report = validate_windows_release.build_release_validation(
         tmp_path,
@@ -133,15 +238,21 @@ def test_release_validation_rejects_version_mismatch(monkeypatch, tmp_path: Path
 def test_release_validation_detects_hash_tampering(monkeypatch, tmp_path: Path) -> None:
     executable, commit = _build_release_fixture(tmp_path)
     executable.write_bytes(b"tampered")
-    monkeypatch.setattr(validate_windows_release, "authenticode_info", _valid_authenticode)
+    monkeypatch.setattr(
+        validate_windows_release, "authenticode_info", _valid_authenticode
+    )
 
-    report = validate_windows_release.build_release_validation(tmp_path, expected_commit=commit)
+    report = validate_windows_release.build_release_validation(
+        tmp_path, expected_commit=commit
+    )
 
     assert report["status"] == "blocked"
     assert f"manifest_file_hash_mismatch:{executable.name}" in report["blockers"]
 
 
-def test_release_validation_detects_zip_readme_tampering(monkeypatch, tmp_path: Path) -> None:
+def test_release_validation_detects_zip_readme_tampering(
+    monkeypatch, tmp_path: Path
+) -> None:
     executable, commit = _build_release_fixture(tmp_path)
     archive_path = next(tmp_path.glob("*.zip"))
     with ZipFile(archive_path, "w", compression=ZIP_STORED) as archive:
@@ -155,23 +266,38 @@ def test_release_validation_detects_zip_readme_tampering(monkeypatch, tmp_path: 
     }
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     (tmp_path / "SHA256SUMS.txt").write_text(
-        "".join(f"{metadata['sha256']}  {name}\n" for name, metadata in manifest["files"].items()),
+        "".join(
+            f"{metadata['sha256']}  {name}\n"
+            for name, metadata in manifest["files"].items()
+        ),
         encoding="ascii",
     )
-    monkeypatch.setattr(validate_windows_release, "authenticode_info", _valid_authenticode)
+    monkeypatch.setattr(
+        validate_windows_release, "authenticode_info", _valid_authenticode
+    )
 
-    report = validate_windows_release.build_release_validation(tmp_path, expected_commit=commit)
+    report = validate_windows_release.build_release_validation(
+        tmp_path, expected_commit=commit
+    )
 
     assert report["status"] == "blocked"
     assert "release_zip_readme_hash_mismatch" in report["blockers"]
 
 
-def test_release_validation_rejects_forbidden_release_text(monkeypatch, tmp_path: Path) -> None:
+def test_release_validation_rejects_forbidden_release_text(
+    monkeypatch, tmp_path: Path
+) -> None:
     _executable, commit = _build_release_fixture(tmp_path)
-    (tmp_path / "RC_README.txt").write_text("EddyPro compatibility package", encoding="utf-8")
-    monkeypatch.setattr(validate_windows_release, "authenticode_info", _valid_authenticode)
+    (tmp_path / "RC_README.txt").write_text(
+        "EddyPro compatibility package", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        validate_windows_release, "authenticode_info", _valid_authenticode
+    )
 
-    report = validate_windows_release.build_release_validation(tmp_path, expected_commit=commit)
+    report = validate_windows_release.build_release_validation(
+        tmp_path, expected_commit=commit
+    )
 
     assert report["status"] == "blocked"
     assert "forbidden_release_term:eddypro" in report["blockers"]

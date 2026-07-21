@@ -14,6 +14,16 @@
 
 主窗口右上角的信息按钮提供版本、快速使用说明和更新日志。详细说明维护在 [`docs/user_guide.md`](docs/user_guide.md)，版本变化维护在 [`CHANGELOG.md`](CHANGELOG.md)。
 
+## 公网下载
+
+Windows 候选版本发布在 [GitHub Releases](https://github.com/xuxin2023/gas_ec_studio/releases)。推荐下载最新 RC 的 ZIP，并使用同一发布页中的 `SHA256SUMS.txt` 核对文件完整性：
+
+```powershell
+Get-FileHash .\GasECStudio-*-win64.zip -Algorithm SHA256
+```
+
+RC 属于公开预览版，可能尚未进行商业代码签名，Windows 会显示“未知发布者”或 SmartScreen 提示。正式稳定版仍必须通过代码签名与可信时间戳门禁。
+
 ## 运行
 
 ```powershell
@@ -56,5 +66,7 @@ python scripts/validate_windows_release.py `
 ```
 
 引导脚本会将经过固定 SHA-256 校验的 Microsoft Windows SDK Build Tools 解包到忽略提交的 `.build` 工具缓存。使用可信证书签名 RC 时，优先从 Windows 证书存储区按 thumbprint 选择硬件或系统保护的私钥。也可用 `--pfx`，密码必须通过 `GAS_EC_SIGN_PFX_PASSWORD` 环境变量提供。`--release-channel final` 会拒绝预发布版本并自动强制签名。正式版晋级必须通过独立验收器，确认签名状态 `Valid`、可信时间戳、打包烟测、全部文件哈希、ZIP 内部 EXE、清单提交号和正式版本号一致。
+
+公开 RC 预览版使用独立工作流 `.github/workflows/windows-rc-prerelease.yml`。它只接受预发布版本，要求构建与烟测通过、提交号和版本匹配、文件及 ZIP 哈希一致，并强制随包保留未签名警告；该通道不能绕过正式版签名门禁。
 
 内部一致性数据仅用于开发回归和历史格式兼容，不在用户界面或人可读交付报告中展示。

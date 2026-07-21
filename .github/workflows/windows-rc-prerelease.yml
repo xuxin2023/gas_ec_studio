@@ -1,0 +1,131 @@
+name: Windows RC Public Prerelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish the validated unsigned RC as a public GitHub prerelease"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-validate-publish:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,gis]"
+          python -m pip install "pyinstaller>=6.19"
+
+      - name: Resolve RC identity
+        id: release
+        shell: pwsh
+        run: |
+          $appVersion = python -c "from app.version import APP_VERSION; print(APP_VERSION)"
+          $displayVersion = python -c "from app.version import APP_VERSION; print(APP_VERSION.replace('rc', '-rc'))"
+          $displayLabel = python -c "from app.version import DISPLAY_VERSION; print(DISPLAY_VERSION)"
+          if ($appVersion -notmatch 'rc[0-9]+$') {
+            throw "The public prerelease workflow only accepts an RC application version."
+          }
+          "app_version=$appVersion" >> $env:GITHUB_OUTPUT
+          "version=$displayVersion" >> $env:GITHUB_OUTPUT
+          "display_label=$displayLabel" >> $env:GITHUB_OUTPUT
+          "tag=v$displayVersion" >> $env:GITHUB_OUTPUT
+          "root=artifacts/windows_rc/$displayVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Build unsigned RC package
+        run: python scripts/build_windows_rc.py --release-channel rc
+
+      - name: Validate public prerelease package
+        shell: pwsh
+        run: |
+          python scripts/validate_windows_release.py `
+            --artifact-root '${{ steps.release.outputs.root }}' `
+            --expected-commit $env:GITHUB_SHA `
+            --expected-version '${{ steps.release.outputs.app_version }}' `
+            --allow-unsigned-prerelease
+
+      - name: Upload validated package
+        uses: actions/upload-artifact@v7
+        with:
+          name: gas-ec-studio-rc-${{ steps.release.outputs.version }}
+          path: ${{ steps.release.outputs.root }}/
+          if-no-files-found: error
+
+      - name: Publish public GitHub prerelease
+        if: inputs.publish_release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ steps.release.outputs.tag }}'
+          if (gh release view $tag *> $null) {
+            throw "Release $tag already exists; published release assets are immutable."
+          }
+          $root = '${{ steps.release.outputs.root }}'
+          $assets = @(
+            (Get-ChildItem -LiteralPath $root -Filter '*.exe').FullName
+            (Get-ChildItem -LiteralPath $root -Filter '*.zip').FullName
+            (Join-Path $root 'SHA256SUMS.txt')
+            (Join-Path $root 'RC_README.txt')
+            (Join-Path $root 'build-manifest.json')
+            (Join-Path $root 'packaged-smoke-report.json')
+            (Join-Path $root 'packaged-smoke-report-center.png')
+            (Join-Path $root 'release-validation.json')
+          )
+          gh release create $tag @assets `
+            --target $env:GITHUB_SHA `
+            --title "Gas EC Studio ${{ steps.release.outputs.display_label }}" `
+            --notes-file packaging/PUBLIC_RC_NOTES.md `
+            --prerelease `
+            --latest=false
+
+      - name: Verify published release assets
+        if: inputs.publish_release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $release = gh release view '${{ steps.release.outputs.tag }}' --json isPrerelease,assets,url | ConvertFrom-Json
+          if (-not $release.isPrerelease) {
+            throw "Published release is not marked as a prerelease."
+          }
+          $names = @($release.assets | ForEach-Object { $_.name })
+          $requiredAssets = @(
+            'SHA256SUMS.txt'
+            'RC_README.txt'
+            'build-manifest.json'
+            'packaged-smoke-report.json'
+            'packaged-smoke-report-center.png'
+            'release-validation.json'
+          )
+          foreach ($required in $requiredAssets) {
+            if ($required -notin $names) {
+              throw "Published release is missing $required."
+            }
+          }
+          if (@($names | Where-Object { $_ -like '*.exe' }).Count -ne 1) {
+            throw "Published release must contain exactly one EXE."
+          }
+          if (@($names | Where-Object { $_ -like '*.zip' }).Count -ne 1) {
+            throw "Published release must contain exactly one ZIP."
+          }
+          Write-Host "Public download: $($release.url)"

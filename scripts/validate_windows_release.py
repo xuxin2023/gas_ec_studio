@@ -54,7 +54,9 @@ def _load_manifest(root: Path, blockers: list[str]) -> dict[str, object]:
     return payload
 
 
-def _validate_manifest_files(root: Path, manifest: dict[str, object], blockers: list[str]) -> dict[str, str]:
+def _validate_manifest_files(
+    root: Path, manifest: dict[str, object], blockers: list[str]
+) -> dict[str, str]:
     files = manifest.get("files", {})
     if not isinstance(files, dict) or not files:
         blockers.append("manifest_files_missing")
@@ -104,7 +106,9 @@ def _validate_sums(root: Path, verified: dict[str, str], blockers: list[str]) ->
             blockers.append(f"sha256sums_mismatch:{name}")
 
 
-def _validate_zip(root: Path, verified: dict[str, str], blockers: list[str]) -> dict[str, object]:
+def _validate_zip(
+    root: Path, verified: dict[str, str], blockers: list[str]
+) -> dict[str, object]:
     archives = [root / name for name in verified if name.lower().endswith(".zip")]
     executables = [name for name in verified if name.lower().endswith(".exe")]
     if len(archives) != 1:
@@ -118,8 +122,12 @@ def _validate_zip(root: Path, verified: dict[str, str], blockers: list[str]) -> 
     try:
         with ZipFile(archive_path) as archive:
             members = [name for name in archive.namelist() if not name.endswith("/")]
-            executable_members = [name for name in members if Path(name).name == executable_name]
-            readme_members = [name for name in members if Path(name).name == "RC_README.txt"]
+            executable_members = [
+                name for name in members if Path(name).name == executable_name
+            ]
+            readme_members = [
+                name for name in members if Path(name).name == "RC_README.txt"
+            ]
             if len(executable_members) != 1:
                 blockers.append("release_zip_executable_missing")
             else:
@@ -135,7 +143,9 @@ def _validate_zip(root: Path, verified: dict[str, str], blockers: list[str]) -> 
                     if _stream_sha256(handle) != verified["RC_README.txt"]:
                         blockers.append("release_zip_readme_hash_mismatch")
             expected_member_names = {executable_name, "RC_README.txt"}
-            unexpected_members = [name for name in members if Path(name).name not in expected_member_names]
+            unexpected_members = [
+                name for name in members if Path(name).name not in expected_member_names
+            ]
             if unexpected_members:
                 blockers.append("release_zip_unexpected_members")
             for member in members:
@@ -149,19 +159,20 @@ def _validate_zip(root: Path, verified: dict[str, str], blockers: list[str]) -> 
         return {}
 
 
-def _scan_release_text(root: Path, blockers: list[str]) -> None:
+def _scan_release_text(root: Path, blockers: list[str]) -> str:
     readme = root / "RC_README.txt"
     if not readme.is_file():
         blockers.append("release_readme_missing")
-        return
+        return ""
     try:
         text = readme.read_text(encoding="utf-8").casefold()
     except (OSError, UnicodeError):
         blockers.append("release_readme_invalid")
-        return
+        return ""
     for term in FORBIDDEN_RELEASE_TERMS:
         if term in text:
             blockers.append(f"forbidden_release_term:{term.replace(' ', '_')}")
+    return text
 
 
 def build_release_validation(
@@ -170,13 +181,17 @@ def build_release_validation(
     expected_commit: str = "",
     expected_version: str = "",
     require_final: bool = False,
+    allow_unsigned_prerelease: bool = False,
     verify_authenticode: bool = True,
 ) -> dict[str, object]:
     root = artifact_root.resolve()
     blockers: list[str] = []
     manifest = _load_manifest(root, blockers)
     version = str(manifest.get("version", ""))
-    release_channel = str(manifest.get("release_channel", "") or ("rc" if _is_prerelease(version) else "final"))
+    release_channel = str(
+        manifest.get("release_channel", "")
+        or ("rc" if _is_prerelease(version) else "final")
+    )
 
     if manifest.get("status") != "pass":
         blockers.append("build_status_not_passed")
@@ -190,21 +205,42 @@ def build_release_validation(
     if require_final and (_is_prerelease(version) or release_channel != "final"):
         blockers.append("final_version_required")
 
+    is_prerelease = _is_prerelease(version) or release_channel == "rc"
     signing = manifest.get("signing", {})
     signing = signing if isinstance(signing, dict) else {}
-    if manifest.get("signing_status") != "Valid" or signing.get("status") != "Valid":
-        blockers.append("signature_status_not_valid")
-    if signing.get("verification") != "signtool_and_authenticode":
-        blockers.append("signature_verification_incomplete")
-    if not str(signing.get("signer_thumbprint", "")).strip():
-        blockers.append("signer_thumbprint_missing")
-    if not str(signing.get("timestamp_subject", "")).strip():
-        blockers.append("trusted_timestamp_missing")
+    unsigned_prerelease = (
+        allow_unsigned_prerelease
+        and is_prerelease
+        and release_channel == "rc"
+        and manifest.get("signing_status") == "NotSigned"
+        and signing.get("status") == "NotSigned"
+    )
+    if allow_unsigned_prerelease and (not is_prerelease or release_channel != "rc"):
+        blockers.append("unsigned_prerelease_policy_requires_rc")
+    if unsigned_prerelease:
+        if signing.get("identity_mode") != "none":
+            blockers.append("unsigned_prerelease_identity_invalid")
+    else:
+        if (
+            manifest.get("signing_status") != "Valid"
+            or signing.get("status") != "Valid"
+        ):
+            blockers.append("signature_status_not_valid")
+        if signing.get("verification") != "signtool_and_authenticode":
+            blockers.append("signature_verification_incomplete")
+        if not str(signing.get("signer_thumbprint", "")).strip():
+            blockers.append("signer_thumbprint_missing")
+        if not str(signing.get("timestamp_subject", "")).strip():
+            blockers.append("trusted_timestamp_missing")
 
     verified = _validate_manifest_files(root, manifest, blockers)
     _validate_sums(root, verified, blockers)
     zip_summary = _validate_zip(root, verified, blockers)
-    _scan_release_text(root, blockers)
+    release_text = _scan_release_text(root, blockers)
+    if unsigned_prerelease and not any(
+        marker in release_text for marker in ("未进行商业代码签名", "未签名")
+    ):
+        blockers.append("unsigned_prerelease_warning_missing")
 
     executable_names = [name for name in verified if name.lower().endswith(".exe")]
     authenticode: dict[str, object] = {}
@@ -217,13 +253,23 @@ def build_release_validation(
             except SigningError:
                 blockers.append("authenticode_verification_failed")
             else:
-                if authenticode.get("status") != "Valid":
+                if unsigned_prerelease:
+                    if authenticode.get("status") != "NotSigned":
+                        blockers.append(
+                            "unsigned_prerelease_authenticode_state_invalid"
+                        )
+                elif authenticode.get("status") != "Valid":
                     blockers.append("authenticode_status_not_valid")
-                if not str(authenticode.get("timestamp_subject", "")).strip():
+                if (
+                    not unsigned_prerelease
+                    and not str(authenticode.get("timestamp_subject", "")).strip()
+                ):
                     blockers.append("authenticode_timestamp_missing")
-                if str(authenticode.get("signer_thumbprint", "")).casefold() != str(
-                    signing.get("signer_thumbprint", "")
-                ).casefold():
+                if (
+                    not unsigned_prerelease
+                    and str(authenticode.get("signer_thumbprint", "")).casefold()
+                    != str(signing.get("signer_thumbprint", "")).casefold()
+                ):
                     blockers.append("authenticode_signer_mismatch")
 
     return {
@@ -236,6 +282,8 @@ def build_release_validation(
         "expected_commit": expected_commit,
         "expected_version": expected_version,
         "require_final": require_final,
+        "allow_unsigned_prerelease": allow_unsigned_prerelease,
+        "release_policy": "unsigned_prerelease" if unsigned_prerelease else "signed",
         "signing": signing,
         "authenticode": authenticode,
         "verified_files": verified,
@@ -245,12 +293,23 @@ def build_release_validation(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate a signed Windows release package before promotion.")
+    parser = argparse.ArgumentParser(
+        description="Validate a signed Windows release package before promotion."
+    )
     parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--expected-commit", default="")
     parser.add_argument("--expected-version", default="")
     parser.add_argument("--require-final", action="store_true")
-    parser.add_argument("--skip-authenticode", action="store_true", help="Only for non-Windows unit or metadata checks.")
+    parser.add_argument(
+        "--allow-unsigned-prerelease",
+        action="store_true",
+        help="Allow an explicitly disclosed unsigned RC package; never permits an unsigned final release.",
+    )
+    parser.add_argument(
+        "--skip-authenticode",
+        action="store_true",
+        help="Only for non-Windows unit or metadata checks.",
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -259,11 +318,14 @@ def main() -> int:
         expected_commit=args.expected_commit,
         expected_version=args.expected_version,
         require_final=args.require_final,
+        allow_unsigned_prerelease=args.allow_unsigned_prerelease,
         verify_authenticode=not args.skip_authenticode,
     )
     output = args.output or args.artifact_root / "release-validation.json"
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    output.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["status"] == "pass" else 2
 
