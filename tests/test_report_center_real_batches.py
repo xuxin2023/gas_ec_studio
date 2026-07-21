@@ -536,7 +536,7 @@ def test_report_center_registers_official_raw_bundle_as_active_fixture_pack(monk
         pack_artifact = Path(controller.report_center_workspace["official_raw_bundle"]["evidence_pack_artifact"])
         pack_payload = json.loads(pack_artifact.read_text(encoding="utf-8"))
         pack_payload["acceptance_commands"] = [
-            "python -m pytest tests/test_eddypro_capability_matrix.py::test_capability_matrix_is_truthful_about_full_eddypro_parity -q"
+            "python -m pytest tests/test_eddypro_capability_matrix.py::test_capability_matrix_separates_code_alignment_from_real_evidence -q"
         ]
         pack_artifact.write_text(json.dumps(pack_payload, ensure_ascii=False, indent=2), encoding="utf-8")
         acceptance = controller.run_official_raw_evidence_acceptance_for_report_center(str(bundle))

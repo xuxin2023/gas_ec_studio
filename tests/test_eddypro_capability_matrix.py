@@ -4,11 +4,15 @@ import json
 from pathlib import Path
 
 
-def test_capability_matrix_is_truthful_about_full_eddypro_parity() -> None:
+def test_capability_matrix_separates_code_alignment_from_real_evidence() -> None:
     matrix = json.loads(Path("docs/benchmark/eddypro_capability_matrix.json").read_text(encoding="utf-8"))
 
-    assert matrix["overall_status"] == "not_full_eddypro_parity_yet"
-    assert "does not yet implement every EddyPro" in matrix["truthfulness_note"]
+    assert matrix["overall_status"] == "open_source_code_capability_aligned_real_evidence_pending"
+    assert "Real field numeric parity" in matrix["truthfulness_note"]
+    assert "not implied by code capability alignment" in matrix["truthfulness_note"]
+    assert matrix["code_coverage_summary"]["covered"] == 24
+    assert matrix["code_coverage_summary"]["partial"] == 0
+    assert matrix["code_coverage_summary"]["missing"] == 0
     statuses = {item["gas_ec_status"] for item in matrix["capabilities"]}
     assert {"covered", "partial", "beyond_eddypro"}.issubset(statuses)
     assert ("missing" in statuses) == (matrix["coverage_summary"]["missing"] > 0)
