@@ -1,5 +1,10 @@
 # 快速使用说明
 
+完整的科学原理、参数说明、SOP、故障排查和字段字典见：
+
+- [Gas EC Studio RC6 详细使用说明书（DOCX）](manual/Gas_EC_Studio_RC6_User_Manual_ZH.docx)
+- [Gas EC Studio RC6 详细使用说明书（PDF）](manual/Gas_EC_Studio_RC6_User_Manual_ZH.pdf)
+
 ## 标准流程
 
 1. 在“设备中心”接入设备并确认在线、采集和告警状态。
