@@ -56,11 +56,15 @@ class SigningRequest:
 
 
 def _powershell_json(command: str, *, env: dict[str, str] | None = None) -> object:
+    process_env = dict(os.environ if env is None else env)
+    # A pwsh parent can inject its PowerShell 7 module path into Windows
+    # PowerShell, which prevents built-in signing cmdlets from autoloading.
+    process_env.pop("PSModulePath", None)
     result = subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
         text=True,
         capture_output=True,
-        env=env,
+        env=process_env,
         check=False,
     )
     if result.returncode != 0:

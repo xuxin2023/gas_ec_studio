@@ -80,6 +80,22 @@ def test_normalize_thumbprint_accepts_spacing_and_rejects_invalid() -> None:
         windows_signing.normalize_thumbprint("not-a-thumbprint")
 
 
+def test_powershell_signing_query_uses_clean_windows_module_path(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(command, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(windows_signing.subprocess, "run", fake_run)
+    monkeypatch.setenv("PSModulePath", r"C:\Program Files\PowerShell\7\Modules")
+
+    assert windows_signing._powershell_json("'ok' | ConvertTo-Json") == {}
+    assert observed["command"][0] == "powershell.exe"
+    assert "PSModulePath" not in observed["env"]
+
+
 def test_find_signtool_uses_pinned_build_cache(monkeypatch, tmp_path: Path) -> None:
     cache_root = tmp_path / "windows-sdk"
     monkeypatch.setattr(windows_signing, "WINDOWS_SDK_BUILD_TOOLS_ROOT", cache_root)
