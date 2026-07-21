@@ -92,8 +92,9 @@ def test_powershell_signing_query_uses_clean_windows_module_path(monkeypatch) ->
     monkeypatch.setenv("PSModulePath", r"C:\Program Files\PowerShell\7\Modules")
 
     assert windows_signing._powershell_json("'ok' | ConvertTo-Json") == {}
-    assert observed["command"][0] == "powershell.exe"
-    assert "PSModulePath" not in observed["env"]
+    powershell = Path(observed["command"][0])
+    assert powershell.parts[-3:] == ("WindowsPowerShell", "v1.0", "powershell.exe")
+    assert Path(observed["env"]["PSModulePath"]).parts[-3:] == ("WindowsPowerShell", "v1.0", "Modules")
 
 
 def test_find_signtool_uses_pinned_build_cache(monkeypatch, tmp_path: Path) -> None:
